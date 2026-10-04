@@ -1,7 +1,7 @@
 export const meta = {
   name: 'kb-improve-batch',
   description: 'Improve a batch of patterns-kb pages: six persona reviewers → one edit plan → kb-author, per page',
-  whenToUse: 'More than one page from the kb-improve skill: an area, a kind or an explicit id list, after the five-page pilot is approved. One page is the skill run inline. The caller resolves the ids first and runs make gen, make validate, the commit and the pull request after.',
+  whenToUse: 'An unattended kb-improve run over an id list, only when the owner asks for a workflow by name. It applies each plan without the judging the kb-improve skill does between hand-offs, so the interactive skill is the default. The caller resolves the ids first and runs make gen, make validate, the commits and the pull request after.',
   phases: [
     { title: 'Review', detail: 'one kb-persona-reviewer per reader per page' },
     { title: 'Synthesize', detail: 'one synthesizer per page merges and re-checks the findings' },

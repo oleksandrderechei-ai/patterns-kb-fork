@@ -76,6 +76,7 @@ Then make the wait survivable. Add an **acquisition timeout** so a caller that c
 **Threatens**
 
 - [Lease](../patterns/distributed/coordination/lease.md) — A holder that never releases keeps the grant until the lease expires
+- [Big Compute](../patterns/architecture/big-compute.md) — Burst pools are the case where a leak costs most.
 - [Iterator](../patterns/gof/behavioral/iterator.md) — An abandoned lazy iterator keeps its handle open until it is closed.
 
 <!-- relationships:end -->

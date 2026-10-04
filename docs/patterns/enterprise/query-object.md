@@ -5,7 +5,7 @@ area: enterprise
 owner: Oleksandr Derechei
 tags: [persistence, data-access, decoupling]
 status: stable
-solves: [a search screen with many optional filters builds SQL by gluing strings together, renaming a column breaks searches scattered across the code, user input reaches my SQL string and I worry about injection, every caller writes its own slightly different query for the same data]
+solves: [a search screen with many optional filters builds SQL by gluing strings together, renaming a column breaks searches scattered across the code, user input reaches my SQL string and I worry about injection, every caller writes its own slightly different query for the same data, my repository has dozens of findByX methods and still cannot cover every filter combination]
 ---
 
 # Query Object
@@ -15,23 +15,23 @@ A query object is an object that represents a database query as criteria over do
 ## What it is
 <!--meta block=description-->
 
-Search screens with optional filters produce SQL assembled by gluing strings together: one clause per filled-in box, a stray AND, a column renamed in the table but not in the string. A query object holds the search as data, such as a list of criteria on domain fields. A mapper reads it and writes the SQL. Callers say what they want in domain terms and never see table or column names.
+Search screens with optional filters produce SQL assembled by gluing strings together: one clause per filled-in box, a stray AND, a column renamed in the table but not in the string. A query object holds the search as data, such as a list of criteria on domain fields. A mapper turns it into SQL, so callers never see table or column names.
 
 ## Explained
 <!--meta block=explain-->
 
 A query object turns a search into data: a list of criteria on domain fields, such as status equals open and total above 100. A mapping layer reads that list and writes the SQL, binding every value as a parameter. Callers never see a table or a column, and each filled-in filter on a search screen adds one criterion instead of one more piece of string. Choose it over named finder methods on a [repository](./repository.md) when the combinations of filters are too many to name, and over hand-built SQL when the schema changes often enough that strings in the callers keep breaking. If you have five fixed queries, name them and skip this.
 
-- **A limited language.** Joins and vendor features may not fit; keep a named raw query for the few cases that do not.
+- **A limited language.** Joins and window functions may not fit; keep a named raw query for them.
 - **Hidden SQL.** A slow query is harder to spot, so log each generated statement with its timing.
 - **A layer to own.** Building it yourself is real work; use your ORM's criteria API where it has one.
 
-**Example.** A support screen has 8 optional filters: status, agent, date range, tag and so on. The string-built SQL has 8 if-branches, and last month a renamed column broke 3 of 14 searches that nobody ran. With a query object, each filled box calls one where, the screen is about 8 lines, and only the mapper's column table names order_status. Renaming the column is one edit. The values are always bound, so the free-text box cannot inject SQL. The cost is that the screen cannot ask for a join across agents and teams, so that one report keeps its own SQL.
+**Example.** Suppose a support screen has 8 optional filters: status, agent, date range, tag. The string-built SQL has 8 if-branches, and one renamed column breaks 3 of 14 searches because no test covered them. With a query object, each filled box adds one where call, so the search code is about 8 lines, and only the mapper's column table names order_status. Renaming the column is one edit. Values are bound as parameters, so the free-text box cannot inject through its value, and field names come only from the mapper's column table. The cost is that the screen cannot ask for a join across agents and teams, so that one report keeps its own SQL.
 
 ## How it works
 <!--meta block=structure-->
 
-The caller creates a query object for one domain class and adds criteria: a field, an operator and a value, plus sort and limit. The object has no SQL in it. When it is executed, the mapping layer looks up how each field maps to a column, writes the statement with bound parameters, runs it and builds the result objects. Fowler places it beside the [Data Mapper](./data-mapper.md) for this reason: only the mapper knows the schema.
+The caller creates a query object for one domain class and adds criteria: a field, an operator and a value, plus sort and limit. The object has no SQL in it. When it is executed, the mapping layer looks up how each field maps to a column, writes the statement with bound parameters, runs it and builds the result objects. Fowler places it beside the [Data Mapper](./data-mapper.md) because only the mapper knows the schema.
 
 ```mermaid caption="How does a caller search without knowing the schema? It builds criteria in domain terms; the mapper alone turns them into parameterised SQL."
 flowchart LR
@@ -53,12 +53,12 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Criteria builder** — Criteria are added one call at a time, such as `where("status", "=", "open")`. It reads like a sentence and a missing criterion simply omits that clause.
-- **[Specification](./specification.md)-backed query** — The criteria are named rule objects that can also be run in memory, so the same rule filters a database query and a loaded list. It needs a translator for each rule.
-- **Query by example** — The caller fills in an object, and every non-empty field becomes an equality criterion. Fast for simple screens, and unable to express ranges or "or".
-- **Composite criteria** — And, or and not nodes combine simple criteria in a tree. The mapper walks it and writes nested conditions.
+- **Criteria builder** — Criteria are added one call at a time, such as `where("status", "=", "open")`. It reads like a sentence, and a missing criterion omits its clause, so an empty search returns every row; set a default and a maximum limit.
+- **[Specification](./specification.md)-backed query** — The criteria are named rule objects that also run in memory, so one rule filters a database query and a loaded list. Each rule needs a database translator, and the two paths can drift, so test both against the same cases.
+- **Query by example** — The caller fills in an object, and every non-empty field becomes an equality criterion. Quick to write for simple screens, but it cannot express ranges or "or".
+- **Composite criteria** — And, or and not nodes combine simple criteria in a tree. The mapper walks it and writes nested conditions. Cap tree depth and node count, and reject unknown field names before translating.
 - **Behind a [Repository](./repository.md)** — The repository takes a query object and hides the mapper, so domain code sees a collection it can ask questions of.
-- **Typed or fluent API** — Field names are checked by the compiler instead of strings. A rename becomes a build error, not a runtime one.
+- **Typed or fluent API** — Field names are checked by the compiler instead of as strings, so a rename becomes a build error, not a runtime one. This holds only if the field type stays `keyof T` through to the mapper.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -66,10 +66,10 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **No SQL in application code.** A column rename touches the mapping metadata, not every search.
+- **No SQL in application code.** A column rename touches the mapping metadata, not every search; a domain field rename still needs the typed variation to fail at build time.
 - **Optional filters compose safely.** Each filled-in box adds a criterion, with no string gluing and no stray AND.
 - **Parameters are always bound,** which closes the common injection path.
-- **Queries can be tested without a database,** by inspecting the criteria the screen produced.
+- **The screen's search can be tested without a database,** by inspecting the criteria it built; the mapper's translation still needs its own test against a real database.
 
 ### Cons
 <!--meta polarity=con-->
@@ -77,7 +77,8 @@ flowchart LR
 - **A limited language.** Joins, window functions and vendor features may not fit; expose a named raw query for the few that do not.
 - **Another layer to build and maintain** unless a library gives it to you.
 - **Hides the SQL that runs.** A slow query is harder to see, so log the generated statement.
-- **Easy to over-fetch.** A friendly API makes unindexed filters cheap to write, so review the criteria on hot paths.
+- **Easy to over-fetch.** Unindexed filters are cheap to write, so review criteria on hot paths.
+- **Identifiers are not parameters.** Field, operator and sort names that come from user input must map through the mapper's whitelist, or they reopen injection.
 
 ## When to use it
 <!--meta block=usage-->
@@ -119,21 +120,29 @@ class Query<T> {
 // Only the mapper knows the columns.
 const columns: Record<string, string> = { status: "order_status", total: "total_cents" };
 
+// table and op are compile-time constants, never user input.
+// Only criteria values are bound; limit is bound too, as the last parameter.
 function toSql(table: string, q: Query<unknown>) {
   const { criteria, limit } = q.parts;
-  const where = criteria.map((c, i) => `${columns[c.field]} ${c.op} $${i + 1}`).join(" AND ");
-  const sql = `SELECT * FROM ${table}${where ? " WHERE " + where : ""}${limit ? ` LIMIT ${limit}` : ""}`;
-  return { sql, params: criteria.map(c => c.value) };
+  const where = criteria.map((c, i) => {
+    const col = columns[c.field];
+    if (!col) throw new Error(`unmapped field: ${c.field}`);
+    return `${col} ${c.op} $${i + 1}`;
+  }).join(" AND ");
+  const params: unknown[] = criteria.map(c => c.value);
+  let sql = `SELECT * FROM ${table}${where ? " WHERE " + where : ""}`;
+  if (limit !== undefined) { sql += ` LIMIT $${params.length + 1}`; params.push(limit); }
+  return { sql, params };
 }
 
 const q = new Query(Order).where("status", "=", "open").where("total", ">", 10000).limit(50);
-// toSql("orders", q) -> SELECT * FROM orders WHERE order_status = $1 AND total_cents > $2 LIMIT 50
+// toSql("orders", q) -> SELECT * FROM orders WHERE order_status = $1 AND total_cents > $2 LIMIT $3, params ["open", 10000, 50]
 ```
 
 ## In the wild
 <!--meta block=wild-->
 
-- **JPA Criteria API** — Jakarta Persistence (JPA) builds a query as a CriteriaQuery object of roots, predicates and orderings from a CriteriaBuilder, and the provider translates it to SQL with bound parameters. Fields can be referenced through a generated static metamodel so a rename is a compile error. {#wild-jpa-criteria}
+- **JPA Criteria API** — Jakarta Persistence (JPA) builds a query as a CriteriaQuery object of roots, predicates and orderings from a CriteriaBuilder, and the provider translates it to SQL with bound parameters. Fields can be referenced through a generated static metamodel, so a rename is a compile error; this holds only when the metamodel is generated and used instead of string attribute names. {#wild-jpa-criteria}
 - **Django QuerySet and Q** — A Django QuerySet is built up by chained filter and exclude calls and combined with Q objects using and, or and not; it holds the criteria as data and compiles them to SQL only when evaluated. {#wild-django-q}
 
 ## Where it shows up

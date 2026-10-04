@@ -32,7 +32,7 @@ CQRS gives changes and questions separate models. A command model changes state 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Where does stale data come from? Step 2 has committed before step 4 has run, so a step 5 query arriving in that window returns the old row — the gap between 3 and 4 is the lag you have to budget for."
+```mermaid caption="Where does stale data come from? Step 2 has committed before step 4 has run, so a step 5 query arriving in that window returns the old row. The gap between 3 and 4 is the lag you have to budget for."
 flowchart LR
     C["Client"]
     Proj["Projector"]
@@ -55,10 +55,11 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Single-store CQRS** — Separate command and query model classes, but one shared database — the simplest form, and it avoids managing [eventual consistency](../../themes/consistency-and-replication.md) between two stores.
+- **Single-store CQRS** — Separate command and query model classes over one shared database. It is the simplest form, and it avoids [eventual consistency](../../themes/consistency-and-replication.md) only while the read model updates in the same transaction as the write; an asynchronous projection brings the lag back.
 - **[Materialized View](../distributed/coordination/materialized-view.md)** — The read side is a precomputed, denormalized projection held in a store shaped for its query — a dedicated read database or search index.
 - **[Event Sourcing](./event-sourcing.md)** — The write side persists a stream of domain events rather than current state; read models are projections built by replaying that stream. A common pairing, not a requirement.
 - **Task-based commands** — Commands are named for user intent (`ApproveOrder`, not `UpdateOrder`), keeping the write model's invariants explicit instead of exposing raw field setters.
+- **Synchronous vs asynchronous projection** — Update the read model in the write transaction for read-your-own-writes, or publish and project later for independent scaling at the cost of lag.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -74,10 +75,12 @@ flowchart LR
 ### Cons
 <!--meta polarity=con-->
 
-- **Two models** — sometimes two stores — to build, deploy, and keep in sync: real added complexity.
+- **Two models**, sometimes two stores, to build, deploy and keep in sync.
 - **Sync between write** and read side is often eventually consistent, so a read right after a write can be stale.
 - **Debugging spans two models** instead of one, making it harder to trace a value back to what wrote it.
 - **Overkill for a small create, read, update, delete (CRUD)** app with no meaningful asymmetry between how it's written and how it's read.
+- **Rebuilding or reshaping a read model** replays the full history; the example takes about 33 minutes for 20 million events.
+- **Projections must tolerate duplicate and out-of-order events**, so each handler needs idempotency and per-aggregate ordering.
 
 ## When to use it
 <!--meta block=usage-->
@@ -86,7 +89,7 @@ flowchart LR
 <!--meta polarity=when-->
 
 - **Read and write workloads have very different shapes**, volumes, or scaling needs.
-- **Queries don't fit the write model** — dashboards, search and reports don't map cleanly onto the write model's structure.
+- **Queries don't fit the write model**: dashboards, search and reports don't map onto the write model's structure.
 - **You want to add new read views** without destabilizing the code that enforces write-side invariants.
 
 ### Avoid when
@@ -144,25 +147,25 @@ async function getOrderSummary(orderId: string, view: OrderSummaryStore) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Projection batch size & poll interval** — How many events a projector applies per pass and how often it wakes to look for more. Larger batches raise throughput but widen the read side's lag behind the write side.
+- **Projection batch size and poll interval** — How many events a projector applies per pass and how often it wakes to look for more. Larger batches raise throughput but widen the read side's lag behind the write side. Size the batch so one pass finishes inside the staleness budget at the peak event rate, and compare lag and backlog depth before and after each change.
 - **Read-model rebuild** — The ability to drop a projection and replay it from the write store or event log. Rebuild cost grows with history volume, so it must be planned, not discovered under fire.
-- **Staleness budget** — The maximum read-after-write lag a query is allowed to show before it must block, retry, or fall back to the write model. Sets the contract the rest of the system is built against.
+- **Staleness budget** — The maximum read-after-write lag a query is allowed to show before it must block, retry, or fall back to the write model. Work it out from the longest user flow that reads after its own write and the p99 projection lag; choose block, retry or fall back per query.
 - **Read-side replicas and indexing** — Number of read replicas and the indexes on the query store, scaled and shaped independently of the write store to match the read workload.
-- **Command idempotency key** — The dedup key that lets a retried command be recognized and applied once, since async projection makes accidental double-submits easy.
+- **Command idempotency key** — The dedup key that lets a retried command be recognized and applied once. Stale reads (failure 3) provoke retries.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Projection lag** — Gap between the latest committed write and what the read model reflects — measured as events pending or seconds behind. The core health number for CQRS.
-- **Projection backlog depth** — Count of events queued for a projector but not yet applied; a rising backlog is lag about to happen.
+- **Projection lag** — Gap between the latest committed write and what the read model reflects — measured as events pending or seconds behind.
+- **Projection backlog depth** — Count of events queued for a projector but not yet applied; a rising backlog predicts lag.
 - **Command-handler p99 latency** — Tail latency of the write path, watched separately from read latency since the two scale under different pressure.
-- **Rebuild duration** — Wall-clock time to replay and rebuild a projection from scratch — the number that decides whether a rebuild is a routine op or an outage.
+- **Rebuild duration** — Wall-clock time to replay and rebuild a projection from scratch — the number that decides whether a rebuild is a routine op or an outage. Compare it with the staleness budget; a rebuild longer than the budget needs a parallel build and a swap, not an in-place drop.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Projection lag blows out** — The write side races ahead of a slow projector; read models fall arbitrarily behind and users see stale data with no upper bound on how stale.
-- **Poison event stalls the projector** — One un-applicable event at the head of an ordered stream blocks every projection behind it until it is skipped or dead-lettered.
+- **Projection lag blows out** — Lag grows for as long as the write rate exceeds projector throughput, so read models fall behind and users see stale data; alert on it.
+- **Poison event stalls the projector** — One un-applicable event at the head of an ordered stream blocks every projection behind it until it is skipped or dead-lettered. Dead-letter it with the event id and error, alert on any entry, and replay after a fix; skipping an ordered event can leave the view diverged.
 - **Read-after-write anomaly** — A user writes, immediately reads, and does not see their own change — driving confused retries and duplicate submits.
 - **Permanent write/read divergence** — If the command and its event are not persisted atomically, a crash between them leaves the read model wrong forever, not just late.
 
@@ -219,6 +222,7 @@ async function getOrderSummary(orderId: string, view: OrderSummaryStore) {
 - [Minimize Coordination](../../principles/minimize-coordination.md) — Splitting the two paths removes the contention between them
 - [Vertical Slice](./vertical-slice.md) — A slice layout makes separate read and write models the cheap default
 - [Outbox](../distributed/coordination/outbox.md) — Publishes each change in the same transaction through an outbox so the query model never misses an event
+- [Repository](../enterprise/repository.md) — The write side of CQRS keeps a repository to load aggregates
 
 **Composed of**
 

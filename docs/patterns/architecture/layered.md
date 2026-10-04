@@ -16,7 +16,7 @@ Splits a system into presentation, business logic, and data-access tiers stacked
 ## What it is
 <!--meta block=description-->
 
-Screens, business rules and storage change at different rates, yet tangled together each edit touches all three. A layered design stacks the system in tiers, usually presentation, business logic and data access. Each tier calls only the one directly below it, so a request has one path from the click to the database row and back. Declared module dependencies make a wrong-way call fail the build.
+Screens, business rules and storage change at different rates, yet tangled together each edit touches all three. A layered design stacks the system in tiers, usually presentation, business logic and data access. Each tier calls only the one directly below it, so a request has one path from the click to the database row and back. With tiers split into modules whose dependencies are declared, a wrong-way call fails the build.
 
 ## Explained
 <!--meta block=explain-->
@@ -26,7 +26,7 @@ A layered design stacks the system in tiers, usually screens, business rules and
 - **Technical boundaries.** Rules drain into service classes and a one-field feature edits every tier, so keep behaviour in domain objects.
 - **Nothing stops upward calls.** Split tiers into modules whose declared dependencies make the build fail on a wrong-way call.
 
-**Example.** A profile page gets a new field, middle name. The change touches the database column, the data-access class, the business entity, the transfer object, the controller and the form: 6 edits across 3 tiers. The business tier only passes the value down, so it adds no decision, just a hop. A validation rule that the name holds at most 40 characters, written in the controller, lets a batch import skip it. Moving that rule into the entity makes both entry points obey it. The cost is that the 6 edits stay.
+**Example.** A profile page gets a new field, middle name. The change touches the database column, the data-access class, the business entity, the transfer object, the controller and the form: 6 edits across 3 tiers. The business tier only passes the value down, so it adds no decision, just a hop. A validation rule that the name holds at most 40 characters, written in the controller, lets a batch import skip it. Moving that rule into the entity makes both entry points obey it, provided the import builds the entity rather than writing rows directly. The cost is that the 6 edits stay.
 
 ## How it works
 <!--meta block=structure-->
@@ -53,7 +53,7 @@ flowchart TB
 ## Variations
 <!--meta block=variations-->
 
-- **Closed vs. open layering** — Closed layering forces every call through the layer immediately below; open layering lets an upper layer skip down to a lower one directly, usually for performance, at the cost of the isolation strict layering buys.
+- **Closed vs. open layering** — Closed layering forces every call through the layer immediately below; open layering lets an upper layer skip down to a lower one directly, usually for performance, at the cost of the isolation strict layering buys. Relax closure exactly where a layer has nothing to say.
 - **Logical layers vs. physical tiers** — Layers can live in one process (logical layering) or be deployed as separate processes on separate machines — a web tier, an app tier, a database tier — talking over the network. "N-tier" strictly names the physical, distributed form.
 - **[Model-view-controller (MVC)](./mvc.md)** — Applies the same layering discipline one level down, inside the presentation tier alone: model, view, and controller as sub-layers of what's often just the top of a bigger stack.
 - **Cross-cutting layer** — A horizontal concern — logging, authentication, caching — that every tier calls into rather than sitting inside the strict top-to-bottom stack; drawn beside the pattern more often than it is drawn as part of it.
@@ -66,20 +66,20 @@ flowchart TB
 <!--meta polarity=pro-->
 
 - **Clear separation of concerns** — each tier has one job and one reason to change.
-- **Tiers are independently replaceable**: swap the database or the UI framework without touching business logic.
+- **Tiers are independently replaceable**: swap the database or the UI framework without touching business logic, provided the lower tier's interface does not leak storage shapes. Schema and entity changes still ripple.
 - **Widely understood** — most engineers can navigate a layered codebase with no extra briefing.
 - **Business logic can be tested** in isolation by mocking the layer below it.
-- **A tier boundary is a process boundary**, so tiers need not share an operating system or a runtime — which is what lets an existing workload move one tier at a time instead of all at once.
+- **A tier boundary is a process boundary** in the physical n-tier form, so tiers need not share an operating system or a runtime, and an existing workload can move one tier at a time.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Small changes ripple through tiers** — a trivial feature can still ripple through every tier: new column, new field, new DTO (data transfer object), all the way up.
+- **Small changes ripple through tiers** — a one-field change edits every tier: column, entity, DTO (data transfer object), controller.
 - **Encourages an anemic domain layer**, since the boundaries are structural, not behavioral, and logic tends to pool in services instead.
 - **Strict layering adds call-through boilerplate** — a DTO or interface at every boundary a request crosses.
 - **Horizontal slicing doesn't map to business capabilities**, so a single feature still touches code in every tier and every team.
 - **Isolation at the unit level** costs visibility at the whole-path level: once tiers are physically separated, exercising or diagnosing one request means stitching together evidence from every tier it crossed.
-- **Pass-through middle tiers** — a middle tier that only forwards create-read-update-delete calls adds a network hop, a deployment unit and an on-call rotation without adding a decision. Strict closure produces these pass-through tiers by construction, which is why the rule is worth relaxing exactly where a layer has nothing to say.
+- **Pass-through middle tiers** — a middle tier that only forwards create-read-update-delete calls adds a network hop, a deployment unit and an on-call rotation and no decision. Strict closure produces these by construction.
 - **The security boundary a tier** buys has to be maintained per tier, so the rule set grows with the topology — every new tier is another subnet, another set of allowed sources, and another place a rule can be wrong without anything failing loudly.
 
 ## When to use it
@@ -152,8 +152,8 @@ class OrderRepository {
 <!--meta polarity=knob-->
 
 - **Per-tier instance count** — In the physical n-tier form each tier scales horizontally on its own behind its own load balancer, so the saturating tier can be given capacity without touching the others.
-- **Inter-tier connection pool size** — The bounded pool a tier holds to the tier below it — most critically the app-tier-to-database pool (a maximum pool size, min idle). Sized against the database's own connection limit.
-- **Inter-tier timeout and retry** — The request timeout and retry policy on each downward call, so a slow lower tier is abandoned rather than allowed to pin resources in the tier above.
+- **Inter-tier connection pool size** — The bounded pool a tier holds to the tier below it — most critically the app-tier-to-database pool (a maximum pool size, min idle). Size it so the per-instance maximum times the app instance count stays within the database's own connection limit.
+- **Inter-tier timeout and retry** — The request timeout and retry policy on each downward call, so a slow lower tier is abandoned rather than allowed to pin resources in the tier above. Keep each downward timeout shorter than the caller's own, and retry sparingly with jittered backoff, since retries add load to a tier that is already saturated.
 - **Cache tier placement** — An optional caching layer inserted between the app and data tiers to absorb read load before it reaches the database.
 - **Tier-to-tier transport** — Whether a call between tiers is a direct request or a queued message. A queue decouples the tiers' availability and their scaling, and it turns a synchronous failure into a backlog you have to drain.
 - **Data-tier replication** — The replica count and the failover mode behind the data tier. This is where the tier's availability actually comes from; a stateless application tier cannot compensate for a single database instance.
@@ -162,7 +162,7 @@ class OrderRepository {
 <!--meta polarity=signal-->
 
 - **Per-tier latency contribution** — Time spent in each tier hop; total request latency is the sum, so measuring per hop shows which tier to attack.
-- **Connection pool utilization and wait time** — How saturated each inter-tier pool is and how long callers block waiting for a connection — the earliest warning of an impending stall.
+- **Connection pool utilization and wait time** — How saturated each inter-tier pool is and how long callers block waiting for a connection — the earliest warning of an impending stall. Alert when wait time stays above zero over a sustained window, taking the baseline from the load test.
 - **Per-tier saturation** — CPU, memory, or thread-pool utilization per tier, which identifies the bottleneck tier that caps whole-system throughput.
 - **Database connection count vs. limit** — Active connections against the server's configured maximum — the ceiling the whole app tier shares.
 
@@ -177,13 +177,13 @@ class OrderRepository {
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- Each tier is stateless and independently scalable behind its own load balancer.
+- Each tier except the data tier is stateless and independently scalable behind its own load balancer.
 - Inter-tier connection pools are bounded and sized so the app tier cannot exceed the database's connection limit.
 - Every downward call has a timeout so a slow lower tier cannot hang the tier above it.
 - A load test has identified which tier saturates first and at what request rate.
 - A web application firewall sits between the front end and the internet, so the outermost tier is not the first thing to see unfiltered traffic.
 - The data tier is replicated with a tested failover, not a single instance behind a stateless fleet.
-- Past three tiers, routing to a specific tier is decided at layer 7 rather than by each tier knowing the topology of the next.
+- When tiers multiply, routing to a specific tier is decided at layer 7 rather than by each tier knowing the topology of the next.
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -206,12 +206,13 @@ class OrderRepository {
 **Combines with**
 
 - [Separation of Concerns](../../principles/separation-of-concerns.md) — The layered split is separation of concerns by altitude.
+- [Service Layer](../enterprise/service-layer.md) — A service layer is the business tier's entry point: the one coarse boundary the presentation tier calls.
 
 **Alternative to**
 
-- [Hexagonal](./hexagonal.md) — Dependencies point inward vs. straight down the tiers
 - [Microservices](./microservices.md) — Horizontal layers keep one deployable and one release train; microservices trade that for independent deployment.
 - [Vertical Slice](./vertical-slice.md) — The same code, filed the other way — by tier instead of by feature
+- [Hexagonal](./hexagonal.md) — Dependencies point inward vs. straight down the tiers
 
 **Generalizes**
 

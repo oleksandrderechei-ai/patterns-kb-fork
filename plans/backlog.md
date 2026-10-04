@@ -66,6 +66,28 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   principles (`command-query-separation`, `defense-in-depth`, `hyrums-law`, `rule-of-three`,
   …), hazards (`static-cling`, `partial-object`, `priority-inversion`, …) and five
   capabilities (`messaging`, `networking`, `regions`, `resources`, `storage`).
+- Left from the 2026-10-04 kb-improve run over `enterprise` (edits a page groom may not make):
+  `enterprise-application-patterns` decide rows for Query Object ("search screens glue
+  optional filters into SQL strings") and, in `api-design`, for Front Controller ("one entry
+  point inside a single web app"); `query-object` has no `production` block and
+  `front-controller` has none either, so a reader finds no knobs, signals or failure modes;
+  edge notes to re-type or reword by unlink+link: `service-layer` prevents-hazard
+  `busy-database` (note overstates), `service-layer` alternative-to `domain-service` (readers
+  say combines-with), `service-layer` exposed-to notes, `transaction-script` combines-with
+  `active-record` note; `service-layer` fluency label in `learning-paths.json`; `gateway`
+  owes two cons (a remote call looks local; the fake drifts from the vendor); `data-mapper`
+  owes inheritance-mapping and lazy-loading variations with a source; `dto` spelling
+  behaviour/behavior needs a house form.
+- Left from the 2026-10-04 kb-improve run over `architecture` (edits to other pages, which a
+  page groom may not make): theme `decide` rows to re-check against the pages' `usage` —
+  `architecture-styles` Layered ("separated at the network boundary" is not what the page
+  says), Event-Driven, a missing Event Sourcing row, Microservices against Modular Monolith;
+  `streaming` has no Pipes and Filters row; `frontend-architecture` MVVM and MVP/MVC rows
+  need a discriminator; `harness-engineering` has no AI Agent row. Also `big-data`: the
+  streaming theme tie-in and the `workflow-orchestration` edge note; `wild` entries to
+  source-check: Hystrix and Ribbon status on `microservices`, VS Code Extension Host on
+  `microkernel`. Wording first in line: `big-compute` production-failure-2 ("costs as much as
+  the first half") and its filler words in structure, variations-item-4 and the description.
 
 ## Questions
 

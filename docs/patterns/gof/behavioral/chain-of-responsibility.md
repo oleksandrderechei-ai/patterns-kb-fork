@@ -188,6 +188,7 @@ chain.review({ employee: "Mara", amountUsd: 4_200 });
 
 **Often confused with**
 
+- [Pipe-and-Filter](../../architecture/pipe-filter.md) — A handler may stop the request; a pipe-filter stage always passes data on.
 - [Decorator](../structural/decorator.md) — One handler may stop the request; a decorator normally passes it on, though a cache or check can stop it too
 
 <!-- relationships:end -->

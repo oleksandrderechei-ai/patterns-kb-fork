@@ -15,7 +15,7 @@ Moves data between plain domain objects and the database that stores them, so ne
 ## What it is
 <!--meta block=description-->
 
-A domain model wants inheritance and rich behaviour while a relational schema wants normalized tables, and wiring one into the other bends both. A data mapper is a separate layer that moves data between plain objects and tables: it builds an object from a row and takes it apart into columns. Neither side knows about the other, so each changes on its own schedule.
+A domain model wants inheritance and rich behaviour while a relational schema wants normalized tables, and wiring one into the other bends both. A data mapper is a separate layer that moves data between plain objects and tables: it builds an object from a row and takes it apart into columns. Neither side knows about the other, so a change usually stops at the mapper, the one place updated for both.
 
 ## Explained
 <!--meta block=explain-->
@@ -26,12 +26,12 @@ A data mapper is a layer whose only job is moving data between plain in-memory o
 - **Chatty loads.** A naive mapper loads a graph one query at a time, so load related rows with a join or batched query.
 - **Duplicate objects.** Without an \[identity map\](identity-map.md), the same row becomes two objects whose edits overwrite each other.
 
-**Example.** A table renames zip to postal_code. Only the mapper changes: one file, while 30 methods on the Customer object stay as they are. Loading 50 orders and then the lines of each takes 1 + 50 = 51 queries. Fetching all lines with one query where order_id is in the list takes 2. Without an identity map, two code paths in one request load customer 7 as separate objects, one changes the address, the other changes the phone, and the second save overwrites the first. The cost is the mapper code and a mapping test for each object.
+**Example.** A table renames zip to postal_code. Only the mapper's column mapping changes; the Customer object and its methods stay as they are. Loading 50 orders and then the lines of each takes 1 + 50 = 51 queries. Fetching all lines with one query where order_id is in the list takes 2. Without an identity map, two code paths in one request load customer 7 as separate objects, one changes the address, the other changes the phone, and the second save, which writes every column, overwrites the first. The cost is the mapper code and a mapping test for each object.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Where does SQL stop? Steps 2, 3 and 7 are the only places a table or column name appears, and all three happen inside the mapper — everything in the boundary is a plain object you can build in a test."
+```mermaid caption="Where does SQL stop? Steps 2, 3 and 7 are the only places a table or column name appears. All three happen inside the mapper, and everything in the boundary is a plain object you can build in a test."
 flowchart LR
     subgraph Domain["Domain side — no SQL, no table names"]
         App["Application code"]
@@ -51,11 +51,11 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Metadata-driven mapping** — An ORM (object-relational mapper) (Hibernate, TypeORM, Doctrine) generates the mapper from annotations or a mapping file instead of hand-written code — far less boilerplate on typical entities, at the cost of some transparency.
-- **Hand-written mapper** — Every field mapped explicitly in code. More typing, but no reflection magic and a straightforward stack trace the moment a mapping breaks.
-- **[Repository](./repository.md)** — Wraps one or more mappers behind a collection-like interface — add, remove, find — so callers query for objects without ever seeing SQL or the mapper itself.
-- **Identity Map integration** — The mapper checks an identity map before building a new instance, so loading the same row twice in one unit of work returns the same object instead of a duplicate.
-- **Table Data [Gateway](./gateway.md)** — A lighter cousin: the gateway wraps a table and hands back raw rows or a cursor; a data mapper goes one step further and turns those rows into full domain objects.
+- **Metadata-driven mapping** — An object-relational mapper (ORM) such as Hibernate, TypeORM or Doctrine generates the mapper from annotations or a mapping file instead of hand-written code. It needs less mapping code on typical entities but hides the SQL it generates.
+- **Hand-written mapper** — Every field is mapped explicitly in code. It takes more typing, but nothing is generated, so a broken mapping gives a stack trace that points at the mapping line.
+- **[Repository](./repository.md)** — Wraps one or more mappers behind a collection-like interface — add, remove, find — so callers query for objects without ever seeing SQL or the mapper itself. This is a layer above the mapper, not a form of it; the mapper stays the part that touches the schema.
+- **Identity Map integration** — The mapper checks an identity map before building a new instance, so loading the same row twice in one unit of work returns the same object instead of a duplicate. Identity Map is a separate pattern the mapper works with.
+- **Table Data Gateway** — A lighter cousin that wraps a table and hands back raw rows or a cursor; not the external-system Gateway. A data mapper goes one step further and turns those rows into full domain objects. It is an alternative to a mapper, not a form of one: choose it when rows are enough.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -63,7 +63,7 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Domain objects stay plain** — no base class, no persistence API, trivial to unit test without a database.
+- **Domain objects stay plain** — with no base class and no persistence API, so they are trivial to unit test without a database.
 - **The object model and the schema evolve independently**; a normalized junction table or a renamed column doesn't touch business logic.
 - **All mapping logic lives in one place**, so a query or translation bug is fixed once instead of chased across the domain.
 - **Handles domain shapes** that don't map 1:1 to tables — inheritance hierarchies, value objects, aggregates spanning several tables.
@@ -72,9 +72,9 @@ flowchart LR
 <!--meta polarity=con-->
 
 - **More upfront code and an extra layer** compared to a simple, single-table entity.
-- **Two representations to keep mentally in sync** — the object graph and the relational schema — even though neither knows about the other.
+- **Two representations to keep in sync** — the object graph and the relational schema, by hand.
 - **A naive mapper is chatty**: without deliberate batching or joins, loading a graph turns into N+1 queries.
-- **Without an identity map alongside it**, the same row can be hydrated into two different objects in one request.
+- **Without an identity map alongside it**, one request can build two objects from the same row.
 
 ## When to use it
 <!--meta block=usage-->
@@ -83,14 +83,14 @@ flowchart LR
 <!--meta polarity=when-->
 
 - **The domain model has real behavior**, inheritance, or invariants that don't map cleanly onto a single table.
-- **You need to unit-test business rules** without spinning up a database.
+- **You need to unit-test business rules** without spinning up a database; the mapper's own tests still need a database.
 - **The schema is normalized**, legacy, or owned by another team, and shouldn't be reshaped around the object model.
 
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The domain is a thin wrapper** over one table — reach for [Active Record](./active-record.md) instead and skip the extra layer.
-- **No one is going to own keeping** the mapping code in sync as either side changes.
+- **The domain is a thin wrapper** over one table, or most entities map one-to-one to a table so the mapper would only rename columns. Use [Active Record](./active-record.md) instead and skip the extra layer.
+- **No team owns** the mapping code, so it drifts as the schema or the model changes.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -142,22 +142,22 @@ if (user) { user.email = "new@example.com"; await mapper.save(user); }
 <!--meta polarity=knob-->
 
 - **Fetch strategy (lazy vs eager)** — Whether an association loads lazily on first access or eagerly by join; eager avoids extra round trips but over-fetches, lazy risks N+1 and access-after-close errors.
-- **Batch fetch size** — How many parent rows a collection fetch folds into one IN-query; larger batches cut round trips at the cost of wider queries.
+- **Batch fetch size** — How many parent rows a collection fetch folds into one IN-query; larger batches cut round trips at the cost of wider queries. Raise it while queries per request falls and query time stays flat; stop where the database slows or the IN list nears its parameter limit.
 - **Identity-map / session cache scope** — The window over which one row maps to one in-memory object; too wide serves stale objects, too narrow re-hydrates duplicates.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Queries per request** — Query count for one logical load; a climb that tracks result-set size is the N+1 signature.
+- **Queries per request** — Query count for one logical load; a climb that tracks result-set size is the N+1 signature. Alert when query count for one request differs between a small and a large load; read it from the ORM's query log or a per-request counter.
 - **Rows fetched vs rows used** — Rows hydrated against rows actually read; a large gap points to an over-eager fetch or a cartesian join.
 - **Hydration time** — Time spent building objects from rows, separate from query time; it grows with graph size.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **N+1 query explosion** — A naive mapper issues one query per associated row; a list that was fast at ten rows overwhelms the database at ten thousand.
-- **Lazy load after the session closed** — Touching a lazily-mapped association once its loading unit of work has closed throws instead of fetching.
-- **Duplicate objects without an identity map** — The same row hydrated twice in one request becomes two objects that can diverge, so an update on one is silently lost.
+- **N+1 query explosion** — A naive mapper issues one query per associated row, so 10,000 parent rows cost 10,001 round trips where a batched load costs a handful.
+- **Lazy load after the session closed** — In an ORM such as Hibernate or SQLAlchemy, touching a lazily-mapped association once its session has closed raises instead of fetching; load it inside the unit of work or map to a plain data-transfer object first.
+- **Duplicate objects without an identity map** — The same row loaded twice in one request becomes two objects that can diverge, so an update on one is lost without any error.
 - **Cartesian blow-up from eager joins** — Eagerly join-fetching several collections at once multiplies rows combinatorially and returns far more data than the graph holds.
 
 ### Readiness checklist
@@ -165,7 +165,7 @@ if (user) { user.email = "new@example.com"; await mapper.save(user); }
 
 - Count the SQL a hot path issues and confirm it does not grow with result-set size.
 - Choose lazy or eager fetch deliberately per association instead of accepting the default everywhere.
-- Put an identity map in front of the mapper so one row maps to one object within a unit of work.
+- Put an identity map in front of the mapper, scoped to one unit of work, and assert in a test that loading one row twice returns the same instance.
 - Keep the mapping in sync whenever the schema or the model gains a field.
 
 ## Where it shows up

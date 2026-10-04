@@ -222,8 +222,8 @@ async function recall(scope: Memory["scope"], store: Store, tokenBudget: number)
 
 **Combines with**
 
-- [AI Agent](../architecture/ai-agent.md) — What stops each session starting blank
 - [Embeddings](./embeddings.md) — What makes the semantic-store form retrievable once it outgrows a loadable file
+- [AI Agent](../architecture/ai-agent.md) — What stops each session starting blank
 
 **Often confused with**
 

@@ -5093,13 +5093,6 @@
     },
     {
       "a": "hexagonal",
-      "verb": "alternative-to",
-      "b": "layered",
-      "note_a": "Dependencies point inward vs. straight down the tiers",
-      "note_b": "Dependencies point inward vs. straight down the tiers"
-    },
-    {
-      "a": "hexagonal",
       "verb": "composed-of",
       "b": "adapter",
       "note_a": "Ports are filled by adapters",
@@ -5174,13 +5167,6 @@
       "b": "mvc",
       "note_a": "Model-view-view-model (MVVM) binds the view to a view-model",
       "note_b": "Model-view-view-model (MVVM) binds the view to a view-model"
-    },
-    {
-      "a": "mvp",
-      "verb": "often-confused-with",
-      "b": "mvvm",
-      "note_a": "Presenter drives the view vs. view binds to a model",
-      "note_b": "Presenter drives the view vs. view binds to a model"
     },
     {
       "a": "pipe-filter",
@@ -8865,13 +8851,6 @@
       "note_b": "The loop can call retrieval mid-task instead of only before answering"
     },
     {
-      "a": "ai-agent",
-      "verb": "combines-with",
-      "b": "agent-memory",
-      "note_a": "The loop that would otherwise work out the same facts again every session",
-      "note_b": "What stops each session starting blank"
-    },
-    {
       "a": "unique-id-generation",
       "verb": "combines-with",
       "b": "sharding",
@@ -9005,13 +8984,6 @@
       "note_b": "The front-end-writes-then-enqueues sequence is the classic place this gap opens."
     },
     {
-      "a": "web-queue-worker",
-      "verb": "combines-with",
-      "b": "competing-consumers",
-      "note_a": "Scaling the worker means several instances pulling from one queue, each message handled once.",
-      "note_b": "The worker tier is the usual home for this: one queue, many identical consumers."
-    },
-    {
       "a": "saga",
       "verb": "combines-with",
       "b": "functional-partitioning",
@@ -9143,13 +9115,6 @@
       "b": "blue-green-deployment",
       "note_a": "Snapshots and revision history let a bad setting roll back like a bad release",
       "note_b": "Configuration deserves the same staged rollout and rollback path as code"
-    },
-    {
-      "a": "web-queue-worker",
-      "verb": "combines-with",
-      "b": "blue-green-deployment",
-      "note_a": "Front end and worker ship as one unit, so validate the new pair beside the running one and switch once",
-      "note_b": "Both halves swap together, so size for two versions running during the switch"
     },
     {
       "a": "containerization",
@@ -12834,32 +12799,207 @@
       "note_b": "A design where one link carries most of the read load."
     },
     {
+      "a": "cqrs",
+      "verb": "combines-with",
+      "b": "repository",
+      "note_a": "The write side of CQRS keeps a repository to load aggregates",
+      "note_b": "Under CQRS the write repository loads full aggregates and thin read repositories return projections"
+    },
+    {
+      "a": "specification",
+      "verb": "prevents-hazard",
+      "b": "shotgun-surgery",
+      "note_a": "One home per rule, so a change to it is made once instead of at every copy",
+      "note_b": "A named specification gathers a rule copied into the report, the job and the screen into one object"
+    },
+    {
+      "a": "active-record",
+      "verb": "alternative-to",
+      "b": "unit-of-work",
+      "note_a": "Self-saving rows vs. a tracker that flushes all changes in one transaction",
+      "note_b": "Changes collected and written together vs. each row saving itself the moment it changes"
+    },
+    {
+      "a": "unit-of-work",
+      "verb": "prevents-hazard",
+      "b": "chatty-io",
+      "note_a": "Batches the writes of one business action into one transaction instead of one round trip per object",
+      "note_b": "Write-side case: per-object saves are fixed by one tracked flush"
+    },
+    {
+      "a": "active-record",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Can fall into god object when business logic and persistence share one row class",
+      "note_b": "A row-owning class that also holds business logic grows into one"
+    },
+    {
+      "a": "gateway",
+      "verb": "combines-with",
+      "b": "fake-object",
+      "note_a": "Tests swap in an in-memory fake for the outside system",
+      "note_b": "The fake stands in for a gateway so tests need no network"
+    },
+    {
+      "a": "service-layer",
+      "verb": "combines-with",
+      "b": "unit-of-work",
+      "note_a": "The service defines the use-case transaction boundary the unit of work opens and commits",
+      "note_b": "A service layer decides where one unit of work starts and ends"
+    },
+    {
+      "a": "dto",
+      "verb": "combines-with",
+      "b": "immutability",
+      "note_a": "A record DTO with readonly fields set once at construction cannot drift after it is built",
+      "note_b": "A DTO is the everyday carrier that is built once and never changed"
+    },
+    {
+      "a": "front-controller",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Special cases accrue in the one dispatcher until it is the class that does everything",
+      "note_b": "A front controller that takes every route's special case becomes the same class"
+    },
+    {
+      "a": "microservices",
+      "verb": "combines-with",
+      "b": "vertical-slice",
+      "note_a": "Slices at feature-area grain are the seam to cut along when a service is split out.",
+      "note_b": "A coarse slice is a module boundary; giving it its own deployment is the next step."
+    },
+    {
+      "a": "layered",
+      "verb": "combines-with",
+      "b": "service-layer",
+      "note_a": "A service layer is the business tier's entry point: the one coarse boundary the presentation tier calls.",
+      "note_b": "Layered is the tier stack whose business tier a service layer fronts."
+    },
+    {
+      "a": "mvp",
+      "verb": "combines-with",
+      "b": "separation-of-concerns",
+      "note_a": "The view renders, the presenter decides and the model holds data, one reason to change each",
+      "note_b": "MVP applies it to a screen: view, presenter and model each own one concern"
+    },
+    {
+      "a": "mvp",
+      "verb": "often-confused-with",
+      "b": "mvvm",
+      "note_a": "Presenter drives the view vs. view binds to a view-model",
+      "note_b": "Both pull logic out of the view; MVVM relies on a binding engine, MVP on the presenter calling a view interface; without bindings MVVM degrades to MVP"
+    },
+    {
+      "a": "eda",
+      "verb": "exposed-to",
+      "b": "dual-write-inconsistency",
+      "note_a": "Publishing the event and writing the state are two calls, and one can fail",
+      "note_b": "An event-driven flow publishes the event and writes the state separately, so one can land without the other"
+    },
+    {
+      "a": "hexagonal",
+      "verb": "alternative-to",
+      "b": "layered",
+      "note_a": "Pick this when the rules must be testable apart from framework and database; layered is enough for thin CRUD.",
+      "note_b": "Dependencies point inward vs. straight down the tiers"
+    },
+    {
+      "a": "hexagonal",
+      "verb": "alternative-to",
+      "b": "microkernel",
+      "note_a": "Adapters are wired by the owning team; a microkernel loads plug-ins at run time",
+      "note_b": "Plug-ins are discovered and loaded at run time, often from third parties"
+    },
+    {
+      "a": "event-sourcing",
+      "verb": "combines-with",
+      "b": "aggregate",
+      "note_a": "One aggregate is one event stream; a version check on append guards its rules",
+      "note_b": "An aggregate can persist as the events it emitted, not a row"
+    },
+    {
+      "a": "pipe-filter",
+      "verb": "often-confused-with",
+      "b": "chain-of-responsibility",
+      "note_a": "Every filter transforms and forwards; a handler may stop the request.",
+      "note_b": "A handler may stop the request; a pipe-filter stage always passes data on."
+    },
+    {
+      "a": "pipe-filter",
+      "verb": "exposed-to",
+      "b": "unbounded-queue",
+      "note_a": "A queue between two filters with no bound lets a slow stage grow memory instead of pushing back.",
+      "note_b": "Between pipeline stages it grows silently when one filter is slower than the one before."
+    },
+    {
+      "a": "web-queue-worker",
+      "verb": "combines-with",
+      "b": "async-request-reply",
+      "note_a": "The front end answers 202 with a status link, so the caller can still learn when the queued job finished.",
+      "note_b": "A queued job needs a way to report back; the 202 and status link is that way."
+    },
+    {
+      "a": "eda",
+      "verb": "alternative-to",
+      "b": "web-queue-worker",
+      "note_a": "A continuous stream handled as it arrives fits here; discrete slow jobs behind one queue are Web-Queue-Worker.",
+      "note_b": "Discrete jobs behind one queue fit here; a continuous stream handled as it arrives is Event-Driven Architecture."
+    },
+    {
+      "a": "web-queue-worker",
+      "verb": "combines-with",
+      "b": "blue-green-deployment",
+      "note_a": "Front end and worker ship as one unit, so validate the new pair beside the running one and switch once it passes.",
+      "note_b": "Both halves swap together, so size for two versions running during the switch"
+    },
+    {
+      "a": "web-queue-worker",
+      "verb": "combines-with",
+      "b": "competing-consumers",
+      "note_a": "Scaling the worker means several instances pulling from one queue; each message goes to one worker at a time and may be redelivered.",
+      "note_b": "The worker tier is the usual home for this: one queue, many identical consumers."
+    },
+    {
+      "a": "ai-agent",
+      "verb": "combines-with",
+      "b": "agent-memory",
+      "note_a": "What stops each session starting blank, facts the loop would otherwise rederive",
+      "note_b": "What stops each session starting blank"
+    },
+    {
+      "a": "microservices",
+      "verb": "combines-with",
+      "b": "strangler-fig",
+      "note_a": "Replacing a legacy system one capability at a time is how most services are first cut out.",
+      "note_b": "The replacement targets are services, each owning one capability."
+    },
+    {
+      "a": "big-compute",
+      "verb": "exposed-to",
+      "b": "resource-leak",
+      "note_a": "A pool nobody released keeps billing in machine-hours; release is part of the job's end.",
+      "note_b": "Burst pools are the case where a leak costs most."
+    },
+    {
+      "a": "big-compute",
+      "verb": "often-confused-with",
+      "b": "mapreduce",
+      "note_a": "Both split work across many machines; map-reduce splits a dataset and moves work to the data, this splits one computation over cores.",
+      "note_b": "Both split work across many machines; this one splits a dataset and moves work to the data, big compute splits one computation over cores."
+    },
+    {
+      "a": "big-data",
+      "verb": "prevents-hazard",
+      "b": "busy-database",
+      "note_a": "Moves analytical reads to a separate store, so an analyst's query stops competing with checkout.",
+      "note_b": "Analytical reads on the operational store are what a separate analytics path takes off it."
+    },
+    {
       "a": "design-rate-limiter",
       "verb": "demonstrates",
       "b": "factory-method",
       "note_a": "LimiterFactory reads the algorithm discriminator from heterogeneous config and constructs the matching Limiter subtype",
       "note_b": "LimiterFactory.create switches on a config string to pick the limiter class: the parameterized variation, with no creator subclass"
-    },
-    {
-      "a": "abstract-factory",
-      "verb": "combines-with",
-      "b": "dependency-injection",
-      "note_a": "A container or the composition root hands the client the one factory it uses",
-      "note_b": "A whole factory family is a collaborator worth handing in, so the client never picks a family itself"
-    },
-    {
-      "a": "builder",
-      "verb": "combines-with",
-      "b": "make-illegal-states-unrepresentable",
-      "note_a": "A staged builder makes the compiler reject build() until required fields are set",
-      "note_b": "A staged builder applies this to construction, so a half-set object cannot be built"
-    },
-    {
-      "a": "immutability",
-      "verb": "combines-with",
-      "b": "builder",
-      "note_a": "A builder assembles a many-field immutable object before it is frozen",
-      "note_b": "The steps mutate the builder; build() hands back one immutable product"
     },
     {
       "a": "adapter",
@@ -12883,18 +13023,67 @@
       "note_b": "Layers behaviour on a call and normally forwards it, vs. a handler that may deal with the request and stop"
     },
     {
-      "a": "immutability",
-      "verb": "combines-with",
-      "b": "flyweight",
-      "note_a": "Flyweight puts one never-changed copy behind many objects",
-      "note_b": "The shared part is read-only, so one copy can serve every object"
-    },
-    {
       "a": "facade",
       "verb": "exposed-to",
       "b": "god-object",
       "note_a": "Can fall into god object when a facade starts holding state or logic and grows into one class that everything leans on",
       "note_b": "A facade that starts holding state or logic grows into one class that everything leans on"
+    },
+    {
+      "a": "iterator",
+      "verb": "combines-with",
+      "b": "composite",
+      "note_a": "One iterator walks leaves and branches alike",
+      "note_b": "An iterator walks the composite tree so callers need not write the recursion"
+    },
+    {
+      "a": "elevator",
+      "verb": "demonstrates",
+      "b": "state",
+      "note_a": "a car's direction is an explicit IDLE/UP/DOWN state machine, held as an enum and switched in step() together with the pending stops, not a class per state",
+      "note_b": "a car's IDLE/UP/DOWN direction is an explicit state machine, held as an enum and switched in step(), not a class per state"
+    },
+    {
+      "a": "singleton",
+      "verb": "often-confused-with",
+      "b": "service-locator",
+      "note_a": "A singleton fixes one class as its only instance; a service locator is a registry that returns many services by key.",
+      "note_b": "A singleton is one class that is its own sole instance; a locator is a registry that returns many services by key, each with its own lifetime."
+    },
+    {
+      "a": "object-pool",
+      "verb": "prevents-hazard",
+      "b": "resource-leak",
+      "note_a": "Centralises acquire and release so a missed return is bounded and detectable; the leaked object is still lost",
+      "note_b": "Centralised checkout and return plus leak detection bound and surface a missed release; an object never returned is still lost"
+    },
+    {
+      "a": "abstract-factory",
+      "verb": "combines-with",
+      "b": "dependency-injection",
+      "note_a": "A container or the composition root hands the client the one factory it uses",
+      "note_b": "A whole factory family is a collaborator worth handing in, so the client never picks a family itself"
+    },
+    {
+      "a": "builder",
+      "verb": "combines-with",
+      "b": "make-illegal-states-unrepresentable",
+      "note_a": "A staged builder makes the compiler reject build() until required fields are set",
+      "note_b": "A staged builder applies this to construction, so a half-set object cannot be built"
+    },
+    {
+      "a": "immutability",
+      "verb": "combines-with",
+      "b": "builder",
+      "note_a": "A builder assembles a many-field immutable object before it is frozen",
+      "note_b": "The steps mutate the builder; build() hands back one immutable product"
+    },
+    {
+      "a": "immutability",
+      "verb": "combines-with",
+      "b": "flyweight",
+      "note_a": "Flyweight puts one never-changed copy behind many objects",
+      "note_b": "The shared part is read-only, so one copy can serve every object"
     },
     {
       "a": "chain-of-responsibility",
@@ -12911,13 +13100,6 @@
       "note_b": "An abandoned lazy iterator keeps its handle open until it is closed."
     },
     {
-      "a": "iterator",
-      "verb": "combines-with",
-      "b": "composite",
-      "note_a": "One iterator walks leaves and branches alike",
-      "note_b": "An iterator walks the composite tree so callers need not write the recursion"
-    },
-    {
       "a": "copy-on-write",
       "verb": "combines-with",
       "b": "iterator",
@@ -12930,13 +13112,6 @@
       "b": "open-closed",
       "note_a": "New listeners plug in without editing the subject, which is the open/closed shape.",
       "note_b": "Observer extends a subject by adding listeners, never by editing it."
-    },
-    {
-      "a": "elevator",
-      "verb": "demonstrates",
-      "b": "state",
-      "note_a": "a car's direction is an explicit IDLE/UP/DOWN state machine, held as an enum and switched in step() together with the pending stops, not a class per state",
-      "note_b": "a car's IDLE/UP/DOWN direction is an explicit state machine, held as an enum and switched in step(), not a class per state"
     },
     {
       "a": "connect-four",
@@ -12960,25 +13135,11 @@
       "note_b": "A fallback's static default, such as an empty list, can be a null object, so callers keep one call shape"
     },
     {
-      "a": "singleton",
-      "verb": "often-confused-with",
-      "b": "service-locator",
-      "note_a": "A singleton fixes one class as its only instance; a service locator is a registry that returns many services by key.",
-      "note_b": "A singleton is one class that is its own sole instance; a locator is a registry that returns many services by key, each with its own lifetime."
-    },
-    {
       "a": "service-locator",
       "verb": "exposed-to",
       "b": "god-object",
       "note_a": "Can become a god object when one shared registry attracts every unrelated service",
       "note_b": "A shared registry that answers every request is one way the object everything reaches into forms"
-    },
-    {
-      "a": "object-pool",
-      "verb": "prevents-hazard",
-      "b": "resource-leak",
-      "note_a": "Centralises acquire and release so a missed return is bounded and detectable; the leaked object is still lost",
-      "note_b": "Centralised checkout and return plus leak detection bound and surface a missed release; an object never returned is still lost"
     },
     {
       "a": "monostate",

@@ -16,15 +16,15 @@ Keeps a deliberately small, stable core that does almost nothing on its own, and
 ## What it is
 <!--meta block=description-->
 
-When every feature lives in one binary, each release re-tests the whole product and one bad feature ships a broken core to everybody. A microkernel splits the system into a minimal core, which handles lifecycle, wiring and a registry, and plug-ins that carry every feature. Neither side is compiled against the other's internals, so a feature ships and breaks on its own schedule.
+When every feature lives in one binary, each release re-tests the whole product and one bad feature ships a broken core to everybody. A microkernel splits the system into a minimal core, which handles lifecycle, wiring and a registry, and plug-ins that carry every feature. Both sides compile against the contract and not each other's internals, so a feature can ship on its own schedule while the contract holds.
 
 ## Explained
 <!--meta block=explain-->
 
-A microkernel design splits a system into a small core and plug-ins that carry every feature. The core only starts things, wires them together and keeps a registry of what is installed. Plug-ins talk to the core through one published contract, so a feature ships, breaks or is removed without rebuilding the core, and one bad plug-in cannot break everyone's core. Choose it when the set of features will outlive your ability to review it, with vendors or other teams building against a contract and not a codebase. For a fixed feature set owned by one team, plain modules isolate just as well without the contract.
+A microkernel design splits a system into a small core and plug-ins that carry every feature. The core only starts things, wires them together and keeps a registry of what is installed. Plug-ins talk to the core through one published contract, so a feature ships, breaks or is removed without rebuilding the core, and a bad plug-in can be disabled without a core change. Keeping it from crashing the host needs process isolation, as in the sandboxed variation. Choose it when the set of features will outlive your ability to review it, with vendors or other teams building against a contract and not a codebase. For a fixed feature set owned by one team, plain modules give the same code separation without the contract, though not crash isolation.
 
 - **The contract is hard to change.** Version it like a public interface from release one and give a deprecation window.
-- **Cooperating plug-ins choke the core.** Give them an event bus to talk over.
+- **Cooperating plug-ins choke the core.** Give them an event bus to talk over, and keep the bus thin: it routes messages and never interprets them.
 - **Load order becomes a subsystem.** Let each plug-in declare what it needs and refuse to start it when that is missing.
 
 **Example.** An editor has a 20,000-line core and 300 installed plug-ins. A change that renames one core method breaks all 300 at once, so the team marks the old name deprecated for two releases and keeps both working. Two plug-ins, a formatter and a linter, must run in order: if they call each other through the core, every call crosses it, so they publish events instead. The linter declares that it needs the formatter, so the core refuses to start it alone. The cost is that the contract carries the old name for two releases.
@@ -62,7 +62,7 @@ flowchart LR
 - **Static vs. dynamic loading** — Plug-ins compiled and linked into the core at build time, versus discovered and loaded at runtime from a directory, manifest, or registry — dynamic loading is what makes "install a feature without a rebuild" possible.
 - **Client-server microkernel** — The pattern's OS lineage: the kernel supplies only messaging and scheduling, and drivers, file systems, and protocol stacks run as user-space servers behind it — Mach and seL4 push it to its logical extreme.
 - **Sandboxed, out-of-process plug-ins** — Run each plug-in in its own process or sandbox — browser extensions, integrated development environment (IDE) language servers — so a crashing or misbehaving plug-in can't take the host down with it.
-- **Capability bundles for an autonomous agent** — The same shape one layer up, where the host is a model in a tool-calling loop rather than an application: a minimal core plus bundles of instructions and tools it discovers and loads only when the task calls for them. The extension point is a description the host can match against the work in front of it, and the reason to load lazily is not startup time but context budget — every bundle loaded eagerly is capacity spent before the task begins.
+- **Capability bundles for an autonomous agent** — The same shape for an autonomous agent: a minimal core, plus bundles of instructions and tools it loads only when the task needs them. Bundles are matched by description. Loading lazily saves context budget, not startup time.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -71,7 +71,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Keeps the always-loaded core small, stable**, and easy to audit — churn lives in plug-ins, not the kernel.
-- **New capability ships as a new plug-in**; the core is never recompiled or redeployed to add it.
+- **New capability ships as a new plug-in**; with dynamic loading the core is never recompiled or redeployed to add it, while statically linked plug-ins still rebuild it.
 - **Independent teams or vendors build** against one published contract without touching each other's code.
 - **Unneeded features are simply never loaded**, so the running system stays lean.
 
@@ -79,7 +79,7 @@ flowchart LR
 <!--meta polarity=con-->
 
 - **The plug-in API becomes** the hardest thing to change — every installed plug-in depends on it.
-- **Plug-ins that need to cooperate** must go through the core, which can turn it into an unplanned bottleneck.
+- **Plug-ins that need to cooperate** must go through the core, which can turn it into an unplanned bottleneck; an event bus lowers the coupling but not the traffic through the core.
 - **A bug can live in the core**, in a plug-in, or in the wiring between them, which slows debugging.
 - **Versioning, discovery, and load order** for many independently built plug-ins becomes its own subsystem.
 
@@ -108,14 +108,25 @@ Prevents the smell of [Golden Hammer](../../hazards/golden-hammer.md) — with a
 ```typescript summary="TypeScript — a minimal core and one plug-in"
 interface Plugin {
   name: string;
+  apiVersion: number;
   init(core: Core): void;
 }
+
+const API_VERSION = 1;
 
 class Core {
   private commands = new Map<string, (arg: string) => void>();
 
   register(plugin: Plugin): void {
-    plugin.init(this); // plug-in wires itself into the core
+    if (plugin.apiVersion !== API_VERSION) {
+      console.warn(`${plugin.name}: needs API ${plugin.apiVersion}, host has ${API_VERSION}`);
+      return; // stay disabled, never half-loaded
+    }
+    try {
+      plugin.init(this); // plug-in wires itself into the core
+    } catch (err) {
+      console.error(`${plugin.name} disabled`, err); // one bad init does not kill the host
+    }
   }
   addCommand(name: string, handler: (arg: string) => void): void {
     this.commands.set(name, handler); // core stays ignorant of who registered
@@ -130,6 +141,7 @@ class Core {
 // A plug-in the core has never heard of at compile time
 const markdownExport: Plugin = {
   name: "markdown-export",
+  apiVersion: 1,
   init: (core) => core.addCommand("export", (path) => console.log(`exporting to ${path}`)),
 };
 const core = new Core();
@@ -150,8 +162,8 @@ core.run("export", "./out.md");
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Plug-in isolation mode** — Whether plug-ins run in the host process or in a separate process / sandbox. Out-of-process isolation stops a crashing or looping plug-in from taking the core down, at the cost of an IPC hop per call.
-- **Load strategy: eager vs lazy** — Whether plug-ins are activated at startup or on demand when first needed. Lazy activation keeps host startup fast as the installed set grows.
+- **Plug-in isolation mode** — Whether plug-ins run in the host process or in a separate process / sandbox. Out-of-process isolation stops a crashing or looping plug-in from taking the core down, at the cost of an IPC hop per call. Decide by plug-in trust and worst-case call duration, and compare the per-call IPC latency with the host's responsiveness budget.
+- **Load strategy: eager vs lazy** — Whether plug-ins are activated at startup or on demand when first needed. Lazy activation keeps host startup fast as the installed set grows, at the cost of a first-use delay and the need to declare what triggers activation.
 - **Extension API version and compatibility policy** — The versioned contract every plug-in binds to, plus the deprecation rules that decide when an old plug-in still loads against a newer core.
 - **Plug-in discovery source** — Where the core looks for plug-ins — a directory, a manifest, or a registry — which sets how installation and update work.
 
@@ -161,15 +173,15 @@ core.run("export", "./out.md");
 - **Host startup time by plug-in activation** — Total startup broken down by how long each plug-in takes to activate, exposing the ones that inflate cold-start cost.
 - **Per-plug-in CPU and memory** — Resource use attributable to each plug-in — observable directly when plug-ins run out-of-process.
 - **Plug-in crash / restart rate** — How often individual plug-ins fail, isolating a flaky extension from a genuine core problem.
-- **Host responsiveness / blocking time** — How long the core is stalled waiting on plug-in calls — the symptom of a plug-in monopolizing a shared thread.
+- **Host blocking time** — How long the core stalls waiting on plug-in calls. A long stall means a plug-in is holding a shared thread. Set a ceiling per call, alert past it and record which plug-in held it.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
 - **A plug-in blocks the core** — In an in-process model a slow or looping plug-in hangs the host's shared thread, freezing every other feature — the classic driver for an out-of-process host.
 - **Plug-in crash takes down the host** — Without sandboxing, an unhandled fault in one plug-in crashes the whole process rather than just disabling that feature.
-- **API version skew** — A plug-in built against an older or newer extension contract fails to load, or loads and misbehaves, once the core moves.
-- **Load-order and dependency cycles** — Plug-ins that depend on one another initialize non-deterministically, so a working install breaks when the discovery order shifts.
+- **API version skew** — A plug-in built against an older or newer extension contract fails to load, or loads and misbehaves, once the core moves. Reject at load on a declared API version range and keep the plug-in disabled, not half-loaded.
+- **Load-order and dependency cycles** — Plug-ins that depend on one another initialize non-deterministically, so a working install breaks when the discovery order shifts. Declare dependencies in a manifest, sort them at load, and fail only the plug-in in a cycle, naming the cycle.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -203,6 +215,10 @@ core.run("export", "./out.md");
 - [Strategy](../gof/behavioral/strategy.md) — Plug-ins are swappable strategies for the core
 - [Bulkhead](../distributed/resilience/bulkhead.md) — Run each plug-in sandboxed so one crash cannot take the host down
 - [Open/Closed Principle](../../principles/open-closed.md) — The core is closed to edits; features arrive as new plug-ins
+
+**Alternative to**
+
+- [Hexagonal](./hexagonal.md) — Plug-ins are discovered and loaded at run time, often from third parties
 
 **Prevents**
 

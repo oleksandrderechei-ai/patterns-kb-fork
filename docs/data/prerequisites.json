@@ -105,7 +105,7 @@
       "definition": "Passes a request along a chain of handlers",
       "route": "/patterns/gof/behavioral/chain-of-responsibility.html",
       "requires": [],
-      "related": ["command", "composite", "intercepting-validator", "front-controller", "decorator", "open-closed"]
+      "related": ["command", "composite", "intercepting-validator", "front-controller", "pipe-filter", "decorator", "open-closed"]
     },
     {
       "id": "command",
@@ -241,7 +241,7 @@
       "definition": "Collection-like interface over data storage",
       "route": "/patterns/enterprise/repository.html",
       "requires": [],
-      "related": ["unit-of-work", "data-mapper", "aggregate", "service-layer", "fake-object", "entity", "identity-map", "specification", "query-object"]
+      "related": ["unit-of-work", "data-mapper", "aggregate", "service-layer", "fake-object", "entity", "identity-map", "specification", "query-object", "cqrs"]
     },
     {
       "id": "specification",
@@ -257,7 +257,7 @@
       "definition": "Tracks changes, commits them as one transaction",
       "route": "/patterns/enterprise/unit-of-work.html",
       "requires": [],
-      "related": ["repository", "optimistic-concurrency-control", "data-mapper", "identity-map"]
+      "related": ["repository", "optimistic-concurrency-control", "data-mapper", "identity-map", "active-record", "service-layer"]
     },
     {
       "id": "identity-map",
@@ -281,7 +281,7 @@
       "definition": "An object wraps a row and its own persistence",
       "route": "/patterns/enterprise/active-record.html",
       "requires": [],
-      "related": ["entity", "transaction-script", "data-mapper"]
+      "related": ["entity", "transaction-script", "data-mapper", "unit-of-work"]
     },
     {
       "id": "service-layer",
@@ -289,7 +289,7 @@
       "definition": "Defines an application's operations as one boundary",
       "route": "/patterns/enterprise/service-layer.html",
       "requires": [],
-      "related": ["repository", "dto", "transaction-script", "domain-service", "front-controller"]
+      "related": ["repository", "dto", "transaction-script", "domain-service", "front-controller", "unit-of-work", "layered"]
     },
     {
       "id": "dto",
@@ -297,7 +297,7 @@
       "definition": "Flat object for carrying data across a boundary",
       "route": "/patterns/enterprise/dto.html",
       "requires": [],
-      "related": ["value-object", "service-layer", "bff", "api-versioning", "repr", "interface-segregation"]
+      "related": ["value-object", "service-layer", "bff", "api-versioning", "repr", "interface-segregation", "immutability"]
     },
     {
       "id": "gateway",
@@ -305,7 +305,7 @@
       "definition": "One-object wrapper around an external system's API",
       "route": "/patterns/enterprise/gateway.html",
       "requires": [],
-      "related": ["facade", "adapter"]
+      "related": ["facade", "adapter", "fake-object"]
     },
     {
       "id": "transaction-script",
@@ -337,7 +337,7 @@
       "definition": "Presentation, logic, and data as separate tiers",
       "route": "/patterns/architecture/layered.html",
       "requires": [],
-      "related": ["hexagonal", "separation-of-concerns", "microservices", "vertical-slice"]
+      "related": ["separation-of-concerns", "microservices", "vertical-slice", "service-layer", "hexagonal"]
     },
     {
       "id": "vertical-slice",
@@ -345,7 +345,7 @@
       "definition": "Organize code by feature end to end, not by technical layer",
       "route": "/patterns/architecture/vertical-slice.html",
       "requires": [],
-      "related": ["layered", "cqrs", "dry", "repr", "conways-law", "rule-of-three"]
+      "related": ["layered", "cqrs", "dry", "repr", "conways-law", "rule-of-three", "microservices"]
     },
     {
       "id": "mvc",
@@ -361,7 +361,7 @@
       "definition": "A presenter mediates between passive view and model",
       "route": "/patterns/architecture/mvp.html",
       "requires": [],
-      "related": ["mvvm", "test-spy"]
+      "related": ["test-spy", "separation-of-concerns", "mvvm"]
     },
     {
       "id": "mvvm",
@@ -369,7 +369,7 @@
       "definition": "View binds declaratively to a view-model",
       "route": "/patterns/architecture/mvvm.html",
       "requires": [],
-      "related": ["mvp", "container-presentational"]
+      "related": ["container-presentational", "mvp"]
     },
     {
       "id": "repr",
@@ -385,7 +385,7 @@
       "definition": "Core domain isolated behind ports and adapters",
       "route": "/patterns/architecture/hexagonal.html",
       "requires": [],
-      "related": ["dependency-injection", "acl", "layered", "dependency-inversion", "design-for-evolution"]
+      "related": ["dependency-injection", "acl", "dependency-inversion", "design-for-evolution", "layered", "microkernel"]
     },
     {
       "id": "eda",
@@ -393,7 +393,7 @@
       "definition": "Components react to events, not direct calls",
       "route": "/patterns/architecture/eda.html",
       "requires": [],
-      "related": ["domain-event", "event-sourcing", "design-for-evolution"]
+      "related": ["domain-event", "event-sourcing", "design-for-evolution", "web-queue-worker"]
     },
     {
       "id": "microkernel",
@@ -401,7 +401,7 @@
       "definition": "Minimal core, features loaded as plug-ins",
       "route": "/patterns/architecture/microkernel.html",
       "requires": [],
-      "related": ["strategy", "bulkhead", "open-closed"]
+      "related": ["strategy", "bulkhead", "open-closed", "hexagonal"]
     },
     {
       "id": "cqrs",
@@ -409,7 +409,7 @@
       "definition": "Separate models for reading and for writing",
       "route": "/patterns/architecture/cqrs.html",
       "requires": [],
-      "related": ["event-sourcing", "materialized-view", "saga", "minimize-coordination", "vertical-slice", "outbox", "command-query-separation"]
+      "related": ["event-sourcing", "materialized-view", "saga", "minimize-coordination", "vertical-slice", "outbox", "command-query-separation", "repository"]
     },
     {
       "id": "event-sourcing",
@@ -417,7 +417,7 @@
       "definition": "State is a replayable log of events, not a snapshot",
       "route": "/patterns/architecture/event-sourcing.html",
       "requires": [],
-      "related": ["cqrs", "eda", "outbox", "immutability", "materialized-view", "write-ahead-log", "domain-event", "flux", "memento", "minimize-coordination", "change-data-capture", "event-carried-state-transfer"]
+      "related": ["cqrs", "eda", "outbox", "immutability", "materialized-view", "write-ahead-log", "domain-event", "flux", "memento", "minimize-coordination", "change-data-capture", "event-carried-state-transfer", "aggregate"]
     },
     {
       "id": "pipe-filter",
@@ -425,7 +425,7 @@
       "definition": "Data flows through independent processing stages",
       "route": "/patterns/architecture/pipe-filter.html",
       "requires": [],
-      "related": ["producer-consumer", "backpressure", "pipeline", "big-data", "content-enricher", "routing-slip"]
+      "related": ["producer-consumer", "backpressure", "pipeline", "big-data", "content-enricher", "routing-slip", "chain-of-responsibility"]
     },
     {
       "id": "microservices",
@@ -433,7 +433,7 @@
       "definition": "One business capability per service, each owning its own data",
       "route": "/patterns/architecture/microservices.html",
       "requires": ["bounded-context"],
-      "related": ["layered", "web-queue-worker", "api-gateway", "container-orchestration", "saga", "external-configuration-store"]
+      "related": ["layered", "web-queue-worker", "api-gateway", "container-orchestration", "saga", "external-configuration-store", "vertical-slice", "strangler-fig"]
     },
     {
       "id": "ai-agent",
@@ -449,7 +449,7 @@
       "definition": "A web front end, a queue, and a worker that does the slow half",
       "route": "/patterns/architecture/web-queue-worker.html",
       "requires": [],
-      "related": ["microservices", "load-leveling", "outbox", "competing-consumers", "stateless-service", "blue-green-deployment"]
+      "related": ["microservices", "load-leveling", "outbox", "stateless-service", "async-request-reply", "eda", "blue-green-deployment", "competing-consumers"]
     },
     {
       "id": "big-data",
@@ -465,7 +465,7 @@
       "definition": "Burst thousands of cores onto one finite computation, then release them",
       "route": "/patterns/architecture/big-compute.html",
       "requires": [],
-      "related": ["big-data", "scheduling", "fan-in"]
+      "related": ["big-data", "scheduling", "fan-in", "mapreduce"]
     },
     {
       "id": "circuit-breaker",
@@ -681,7 +681,7 @@
       "definition": "Stand the new version up beside the old, then move traffic across",
       "route": "/patterns/distributed/routing/blue-green-deployment.html",
       "requires": [],
-      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "web-queue-worker", "containerization", "deployment-stamp"]
+      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "containerization", "deployment-stamp", "web-queue-worker"]
     },
     {
       "id": "canary-release",
@@ -721,7 +721,7 @@
       "definition": "Accept the work, hand back a handle, and let the caller collect the result later",
       "route": "/patterns/distributed/routing/async-request-reply.html",
       "requires": [],
-      "related": ["workflow-orchestration", "idempotency", "load-leveling", "claim-check", "correlation-identifier", "a2a"]
+      "related": ["workflow-orchestration", "idempotency", "load-leveling", "claim-check", "correlation-identifier", "a2a", "web-queue-worker"]
     },
     {
       "id": "service-discovery",
@@ -897,7 +897,7 @@
       "definition": "Replaces a legacy system one slice at a time",
       "route": "/patterns/distributed/coordination/strangler-fig.html",
       "requires": ["reverse-proxy"],
-      "related": ["api-gateway", "acl", "micro-frontends", "golden-master", "wire-tap", "design-for-evolution", "blue-green-deployment", "feature-flag", "messaging-bridge", "canary-release"]
+      "related": ["api-gateway", "acl", "micro-frontends", "golden-master", "wire-tap", "design-for-evolution", "blue-green-deployment", "feature-flag", "messaging-bridge", "canary-release", "microservices"]
     },
     {
       "id": "leader-election",
@@ -1161,7 +1161,7 @@
       "definition": "Split a dataset, map over the pieces in parallel, then reduce the results into an answer",
       "route": "/patterns/distributed/coordination/mapreduce.html",
       "requires": [],
-      "related": ["scatter-gather", "sharding", "fan-in", "hyperloglog", "big-data", "barrier", "fork-join"]
+      "related": ["scatter-gather", "sharding", "fan-in", "hyperloglog", "big-data", "barrier", "fork-join", "big-compute"]
     },
     {
       "id": "sliding-window",
@@ -1481,7 +1481,7 @@
       "definition": "Many consumers pull from one channel to share load",
       "route": "/patterns/messaging/competing-consumers.html",
       "requires": ["message-queue"],
-      "related": ["load-leveling", "pubsub", "idempotency", "fan-out", "dead-letter-channel", "scale-out", "web-queue-worker", "priority-queue", "sequential-convoy", "resequencer", "polling-consumer"]
+      "related": ["load-leveling", "pubsub", "idempotency", "fan-out", "dead-letter-channel", "scale-out", "priority-queue", "sequential-convoy", "resequencer", "polling-consumer", "web-queue-worker"]
     },
     {
       "id": "sequential-convoy",
@@ -1697,7 +1697,7 @@
       "definition": "A cluster of objects treated as one consistency unit",
       "route": "/patterns/ddd/aggregate.html",
       "requires": [],
-      "related": ["iterator", "repository", "domain-event", "encapsulation", "transaction-script", "law-of-demeter", "specification", "context-map", "domain-service"]
+      "related": ["iterator", "repository", "domain-event", "encapsulation", "transaction-script", "law-of-demeter", "specification", "context-map", "domain-service", "event-sourcing"]
     },
     {
       "id": "domain-event",
@@ -1769,7 +1769,7 @@
       "definition": "Never mutate — always return new data",
       "route": "/patterns/functional/immutability.html",
       "requires": [],
-      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "builder", "flyweight"]
+      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "dto", "builder", "flyweight"]
     },
     {
       "id": "lens-optics",
@@ -1825,7 +1825,7 @@
       "definition": "A working lightweight stand-in, like an in-memory database",
       "route": "/patterns/testing/fake-object.html",
       "requires": [],
-      "related": ["repository", "golden-master", "contract-testing", "mock-object", "test-stub"]
+      "related": ["repository", "golden-master", "contract-testing", "mock-object", "test-stub", "gateway"]
     },
     {
       "id": "page-object",
@@ -2033,7 +2033,7 @@
       "definition": "Keep what was learned, not what was said, so the next session starts informed",
       "route": "/patterns/ml/agent-memory.html",
       "requires": [],
-      "related": ["context-engineering", "ai-agent", "embeddings"]
+      "related": ["context-engineering", "embeddings", "ai-agent"]
     },
     {
       "id": "context-engineering",
@@ -2401,7 +2401,7 @@
       "definition": "Divide a system so each part addresses one distinct concern, understood in isolation",
       "route": "/principles/separation-of-concerns.html",
       "requires": [],
-      "related": ["layered", "mvc", "kiss", "command-query-separation", "high-cohesion-low-coupling"]
+      "related": ["layered", "mvc", "kiss", "command-query-separation", "high-cohesion-low-coupling", "mvp"]
     },
     {
       "id": "encapsulation",
