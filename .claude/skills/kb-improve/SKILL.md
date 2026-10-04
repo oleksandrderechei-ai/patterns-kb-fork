@@ -116,7 +116,8 @@ git add docs/<path-to-page>.md docs/data/relations.json
 Stage only the paths `git status` shows you changed. An edge edit also changes the other
 page's relationships block, `docs/data/prerequisites.json` and `docs/reference/prerequisites.md`
 through `make gen`; stage those with it. Run the whole `make validate` before the pull
-request. On a branch named `kb-improve/<id>`, commit and push the change and open one
+request. On a branch named `kb-improve/<id>`, commit each page on its own, with the
+subject `feat: <id> groomed by kb-improve` so step 7 can find it, then push and open one
 pull request. Its body is the per-page table, one row per page, followed by every `DROPPED`
 line so a reader can supply what the synthesizer would not invent:
 
@@ -135,7 +136,31 @@ validate` once, stages exactly the paths the summaries name, and opens one pull 
 
 Never run a batch before a pilot of five single pages, one per kind, has been read and
 approved by the owner on its pull request: a brief that fabricates once will fabricate at
-scale.
+scale. The five-page pilot's findings are in the body of its pull request,
+`odere-pro/patterns-kb#30`, and the follow-ups it parked are in
+[the backlog](../../../plans/backlog.md). A run reports in its pull request, never in a file
+under `docs/`.
+
+## 7. Pick up where the last run stopped
+
+Every groomed page lands as its own commit whose subject is `feat: <id> groomed by
+kb-improve …`, so git is the progress record and no tracker file can drift from it:
+
+```bash
+git log --oneline --grep "groomed by kb-improve"
+```
+
+The ids it names are done; every other id from `node scripts/kb.mjs ls` is not. Pages whose
+edits both touched `docs/data/relations.json` land in one commit that names each id
+(`feat: kiss and bitly groomed by kb-improve …`), since one file's hunks cannot be split
+without an interactive add.
+
+Take the next area the owner names, or the next one in `docs/data/site-structure.json`
+order, resolve its ids with the step 1 table, drop the ones already done, and run step 6 on
+the rest. A run
+that stopped part-way left its finished pages committed and its unfinished ones untouched,
+so start the area again with the done ids dropped. Parked follow-ups, such as a new block a
+reader asked for, go to [the backlog](../../../plans/backlog.md) rather than into a run.
 
 ## Done means
 
