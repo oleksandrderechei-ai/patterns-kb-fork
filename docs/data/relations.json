@@ -12930,6 +12930,27 @@
       "b": "god-object",
       "note_a": "Can fall into god object when business logic and persistence share one row class",
       "note_b": "A row-owning class that also holds business logic grows into one"
+    },
+    {
+      "a": "gateway",
+      "verb": "combines-with",
+      "b": "fake-object",
+      "note_a": "Tests swap in an in-memory fake for the outside system",
+      "note_b": "The fake stands in for a gateway so tests need no network"
+    },
+    {
+      "a": "service-layer",
+      "verb": "combines-with",
+      "b": "unit-of-work",
+      "note_a": "The service defines the use-case transaction boundary the unit of work opens and commits",
+      "note_b": "A service layer decides where one unit of work starts and ends"
+    },
+    {
+      "a": "dto",
+      "verb": "combines-with",
+      "b": "immutability",
+      "note_a": "A record DTO with readonly fields set once at construction cannot drift after it is built",
+      "note_b": "A DTO is the everyday carrier that is built once and never changed"
     }
   ],
   "group_order": {

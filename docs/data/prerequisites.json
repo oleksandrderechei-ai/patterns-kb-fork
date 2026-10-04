@@ -257,7 +257,7 @@
       "definition": "Tracks changes, commits them as one transaction",
       "route": "/patterns/enterprise/unit-of-work.html",
       "requires": [],
-      "related": ["repository", "optimistic-concurrency-control", "data-mapper", "identity-map", "active-record"]
+      "related": ["repository", "optimistic-concurrency-control", "data-mapper", "identity-map", "active-record", "service-layer"]
     },
     {
       "id": "identity-map",
@@ -289,7 +289,7 @@
       "definition": "Defines an application's operations as one boundary",
       "route": "/patterns/enterprise/service-layer.html",
       "requires": [],
-      "related": ["repository", "dto", "transaction-script", "domain-service", "front-controller"]
+      "related": ["repository", "dto", "transaction-script", "domain-service", "front-controller", "unit-of-work"]
     },
     {
       "id": "dto",
@@ -297,7 +297,7 @@
       "definition": "Flat object for carrying data across a boundary",
       "route": "/patterns/enterprise/dto.html",
       "requires": [],
-      "related": ["value-object", "service-layer", "bff", "api-versioning", "repr", "interface-segregation"]
+      "related": ["value-object", "service-layer", "bff", "api-versioning", "repr", "interface-segregation", "immutability"]
     },
     {
       "id": "gateway",
@@ -305,7 +305,7 @@
       "definition": "One-object wrapper around an external system's API",
       "route": "/patterns/enterprise/gateway.html",
       "requires": [],
-      "related": ["facade", "adapter"]
+      "related": ["facade", "adapter", "fake-object"]
     },
     {
       "id": "transaction-script",
@@ -1769,7 +1769,7 @@
       "definition": "Never mutate — always return new data",
       "route": "/patterns/functional/immutability.html",
       "requires": [],
-      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable"]
+      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "dto"]
     },
     {
       "id": "lens-optics",
@@ -1825,7 +1825,7 @@
       "definition": "A working lightweight stand-in, like an in-memory database",
       "route": "/patterns/testing/fake-object.html",
       "requires": [],
-      "related": ["repository", "golden-master", "contract-testing", "mock-object", "test-stub"]
+      "related": ["repository", "golden-master", "contract-testing", "mock-object", "test-stub", "gateway"]
     },
     {
       "id": "page-object",

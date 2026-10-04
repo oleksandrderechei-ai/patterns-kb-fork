@@ -187,6 +187,7 @@ Object.freeze(v1);
 - [Lens / Optics](./lens-optics.md) — Optics update nested immutable data
 - [Functor](./functor.md) — Every map yields a fresh container instead of mutating
 - [Make Illegal States Unrepresentable](../../principles/make-illegal-states-unrepresentable.md) — An immutable value stays as valid as it was when built
+- [DTO](../enterprise/dto.md) — A DTO is the everyday carrier that is built once and never changed
 
 **Alternative to**
 

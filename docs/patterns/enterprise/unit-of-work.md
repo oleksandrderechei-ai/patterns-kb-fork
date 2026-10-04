@@ -195,6 +195,7 @@ class UnitOfWork {
 - [Optimistic Concurrency Control](../distributed/coordination/optimistic-concurrency-control.md) — Version checks ride along with the flush, in the same transaction
 - [Data Mapper](./data-mapper.md) — It flushes tracked changes through the mappers that own the SQL
 - [Identity Map](./identity-map.md) — The identity map is what lets the unit write each changed row once.
+- [Service Layer](./service-layer.md) — A service layer decides where one unit of work starts and ends
 
 **Alternative to**
 
