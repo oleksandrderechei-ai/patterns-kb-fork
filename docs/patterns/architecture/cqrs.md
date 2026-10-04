@@ -222,6 +222,7 @@ async function getOrderSummary(orderId: string, view: OrderSummaryStore) {
 - [Minimize Coordination](../../principles/minimize-coordination.md) — Splitting the two paths removes the contention between them
 - [Vertical Slice](./vertical-slice.md) — A slice layout makes separate read and write models the cheap default
 - [Outbox](../distributed/coordination/outbox.md) — Publishes each change in the same transaction through an outbox so the query model never misses an event
+- [Repository](../enterprise/repository.md) — The write side of CQRS keeps a repository to load aggregates
 
 **Composed of**
 

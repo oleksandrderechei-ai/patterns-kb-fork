@@ -179,6 +179,7 @@ assert(found?.email === "a@example.com");
 - [Repository](../enterprise/repository.md) — An in-memory Map repository is the canonical fake
 - [Golden Master](./golden-master.md) — A deterministic fake keeps a golden diff stable
 - [Contract Testing](./contract-testing.md) — Stays honest only while something checks it against the real provider
+- [Gateway](../enterprise/gateway.md) — The fake stands in for a gateway so tests need no network
 
 **Often confused with**
 

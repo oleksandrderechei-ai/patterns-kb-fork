@@ -20,12 +20,12 @@ A vendor's auth headers, odd field names, units and error codes spread through e
 ## Explained
 <!--meta block=explain-->
 
-A gateway is one object through which your code reaches an outside system such as a payment processor, a queue or a legacy mainframe. It offers an interface shaped around what your application needs, and only the gateway knows the vendor's wire format, field names, units and error codes. Callers speak your own vocabulary, so a version change or a switch of provider touches one file, and tests swap in an in-memory fake with no network. Choose it over an [adapter](../gof/structural/adapter.md), which fits a class to an interface a client already expects, when you are free to design the interface yourself. If you own both sides, a plain function is enough.
+A gateway is one object through which your code reaches an outside system such as a payment processor, a queue or a legacy mainframe. It offers an interface shaped around what your application needs, and only the gateway knows the vendor's wire format, field names, units and error codes. Callers speak your own vocabulary, so a version change, or a switch to a provider with the same capabilities, touches one file, and tests swap in an in-memory fake with no network. Choose it over an [adapter](../gof/structural/adapter.md), which fits a class to an interface a client already expects, when you are free to design the interface yourself. If you own both sides, a plain function is enough.
 
-- **Ceremony when thin.** A gateway that forwards arguments one for one protects nothing, so make it translate units and map the vendor's errors.
+- **Ceremony when thin.** A gateway that forwards arguments one for one gives little beyond a test seam, so translate units and map the vendor's errors.
 - **Dumping ground.** Unrelated calls pile up in it, so keep one gateway per outside system and split it when it serves two jobs.
 
-**Example.** A payment vendor takes amounts as strings of cents, such as 1999, and fails with a numeric code, such as 51. 14 places in the code call it directly, each converting cents and decoding 51. A PaymentGateway offers charge(orderId, money) and throws InsufficientFunds, so the 14 callers shrink to one line each. The vendor is replaced after a price rise: one file changes, not 14. Tests use an in-memory fake that records charges and run in milliseconds. The cost is one more interface to keep in step with what the vendor really does.
+**Example.** A payment vendor takes amounts as strings of cents, such as 1999, and fails with a numeric code, such as 51. Say 14 places in the code call it directly, each converting cents and decoding 51. A PaymentGateway offers charge(orderId, money) and throws InsufficientFunds, so the 14 callers shrink to one line each. If the vendor is replaced, one file changes, not 14. Tests use an in-memory fake that records charges and run in milliseconds. The cost is one more interface to keep in step with what the vendor really does.
 
 ## How it works
 <!--meta block=structure-->
@@ -60,9 +60,9 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Resource Gateway** — Wraps a non-object resource such as a file system, a hardware device, or an environment/config store, giving it an object-shaped interface.
-- **Service Gateway** — Wraps a network-facing API — REST, SOAP, gRPC — hiding wire format, authentication, and retries behind plain domain method calls. A client that wraps an AI tool server, such as one speaking Anthropic's Model Context Protocol (MCP), is the same shape: the gateway turns discoverable remote tools into ordinary method calls the rest of the code can use without knowing the protocol.
+- **Service Gateway** — Wraps a network API such as REST, SOAP or gRPC. Wire format, authentication and retries hide behind plain domain method calls. A client for an AI tool server, such as one speaking Anthropic's Model Context Protocol (MCP), has the same shape: remote tools become ordinary method calls.
 - **Table Data Gateway / Row Data Gateway** — Fowler's data-layer gateways: one object per table, or one per row, standing between domain code and raw SQL.
-- **Gateway plus connection object** — Split a remote gateway in two. The gateway keeps the vocabulary translation — our types in, our types out — and a thin connection object beneath it owns nothing but issuing the call and handing back the raw response. Tests then have a seam at either level: stand in for the connection and the real translation still runs, instead of disappearing behind a replacement for the whole gateway. Fowler offers it as a refinement rather than a rule, and it earns its indirection only when the translation is worth testing on its own — for a gateway that renames two fields it is a layer for nothing.
+- **Gateway plus connection object** — Split a remote gateway in two. The gateway translates vocabulary, our types in and out. A thin connection object under it only issues the call and returns the raw response. Tests can fake the connection and still run the real translation. Fowler offers this as a refinement, worth it only when the translation needs its own tests. For a gateway that renames two fields, skip it.
 - **[Fake](../testing/fake-object.md) Gateway** — A stand-in implementation swapped in for tests, so business logic runs against a fast, deterministic double instead of the real external system.
 
 ## Trade-offs
@@ -73,8 +73,8 @@ flowchart LR
 
 - **Confines a vendor's API quirks** — auth, protocol, naming, units — to one place.
 - **Domain code reads in its own vocabulary** instead of the external system's.
-- **Swappable**: replace, upgrade, or fake the real system without touching callers.
-- **Cushions the codebase** from the external system's changes and outages.
+- **Swappable**: replace, upgrade, or fake the real system without touching callers, while the new system fits the interface.
+- **Vendor changes reach one place** instead of every caller; outages are cushioned only if the gateway adds a timeout, fallback or circuit breaker.
 
 ### Cons
 <!--meta polarity=con-->
@@ -110,20 +110,29 @@ interface ShippingGateway {
   getRates(originZip: string, destZip: string, weightKg: number): Promise<Rate[]>;
 }
 interface Rate { carrier: string; costCents: number; etaDays: number; }
+class GatewayError extends Error {}
 // The vendor's own client — field names and units we don't control
 declare class LegacyCarrierClient {
   quoteRates(req: { origin_zip: string; dest_zip: string; weight_lbs: number }):
     Promise<{ quotes: { carrier_name: string; price_usd: number; transit_days: number }[] }>;
 }
 
+declare function withTimeout<T>(p: Promise<T>, ms: number): Promise<T>; // Promise.race against a timer
+
 class LegacyCarrierGateway implements ShippingGateway {
   constructor(private readonly client: LegacyCarrierClient) {}
   async getRates(originZip: string, destZip: string, weightKg: number): Promise<Rate[]> {
-    const raw = await this.client.quoteRates({
-      origin_zip: originZip,
-      dest_zip: destZip,
-      weight_lbs: weightKg * 2.20462, // vendor only speaks pounds
-    });
+    let raw;
+    try {
+      raw = await withTimeout(this.client.quoteRates({
+        origin_zip: originZip,
+        dest_zip: destZip,
+        weight_lbs: weightKg * 2.20462, // vendor only speaks pounds
+      }), 2000); // placeholder timeout; set it from production-knob-1
+    } catch (e) {
+      throw new GatewayError("carrier rate lookup failed", { cause: e }); // vendor errors never reach callers
+    }
+    // retries and the circuit breaker wrap this call
     return raw.quotes.map(q => ({ carrier: q.carrier_name, costCents: Math.round(q.price_usd * 100), etaDays: q.transit_days }));
   }
 }
@@ -145,17 +154,17 @@ const rates = await gateway.getRates("94107", "10001", 2.5);
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Request timeout (connect and read)** — Upper bound on how long a call to the external system may block before the gateway gives up; set too high, a slow vendor ties up callers.
-- **Retry policy (count and backoff)** — How many times a failed call is retried and with what backoff; unbounded or un-jittered retries amplify load during a vendor outage.
-- **Client connection pool size** — Maximum concurrent connections the gateway holds open to the vendor; it caps in-flight calls and bounds resource use.
-- **Outbound rate / concurrency limit** — A ceiling on calls per interval so the gateway stays under the vendor rate limit.
+- **Request timeout (connect and read)** — Upper bound on how long a call to the external system may block before the gateway gives up; set too high, a slow vendor ties up callers. Start from the vendor's observed p99 latency plus headroom and keep the total under the caller's own deadline.
+- **Retry policy (count and backoff)** — How many times a failed call is retried and with what backoff; unbounded or un-jittered retries amplify load during a vendor outage. As a starting assumption, a few attempts with exponential backoff and full jitter, with total retry time inside the caller's deadline.
+- **Client connection pool size** — The most concurrent connections the gateway holds open to the vendor; it caps in-flight calls and the threads waiting on them. Size it from expected calls per second times the vendor's p99 latency in seconds.
+- **Outbound rate / concurrency limit** — A ceiling on calls per interval so the gateway stays under the vendor rate limit. Set it below the quota in the vendor's docs; a steady 429 rate means it is too high.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **External error rate** — Fraction of calls the vendor rejects or fails; the primary health signal for the dependency.
-- **Call latency p99** — Tail latency of gateway calls; the external system usually dominates the caller latency budget.
-- **Timeout and retry rate** — How often calls time out or get retried; a rising rate is early warning of vendor degradation.
+- **Call latency p99** — Tail latency of gateway calls; compare it with the caller's latency budget to see how much the vendor consumes.
+- **Timeout and retry rate** — How often calls time out or get retried; a rate that rises against the vendor's own baseline warns of degradation.
 - **Throttling (429) rate** — Rate of rate-limit rejections, indicating outbound volume exceeds the vendor quota.
 
 ### Failure modes under load
@@ -172,7 +181,7 @@ const rates = await gateway.getRates("94107", "10001", 2.5);
 - Set an explicit connect and read timeout on every outbound call.
 - Bound retries with capped, jittered backoff and only retry idempotent calls.
 - Provide a fake gateway implementing the same interface for tests.
-- Wrap the gateway with a circuit breaker or fallback so a vendor outage degrades gracefully.
+- Wrap the gateway with a circuit breaker or a fallback, so a vendor outage fails fast or serves a default; open the breaker on a sustained error or timeout rate.
 - Confine vendor credentials and auth to the gateway, not its callers.
 
 ## Where it shows up
@@ -192,6 +201,10 @@ const rates = await gateway.getRates("94107", "10001", 2.5);
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Fake Object](../testing/fake-object.md) — Tests swap in an in-memory fake for the outside system
 
 **Part of**
 

@@ -21,13 +21,13 @@ Loading the same row twice gives two objects for one record. Edit the second cop
 ## Explained
 <!--meta block=explain-->
 
-An identity map is a lookup table, kept for one unit of work such as a request, from a row's type and key to the single object already loaded for it. Every read checks the table first and loads from the database only on a miss. Choose it over loading a fresh object on every read when the same row can be reached by several routes in one request, such as from a list, a customer's history and a relation, because two copies of one row disagree and the later save wipes out the earlier. Its job is identity, not speed: it is thrown away with its unit of work, so it never serves another user's stale data the way a cache shared across requests can.
+An identity map is a lookup table, kept for one unit of work such as a request, from a row's type and key to the single object already loaded for it. Every read by key checks the table first and loads from the database only on a miss. Choose it over loading a fresh object on every read when the same row can be reached by several routes in one request, such as from a list, a customer's history and a relation, because two copies of one row disagree and the later save wipes out the earlier. Its job is identity, not speed. It is thrown away with its unit of work, so unlike a cache shared across requests it never serves another user's stale data.
 
 - **Stale for the unit.** A row changed by someone else is not seen again, so keep the unit short and reload on purpose.
 - **Grows with every load.** A batch over a million rows holds a million objects, so clear the map or split the batch.
 - **Not thread-safe.** Give each thread its own unit of work and its own map.
 
-**Example.** A request loads order 42 for the page, then the pricing code loads order 42 again from a relation. Without the map the second load builds a second object. Pricing sets the total to 120 on its copy, the page's copy still says 100, and the save writes whichever was last, so one edit is lost. With the map the second read returns the first object, there is 1 query instead of 2, and both see 120. A nightly batch over 1,000,000 rows would hold 1,000,000 objects, so it clears the map every 1,000 rows.
+**Example.** A request loads order 42 for the page, then the pricing code loads order 42 again from a relation. Without the map the second load builds a second object. Pricing sets the total to 120 on its copy, the page's copy still says 100, and the save writes whichever was last, so one edit is lost. With the map the second read returns the first object, there is 1 query instead of 2, and both see 120. A nightly batch over 1,000,000 rows would hold 1,000,000 objects, so it clears the map every 1,000 rows. After a clear, a row loaded again becomes a new object, so objects from before the clear must not be reused.
 
 ## How it works
 <!--meta block=structure-->
@@ -73,7 +73,7 @@ The map is keyed by the type and the primary key, so `Order:42` and `Customer:42
 ## Variations
 <!--meta block=variations-->
 
-- **Per unit of work** — One map for each business transaction or request, thrown away when it ends. It is the common form, and the safe one: the map cannot serve one user's data to another or outlive a stale read.
+- **Per unit of work** — One map for each business transaction or request, thrown away when it ends. It is the common form, and the safe one: the map cannot serve one user's data to another, though a row stays stale for the whole unit.
 - **One map per class** — Each class keeps its own map keyed by primary key, and the lookup picks the map by type. It is simple and typed, and a type hierarchy needs care so a subclass row and its base class use the same map.
 - **One map for all types** — A single map keyed by type and id. It is easier to clear and to inspect, at the cost of a composite key and less specific types.
 - **Weak references** — The map holds objects through weak references, so an object nobody uses can be collected. It stops a long unit of work from growing without bound, and it means identity is only guaranteed while something still refers to the object.
@@ -86,8 +86,8 @@ The map is keyed by the type and the primary key, so `Order:42` and `Customer:42
 <!--meta polarity=pro-->
 
 - **One object per row** — two references to the same record always see the same state, so one edit cannot hide behind another copy.
-- **Fewer queries** — a repeated read of a key already in the map costs a hash lookup instead of a round trip.
-- **Safe edits in a graph** — a cycle of related objects, such as order and customer, is built once and linked, instead of looped forever.
+- **Fewer queries as a side effect** — a repeat read by key already in the map costs a hash lookup instead of a round trip; identity, not speed, is the purpose, and a query by a non-key column still goes to the database.
+- **Cycles end** — a loaded order registers in the map before its customer loads, so the customer's link back finds the order, and a ring of related objects is built once and linked instead of recursing without end.
 - **Cleaner change tracking** — a unit of work can track one object per row, so a commit writes each changed row once.
 
 ### Cons
@@ -96,7 +96,8 @@ The map is keyed by the type and the primary key, so `Order:42` and `Customer:42
 - **Stale for the length of the unit** — a row changed by someone else is not seen again, so keep the unit short or reload the object on purpose.
 - **Memory grows with the unit** — every loaded object stays in the map, so a batch that touches a million rows holds a million objects; clear or break the batch into smaller units.
 - **Not thread-safe by default** — sharing one map across threads needs locking; give each thread its own unit of work and its own map.
-- **Hidden behaviour** — a query by a non-key column still hits the database, and a reader who thinks the map is a cache will be surprised; document what it covers.
+- **Easy to misread** — a reader who takes the map for a cache expects hits it never gives, because a query by a non-key column still hits the database; document what it covers.
+- **Does not stop cross-unit lost updates** — two requests each hold their own object for one row, so the later commit still overwrites the earlier unless a version check guards the write.
 
 ## When to use it
 <!--meta block=usage-->
@@ -120,30 +121,32 @@ The map is keyed by the type and the primary key, so `Order:42` and `Customer:42
 
 ```typescript summary="TypeScript — an identity map consulted by the repository, scoped to one unit of work"
 class IdentityMap {
-  private items = new Map<string, object>();
+  private items = new Map<string, Promise<object>>();
   private key(type: string, id: number) { return `${type}:${id}`; }
 
-  get<T>(type: string, id: number): T | undefined {
-    return this.items.get(this.key(type, id)) as T | undefined;
+  get<T>(type: string, id: number): Promise<T> | undefined {
+    return this.items.get(this.key(type, id)) as Promise<T> | undefined;
   }
-  put(type: string, id: number, obj: object) {
-    this.items.set(this.key(type, id), obj);
+  put(type: string, id: number, load: Promise<object>) {
+    this.items.set(this.key(type, id), load);
   }
+  evict(type: string, id: number) { this.items.delete(this.key(type, id)); }
+  clear() { this.items.clear(); }
 }
 
 class OrderRepository {
   constructor(private map: IdentityMap, private db: Db) {}
 
-  async find(id: number): Promise<Order> {
-    const cached = this.map.get<Order>("Order", id);
-    if (cached) return cached;                 // same instance as before
-    const row = await this.db.selectOrder(id);
-    const order = new Order(row);              // build once
-    this.map.put("Order", id, order);          // register before returning
-    return order;
+  find(id: number): Promise<Order> {
+    const inFlight = this.map.get<Order>("Order", id);
+    if (inFlight) return inFlight;                       // same promise, same instance, even for concurrent finds
+    const load = this.db.selectOrder(id).then(row => new Order(row));   // build once
+    this.map.put("Order", id, load);                     // register the in-flight load before awaiting
+    load.catch(() => this.map.evict("Order", id));       // a failed load must not stay cached
+    return load;
   }
 }
-// One IdentityMap per unit of work: create it at the start, drop it at the end.
+// One IdentityMap per unit of work: create it at the start, drop it at the end; in a batch job call clear() every N rows.
 ```
 
 ## In the wild
@@ -167,7 +170,7 @@ class OrderRepository {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **objects in the map at commit** — should track the rows you meant to touch; a large number means the unit is too wide.
+- **objects in the map at commit** — should match the rows you meant to touch; far more means the unit is too wide.
 - **queries per request** — a rise after a change can mean reads are bypassing the map.
 - **memory of long-running jobs** — grows steadily if nothing clears the map.
 
@@ -175,7 +178,7 @@ class OrderRepository {
 <!--meta polarity=failure-->
 
 - **unbounded batch** — a job holds every row it has loaded, and memory climbs until the process runs out.
-- **stale row overwrites** — a long unit serves a row another writer changed minutes ago, so a later save overwrites their change.
+- **stale row overwrites** — a long unit serves a row another writer changed minutes ago, so a later save overwrites their change; guard the save with a version column checked at write, and keep the unit short.
 - **map shared across threads** — a thread gets an object another thread is half-way through changing.
 
 ### Readiness checklist
@@ -183,7 +186,7 @@ class OrderRepository {
 
 - create one map per unit of work and drop it when the unit ends
 - route every read, including query results and lazy loads, through the map
-- clear or split the unit in any job that touches more than a few thousand rows
+- clear or split the unit in any job that loads more rows than memory holds; size each batch as the memory budget divided by the measured bytes per loaded object, and start low
 - keep the map out of shared state, or lock it
 
 ## Where it shows up

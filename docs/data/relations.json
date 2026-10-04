@@ -12862,6 +12862,69 @@
       "note_b": "A design where one link carries most of the read load."
     },
     {
+      "a": "cqrs",
+      "verb": "combines-with",
+      "b": "repository",
+      "note_a": "The write side of CQRS keeps a repository to load aggregates",
+      "note_b": "Under CQRS the write repository loads full aggregates and thin read repositories return projections"
+    },
+    {
+      "a": "specification",
+      "verb": "prevents-hazard",
+      "b": "shotgun-surgery",
+      "note_a": "One home per rule, so a change to it is made once instead of at every copy",
+      "note_b": "A named specification gathers a rule copied into the report, the job and the screen into one object"
+    },
+    {
+      "a": "active-record",
+      "verb": "alternative-to",
+      "b": "unit-of-work",
+      "note_a": "Self-saving rows vs. a tracker that flushes all changes in one transaction",
+      "note_b": "Changes collected and written together vs. each row saving itself the moment it changes"
+    },
+    {
+      "a": "unit-of-work",
+      "verb": "prevents-hazard",
+      "b": "chatty-io",
+      "note_a": "Batches the writes of one business action into one transaction instead of one round trip per object",
+      "note_b": "Write-side case: per-object saves are fixed by one tracked flush"
+    },
+    {
+      "a": "active-record",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Can fall into god object when business logic and persistence share one row class",
+      "note_b": "A row-owning class that also holds business logic grows into one"
+    },
+    {
+      "a": "gateway",
+      "verb": "combines-with",
+      "b": "fake-object",
+      "note_a": "Tests swap in an in-memory fake for the outside system",
+      "note_b": "The fake stands in for a gateway so tests need no network"
+    },
+    {
+      "a": "service-layer",
+      "verb": "combines-with",
+      "b": "unit-of-work",
+      "note_a": "The service defines the use-case transaction boundary the unit of work opens and commits",
+      "note_b": "A service layer decides where one unit of work starts and ends"
+    },
+    {
+      "a": "dto",
+      "verb": "combines-with",
+      "b": "immutability",
+      "note_a": "A record DTO with readonly fields set once at construction cannot drift after it is built",
+      "note_b": "A DTO is the everyday carrier that is built once and never changed"
+    },
+    {
+      "a": "front-controller",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Special cases accrue in the one dispatcher until it is the class that does everything",
+      "note_b": "A front controller that takes every route's special case becomes the same class"
+    },
+    {
       "a": "microservices",
       "verb": "combines-with",
       "b": "vertical-slice",

@@ -15,23 +15,23 @@ Handles each business transaction as a single straight-line procedure — pull i
 ## What it is
 <!--meta block=description-->
 
-Building a full domain model costs more than it repays when a request is a handful of checks and one write. A transaction script is one procedure that handles one request from start to finish: it reads the rows, applies the checks and calculations, writes the rows back and returns, with no domain objects in between.
+Building a full domain model costs more than it repays when a request is a handful of checks and one write. A transaction script is one procedure per request that reads rows, checks, writes and returns, with no domain objects.
 
 ## Explained
 <!--meta block=explain-->
 
-A transaction script is one procedure that handles one request from start to finish. It reads the rows it needs, applies the checks and calculations, writes the rows back and returns, with the logic in the procedure and no domain objects deciding behaviour. Choose it over a domain model, objects that hold their own rules, when each operation is a handful of checks and one write, because it is quick to write and easy to follow from top to bottom. It grows with the number of procedures, not with the cleverness of any one of them. Once many operations share rules, a [service layer](service-layer.md) over a domain model pays for itself.
+A transaction script is one procedure that handles one request from start to finish: the logic lives in the procedure, which reads rows, decides and writes in one place, with no domain objects deciding behaviour. Choose it over a domain model, objects that hold their own rules, when each operation is a handful of checks and one write, because it is quick to write and easy to follow from top to bottom. It scales with the number of procedures until rules start to repeat, and any one script grows tangled as edge cases pile on. Once many operations share rules, a [service layer](service-layer.md) over a domain model pays for itself.
 
-- **Copied rules.** A rule shared by several scripts gets duplicated, so move it into one function that all of them call.
-- **Unenforced consistency.** Nothing makes scripts apply the same check, so write a test for each script.
-- **Tied to data access.** Scripts need a database to test, so pass data into a pure function where you can.
+- **Copied rules.** A rule shared by several scripts gets duplicated and drifts.
+- **Unenforced consistency.** Nothing makes scripts apply the same check, so they diverge.
+- **Tied to data access.** Logic welded to data access is hard to test without a database, so pass data into a pure function.
 
 **Example.** A shop has 6 scripts that give customers over 1,000 in yearly spend a 10% discount, each with its own copy of that rule. Marketing raises it to 12%. The team edits 5 copies and misses one, so a refund script still computes 10%. Moving the rule into one function, discountFor(spend), makes it a one-line change. Testing that function needs no database, while each script's test still needs one. The cost is that the shared function is the first piece of a domain model, and the scripts begin to depend on it.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Where does the business rule live? Inside the one procedure — it reads the credit limit, decides, and writes every row in a single transaction that commits or rolls back whole."
+```mermaid caption="Where does the business rule live? Inside the one procedure. It reads the credit limit, decides and writes every row in a single transaction that commits or rolls back whole."
 flowchart LR
     Req["POST /orders"]
     Script["placeOrder procedure"]
@@ -47,7 +47,7 @@ flowchart LR
     Script -->|"5 commit, return order id"| Req
 ```
 
-```mermaid caption="What does the caller get when a check fails? The same procedure returns the error and nothing is written — the rollback is the transaction it opened, not a compensating step elsewhere."
+```mermaid caption="What does the caller get when a check fails? The same procedure raises the error and nothing is written. The rollback is the transaction it opened, not a compensating step elsewhere."
 sequenceDiagram
     autonumber
     participant C as Client
@@ -60,7 +60,7 @@ sequenceDiagram
         S->>DB: write results
         S-->>C: return result
     else validation fails
-        S-->>C: return error, nothing written
+        S-->>C: error raised, nothing written
     end
 ```
 
@@ -68,9 +68,9 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Scripts as free functions** — Each transaction is a standalone function grouped by module or file — no class at all, just procedures and the data access calls they make.
-- **Scripts as class methods** — Related transactions are grouped as methods on a class named for the subject area (e.g. `OrderTransactions`), purely for organization — the class carries no state or behavior of its own.
-- **Scripts as stored procedures** — The procedure is written and executed inside the database itself, pushing the whole transaction — logic and data access both — into the DB tier.
-- **Shared subroutine extraction** — Common steps — parsing input, formatting a response, a repeated validation — are pulled into helper functions called by several scripts, trimming duplication without introducing a domain model.
+- **Scripts as class methods** — Related transactions sit as methods on a stateless class named for the subject area, such as `OrderTransactions`. The class only groups them.
+- **Scripts as stored procedures** — The procedure is written and run inside the database itself, so logic and data access both sit in the database tier. Deploys, version control and tests then live apart from the application, and the code ties to one vendor's SQL dialect.
+- **Shared subroutine extraction** — Common steps such as parsing input, formatting a response or a repeated validation move into helper functions that several scripts call. This trims duplication without introducing a domain model.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -81,15 +81,18 @@ sequenceDiagram
 - **Simple and direct** — the whole transaction reads top to bottom in one place.
 - **No upfront design cost**: no domain model, no object-relational mapping to build.
 - **Matches procedural and SQL-heavy teams' existing mental model**.
-- **Cheap to add a new transaction** — write one more procedure, nothing else to touch.
+- **Cheap to add a new transaction** — when it shares no rules with others, write one more procedure.
+- **The transaction boundary is explicit**, and one script can use set-based SQL over many rows.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **Business rules shared across transactions** get copy-pasted instead of reused.
-- **No object enforces invariants**, so the same rule can be checked inconsistently — or forgotten — in different scripts.
-- **Business logic is welded to data access**, making it hard to unit-test without a database.
+- **No object enforces invariants**, so scripts check the same rule inconsistently.
+- **Business logic is welded to data access**, so it needs a database to test; extracting rules into pure functions removes that need for those rules.
 - **Scripts grow long and tangled** as more rules and edge cases pile onto one procedure.
+- **Read-decide-write in one transaction still races** under default isolation, so each script needs its own row lock or version check.
+- **Reusing a script from a second entry point**, or calling one script from another, forces a choice between nested transactions and duplicated logic.
 
 ## When to use it
 <!--meta block=usage-->
@@ -97,18 +100,18 @@ sequenceDiagram
 ### Reach for it when
 <!--meta polarity=when-->
 
-- **The logic per transaction is a handful** of validations and one write — genuinely simple.
-- **The team and codebase already think procedurally**, and a domain model wouldn't be rewarded with reuse.
+- **Each transaction is a handful** of validations and one write.
+- **The team and codebase already think procedurally**, and few rules would be shared across transactions to justify a domain model.
 - **You need to ship a transaction now**, without first designing a domain model.
 
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **Business rules are numerous**, interrelated, and start duplicating across scripts — a [Service Layer](./service-layer.md) over a real domain model earns its cost.
+- **Business rules are numerous and interrelated** and start duplicating across scripts, for instance when a rule change forces edits in more than one script. A [Service Layer](./service-layer.md) over a domain model then repays its cost.
 - **You need to unit-test business rules independently** of the database — a script's logic is welded to its data access.
 - **Several transactions should share and enforce** the same invariants, not just similar data access.
 
-Piling ever more logic into procedures while the domain classes stay pure data bags is exactly how a codebase ends up with an [Anemic Domain Model](../../hazards/anemic-domain-model.md).
+Piling ever more logic into procedures while the domain classes stay pure data bags is one way a codebase ends up with an [Anemic Domain Model](../../hazards/anemic-domain-model.md).
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -116,27 +119,34 @@ Piling ever more logic into procedures while the domain classes stay pure data b
 ```typescript summary="TypeScript — one procedure, one transaction"
 // One function does the whole transaction: read, decide, write, return.
 async function placeOrder(db: Database, input: PlaceOrderInput): Promise<OrderResult> {
-  const customer = await db.queryOne(
-    "SELECT id, credit_limit FROM customers WHERE id = $1", [input.customerId],
-  );
-  if (!customer) throw new Error("unknown customer");
+  await db.begin();
+  try {
+    // FOR UPDATE keeps the customer row locked until commit; lock customers before orders in every script
+    const customer = await db.queryOne(
+      "SELECT id, credit_limit FROM customers WHERE id = $1 FOR UPDATE", [input.customerId],
+    );
+    if (!customer) throw new Error("unknown customer");
 
-  const total = input.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  if (total > customer.credit_limit) {
-    throw new Error("order exceeds credit limit");
+    const total = input.items.reduce((sum, i) => sum + i.price * i.qty, 0);
+    if (total > customer.credit_limit) {
+      throw new Error("order exceeds credit limit");
+    }
+
+    const orderId = await db.insert("orders", {
+      customer_id: input.customerId,
+      total,
+      status: "placed",
+    });
+    for (const item of input.items) {
+      await db.insert("order_items", { order_id: orderId, ...item });
+    }
+
+    await db.commit();
+    return { orderId, total };
+  } catch (err) {
+    await db.rollback(); // any failure undoes every write
+    throw err;
   }
-
-  const orderId = await db.insert("orders", {
-    customer_id: input.customerId,
-    total,
-    status: "placed",
-  });
-  for (const item of input.items) {
-    await db.insert("order_items", { order_id: orderId, ...item });
-  }
-
-  await db.commit();
-  return { orderId, total };
 }
 ```
 
@@ -146,20 +156,20 @@ async function placeOrder(db: Database, input: PlaceOrderInput): Promise<OrderRe
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Transaction isolation level** — The isolation each script runs its read-modify-write at; too low risks lost updates, too high risks contention.
-- **Statement / transaction timeout** — A ceiling on how long a script may hold its transaction before the database aborts it.
+- **Transaction isolation level** — Run read-modify-write scripts at READ COMMITTED with SELECT ... FOR UPDATE on the rows you decide from; use SERIALIZABLE only where a check spans rows, and retry on serialization failure.
+- **Statement / transaction timeout** — Set it from measured transaction duration (production-signal-1) with headroom; a script that hits it is a bug to fix, not a limit to raise.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Transaction duration** — How long each script holds its transaction open; long scripts hold locks.
-- **Deadlock rate** — Frequency of deadlocks; scripts that lock rows in inconsistent order deadlock under concurrency.
+- **Deadlock rate** — Frequency of deadlocks; read it from the database's deadlock counter or log. Alert on any sustained non-zero rate, since scripts that lock rows in inconsistent order deadlock under concurrency.
 - **Lock wait time** — Time scripts spend blocked waiting for locks held by other scripts.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Deadlock from inconsistent lock ordering** — With no single object enforcing order, different scripts lock the same rows in different sequences and deadlock under load.
+- **Deadlock from inconsistent lock ordering** — Nothing in the pattern fixes a lock order, so scripts that lock the same rows in different sequences can deadlock under load.
 - **Long script holds locks** — A script that does heavy computation or an external call mid-transaction holds its row locks the whole time, blocking others.
 
 ### Readiness checklist
