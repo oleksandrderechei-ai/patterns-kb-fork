@@ -89,6 +89,7 @@ Strict types also have a price at the edges. Every external input, from a databa
 - [Fail Fast](./fail-fast.md) — Removes the bad state from the type, so the compiler rejects it before the program runs
 - [State](../patterns/gof/behavioral/state.md) — Gives each state only the data and moves it can legally have
 - [Encapsulation](./encapsulation.md) — A private constructor lets only valid values be built
+- [Keep It Simple (KISS)](./kiss.md) — The type that rules out bad states is usually also the simplest model that meets the requirement.
 
 **Prevents**
 

@@ -50,7 +50,7 @@ Out of scope: accounts and click analytics — named explicitly so the design st
 - **Availability** — 99.99%, favoured over strict consistency (a stale mapping is harmless; a dropped redirect is not).
 - **Unguessability** — holding one code must not hand you the next, and the space must be sparse enough that guessing is not worth the bandwidth.
 - **Scale** — 1B stored URLs, 100M daily actives, with reads dwarfing writes by roughly 1000:1.
-- **Hot links** — one link in a television advert can draw a five-figure load per second; it must not saturate a single row.
+- **Hot links** — one link in a television advert can draw hundreds of thousands of requests per second (about 600k/s in the sizing burst); it must not saturate a single row.
 
 ## Right-sizing
 <!--meta block=sizing-->
@@ -85,13 +85,13 @@ Three things fall out of the arithmetic. The data is small enough to keep on one
 
 - Event-driven core — **rejected**: no step outlives its request, and the only asynchronous candidate is click analytics, which is out of scope today and would ride beside the redirect rather than inside it. → NFR: latency.
 - Synchronous request/response — **adopted**: read, answer, done; a redirect that queues anything has already missed its budget. → NFR: latency.
-- Read cache in its own tier — **adopted**: a 2.5&nbsp;GB hot set against 17k reads/s, and mappings are immutable, so a cached entry can never be wrong, only absent. → NFR: latency.
+- Read cache in its own tier — **adopted**: a 2.5&nbsp;GB hot set against 17k reads/s, and mappings are immutable, so a cached entry is never wrong about code → URL, though it can outlive deletion or expiry by up to the edge max-age (300&nbsp;s). → NFR: latency.
 - Edge cache — **adopted**: rented, not built; 160&nbsp;ms of physics between continents is not something an origin can optimise away. → NFR: latency.
 - Allocator with block claims — **adopted**: distinctness becomes structural, and claiming 1000 ids at a time turns per-write coordination into a few hundred calls a day. → NFR: uniqueness.
 - One durable store with a uniqueness constraint — **adopted**: 500&nbsp;GB of immutable rows read only by exact key, and the constraint costs an index the reads already need while being the only thing that arbitrates a custom alias racing an allocated code. → NFR: uniqueness; FR: alias & expiry.
 - Keyed permutation before encoding — **adopted**: it is arithmetic, not infrastructure, and without it the code space is a numbered list. → NFR: unguessability.
 - Rate limiting on the miss path — **adopted**: probes look exactly like misses, and limiting by source turns a scan from a leak into a bill. → NFR: unguessability.
-- Asynchronous standby — **adopted**: availability, not read offload; the price is a few seconds of just-created links going missing after a promotion. → NFR: availability.
+- Asynchronous standby — **adopted**: availability, not read offload; the price is that links created in the last seconds before a promotion are lost unless the old primary's tail is recovered, and users already hold those short URLs. → NFR: availability.
 - Synchronous replication — **rejected**: it pays write latency for a consistency guarantee the requirements explicitly traded away. → NFR: availability.
 - Sharding the store — **rejected**: 500&nbsp;GB and ~6 writes/s live on one node, and shards would buy a rebalancing problem no number asks for. Every access is by exact key, so it stays cheap to add later. → NFR: scale.
 - Search index — **rejected**: every read is a primary-key lookup, and nobody searches links. → FR: redirect.
@@ -121,6 +121,8 @@ POST /urls
   "custom_alias": "optional",
   "expiration_date": "optional" }
 → 200 { "short_url": "https://short.ly/abc123" }
+→ 409 Conflict if custom_alias is already taken
+→ 400 Bad Request if long_url, custom_alias or expiration_date is invalid
 
 GET /{short_code}
 → 302 Found
@@ -182,6 +184,7 @@ Four questions decide this design, and two more decide how it survives. How do y
 - **Naïve — a prefix of the URL.** Take the first characters of the long URL. Two `linkedin.com/in/…` links share a prefix and become the same code, so a visitor lands on a stranger's profile. Rejected on the first collision.
 - **Hashing the URL.** Hash the canonicalized URL (SHA-256), base62-encode it, keep the leading characters. It is deterministic, which buys free deduplication — and deduplication is a feature this product does not want, because expiry belongs to the creator (see the interface). A truncated hash also collides by the birthday bound long before the space is full, so it still needs a constraint and bounded retries. Rejected as the primary source.
 - **Counter, permuted, then base62 (chosen).** One sequence hands every writer a distinct number, a keyed permutation makes that number opaque (dive 4), and base62 (a–z, A–Z, 0–9) renders it as seven characters that survive a URL — unlike base64's `+` and `/`, which mean other things there. No collision check, because there is no collision to find.
+- **Counter durability.** Persisting each increment only helps if the counter store keeps it across failover: Redis replicates and persists asynchronously by default, so fsync each increment or wait for replica acknowledgement, and promote only a replica that confirmed it; otherwise skip the counter forward by a margin on promotion, which costs nothing in a 3.5-trillion space.
 
 The counter is claimed, not called. Each Write Service instance takes 1000 ids with one atomic increment — Redis's `INCRBY` is the usual choice — and then hands them out from its own memory, which turns per-write coordination into a few hundred calls a day. An instance that dies with 400 ids unspent takes them with it, and that costs nothing: the space is 3.5 trillion wide and nobody is counting.
 
@@ -208,9 +211,9 @@ flowchart TB
 
 **The budget is spent on geography before it is spent on work.** A round trip between Sydney and a US-east origin costs about 160&nbsp;ms in fibre alone, so a single-origin design misses a 100&nbsp;ms target for half the planet however fast its lookup is. The first tier of the answer is a copy of the mapping near the reader — a [CDN](../patterns/distributed/routing/cdn.md) serving the redirect at the edge — not a faster query at home.
 
-Behind the edge, the lookup has to avoid a disk. An un-indexed lookup is a table scan, fatal at a billion rows, and a B-tree on `short_code` fixes that in principle — but the index is ~40&nbsp;GB and a disk-backed node tops out near ~100k IOPS (input/output operations per second), so what decides the latency is what happens to be resident in memory. A [cache-aside](../patterns/caching/cache-aside.md) tier holding the hot mappings answers a hit in ~100&nbsp;ns; a miss costs a random solid-state drive (SSD) read of a few hundred microseconds, roughly a thousand times more. Miss the index as well and you pay two of them.
+Behind the edge, the lookup has to avoid a disk. An un-indexed lookup is a table scan, fatal at a billion rows, and a B-tree on `short_code` fixes that in principle — but the index is ~40&nbsp;GB and a disk-backed node tops out near ~100k IOPS (input/output operations per second), so what decides the latency is what happens to be resident in memory. A [cache-aside](../patterns/caching/cache-aside.md) tier holding the hot mappings answers a hit in one network round trip to the shared tier, assumed sub-millisecond; a miss adds a random solid-state drive (SSD) read of a few hundred microseconds, so the cache's value is relieving the disk's ~100k IOPS ceiling more than a faster single lookup. Miss the index as well and you pay two of them.
 
-What makes this cache unusually easy is that a mapping never changes. There is no invalidation protocol here, only expiry: an entry can be held for the whole life of the link, and a TTL at or below `expires_at` retires it without anyone sending a message. That [immutability](../patterns/functional/immutability.md) is why three tiers of copy stack up without a consistency argument at every boundary — the only question at each hop is whether the entry is there, never whether it is right.
+What makes this cache unusually easy is that a mapping never changes. There is no invalidation protocol here, only expiry and deletion (which purges the shared cache while edge copies age out within `max-age`): an entry can be held for the whole life of the link, and a TTL at or below `expires_at` retires it without anyone sending a message. That [immutability](../patterns/functional/immutability.md) is why three tiers of copy stack up without a consistency argument at every boundary — the only question at each hop is whether the entry is there, never whether it is right.
 
 ```mermaid caption="What does one redirect touch? Edge serves hot codes; otherwise a cache-aside lookup, and only a miss reaches the store — which then backfills the cache."
 sequenceDiagram
@@ -279,6 +282,8 @@ Sparse is still not enough, because a counter is a numbered list. Base62 is a no
 
 Then make probing expensive. A scan shows up as an unusual miss rate from one source, so apply a [rate limit](../patterns/distributed/resilience/rate-limiter.md) keyed on source at the edge, and cache negative answers so a scan cannot convert itself into store reads while it runs. And state the limit honestly: unguessable is not private. Whoever holds the link holds the content, and there is no revocation short of deletion or expiry — a link that must stay private needs authentication at the destination, which is a different product.
 
+- Odd-constant multiplication is linear: two known code pairs reveal the multiplier and consecutive ids stay a fixed stride apart, so it scrambles without hiding. Use the Feistel network; a permutation over 2ⁿ ids fits seven base62 characters only while n ≤ 41 (62⁷ ≈ 3.5×10¹² exceeds 2⁴¹ ≈ 2.2×10¹², not 2⁴²), so cycle-walk if ids can exceed that.
+
 ### 5 · Staying up through failures → NFR: availability
 
 **99.99% here means one warm copy of everything, plus an honest account of what each failure costs.** The read path and the write path fail very differently, and only one of those failures is visible to the people following links.
@@ -341,9 +346,9 @@ flowchart TB
 - **The counter must never go backwards.** A failover that loses acknowledged increments re-issues spent ids, and the constraint turns that into failed writes until the allocator is repaired (see dive 1).
 - **A viral code concentrates on one key.** One expiry can put every edge miss on a single row at the same instant (see dive 3).
 - **Unguessable is not private.** Whoever holds a link holds the content, and there is no revocation short of deletion or expiry (see dive 4).
-- A link created seconds before a failover can be briefly missing after it — availability bought with consistency, by requirement.
+- A link created seconds before a failover can be lost after it unless the old primary's tail is recovered, and its creator already holds the short URL: availability bought with consistency, by requirement.
 - Answering 302 keeps every click at the origin, so the read tier is sized for repeat visits a 301 would have absorbed in the browser.
-- A deleted or expired link keeps redirecting until its cache entries age out, so the `max-age` chosen on the redirect is also the staleness budget.
+- A deleted or expired link is purged from the shared cache but keeps redirecting from edge copies for up to `max-age` (300&nbsp;s), so the `max-age` chosen on the redirect is also the staleness budget.
 
 ## What's expected at each level
 <!--meta block=levels-->
@@ -375,6 +380,11 @@ flowchart TB
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Cache Stampede](../hazards/cache-stampede.md) — Every edge location holds a hot code under the same TTL, so expiries line up and every miss becomes a read of the same row.
+- [Hot Key](../hazards/hot-key.md) — One viral code draws hundreds of thousands of requests a second onto a single row.
 
 **Demonstrates**
 

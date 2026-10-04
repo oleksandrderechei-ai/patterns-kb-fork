@@ -17,24 +17,22 @@ Of the designs that actually meet the requirement, prefer the simplest one. Comp
 ## What it says
 <!--meta block=description-->
 
-Given two designs that both do the job, take the simpler one. “Keep It Simple, Stupid” is usually credited to Kelly Johnson, the Lockheed engineer, as a rule for machines a mechanic could repair in the field. The distinction, sharpened by Rich Hickey: simple is not easy. Simple means un-braided, one concern with nothing folded together; easy means familiar and quick to type. A one-line trick can be easy and deeply un-simple.
+Given two designs that both do the job, take the simpler one. “Keep It Simple, Stupid” is usually credited to Kelly Johnson, the Lockheed engineer, as a rule for machines a mechanic could repair in the field. Simple is not easy, a distinction Rich Hickey sharpened. KISS judges how complicated a design is; [YAGNI](./yagni.md) judges whether a capability should exist yet.
 
 ## Explained
 <!--meta block=explain-->
 
-KISS says that when two designs both meet the requirement, you ship the one with fewer interlocked parts. Simple here means un-braided: each piece does one job and nothing is folded together. Easy means familiar and quick to type, and a clever one-liner can be easy and still not simple. Choose it over building for the larger requirement you imagine, and make the trigger for adding machinery a measurement, not a fear. Every extra layer, flag or indirection must be understood before anyone can fix a bug, so you pay for it on every future reading. Judge simplicity by how many colleagues can change the thing unaided, not by line count or boxes drawn.
+When two designs both meet the requirement, ship the one with fewer interlocked parts. Simple means un-braided: each piece does one job and nothing is folded together. Easy means familiar and quick to type, and a clever one-liner can be easy and still not simple. Do not build for the larger requirement you imagine, and make the trigger for adding machinery a measurement, not a fear. Every extra layer, flag or indirection must be understood before anyone can fix a bug, so you pay for it on every future reading. Judge simplicity by how many colleagues can change the thing unaided, not by line count or boxes drawn.
 
 - **It can hide real difficulty.** Concurrency and partial failure come back as bugs. Keep the domain's real difficulty in one openly hard, commented place.
 - **The simplest design will one day stop fitting.** Price the later migration now, and set its trigger as a measured limit.
 
-**Example.** A team must email a report to 300 customers each night. One option is a cron job (a timed task) running one 40-line script that one on-call engineer can read. The other is a queue, 3 workers and a scheduler: 5 parts that only two engineers can run. At 300 emails the script finishes in about 2 minutes, so the script wins. The cost arrives at 3 million emails a night, when one machine no longer finishes before morning and the team must split the work. That migration is the bill they accepted, and its trigger is a measured run time past 6 hours, not worry.
+**Example.** A team must email a report to 300 customers each night. One option is a cron job (a timed task) running one 40-line script that one on-call engineer can read. The other is a queue, 3 workers and a scheduler: 5 parts that only two engineers can run. At 300 emails the script finishes in about 2 minutes (about 0.4 seconds per email), so the script wins. The cost arrives near 54,000 emails a night, when the run passes 6 hours and the team must split the work. That migration is the bill they accepted, and its trigger is a measured run time past 6 hours, not worry.
 
 ## Why it helps
 <!--meta block=rationale-->
 
-Every construct in a system — a layer, a parameter, a clever branch — has to be held in someone's head before it can be changed safely. Complexity you add today is paid back with interest on every future read: more to understand before a fix, more places a bug can hide, more ways an innocent change can ripple somewhere unexpected. The cost is not the writing; it is the years of reading that follow.
-
-A simple design shrinks that surface. There is less to learn before you can touch it, fewer interactions to reason about, and a much shorter distance between a symptom and its cause. You spend far more of a system's life changing it than first building it, and simplicity is most of what keeps it changeable.
+Every construct in a system, whether a layer, a parameter or a clever branch, must be held in someone's head before it can be changed safely. The cost is not the writing but the reading that follows: more to understand before a fix, more places for a bug to hide, more ways an innocent change can ripple. In most long-lived systems, changing outweighs first building, so a design with less surface to learn and fewer interactions to reason about stays changeable.
 
 ## Applying it
 <!--meta block=applying-->
@@ -43,20 +41,19 @@ Reach for the least machinery that satisfies the actual requirement:
 
 - Solve the problem in front of you, not the general problem you imagine behind it. The concrete case is usually smaller than the abstraction it suggests.
 - Prefer a plain function to a framework, a straight line to a hierarchy, and an obvious name to a clever one.
-- Count the moving parts. If a layer, flag, or indirection is not carrying its weight, delete it and let the code get more direct.
+- Delete any layer, flag or indirection you cannot tie to a requirement or to a failure it prevents, then run the tests.
 - Optimize for the reader who arrives without context: could a competent colleague follow this on a first pass, or does it need a guided tour?
-- Put the complexity the domain really has in one place that is openly difficult, rather than smeared thinly across five that each look almost reasonable. One hard file with a comment explaining why is cheaper to maintain than five awkward ones nobody admits to.
-
-The rule of thumb: when two solutions work, ship the one that is easier to throw away and rewrite, not the one that was more satisfying to build.
+- Keep the essential complexity of the domain in one commented place with one concern per file, not spread across five that each look almost reasonable.
+- When two solutions work, ship the one easier to throw away and rewrite, and price that rewrite before you choose.
 
 ## Taken too far
 <!--meta block=overreach-->
 
-Simplicity is not the same as small, and it is not license to pretend a hard problem is easy. Push KISS too hard and it becomes oversimplification: refusing to model genuinely essential complexity, so the system cannot actually meet its requirements. Concurrency, partial failure, and awkward domain rules do not go away because you declined to represent them — they just resurface as bugs no structure was there to catch.
+Simplicity is not the same as small, and it is not license to pretend a hard problem is easy. Pushed too far, KISS becomes oversimplification: refusing to model essential complexity, so the system cannot meet its requirements. Concurrency, partial failure and awkward domain rules do not go away because you declined to represent them.
 
-Measuring simplicity by line count is the common trap. Code golfed down to a cryptic one-liner is fewer characters and far less simple; hiding necessary structure behind a terse surface makes the whole thing harder, not easier. Real simplicity keeps distinct concerns distinct — even when that costs a few more lines — and admits the complexity the domain genuinely has instead of sweeping it under a rug the next reader will trip over.
+Line count is the common wrong measure. Code golfed to a cryptic one-liner has fewer characters and is less simple. Real simplicity keeps distinct concerns distinct, even at a few more lines, and states the domain's complexity where the next reader will find it.
 
-The organisational version of the trap is choosing a design for the diagram rather than for the rota. A system with fewer boxes that only two people can safely operate is not simpler than one with an extra box the on-call team already runs every day — simplicity is relative to the people who live with it, so count the colleagues who could change the thing unaided, not the components on the picture.
+Judge simplicity across the whole system, not one component. A component that looks simple but pushes its complexity onto callers, operators or users has moved the cost, not removed it. A design with fewer boxes that only two people can run is not simpler than one with an extra box the on-call team already runs daily.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -74,6 +71,7 @@ The organisational version of the trap is choosing a design for the diagram rath
 - [Build for the Needs of the Business](./build-for-business.md) — A stated number is what 'meets the requirement' gets measured against
 - [Transaction Script](../patterns/enterprise/transaction-script.md) — When logic is a few checks and one write, a plain procedure is the simpler design
 - [Convention over Configuration](./convention-over-configuration.md) — Fewer settings to read and get wrong keeps a tool simple
+- [Make Illegal States Unrepresentable](./make-illegal-states-unrepresentable.md) — The smallest model that cannot express a bad state is the simple one.
 
 **Prevents**
 

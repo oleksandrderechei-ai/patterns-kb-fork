@@ -2313,7 +2313,7 @@
       "definition": "Prefer the simplest design that actually meets the requirement",
       "route": "/principles/kiss.html",
       "requires": [],
-      "related": ["yagni", "least-astonishment", "separation-of-concerns", "managed-services", "build-for-business", "transaction-script", "convention-over-configuration"]
+      "related": ["yagni", "least-astonishment", "separation-of-concerns", "managed-services", "build-for-business", "transaction-script", "convention-over-configuration", "make-illegal-states-unrepresentable"]
     },
     {
       "id": "yagni",
@@ -2457,7 +2457,7 @@
       "definition": "Shape types so an invalid combination of values cannot be written, and the compiler rejects it",
       "route": "/principles/make-illegal-states-unrepresentable.html",
       "requires": [],
-      "related": ["value-object", "immutability", "fail-fast", "state", "encapsulation"]
+      "related": ["value-object", "immutability", "fail-fast", "state", "encapsulation", "kiss"]
     },
     {
       "id": "rule-of-three",

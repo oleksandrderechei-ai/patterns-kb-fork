@@ -12874,6 +12874,27 @@
       "b": "distributed-monolith",
       "note_a": "Publishing atomically with the state change lets a caller send an event instead of waiting on a synchronous call, so the chain can go.",
       "note_b": "Writing the event and the state change in one local transaction is what lets a service publish instead of call, so the synchronous chain can go."
+    },
+    {
+      "a": "kiss",
+      "verb": "combines-with",
+      "b": "make-illegal-states-unrepresentable",
+      "note_a": "The smallest model that cannot express a bad state is the simple one.",
+      "note_b": "The type that rules out bad states is usually also the simplest model that meets the requirement."
+    },
+    {
+      "a": "bitly",
+      "verb": "exposed-to",
+      "b": "cache-stampede",
+      "note_a": "Every edge location holds a hot code under the same TTL, so expiries line up and every miss becomes a read of the same row.",
+      "note_b": "A design where one expiry puts every edge miss on a single row."
+    },
+    {
+      "a": "bitly",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "One viral code draws hundreds of thousands of requests a second onto a single row.",
+      "note_b": "A design where one link carries most of the read load."
     }
   ],
   "group_order": {
