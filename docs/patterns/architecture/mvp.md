@@ -220,5 +220,6 @@ class TodoPresenter {
 **Often confused with**
 
 - [MVVM](./mvvm.md) — Presenter drives the view vs. view binds to a view-model
+- [Container / Presentational](../frontend/container-presentational.md) — Presenter drives a passive view vs. a container feeding a pure-props view
 
 <!-- relationships:end -->

@@ -71,6 +71,7 @@ The other failure is separating too early. Before you understand where the conce
 - [Command-Query Separation](./command-query-separation.md) — Command-query separation is one small case of it.
 - [High Cohesion, Low Coupling](./high-cohesion-low-coupling.md) — Separating concerns is how a module gets cohesive
 - [MVP](../patterns/architecture/mvp.md) — MVP applies it to a screen: view, presenter and model each own one concern
+- [Container / Presentational](../patterns/frontend/container-presentational.md) — Container/presentational applies it to a component that fetches and draws
 
 **Generalizes**
 

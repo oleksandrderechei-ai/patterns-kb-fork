@@ -185,4 +185,8 @@ store.dispatch({ type: "add", by: 5 }); // count: 6
 - [Lens / Optics](../functional/lens-optics.md) — A composable accessor for deep updates in a reducer
 - [Container / Presentational](./container-presentational.md) — Only containers read the store; views stay pure props
 
+**Alternative to**
+
+- [Provider](./provider.md) — A store with selectors suits fast-changing state; a provider suits values that change rarely
+
 <!-- relationships:end -->
