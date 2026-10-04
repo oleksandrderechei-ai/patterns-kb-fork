@@ -44,6 +44,10 @@ Cite element ids exactly as `kb.mjs get` prints them: `tradeoffs-con-2`, `variat
 name (`#usage`), and a design's deep dive by its order: the dive printed as "3 · …" is
 `#deepdives-dive-3`. That is the one anchor you may write without seeing it; invent no other.
 
+`kb.mjs get` prints a list item's text without its bold lead and without its links, and it
+does not print `solves`. Never report a missing bold lead, a missing link or a missing
+`solves` phrase from the printed text; the writer reads the file and the gates hold those.
+
 Judge against the stated contract, not taste. The owning skill's "Done means" list and the
 rules in `.claude/rules/markdown-authoring.md` and `.claude/rules/tone.md` are the rules; a
 finding that cites neither is an opinion and is dropped at the merge.
@@ -78,7 +82,12 @@ F2 | …
 NONE-FOUND: <blocks that hold for this reader, or "none">
 ```
 
-At most 8 findings, most severe first. A page that holds returns a `NONE-FOUND` line alone.
+At most 8 findings, most severe first, each F line under 60 words. A page that holds returns
+a `NONE-FOUND` line alone. The cap is the contract: the orchestrator drains several replies at
+once and truncates past about 16,000 characters together, and a truncated reply is asked for
+again, which costs the round trip this agent exists to save. When you run as a named teammate
+and can send messages, send the reply to your caller by message as well as returning it; a
+message arrives whole where a return that lands beside five others does not.
 
 In the **synthesizer** role you return the edit plan the kb-improve skill specifies instead,
 after re-reading every anchored block yourself:
@@ -92,7 +101,9 @@ NO-FABRICATION CHECK: <every added name or number and its source, or "nothing ad
 ```
 
 The actions are `rewrite-prose`, `append-item`, `replace-item-text`, `writer-set`,
-`writer-explain`, `writer-wild`, `writer-production`, `link` and `unlink`.
+`writer-explain`, `writer-wild`, `writer-production`, `link` and `unlink`. Keep the plan
+under 2,000 words: write replacement prose once, tersely, and send the plan whole, because
+a plan cut off mid-edit cannot be applied.
 
 ## Boundaries
 

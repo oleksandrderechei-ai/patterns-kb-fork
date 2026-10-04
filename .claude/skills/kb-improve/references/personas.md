@@ -103,7 +103,11 @@ You hold the six replies and produce one edit plan a writer can run. Work in thi
    - No fabrication. Every added name or number appears in the `NO-FABRICATION CHECK` line
      with its source, or the edit is dropped.
    - Generated blocks (`relationships`, `tour`, `fluency`) and hub pages are never edited;
-     an edge changes through `link` or `unlink`.
+     an edge changes through `link` or `unlink`. No writer edits an edge's note in place: a
+     note-only fix is `unlink` then `link` with both notes re-supplied, or it is dropped. A
+     `mitigated-by` edge is written from the pattern's side, `link <pattern> prevents-hazard
+     <hazard>`; `docs/data/content-model.json` lists which verb of each pair is written.
+     A `tour` wording fix is a `docs/data/learning-paths.json` data edit, named as such.
    - The limits the gates hold, restated so the writer cannot overshoot: frontmatter
      description at most 160 characters; `description` block at most 80 words; `explain`
      60–180 words, 2–4 costs with a bold lead and at most 25 words each, an example of at

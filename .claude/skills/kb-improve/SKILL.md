@@ -55,8 +55,10 @@ its brief pasted whole, and the skill that owns the kind's blocks:
 | `explain` on any kind | kb-explain |
 | a code sketch on any kind | kb-sketch |
 
-Ask for the fixed reply and nothing else. When the request narrows the readers, launch only
-those. When subagents are not permitted in the session, say so and run the six briefs
+Ask for the fixed reply and nothing else, returned and also sent to you by message when the
+reader runs as a named teammate: six returns landing together are truncated past about 16,000
+characters, a message is not. A reader whose reply still arrives cut off is asked once, by
+name, to resend it with every F line under 60 words; the synthesizer waits for the full set. When the request narrows the readers, launch only those. When subagents are not permitted in the session, say so and run the six briefs
 yourself, one block at a time through `kb.mjs get <id> --block <b>`, scoped to the blocks
 each brief names first.
 
@@ -88,7 +90,13 @@ under the table in [kb-edit](../kb-edit/SKILL.md) step 2 when subagents are off.
   block, so dump the current one first with `kb.mjs get <id> --block wild --json`.
 - Other block prose is edited in the file, under the owning skill's rules.
 - Generated blocks (`relationships`, `tour`, `fluency`) and hub pages are never touched.
-- An existing list item is fixed in place or followed by a new one, never moved.
+- An existing list item is fixed in place or followed by a new one, never moved, and a
+  replaced or appended item copies its neighbours' lead form (`**Lead.** text` or
+  `**Lead** — text`, whichever the list already uses).
+
+An essence or `solves` change moves search ranking for every page near it: a theme that took
+a pattern's symptom words once pushed `circuit-breaker` out of its oracle answer. Run
+`make gate G=check-search-oracle` after one, and narrow the words if a case breaks.
 
 Then lint and reconcile what the page points at, as [kb-edit](../kb-edit/SKILL.md) step 4
 does with [reconcile-links.md](../kb-edit/references/reconcile-links.md):
@@ -105,8 +113,10 @@ make gen && make validate-changed
 git add docs/<path-to-page>.md docs/data/relations.json
 ```
 
-Stage only the paths `git status` shows you changed, and run the whole `make validate` before
-the pull request. On a branch named `kb-improve/<id>`, commit and push the change and open one
+Stage only the paths `git status` shows you changed. An edge edit also changes the other
+page's relationships block, `docs/data/prerequisites.json` and `docs/reference/prerequisites.md`
+through `make gen`; stage those with it. Run the whole `make validate` before the pull
+request. On a branch named `kb-improve/<id>`, commit and push the change and open one
 pull request. Its body is the per-page table, one row per page, followed by every `DROPPED`
 line so a reader can supply what the synthesizer would not invent:
 
