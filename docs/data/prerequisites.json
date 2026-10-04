@@ -1969,7 +1969,7 @@
       "definition": "Build the UI up from atoms through templates to whole pages",
       "route": "/patterns/frontend/atomic-design.html",
       "requires": [],
-      "related": ["composite", "composition-over-inheritance", "container-presentational", "micro-frontends"]
+      "related": ["composite", "composition-over-inheritance", "container-presentational", "micro-frontends", "dry"]
     },
     {
       "id": "flux",
@@ -2305,7 +2305,7 @@
       "definition": "Every piece of knowledge has one authoritative home in the system",
       "route": "/principles/dry.html",
       "requires": [],
-      "related": ["vertical-slice", "rule-of-three"]
+      "related": ["vertical-slice", "rule-of-three", "atomic-design"]
     },
     {
       "id": "kiss",

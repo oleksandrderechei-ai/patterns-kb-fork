@@ -13175,6 +13175,20 @@
       "b": "provider",
       "note_a": "A store with selectors suits fast-changing state; a provider suits values that change rarely",
       "note_b": "Use a provider for rarely changing dependencies; fast-changing shared state belongs in a store"
+    },
+    {
+      "a": "atomic-design",
+      "verb": "combines-with",
+      "b": "dry",
+      "note_a": "Each tier applies don't repeat yourself (DRY) to user interface (UI) parts: a button or search field is written once",
+      "note_b": "Atomic design applies this to user interface (UI) parts, with a shared name for each tier"
+    },
+    {
+      "a": "atomic-design",
+      "verb": "prevents-hazard",
+      "b": "shotgun-surgery",
+      "note_a": "One shared atom turns a change that touched every screen into a single edit",
+      "note_b": "Shared atoms and molecules put a repeated UI part in one file, so one change lands once"
     }
   ],
   "group_order": {

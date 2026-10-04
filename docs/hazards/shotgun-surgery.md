@@ -78,6 +78,7 @@ Then put up a guard so the scatter does not return. A short list of which module
 - [Open/Closed Principle](../principles/open-closed.md) — A change that forces edits to many existing classes shows they are not open to extension
 - [High Cohesion, Low Coupling](../principles/high-cohesion-low-coupling.md) — One change spread across many modules shows low cohesion
 - [Specification](../patterns/enterprise/specification.md) — A named specification gathers a rule copied into the report, the job and the screen into one object
+- [Atomic Design](../patterns/frontend/atomic-design.md) — Shared atoms and molecules put a repeated UI part in one file, so one change lands once
 
 **Threatens**
 
