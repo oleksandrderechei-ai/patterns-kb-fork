@@ -27,7 +27,7 @@ A repository gives your domain code a collection-like interface over a data stor
 - **Generic repositories.** A Repository of anything ignores \[aggregate\](../ddd/aggregate.md) boundaries, so make one per aggregate root.
 - **Hidden cost.** Hiding the store hides its cost, so findAll can return a million rows: require paging or a limit.
 
-**Example.** A subscription query, active subscribers with an expired card, is written in 5 places. One SubscriberRepository with findActiveWithExpiredCard() replaces them, and a unit test uses an in-memory fake that returns 3 prepared subscribers in 1 ms. A developer later adds findAll() and a report calls it on 1,000,000 rows, taking the service down. The team removes it and adds findPage(offset, 100), so a caller must say how many rows it wants. The cost is that every new query needs a method on the repository first.
+**Example.** A subscription query, active subscribers with an expired card, is written in five places. One SubscriberRepository with findActiveWithExpiredCard() replaces them, and a unit test uses an in-memory fake with a few prepared subscribers and no database. A developer later adds findAll() and a report calls it on 1,000,000 rows, taking the service down. The team removes it and adds findPage(offset, limit), so a caller must say how many rows it wants. The cost is that every new query needs a method on the repository first.
 
 ## How it works
 <!--meta block=structure-->
@@ -55,10 +55,10 @@ flowchart LR
 
 - **Generic repository** — A single `Repository<T>` parameterised over entity type and wired up once. Convenient, but tends to expose a lowest-common-denominator CRUD (create, read, update, delete) surface that ignores what each aggregate actually needs to query.
 - **Per-aggregate repository** — One hand-written repository per aggregate root, exposing only the queries the domain really uses. More verbose, but honest about intent and easy to reason about.
-- **Specification-based queries** — Compose query criteria as first-class specification objects instead of a sprawl of `findByX` methods, so callers build predicates the repository translates. The specification is a domain object in its own right, combinable with and, or and not — and the same object answers "does this instance satisfy the rule?" in memory, which is why the criterion used to fetch overdue invoices is the criterion used to validate one.
+- **Specification-based queries** — Compose query criteria as specification objects instead of a sprawl of `findByX` methods. Combine them with and, or and not. The same object also checks one instance in memory, so the rule that fetches overdue invoices validates one. This holds only while the repository's translation of the specification matches the in-memory check, so test the two against each other.
 - **In-memory [fake](../testing/fake-object.md)** — A collection-backed implementation of the same interface, letting domain and service tests run fast without touching a real database.
 - **Read-side query repository** — Under CQRS (Command Query Responsibility Segregation), split the write repository that loads full aggregates from thin read repositories that return denormalised, view-shaped projections.
-- **Query object instead of a repository** — Drop the repository from the read path entirely: each query becomes its own object, dispatched to a handler that issues exactly the query that screen needs. Nothing accumulates on a shared interface, which is the failure mode the generic repository above has — and the write side keeps its repository, because loading an aggregate is a different job from projecting a view.
+- **Query object instead of a repository** — Drop the repository from the read path: each query becomes its own object, dispatched to a handler that issues exactly the query that screen needs. Nothing accumulates on a shared interface. The write side keeps its repository, because loading an aggregate differs from projecting a view.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -66,9 +66,9 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Isolates domain logic from persistence** — swap SQL for a document store without touching callers.
+- **Isolates domain logic from persistence** — so a store swap stays inside the repository as long as callers do not depend on fetch, transaction or paging behaviour.
 - **Centralises query logic in one place** instead of scattering SQL across services.
-- **Makes the domain testable** by substituting an in-memory fake for the real store.
+- **Makes the domain testable** with an in-memory fake, provided the same contract tests also run against the real store.
 - **Reads as domain language** rather than raw storage calls, keeping intent legible.
 
 ### Cons
@@ -102,9 +102,9 @@ flowchart LR
 ```typescript summary="TypeScript — an interface and an in-memory implementation"
 interface Repository<T> {
   findById(id: string): Promise<T | null>;
-  findAll(): Promise<T[]>;
-  add(entity: T): void;
-  remove(entity: T): void;
+  findPage(offset: number, limit: number): Promise<T[]>;
+  add(entity: T): Promise<void>;
+  remove(entity: T): Promise<void>;
 }
 
 // A concrete, collection-backed implementation — ideal for tests.
@@ -115,15 +115,15 @@ class InMemoryUserRepository implements Repository<User> {
     return this.store.get(id) ?? null;
   }
 
-  async findAll(): Promise<User[]> {
-    return [...this.store.values()];
+  async findPage(offset: number, limit: number): Promise<User[]> {
+    return [...this.store.values()].slice(offset, offset + limit);
   }
 
-  add(user: User): void {
+  async add(user: User): Promise<void> {
     this.store.set(user.id, user);
   }
 
-  remove(user: User): void {
+  async remove(user: User): Promise<void> {
     this.store.delete(user.id);
   }
 }
@@ -143,7 +143,7 @@ class InMemoryUserRepository implements Repository<User> {
 
 - **fetch strategy** — lazy or eager loading of related entities behind each finder; the wrong default turns one innocent findById into a query storm or drags half the object graph into memory
 - **transaction boundary** — whether each call commits itself or joins a unit of work owned by the caller; per-call commits quietly make multi-aggregate operations non-atomic
-- **result-set bound** — whether list-returning methods paginate or cap; an unbounded findAll works on the demo dataset and melts on the production table
+- **result-set bound** — whether list-returning methods paginate or cap; an unbounded findAll works on the demo dataset and melts on the production table. Default to a page size set from the rows-fetched-per-call signal, with a hard maximum the caller cannot raise, and prefer a keyset cursor over offset on large tables
 - **read caching** — whether repeated lookups in one request hit the store or a per-request identity map; trades staleness for load, and hides writes made outside the seam
 
 ### Signals to watch
@@ -197,6 +197,7 @@ class InMemoryUserRepository implements Repository<User> {
 - [Identity Map](./identity-map.md) — A repository keeps one object per row by consulting the identity map.
 - [Specification](./specification.md) — A repository can accept a specification as its query.
 - [Query Object](./query-object.md) — A repository often takes a query object for open-ended searches
+- [CQRS](../architecture/cqrs.md) — Under CQRS the write repository loads full aggregates and thin read repositories return projections
 
 **Exposed to**
 

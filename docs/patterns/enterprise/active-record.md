@@ -198,6 +198,7 @@ await order.save(); // UPDATE orders SET total = ... WHERE id = 42
 **Alternative to**
 
 - [Data Mapper](./data-mapper.md) — Row owns its persistence vs. a separate mapper
+- [Unit of Work](./unit-of-work.md) — Self-saving rows vs. a tracker that flushes all changes in one transaction
 
 **Often confused with**
 

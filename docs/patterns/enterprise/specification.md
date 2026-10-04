@@ -21,13 +21,13 @@ A rule like "an invoice is overdue" written inline in the report, the reminder j
 ## Explained
 <!--meta block=explain-->
 
-A specification is a small object with one question, is this candidate a match, that holds one business rule under a name from the domain. You join specifications with and, or and not, and the result is itself a specification, so it passes anywhere a single one can. The same rule then does three jobs: it checks a single object, it selects from a set, either by testing each object or by turning into a query for a [repository](repository.md), and it describes what to build. Choose it over an inline condition when the rule is used in several places, when users combine criteria freely, or when a domain expert needs to read and own the rule. For a rule used once, a plain condition is simpler.
+A specification is a small object with one question, is this candidate a match, that holds one business rule under a name from the domain. You join specifications with and, or and not, and the result is itself a specification, so it passes anywhere a single one can. The same rule then does three jobs. It checks one object. It selects from a set, either by testing each object or by turning into a query for a [repository](repository.md). It also states what a new object must satisfy, so a factory can build one, though this is rarer. Choose it over an inline condition when the rule is used in several places, when users combine criteria freely, or when a domain expert needs to read and own the rule.
 
-- **Many small classes.** Each rule becomes a type, so extract a rule only at its second use.
-- **Slow in memory.** Testing each loaded object is slow for large sets, so translate the tree into a query for the repository.
-- **Translation limits.** The translator must cover every leaf, so keep leaves to what the query language can state.
+- **Many small classes.** Each rule becomes a type, so a simple filter turns into several.
+- **Loading cost in memory.** Testing is cheap but every candidate must be loaded first, so for large sets translate the tree into a query.
+- **Translation limits.** The translator must cover every leaf, meaning each small rule in the tree, so keep leaves to what the query language can state.
 
-**Example.** Finance defines an invoice as remindable when it is overdue and not disputed. The reminder job, the overdue report and the invoice screen each had their own copy of the test. When the grace period changes from 0 to 5 days, one copy is missed, and 38 customers are reminded early. With a Remindable specification built from Overdue and Not Disputed, the change is made once and all three places agree. The report selects from 200,000 invoices, so its repository turns the rule into one query instead of loading all 200,000 to test them one by one.
+**Example.** Finance defines an invoice as remindable when it is overdue and not disputed. The reminder job, the overdue report and the invoice screen each had their own copy of the test. When the grace period changes from 0 to 5 days, one copy is missed, and 38 customers are reminded early. With a Remindable specification built from Overdue and Not Disputed, the change is made once and all three places agree. The report selects from 200,000 invoices, so its repository turns the rule into one query instead of loading all 200,000 to test them one by one. The translator must state the 5-day cutoff too, so a test runs both forms over the same rows.
 
 ## How it works
 <!--meta block=structure-->
@@ -65,7 +65,7 @@ sequenceDiagram
     A-->>C: true
 ```
 
-The combinators hold other specifications, as in the [Composite](../gof/structural/composite.md) pattern, and each leaf is a small rule with one reason to change. A repository can take a specification either by running `isSatisfiedBy` over candidates it has loaded, which is simple and slow for big sets, or by reading its structure and writing a query, which is fast and needs a translator for every kind of leaf.
+Combinators hold other specifications, as in the [Composite](../gof/structural/composite.md) pattern; each leaf is one small rule with one reason to change. The two paths give the same matches only if the translator copies the in-memory semantics for nulls, case, collation and time, so test both paths against the same data.
 
 ## Variations
 <!--meta block=variations-->
@@ -82,7 +82,7 @@ The combinators hold other specifications, as in the [Composite](../gof/structur
 ### Pros
 <!--meta polarity=pro-->
 
-- **One home per rule** — a change to the rule is made once, and every check and every query sees it.
+- **One home per rule** — a change is made once for in-memory checks; a translated query also needs its translator updated, so test the two forms against each other.
 - **Rules named in domain words** — `Overdue` and `Disputed` read like the business, so a domain expert can check them.
 - **Composable by design** — new rules come from joining old ones with and, or and not, with no new class for each combination.
 - **Testable alone** — a specification needs only a candidate, so each rule has a small unit test.
@@ -92,8 +92,9 @@ The combinators hold other specifications, as in the [Composite](../gof/structur
 
 - **Many small classes** — a simple filter becomes several types; use plain predicates where the rule is used once.
 - **Slow when run in memory** — testing each loaded candidate does not scale; translate the tree to a query for large sets.
-- **Translation is a second system** — a query form needs support for each leaf and each combinator, and every rule it cannot express falls back to memory.
+- **Translation is a second system** — a query form needs support for each leaf and each combinator.
 - **Easy to overuse** — a rule used in one place gains nothing from the indirection; wait for the second use before extracting it.
+- **Two evaluators can disagree** — the in-memory test and the translated query can differ on nulls, case and time, so the same rule matches different rows.
 
 ## When to use it
 <!--meta block=usage-->
@@ -128,10 +129,10 @@ class Fn<T> extends Spec<T> {
 }
 
 type Invoice = { dueDate: Date; disputed: boolean };
-const overdue = new Fn<Invoice>(i => i.dueDate < new Date());
+const overdue = new Fn<Invoice>(i => i.dueDate < new Date());   // reads the clock; inject it in production
 const disputed = new Fn<Invoice>(i => i.disputed);
 
-const remindable = overdue.and(disputed.not());   // one named rule
+const remindable = overdue.and(disputed.not());   // composed rule, named by its variable
 const toRemind = invoices.filter(i => remindable.isSatisfiedBy(i));
 ```
 
@@ -147,14 +148,14 @@ const toRemind = invoices.filter(i => remindable.isSatisfiedBy(i));
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **in-memory versus query translation** — whether a specification is tested on loaded objects or turned into a query. In-memory is simplest and loads every candidate; a query keeps filtering in the database and needs a translator for each leaf.
+- **in-memory versus query translation** — whether a specification runs on loaded objects or becomes a query. Stay in memory while the candidate set fits comfortably in memory; translate once it does not or the rule runs on every request.
 - **leaf granularity** — how small each rule is. Small leaves compose more freely and make the tree larger.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **rows loaded per query** — a specification run in memory over a large table loads all of it; watch the count.
-- **query time of translated rules** — a composed rule can produce a query the database plans badly, so look at slow queries.
+- **rows loaded per query** — count rows hydrated per specification call and compare to rows returned; a ratio far above 1 means move the rule into the query. Set the alert from your memory budget divided by row size.
+- **query time of translated rules** — log the generated SQL per specification and run the database's explain plan on the slowest composed ones; check that filters hit an index.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -198,5 +199,9 @@ const toRemind = invoices.filter(i => remindable.isSatisfiedBy(i));
 **Alternative to**
 
 - [Strategy](../gof/behavioral/strategy.md) — Both wrap one rule in an object; here the rule returns match or no match and composes.
+
+**Prevents**
+
+- [Shotgun Surgery](../../hazards/shotgun-surgery.md) — One home per rule, so a change to it is made once instead of at every copy
 
 <!-- relationships:end -->

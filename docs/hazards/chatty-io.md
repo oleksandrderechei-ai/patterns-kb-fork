@@ -87,6 +87,7 @@ Make the count visible or it will grow back. Assert on calls per operation in a 
 
 - [Batching](../patterns/concurrency/batching.md) — Accumulate the per-item requests and issue one keyed call, so the count stops tracking the result size
 - [Backend-for-Frontend](../patterns/distributed/routing/bff.md) — Make the several calls on a fast internal network and return one client-shaped response
+- [Unit of Work](../patterns/enterprise/unit-of-work.md) — Write-side case: per-object saves are fixed by one tracked flush
 
 **Threatens**
 
