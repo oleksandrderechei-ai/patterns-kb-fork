@@ -23,10 +23,10 @@ Operations such as printing, type-checking and cost estimates keep multiplying o
 A visitor moves an operation out of the classes it works on and into its own object, which has one method for each type of element. Each element has an accept method that calls back the visitor method for its own type, so the right code runs without a chain of type checks. Adding an operation is then one new visitor and no edit to the elements. Choose it over a method on each element when the set of types is stable and operations keep multiplying: printing, type-checking, cost estimates. Where your language has exhaustive pattern matching over a small closed set of types, use that instead, with less machinery.
 
 - **New element types.** Each one needs a new method in every visitor. Use a visitor interface so the compiler flags any visitor that missed one.
-- **Boilerplate.** The accept methods are spread through the whole hierarchy.
+- **Boilerplate.** Every element needs an accept method. Where that hurts, dispatch on runtime type; instanceof checks lose the exhaustiveness check the compiler gives.
 - **Exposed internals.** Visitors need element internals, which weakens encapsulation, so expose read access only.
 
-**Example.** A syntax tree has 4 node types: number, add, multiply and variable. You need 3 operations: evaluate, print and count nodes. As visitors that is 3 classes with 4 methods each, 12 methods, and the node classes never change. Add a fifth node type, power, and all 3 visitors need a new method, so 3 edits; if the visitor interface declares the method, the compiler lists the 3 visitors that lack it. Had you put the operations inside the nodes, a fourth operation would have meant editing all 4 node classes.
+**Example.** A syntax tree has 4 node types: number, add, multiply and variable. You need 3 operations: evaluate, print and count nodes. As visitors that is 3 classes with 4 methods each, 12 methods, and the node classes never change. Add a fifth node type, power, and all 3 visitors need a new method, so 3 edits. If the visitor interface declares the method, the compiler lists the 3 visitors that lack it. Had you put the operations inside the nodes, a fourth operation would have meant editing all 4 node classes you started with.
 
 ## How it works
 <!--meta block=structure-->
@@ -51,8 +51,8 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Classic double dispatch** — Every element implements `accept` and calls back the visitor's type-specific method. Fully type-safe, but the object structure must know about the visitor interface.
-- **Acyclic Visitor** — Splits the monolithic visitor interface into one small interface per element, so a visitor implements only the types it cares about and new element types don't force a recompile of every visitor.
-- **Reflective / dynamic Visitor** — Skips `accept` and dispatches on runtime type — `instanceof` checks or pattern matching. Less boilerplate, but you lose the compiler's exhaustiveness guarantee.
+- **Acyclic Visitor** — Splits the monolithic visitor interface into one small interface per element, so a visitor implements only the types it cares about and new element types don't force a recompile of every visitor. The cost is run-time dispatch, because each element checks whether the visitor implements its interface, so a visitor that ignores a new element type still compiles and the pass skips it. Pick it over classic double dispatch when recompiling every visitor is what hurts.
+- **Reflective / dynamic Visitor** — Skips `accept` and dispatches on runtime type — `instanceof` checks or pattern matching. Less boilerplate, but `instanceof` and type-tag checks lose the compiler's exhaustiveness guarantee, and pattern matching keeps it only where the language checks it over a closed set of types.
 - **Default (base) Visitor** — Provides no-op defaults for every element so a concrete visitor overrides only the handful of nodes it needs — handy over large or generated hierarchies.
 
 ## Trade-offs
@@ -61,15 +61,15 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Add a new operation** without changing any of the element classes.
+- **Add a new operation** as one new visitor, with no edit to the element classes, once each element has `accept` and exposes what the visitor reads.
 - **Keeps all of one operation's logic** in a single object, instead of scattered across the element classes.
 - **Can build up state across a whole traversal** — running totals, reports, symbol tables.
-- **Routes each concrete element** to the right handler safely, with no manual type checks.
+- **Routes each concrete element** to its handler with no manual type checks; with a visitor interface the compiler flags a visitor that lacks a handler.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Adding a new element type** forces a change to every existing visitor.
+- **Adding a new element type** forces a change to every visitor that must handle it. A visitor interface makes the compiler list the visitors that missed it, and a base visitor with defaults limits the edits, at the cost of silent skips.
 - **Boilerplate**: every element needs an `accept` method to route the call back (double dispatch).
 - **Visitors often need to see an element's internals**, which weakens its [encapsulation](../../../principles/encapsulation.md).
 - **Overkill when there is only one operation**, or when it belongs on the element itself.
@@ -126,9 +126,9 @@ const total = shapes.reduce((sum, shape) => sum + shape.accept(area), 0);
 ## In the wild
 <!--meta block=wild-->
 
-- **ANTLR** — Generates a base visitor with one visit method per grammar rule (alongside a listener variant), so each new pass over the parse tree is a visitor subclass overriding only the rules it cares about, with visitChildren as the walk-everything default. {#wild-antlr}
-- **Babel** — Every plugin returns a visitor object keyed by abstract syntax tree (AST) node type (Identifier, CallExpression, ...); Babel walks the tree and invokes matching enter/exit handlers, and the NodePath handed to each gives scope and mutation helpers without touching the parser's node definitions. {#wild-babel}
-- **Roslyn** — Exposes CSharpSyntaxVisitor for read-only walks and CSharpSyntaxRewriter for producing a modified tree. Because syntax nodes are immutable, a rewriter returns a new tree rather than mutating nodes, so analyzers and refactorings compose over the same tree safely. {#wild-roslyn}
+- **ANTLR** — When generated with the -visitor option (the listener is the default), ANTLR produces a base visitor with one visit method per grammar rule, so each new pass over the parse tree is a visitor subclass overriding only the rules it cares about, with visitChildren as the walk-everything default. {#wild-antlr}
+- **Babel** — A transform plugin returns a visitor object keyed by abstract syntax tree (AST) node type (Identifier, CallExpression, ...); Babel walks the tree and invokes matching enter/exit handlers by node-type name, with no accept method, the reflective variant above. The NodePath handed to each gives scope and mutation helpers without touching the parser's node definitions. {#wild-babel}
+- **Roslyn** — Exposes CSharpSyntaxVisitor for dispatching on node type, CSharpSyntaxWalker (a subclass of it) for read-only descent of the tree, and CSharpSyntaxRewriter for producing a modified tree. Because syntax nodes are immutable, a rewriter returns a new tree rather than mutating nodes, so analyzers and refactorings compose over the same tree without one pass mutating a tree another is reading. {#wild-roslyn}
 
 ## In production
 <!--meta block=production-->
@@ -136,25 +136,25 @@ const total = shapes.reduce((sum, shape) => sum + shape.accept(area), 0);
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Double dispatch form** — An accept method on each element, or a type switch in the visitor. The switch avoids touching elements and loses the compiler check.
+- **Double dispatch form** — An accept method on each element, or a type switch in the visitor. The switch avoids touching elements; an instanceof or tag switch loses the compiler check, and a match over a closed type set keeps it where the language checks it.
 - **Return values** — Visitors that return a result, carry state in fields, or take a context argument.
 - **Traversal ownership** — The elements walk their children, or the visitor does. The visitor-driven walk lets one visitor skip a subtree.
-- **Default behavior** — A base visitor with empty or default visit methods, so a subclass handles only the nodes it cares about.
+- **Default behavior** — A base visitor with empty or default visit methods, so a subclass handles only the nodes it cares about. Defaults hide the compile error a new element type raises, so make the default log or throw.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Element type changes** — How often new element types are added. Each addition touches every visitor, so frequent changes say the pattern is wrong here.
-- **Visitor count** — Number of visitors in the codebase. Growth is the intended direction.
+- **Element type changes** — How often new element types are added, counted per release from version history and compared with how often new visitors are added. Each addition touches every visitor, so when types change as often as operations the stable-types condition no longer holds.
+- **Visitor count** — Number of visitors, read against the element types. Growth over a stable type set is expected, but each added visitor is one more edit when an element type is added. Visitors that each override a few methods point to a base visitor.
 - **Traversal cost** — Time spent walking large structures, from a profiler.
 - **Unhandled element hits** — Counts of nodes that reached a default visit method.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **New element breaks all visitors** — Adding an element type forces an edit in every visitor class. Compile errors show them if the interface is abstract.
-- **Encapsulation leak** — Elements expose internals so visitors can read them.
-- **Stack depth** — A recursive walk of a deep tree overflows the stack. Use an explicit stack.
+- **New element breaks all visitors** — Adding an element type forces an edit in every visitor class. Compile errors show them if the interface is abstract; a default or acyclic visitor still compiles, and the new type is skipped unless the default logs or throws, so watch unhandled element hits.
+- **Encapsulation leak** — Elements expose internals so visitors can read them. A later change to those internals breaks every visitor that reads them; expose read access only.
+- **Stack depth** — A recursive walk of a deep tree overflows the stack. Use an explicit stack, which needs a visitor-driven walk (see traversal ownership), since accept-driven recursion returns through the call stack.
 - **State kept in visitor fields** — A visitor reused across traversals carries old state into the next one.
 
 ### Readiness checklist
