@@ -1,6 +1,6 @@
 ---
 name: kb-improve
-description: "Improve one patterns-kb page: six persona reviewers, one merged edit plan, applied through the writers, gated, one pull request. Use when asked to improve, groom or tighten a page, an area or a kind. Not for findings only (kb-design-review) or one reported fault (kb-edit)."
+description: "Improve a patterns-kb page (an id or a docs/**.md path), an area or a kind: six reader reviews, one merged edit plan, applied, gated, one pull request. Use when asked to improve, rewrite, polish, clarify, simplify or make a KB page easier to learn or apply. Not for findings only (kb-design-review) or one reported fault (kb-edit)."
 ---
 
 # Improving a page for every reader it has

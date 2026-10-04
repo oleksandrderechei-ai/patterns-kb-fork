@@ -1,6 +1,6 @@
 ---
 name: style-simple
-description: "Explain or rewrite anything in plain language for a smart adult outside the domain — plain and fast, never childish. Use when asked to \"explain simply\", \"in plain words\", \"make this easy to understand\" or \"what does this actually mean\". Not for KB page prose in the house register (style-pattern-doc) or engineers (style-technical)."
+description: "Explain or rewrite anything in plain language for a smart adult outside the domain — plain and fast, never childish. Use when asked to \"explain simply\", \"in plain words\", \"make this easy to understand\" or \"what does this actually mean\". Not for a KB page (kb-improve) or engineers (style-technical)."
 ---
 
 # Simple language for quick understanding

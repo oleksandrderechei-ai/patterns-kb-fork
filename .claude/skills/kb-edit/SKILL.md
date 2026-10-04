@@ -1,6 +1,6 @@
 ---
 name: kb-edit
-description: "Change an existing patterns-kb page: rewrite block prose, add or drop a relationship, retag, fix a real-world example, update metadata, repair cross-page links. Use when someone reports something wrong or outdated on a page. Not for a new page (kb-add), re-filing into another area (kb-move) or quality review (kb-design-review)."
+description: "Change an existing patterns-kb page: rewrite block prose, add or drop a relationship, retag, fix a real-world example, update metadata, repair cross-page links. Use when someone reports something wrong or outdated on a page. Not for a whole-page improvement pass (kb-improve), a new page (kb-add) or re-filing (kb-move)."
 ---
 
 # Editing a page

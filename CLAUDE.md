@@ -51,6 +51,7 @@ make validate   # every registered gate
 - **A `file://` URL, a `site/**.html` path or a `docs/**.md` path is a page reference.**
   Resolve it to its id (basename minus `.html` or `.md`; a `#fragment` names the block) and
   read it with `kb.mjs`, never with `Read` or `WebFetch`.
+- **"Improve this page"**, by id, path, area or kind, is **kb-improve**, not `kb-edit`.
 - **In this repo the skills replace the generic agents**, even where
   `~/.claude/rules/common/agents.md` says otherwise: **sys-design** over `architect` /
   `planner`, **kb-compose** over `code-architect`, **kb-design-review** over
