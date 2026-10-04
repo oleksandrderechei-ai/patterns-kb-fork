@@ -15,7 +15,7 @@ Replaces a null reference with an object that honours the same interface but qui
 ## What it is
 <!--meta block=description-->
 
-A null object is a real object that implements the same interface as the thing it stands in for, but whose methods do nothing or return a harmless value. A factory or default returns it instead of null, so callers drop their `if (x != null)` guards and run one code path. It is not a Gang of Four pattern.
+Without it, every caller of an optional collaborator repeats an `if (x != null)` guard, and one missed guard crashes the call. A null object is a real object with the same interface whose methods do nothing or return a harmless value, and a factory or default returns it instead of null. Callers then run one code path, so a missing dependency stops spreading guards. It is a common idiom that the Gang of Four catalogue omits.
 
 ## Explained
 <!--meta block=explain-->
@@ -23,9 +23,9 @@ A null object is a real object that implements the same interface as the thing i
 A null object is a real object with the same interface as the thing it replaces, whose methods do nothing or return a harmless value, so code that would otherwise get null calls it like any other. It removes the \`if (x != null)\` guard from every caller and leaves one code path. Choose it over a null check when having nothing is a normal state and doing nothing is the correct response, such as a logger with no output.
 
 - **Silent failure.** A real failure becomes a write that goes nowhere, with no stack trace. Count or log calls where absence would be a surprise.
-- **Extra class.** It adds one empty class per interface, so where your language has optional types, use those.
+- **Extra class.** It adds one empty class per interface; where callers must notice and decide on absence, an optional type keeps that branch visible.
 
-**Example.** A checkout sends a receipt through a Mailer. Guests have no email, so the code uses a NullMailer whose send does nothing, and checkout loses its 6 null checks. That works for guests. Then a bug gives registered users a NullMailer too, because their profile lookup failed. 400 receipts are never sent and nothing throws. The fix is to make the NullMailer count its calls and to alert when a registered user reaches it. The cost is one extra class and a counter.
+**Example.** A checkout sends a receipt through a Mailer. Guests have no email, so the code uses a NullMailer whose send does nothing, and checkout loses its 6 null checks. That works for guests. Then a bug gives registered users a NullMailer too, because their profile lookup failed. 400 receipts are never sent and nothing throws. The fix is to let a failed lookup throw, and to have the NullMailer report each call, tagged by call site, to an injected counter, with an alert on any hit from the registered-user path. The cost is one extra class and a counter.
 
 ## How it works
 <!--meta block=structure-->
@@ -63,13 +63,13 @@ classDiagram
 
 - **Gets rid of the repetitive null checks** scattered across every caller.
 - **Leaves a single code path with no branches** — just call the object and move on.
-- **One unchanging instance** can be shared and reused everywhere at no cost.
+- **One unchanging instance** serves every call site while the object holds no state, so nothing is allocated per use.
 - **Turns "nothing here" into real, testable behaviour** instead of a special case.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Can hide real errors** — a missing value quietly turns into a do-nothing call.
+- **Can hide real errors**: a missing value quietly turns into a do-nothing call, so count or log each call made where absence would be a surprise.
 - **Needs a new class** for every interface you want a do-nothing version of.
 - **The do-nothing behaviour can surprise callers** who expected a failure.
 - **It's the wrong choice** when a missing value genuinely needs different handling.
@@ -87,7 +87,7 @@ classDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **A missing value is an error** the caller must notice and handle.
+- **A missing value is an error** the caller must notice and handle. Throw, or return an optional type; when each kind of absence needs its own behaviour, use Special Case.
 - **The do-nothing behaviour would mask a bug** or silently drop data.
 - **There's only one call site**, where a single plain guard is simpler and clearer.
 
@@ -126,8 +126,8 @@ processOrder("A-2", new ConsoleLogger());  // logs to the console
 ## In the wild
 <!--meta block=wild-->
 
-- **Python logging.NullHandler** — A stdlib handler whose emit() does nothing, discarding every record. The documented convention is for a library to attach it to its top-level logger so the library can log unconditionally without emitting the "No handlers could be found" warning or forcing logging config on the host application. {#wild-python-nullhandler}
-- **SLF4J NOPLogger** — The slf4j-nop binding supplies NOPLogger, whose level checks all return false and whose log methods are empty, so every call is a no-op. Dropping the slf4j-nop jar on the classpath silences all SLF4J output without any backend present or any code change at the call sites. {#wild-slf4j-nop}
+- **Python logging.NullHandler** — A stdlib handler whose emit() does nothing, discarding every record. The documented convention is for a library to attach it to its top-level logger so the library can log unconditionally, prints nothing when the host application has configured no logging, and forces no logging config on it. {#wild-python-nullhandler}
+- **SLF4J NOPLogger** — The slf4j-nop binding makes NOPLogger the active logger, with level checks that all return false and log methods that are empty, so every call is a no-op. Dropping the slf4j-nop jar on the classpath silences all SLF4J output without any backend present or any code change at the call sites. {#wild-slf4j-nop}
 - **/dev/null** — The Unix null device: every write() succeeds and is discarded, and every read returns EOF. It stands in wherever a real file or stream would go — redirecting a noisy command to it silences output while keeping the program writing normally. {#wild-dev-null}
 
 ## In production
@@ -137,15 +137,15 @@ processOrder("A-2", new ConsoleLogger());  // logs to the console
 <!--meta polarity=knob-->
 
 - **Shared instance or new each time** — A stateless null object can be a single shared instance.
-- **What counts as absent** — Which lookup results become a null object and which stay errors.
-- **Detection method** — Whether callers may ask if an object is a null object, or never need to.
+- **What counts as absent** — Which lookup results become a null object and which stay errors. Expected absence, such as a guest with no email, becomes a null object; a failed or timed-out lookup of something that should exist stays an error.
+- **Detection method** — Whether callers may ask if an object is a null object, or never need to. Default to never asking: a null-test method brings back the branch you removed, so allow it only for the rare caller that must treat absence differently.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Null checks left in callers** — if x is not null tests that remain beside the null object say adoption is partial.
-- **Silent no-op counts** — How often the null object handles a call. A rise can mean data is going missing.
-- **Wrong-reason absence** — Cases where the null object stood in for an error and not an expected absence.
+- **Null checks left in callers** — Null checks on this type that remain in callers mean adoption is partial.
+- **Silent no-op counts** — How often the null object handles a call. A rise can mean data is going missing. Report each call from the null object to an injected counter, tagged by call site; alert on any hit from a path that should hold a real object, and on a rise over that site's baseline.
+- **Wrong-reason absence** — Cases where the null object stood in for an error and not an expected absence. Record the reason where the factory picks the null object, and count the failed-lookup reason.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -153,7 +153,7 @@ processOrder("A-2", new ConsoleLogger());  // logs to the console
 - **Masked failure** — A lookup that failed returns a null object, and work silently does nothing. Log when it is used in a place that needs the real thing.
 - **Wrong default** — The null object returns a value the caller then treats as real, such as an empty total.
 - **Mixed conventions** — Some methods return null and some return the null object, so callers check both.
-- **Inconsistent behavior** — The null object breaks the interface contract and a caller crashes on its return value.
+- **Broken contract** — The null object breaks the interface contract and a caller crashes on its return value.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -161,7 +161,7 @@ processOrder("A-2", new ConsoleLogger());  // logs to the console
 - Every method on the null object returns a safe value for its contract
 - Callers have no null checks for this type left
 - Places where absence is an error use an exception, not a null object
-- The null object is stateless and shared
+- The null object is stateless and shared; any call counter lives outside it, in an injected metrics sink.
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -187,6 +187,7 @@ processOrder("A-2", new ConsoleLogger());  // logs to the console
 - [Singleton](../creational/singleton.md) — It holds no state, so one shared instance serves every call site
 - [Factory Method](../creational/factory-method.md) — A factory hands back the neutral instance instead of a null
 - [Liskov Substitution Principle](../../../principles/liskov-substitution.md) — Doing nothing is only a valid substitute where the contract allows nothing as an answer
+- [Fallback](../../distributed/resilience/fallback.md) — A fallback's static default, such as an empty list, can be a null object, so callers keep one call shape
 
 **Often confused with**
 

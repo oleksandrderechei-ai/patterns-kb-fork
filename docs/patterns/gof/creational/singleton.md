@@ -192,8 +192,8 @@ console.log(a === b);          // true
 
 **Often confused with**
 
-- [Service Locator](../extra/service-locator.md) — Both hand back a shared instance; dependency injection (DI) is usually better
 - [Monostate](../extra/monostate.md) — Shared state vs. a single object — often conflated
+- [Service Locator](../extra/service-locator.md) — A singleton fixes one class as its only instance; a service locator is a registry that returns many services by key.
 
 **Prevents**
 

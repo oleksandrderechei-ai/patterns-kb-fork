@@ -4380,13 +4380,6 @@
     {
       "a": "object-pool",
       "verb": "prevents-hazard",
-      "b": "resource-leak",
-      "note_a": "A pool with checkout/return discipline and validation reclaims what callers forget",
-      "note_b": "Checkout/return discipline and validation reclaim what callers forget to release"
-    },
-    {
-      "a": "object-pool",
-      "verb": "prevents-hazard",
       "b": "improper-instantiation",
       "note_a": "Spreads construction cost across many uses, and caps the scarce resource underneath",
       "note_b": "Where the object cannot be shared, keep a bounded set alive and lend them out"
@@ -7134,13 +7127,6 @@
       "b": "dependency-injection",
       "note_a": "A global instance vs. handing the instance in",
       "note_b": "A global instance vs. handing the instance in"
-    },
-    {
-      "a": "singleton",
-      "verb": "often-confused-with",
-      "b": "service-locator",
-      "note_a": "Both hand back a shared instance; dependency injection (DI) is usually better",
-      "note_b": "Both hand back a shared instance; dependency injection (DI) is usually better"
     },
     {
       "a": "singleton",
@@ -12965,6 +12951,48 @@
       "b": "dependency-injection",
       "note_a": "The strategy is the collaborator handed to the context from outside, which is what injection supplies",
       "note_b": "A swappable algorithm is a typical thing to inject, so the caller never builds it"
+    },
+    {
+      "a": "fallback",
+      "verb": "combines-with",
+      "b": "null-object",
+      "note_a": "An empty-list or no-op default is a null object; count how often it runs",
+      "note_b": "A fallback's static default, such as an empty list, can be a null object, so callers keep one call shape"
+    },
+    {
+      "a": "singleton",
+      "verb": "often-confused-with",
+      "b": "service-locator",
+      "note_a": "A singleton fixes one class as its only instance; a service locator is a registry that returns many services by key.",
+      "note_b": "A singleton is one class that is its own sole instance; a locator is a registry that returns many services by key, each with its own lifetime."
+    },
+    {
+      "a": "service-locator",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Can become a god object when one shared registry attracts every unrelated service",
+      "note_b": "A shared registry that answers every request is one way the object everything reaches into forms"
+    },
+    {
+      "a": "object-pool",
+      "verb": "prevents-hazard",
+      "b": "resource-leak",
+      "note_a": "Centralises acquire and release so a missed return is bounded and detectable; the leaked object is still lost",
+      "note_b": "Centralised checkout and return plus leak detection bound and surface a missed release; an object never returned is still lost"
+    },
+    {
+      "a": "monostate",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "Can fall into race condition when two threads update the shared static fields without a lock",
+      "note_b": "Two threads that update a monostate's shared static fields without a lock can interleave their writes"
+    },
+    {
+      "a": "lazy-initialization",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "Two first callers both run the factory and build the value twice unless a once primitive guards it",
+      "note_b": "Two first callers both run the factory, so the value is built twice"
     }
   ],
   "group_order": {

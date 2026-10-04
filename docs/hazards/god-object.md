@@ -83,5 +83,6 @@ Expect the old class to survive as a facade that forwards to the new ones. That 
 
 - [Service Layer](../patterns/enterprise/service-layer.md) — A service layer tends to collect every use case into one manager class
 - [Facade](../patterns/gof/structural/facade.md) — A facade that starts holding state or logic grows into one class that everything leans on
+- [Service Locator](../patterns/gof/extra/service-locator.md) — A shared registry that answers every request is one way the object everything reaches into forms
 
 <!-- relationships:end -->

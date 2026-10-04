@@ -9,7 +9,7 @@
       "definition": "Exactly one instance, globally accessible",
       "route": "/patterns/gof/creational/singleton.html",
       "requires": [],
-      "related": ["dependency-injection", "service-locator", "monostate", "lazy-initialization", "abstract-factory", "null-object", "double-checked-locking"]
+      "related": ["dependency-injection", "monostate", "lazy-initialization", "abstract-factory", "null-object", "double-checked-locking", "service-locator"]
     },
     {
       "id": "factory-method",
@@ -201,7 +201,7 @@
       "definition": "A do-nothing stand-in instead of a null check",
       "route": "/patterns/gof/extra/null-object.html",
       "requires": [],
-      "related": ["strategy", "singleton", "factory-method", "dummy-object", "liskov-substitution"]
+      "related": ["strategy", "singleton", "factory-method", "dummy-object", "liskov-substitution", "fallback"]
     },
     {
       "id": "object-pool",
@@ -217,7 +217,7 @@
       "definition": "A registry that hands back shared services on request",
       "route": "/patterns/gof/extra/service-locator.html",
       "requires": [],
-      "related": ["singleton", "dependency-injection", "provider", "lazy-initialization"]
+      "related": ["dependency-injection", "provider", "lazy-initialization", "singleton"]
     },
     {
       "id": "lazy-initialization",
@@ -481,7 +481,7 @@
       "definition": "Return a reduced answer — a stale copy, a default, a simpler result — when a dependency fails, so the request still succeeds",
       "route": "/patterns/distributed/resilience/fallback.html",
       "requires": [],
-      "related": ["circuit-breaker", "timeout-deadline", "load-shedding", "failover", "bulkhead"]
+      "related": ["circuit-breaker", "timeout-deadline", "load-shedding", "failover", "bulkhead", "null-object"]
     },
     {
       "id": "retry-backoff",

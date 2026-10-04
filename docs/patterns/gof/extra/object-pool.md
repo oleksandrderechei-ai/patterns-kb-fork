@@ -28,7 +28,7 @@ An object pool keeps a fixed set of already-built objects, such as database conn
 - **Deadlock.** A task holding one object while waiting for another from the same pool can deadlock, so borrow one at a time.
 - **Shared sizing.** Size the pool against the total across every service that shares the resource.
 
-**Example.** A database allows 100 connections, and opening one takes 30 ms of handshake. A service runs 10 copies and gives each a pool of 8: 80 connections, 20 spare. A request that fails and forgets to return its connection loses one per failure. After 8 failures in one copy, that copy has none, and each request there waits the 2 s borrow timeout and then errors, while the other 9 copies stay fine. A finally block that returns the connection ends the leak. Had you set 12 per copy, 10 x 12 = 120 would exceed the 100 the database allows.
+**Example.** A database allows 100 connections, and opening one takes 30 ms of handshake. A pool pays that 30 ms once per connection, not on every request. A service runs 10 copies and gives each a pool of 8: 80 connections, 20 spare. A request that fails and forgets to return its connection loses one per failure. After 8 failures in one copy, that copy has none, and each request there waits the 2 s borrow timeout and then errors, while the other 9 copies stay fine. A finally block that returns the connection ends the leak. Had you set 12 per copy, 10 x 12 = 120 would exceed the 100 the database allows.
 
 ## How it works
 <!--meta block=structure-->
@@ -49,7 +49,7 @@ stateDiagram-v2
 
 - **Fixed vs. elastic** — A fixed pool holds a constant number of objects; an elastic one grows toward a maximum under load and shrinks when idle. Fixed gives predictable resource use; elastic trades that for adaptability.
 - **Blocking vs. fail-fast acquire** — When the pool is empty, acquire can block until an object is returned (usually with a timeout) or fail immediately so the caller can back off. Blocking smooths bursts; fail-fast surfaces exhaustion sooner.
-- **Validation on borrow / return** — Test the object before handing it out — pinging a connection, checking a socket — so a client never gets a dead one. Costs a round trip but avoids surfacing stale state as a mystery failure.
+- **Validation on borrow / return** — Test the object before handing it out — pinging a connection, checking a socket — so a client rarely gets a dead one; it can still die between the check and first use. Costs a round trip but avoids surfacing stale state as a mystery failure.
 - **[Thread Pool](../../concurrency/thread-pool.md)** — The most common specialization: a pool whose objects are worker threads, fed a queue of tasks. Reuses the expensive thread rather than the result of its work.
 
 ## Trade-offs
@@ -61,13 +61,13 @@ stateDiagram-v2
 - **Spreads the cost of expensive construction** across many uses instead of paying it every time.
 - **Caps how many of a scarce resource** are in use at once, at a fixed ceiling.
 - **Cuts constant allocate-and-discard churn** and the garbage-collection pressure it creates.
-- **Delivers steady, predictable latency** once the pool has warmed up.
+- **Keeps acquire wait near zero** while the pool holds an idle object; once it is exhausted, callers wait up to the acquire timeout.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **Reused objects keep their old state** — forget to reset one and it leaks data between clients.
-- **An object borrowed and never returned** is lost, and enough such leaks starve the whole pool.
+- **An object borrowed and never returned** is lost, and enough such leaks starve the whole pool; return it in a finally block, set a borrow timeout and log borrows held too long.
 - **Adds real machinery to build and maintain**: sizing, validation, eviction, thread safety.
 - **For cheap objects**, a modern allocator or garbage collector often beats a pool outright.
 
@@ -86,7 +86,7 @@ stateDiagram-v2
 
 - **The objects are cheap to create** — pooling adds overhead and buys nothing.
 - **Their state is large or awkward** to wipe clean before the object is reused.
-- **Objects live long or for unpredictable spans**, so there's little churn to spread out.
+- **Callers hold each object** for long or unpredictable spans: reuse is rare and a slow holder starves the pool.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -103,12 +103,14 @@ class ObjectPool<T> {
   private live = 0;
   constructor(private readonly opts: PoolOptions<T>) {}
 
+  // … cut: blocking wait with timeout, validate on borrow, eviction (destroy and live--), double-release guard.
   acquire(): T {
     const reused = this.idle.pop();
     if (reused !== undefined) return reused;
     if (this.live >= this.opts.max) throw new Error("pool exhausted");
+    const obj = this.opts.create(); // a throwing build must not use up capacity
     this.live++;
-    return this.opts.create();
+    return obj;
   }
 
   release(obj: T): void {
@@ -116,7 +118,7 @@ class ObjectPool<T> {
     this.idle.push(obj);
   }
 
-  // Borrow, run, and always return — even if the work throws.
+  // Borrow, run, return even if work throws. Synchronous work only: a Promise would be released before it settles; for async, make use async and await work(obj) inside the try.
   use<R>(work: (obj: T) => R): R {
     const obj = this.acquire();
     try { return work(obj); } finally { this.release(obj); }
@@ -137,35 +139,36 @@ class ObjectPool<T> {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Maximum pool size** — The hard ceiling on live objects (HikariCP maximumPoolSize, generic max). Doubles as the cap on the scarce downstream resource; the sum across all app instances must stay under the resource limit (e.g. the database max_connections).
+- **Maximum pool size** — The hard ceiling on live objects (HikariCP maximumPoolSize, generic max). Doubles as the cap on the scarce downstream resource; the sum across all app instances must stay under the resource limit (e.g. the database max_connections). To find the number, watch peak active objects, the utilization signal, under realistic load and set the ceiling just above it, within this instance's share of the limit.
 - **Acquire timeout** — How long acquire() blocks on an empty pool before failing (HikariCP connectionTimeout, Commons Pool maxWait). Bounds exhaustion into a fast error instead of an indefinite hang.
 - **Validation on borrow / return** — Test an object before lending it (Commons Pool testOnBorrow / testOnReturn, HikariCP connection validation / keepaliveTime) so a dead connection or socket is discarded rather than handed to a client.
 - **Idle eviction and max lifetime** — When to retire objects (HikariCP idleTimeout and maxLifetime, Commons Pool minEvictableIdleTime). Recycling long-lived objects avoids servers dropping connections the pool still believes are good.
 - **Minimum idle / warm size** — A floor of pre-created objects kept ready (HikariCP minimumIdle) so a burst after idle does not pay full construction cost on the first requests.
+- **Leak detection threshold** — How long a borrow may be held before the pool logs a leak warning (HikariCP leakDetectionThreshold). Set it above your slowest legitimate hold; it logs the leak and does not reclaim the object.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Pool utilization** — Active versus idle versus total objects (HikariCP exposes ActiveConnections, IdleConnections, TotalConnections). Sustained near-100% active means the pool is the bottleneck.
-- **Threads awaiting acquire** — Callers blocked waiting for a free object — the pool queue depth (HikariCP PendingConnections). A rising value precedes acquire timeouts.
-- **Acquire wait time** — Time from acquire() to receiving an object. Near zero when warm; climbing wait time is the early sign of contention before outright exhaustion.
+- **Callers awaiting acquire** — Callers blocked waiting for a free object, i.e. the pool queue depth (HikariCP PendingConnections). A rising value precedes acquire timeouts.
+- **Acquire wait time** — Time from acquire() to receiving an object. Near zero when warm; climbing wait time is the early sign of contention before exhaustion.
 - **Acquire timeout / failure rate** — Count of acquires that hit the timeout without getting an object — the direct symptom of exhaustion or a leak.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Pool exhaustion** — Every object is leased; new callers block until the acquire timeout and then fail. Often a downstream slowdown holding objects longer, not more traffic.
-- **Object / connection leak** — A borrowed object is never returned (missing release in an error path). The available count decays toward zero and the pool eventually serves no one.
+- **Pool exhaustion** — Every object is borrowed; new callers block until the acquire timeout and then fail. Often a downstream slowdown holding objects longer, not more traffic.
+- **Object / connection leak** — A borrowed object is never returned (missing release in an error path). The available count decays toward zero and the pool eventually serves no one. To tell it from exhaustion under a slow downstream, check active objects after traffic drops: a leak stays at the ceiling, a slowdown drains once the downstream recovers.
 - **Stale object handed out** — With validation off, an object the far end has already closed (idle-killed connection, half-open socket) is lent out and fails on first use as a mystery error.
-- **State bleed between clients** — Per-use state is not scrubbed on release — an uncommitted transaction, a set session variable, or leftover buffer contents — so the next borrower inherits it.
+- **State bleed between clients** — Per-use state is not reset on release — an uncommitted transaction, a set session variable, or leftover buffer contents — so the next borrower inherits it.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - Maximum pool size is sized against the downstream limit, counting every app instance that shares it
 - Acquire has a bounded timeout so exhaustion fails fast instead of hanging
-- Objects are validated on borrow or bounded by a max lifetime so dead ones never reach callers
-- Per-use state is scrubbed on release and borrow/return is balanced, with leak detection enabled
+- Objects are validated on borrow or bounded by a max lifetime so dead ones rarely reach callers; one can still die between the check and first use
+- Per-use state is reset on release and borrow/return is balanced, with leak detection enabled
 - Idle and max-lifetime eviction are configured to match how long the far end keeps objects alive
 
 ## Where it shows up
@@ -196,8 +199,8 @@ class ObjectPool<T> {
 
 **Prevents**
 
-- [Resource Leak](../../../hazards/resource-leak.md) — A pool with checkout/return discipline and validation reclaims what callers forget
 - [Improper Instantiation](../../../hazards/improper-instantiation.md) — Spreads construction cost across many uses, and caps the scarce resource underneath
+- [Resource Leak](../../../hazards/resource-leak.md) — Centralises acquire and release so a missed return is bounded and detectable; the leaked object is still lost
 
 **Exposed to**
 
