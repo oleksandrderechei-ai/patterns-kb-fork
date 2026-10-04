@@ -16,7 +16,7 @@ Gives every operation its own class — the request model it accepts, the handle
 ## What it is
 <!--meta block=description-->
 
-A controller with a method per operation collects every action's dependencies, so a fifteen-dependency constructor serves methods that each use two. REPR gives each operation its own class: a request model, an endpoint that handles exactly that request, and a response model. The route and verb sit inside the endpoint, so one operation lives in one file.
+A controller with a method per operation collects every action's dependencies, so a fifteen-dependency constructor serves methods that each use two. REPR (Request, Endpoint, Response) gives each operation its own class: a request model, an endpoint that handles exactly that request, and a response model. The route and verb sit inside the endpoint, so one operation lives in one file.
 
 ## Explained
 <!--meta block=explain-->
@@ -27,12 +27,12 @@ REPR gives each web operation its own small class: a request model that says wha
 - **Shared behaviour has no home.** Attach login checks and validation once as a pipeline step wrapping each endpoint, not copied in.
 - **Misnamed classes may get no route.** They fail as a 404, so test that each route answers.
 
-**Example.** An orders controller has 12 actions and a 15-dependency constructor, and cancelling an order uses 2 of them. Its test needs a web host to build the controller. As a CancelOrder endpoint it takes just the order store and a clock, so a test passes fakes and a request object and runs in 1 ms. Checking that the caller owns the order is needed by all 12 operations. Copied into 12 endpoints it is 12 places to fix, so the team writes it once as a pipeline step. The cost is 12 endpoint files in place of one.
+**Example.** An orders controller has 12 actions and a 15-dependency constructor, and cancelling an order uses 2 of them. Its test must fake all 15 dependencies to build the controller. As a CancelOrder endpoint it takes just the order store and a clock, so a test passes two fakes and a request object and runs in-process with no web host. Checking that the caller owns the order is needed by all 12 operations. Copied into 12 endpoints it is 12 places to fix, so the team writes it once as a pipeline step. The cost is 12 endpoint files plus their request and response models in place of one controller.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="What does adding a sixteenth operation cost here? One new class and nothing else — no shared constructor grows, and no existing endpoint is recompiled or retested. The subgraph is the part that has to be got right: it is the only place shared behaviour can live once there is no base controller to inherit from."
+```mermaid caption="What does adding a sixteenth operation cost here? One new class. No shared constructor grows, and no existing endpoint's code changes. The subgraph needs the most care: with no base controller, it is the only place shared behaviour can live once."
 flowchart LR
     C["Client"]
     B["Bind + validate"]
@@ -64,9 +64,9 @@ flowchart LR
 
 - **No dependency pile-up** — each operation declares only the dependencies it actually uses, so no constructor accumulates the union of everything.
 - **An endpoint is testable without a web host**: construct it, hand it a request model, assert on the response.
-- **Merge conflicts drop**, because two people adding two operations are adding two files.
+- **Merge conflicts drop** for operations that touch only their own file, because two people adding two operations are adding two files. An explicit registration list or a shared model still collides.
 - **The route, the binding** and the handler are in one file, so they cannot drift apart the way a separate routing table does.
-- **Adding an operation recompiles** and retests nothing that already worked, which shortens the feedback loop as the surface grows.
+- **Adding an operation touches no existing endpoint's code**, so review and regression risk stay local. Build and test scope shrink only if the code is split into separately built modules, and changing a pipeline stage or shared type still affects every endpoint.
 
 ### Cons
 <!--meta polarity=con-->
@@ -123,13 +123,17 @@ class GetOrderEndpoint implements Endpoint<{ id: string }, OrderView> {
   handle(req: { id: string }) { return this.views.byId(req.id); }
 }
 // ---- the pipeline: the ONLY place cross-cutting behaviour belongs ----
-function register<Req, Res>(app: App, e: Endpoint<Req, Res>, ...stages: Stage[]) {
+const defaultStages: Stage[] = [authz, validate, txScope];
+function register<Req, Res>(app: App, e: Endpoint<Req, Res>, ...extra: Stage[]) {
+  const stages = [...defaultStages, ...extra];   // a new endpoint cannot skip the defaults
   app.route(e.method, e.route, async (http) => {
     let ctx = { body: http.body as Req, user: http.user };
-    for (const stage of stages) ctx = await stage(ctx);  // authz, validate, tx scope
+    for (const stage of stages) ctx = await stage(ctx);
     http.json(await e.handle(ctx.body));
   });
 }
+// ---- one list, one loop: every endpoint is registered the same way ----
+[new PlaceOrderEndpoint(orders), new GetOrderEndpoint(views)].forEach((e) => register(app, e));
 ```
 
 ## In the wild
@@ -151,8 +155,8 @@ function register<Req, Res>(app: App, e: Endpoint<Req, Res>, ...stages: Stage[])
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Routes registered versus endpoint classes present** — The two counts should match exactly. A gap is the direct symptom of convention-based registration silently skipping a class.
-- **Per-endpoint latency and error rate** — Available per operation now that each is its own unit, which is what makes a slow operation attributable rather than averaged into a controller.
+- **Routes registered versus endpoint classes present** — The two counts should match exactly. Take the registered count from the framework's route dump or the app's own register() calls and the class count from the same directory or assembly scan, and fail startup on a mismatch. A gap is the direct symptom of convention-based registration silently skipping a class.
+- **Per-endpoint latency and error rate** — Keyed by route this matches per-action metrics on a controller. The gain is attribution: a slow operation maps to one class and file rather than a method inside a shared controller.
 - **Endpoints not covered by the pipeline** — Any endpoint registered without the standard stages. This is where an authorization gap hides.
 
 ### Failure modes under load
@@ -167,7 +171,7 @@ function register<Req, Res>(app: App, e: Endpoint<Req, Res>, ...stages: Stage[])
 
 - Cross-cutting behaviour is applied by a pipeline every endpoint goes through, not copied into endpoint classes.
 - Registration is verified: the number of routes registered is asserted against the number of endpoint classes, so a rename fails the build rather than a request.
-- Endpoints are grouped in folders named after the API area, since there is no longer a class listing an area operations.
+- Endpoints are grouped in folders named after the API area, since there is no longer a class listing an area's operations.
 - Each endpoint has a unit test that constructs it directly with fakes, with no web host involved.
 - Pipeline stage order is written down, because authorization before validation and the reverse have different disclosure behaviour.
 
