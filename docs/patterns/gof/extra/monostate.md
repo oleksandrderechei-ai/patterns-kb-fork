@@ -16,18 +16,18 @@ Lets every instance of a class share the same underlying state, so callers const
 ## What it is
 <!--meta block=description-->
 
-A monostate is a class whose instances all share one set of state, held in static fields. Callers use plain construction and method calls, yet every object reads and writes the same values. It gives singleton behavior without a global `getInstance()`, but it is hidden global mutable state in the costume of an ordinary object.
+Objects that look independent overwrite each other's data, and a test that passes alone fails in a suite. A monostate is a class whose instances all share one set of state in static fields, so callers keep plain construction and method calls. It gives you a [Singleton](../creational/singleton.md)'s shared state without a global `getInstance()` and without its one-instance limit, but it is hidden global mutable state behind an object that looks ordinary.
 
 ## Explained
 <!--meta block=explain-->
 
-A monostate is a class whose instances all share one set of data, held in class-level (static) fields, so any two objects you create read and write the same values. Callers use plain construction and plain method calls, and the sharing stays hidden. Choose it over a singleton only when you must retrofit sharing onto a class whose callers you cannot edit, because they keep writing new. Otherwise pass the shared object in as a parameter, which keeps the sharing visible.
+A monostate is a class whose instances all share one set of data, held in class-level (static) fields, so any two objects you create read and write the same values. Callers use plain construction and plain method calls, and the sharing stays hidden. Choose it over a [singleton](../creational/singleton.md) only when you must retrofit sharing onto a class whose callers you cannot edit, because they keep writing new. Otherwise use [dependency injection](dependency-injection.md): pass the shared object in as a parameter, which keeps the sharing visible.
 
 - **Hidden sharing.** Objects that look independent overwrite each other, and nothing at the call site warns you. Pass one object in where you can.
 - **Test leakage.** Static fields survive from one test to the next, so reset them before every test case.
-- **Concurrent writes.** Concurrent writers need the same locking as any shared data, so guard the fields with a lock.
+- **Concurrent writes.** Threads that write the fields at once can lose updates, so guard them with a lock or make the shared values immutable.
 
-**Example.** A Settings class stores the theme in a static field. Code in the sidebar calls new Settings() and sets the theme to dark. Code in the editor calls its own new Settings() and reads dark, though it never set it. The editor's tests pass alone, but after a sidebar test the editor sees dark and fails. The fix inside the class is a reset method that every test calls first. The fix at the root is to create one Settings and pass it into both, so the sharing shows in the code.
+**Example.** A Settings class stores the theme in a static field. Code in the sidebar calls new Settings() and sets the theme to dark. Code in the editor calls its own new Settings(), a second object, and reads dark, though it never set it: two objects, one stored value. The editor's tests pass alone, but after a sidebar test the editor sees dark and fails. The fix inside the class is a reset method that every test calls first. The fix at the root is to create one Settings and pass it into both, so the sharing shows in the code.
 
 ## How it works
 <!--meta block=structure-->
@@ -56,15 +56,15 @@ flowchart LR
 - **Callers use a plain** `new` and plain methods — no `getInstance()` ceremony or special access API to learn.
 - **Instances are real objects**, so they can subclass, implement interfaces, and be passed around like anything else.
 - **You can add sharing** to an existing class without touching the code that already constructs it.
-- **Swapping in a non-shared version later** needs no change to how callers create or use the class.
+- **Swapping in a non-shared version later** — Callers keep the same `new` and method calls if you later remove the sharing, but any caller that read what another instance wrote now sees different values, so the change compiles but can still break behavior.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **It is hidden global mutable state** — the same testing and coupling pain as Singleton, but harder to notice.
+- **It is hidden global mutable state** with no `getInstance()` to search for, so the testing and coupling pain of Singleton is harder to spot; where you control the callers, pass one shared object in.
 - **It surprises people**: two "separate" objects silently overwrite each other, breaking what `new` normally implies.
 - **It doesn't cap how many objects exist**, and each one still allocates — a thin shell wrapped around the shared data.
-- **The shared statics leak between tests**, so isolating them means resetting the state before each case.
+- **The shared statics leak between tests**, so the class needs a reset method that tests call before each case. That fixes serial runs only: parallel tests in one process still overwrite each other's state, so run them serially or in separate processes.
 
 ## When to use it
 <!--meta block=usage-->
@@ -72,7 +72,7 @@ flowchart LR
 ### Reach for it when
 <!--meta polarity=when-->
 
-- **You want Singleton's shared state**, but callers should keep creating objects the normal way.
+- **You want Singleton's shared state**, but callers should keep creating objects the normal way and you cannot edit those callers; if you can, pass the shared object in instead.
 - **The shared thing must stay a first-class object** — able to be subclassed, implement interfaces, and be passed as an argument.
 - **You're adding sharing to code** that already calls `new` everywhere and you can't touch those call sites.
 
@@ -124,15 +124,15 @@ console.log(ui === api); // false — they are genuinely different objects
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **What is shared** — All fields or a chosen few. A smaller shared set means fewer surprises.
-- **Where the shared state lives** — Static fields of the class, or a shared dictionary rebound per instance.
-- **Thread safety** — Whether access to the shared fields is guarded by a lock or by atomic types.
+- **What is shared** — All fields or a chosen few. A smaller shared set means fewer surprises: share only what every caller must agree on, such as configuration or flags.
+- **Where the shared state lives** — Static fields of the class (the usual choice where the language has them), or a shared dictionary rebound per instance (the Python Borg idiom).
+- **Thread safety** — Whether access to the shared fields is guarded by a lock or by atomic types. Use a lock when one update spans several fields or reads before it writes; an atomic type fits only a single independent value.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Tests that fail in a different order** — A test that passes alone and fails in a suite shows state leaking between tests.
-- **Number of writers** — How many classes and threads write the shared state.
+- **Number of writers** — How many classes and threads write the shared state. Count them by searching for every write to the static fields; when writers span several modules, pass the object in instead.
 - **Surprise reads** — Bug reports where one instance's change changed another's behavior.
 
 ### Failure modes under load
@@ -140,8 +140,10 @@ console.log(ui === api); // false — they are genuinely different objects
 
 - **Test leakage** — State from one test remains in the next, so results depend on order. Reset the state in setup.
 - **Hidden coupling** — Callers cannot see that two instances share data, since both look ordinary.
-- **Race on shared fields** — Two threads update the shared state without a lock.
-- **Inheritance sharing** — A subclass shares the parent's static state when it was meant to have its own.
+- **Race on shared fields** — Two threads update the shared state without a lock, so one update can be lost.
+- **Inheritance sharing** — A subclass shares the parent's static state when it was meant to have its own. Key the shared store by concrete class so each subclass gets its own slice, and test that two subclasses do not see each other's writes.
+- **Scope surprise** — Static state is shared only inside one process and one copy of the module, so a second process, worker or server instance holds its own copy and the state diverges. Keep state that must span processes in an external store.
+- **Constructor arguments clobber state** — A caller that passes configuration to new either overwrites what every instance reads or has its arguments ignored. Set shared configuration once through an explicit method.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -150,6 +152,8 @@ console.log(ui === api); // false — they are genuinely different objects
 - Access to the shared fields is thread-safe
 - The class documents that its instances share state
 - A dependency passed in was considered first
+- The shared state is needed only within one process, or lives in an external store
+- No caller passes shared configuration through the constructor
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -176,5 +180,9 @@ console.log(ui === api); // false — they are genuinely different objects
 **Often confused with**
 
 - [Singleton](../creational/singleton.md) — Both yield one shared state — Monostate hides it behind ordinary instances, Singleton behind one global object.
+
+**Exposed to**
+
+- [Race Condition](../../../hazards/race-condition.md) — Can fall into race condition when two threads update the shared static fields without a lock
 
 <!-- relationships:end -->

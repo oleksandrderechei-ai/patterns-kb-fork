@@ -90,6 +90,7 @@ Strict types also have a price at the edges. Every external input, from a databa
 - [State](../patterns/gof/behavioral/state.md) — Gives each state only the data and moves it can legally have
 - [Encapsulation](./encapsulation.md) — A private constructor lets only valid values be built
 - [Keep It Simple (KISS)](./kiss.md) — The type that rules out bad states is usually also the simplest model that meets the requirement.
+- [Builder](../patterns/gof/creational/builder.md) — A staged builder applies this to construction, so a half-set object cannot be built
 
 **Prevents**
 

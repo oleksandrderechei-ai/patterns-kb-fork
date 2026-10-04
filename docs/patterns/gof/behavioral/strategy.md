@@ -16,7 +16,7 @@ Wraps a family of interchangeable algorithms behind one interface, so a program 
 ## What it is
 <!--meta block=description-->
 
-One method keeps growing a switch over a mode or type, and every new variant means editing it and risking the others. Strategy moves each branch behind a common interface as its own class or function. The caller holds one and can swap it at run time, so behavior follows a setting or a request without branching.
+One method keeps growing a switch over a mode or type, and every new variant means editing it and risking the others. Strategy moves each branch behind a common interface as its own class or function. The caller holds one and can swap it at run time, so behavior follows a setting or a request without branching at the call site.
 
 ## Explained
 <!--meta block=explain-->
@@ -32,7 +32,7 @@ A strategy is one interchangeable way of doing a job, behind a single interface,
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="The context holds one Strategy and calls its interface. Concrete strategies implement that interface and are freely interchangeable."
+```mermaid caption="The context (the calling object) holds one Strategy and calls its interface. Concrete strategies implement that interface and are freely interchangeable."
 classDiagram
     class Context {
       -strategy
@@ -55,7 +55,7 @@ classDiagram
 - **Function strategies** — In languages with closures, a strategy is just a function passed in — no interface or class ceremony, only a callable with the right signature.
 - **[Null Object](../extra/null-object.md) default** — A do-nothing strategy stands in when none is configured, so callers never have to branch on a missing one.
 - **Strategy registry** — Register named strategies in a map and select one by key from config, a feature flag, or the request itself.
-- **Policy-based design** — Bind the strategy at compile time through generics or templates, trading runtime flexibility for zero dispatch overhead.
+- **Policy-based design** — Bind the strategy at compile time through templates or generics the compiler specialises per type, trading runtime flexibility for calls it can inline. Where generics are erased, the call still dispatches at run time.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -72,7 +72,7 @@ classDiagram
 <!--meta polarity=con-->
 
 - **More types and indirection** than a simple inline branch when there are only two trivial cases.
-- **The caller has to know enough** to pick the right algorithm.
+- **The caller has to know enough** to pick the right algorithm, so give it a default and keep the choice in one place that decides.
 - **Algorithms that share data** need a common context object, or awkward parameter passing.
 - **Overkill when the set of algorithms** is fixed and will never grow.
 
@@ -146,7 +146,7 @@ cart.total(100);         // => 90
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Strategy count** — Number of implementations. Many near-identical ones suggest data would do instead of classes.
+- **Strategy count** — Number of implementations. Ones that differ only in a constant suggest data would do instead of classes.
 - **Branches left on the type** — if or switch statements elsewhere that still test which strategy is in use mean the abstraction leaks.
 - **Selection logs** — Which strategy ran for each call, so a surprising result traces to a choice.
 - **Per-strategy latency** — Timing grouped by strategy, since they may differ in cost.
@@ -158,6 +158,8 @@ cart.total(100);         // => 90
 - **Wrong choice at run time** — The selection rule picks a strategy for an input it was not made for. Test the selector on its own.
 - **Shared mutable state** — A stateful strategy is reused across threads and corrupts its own fields.
 - **Strategy for two cases** — A class hierarchy exists for two variants that a flag would handle, adding files with no gain.
+- **Unknown name** — A configured name is missing from the map, so the lookup fails at run time. Look it up with a clear error and test that every configured name exists.
+- **Swapped shared context** — One request calls use() on a context other requests share, and its choice leaks into theirs. Pass the strategy per call or build a context per request.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -165,7 +167,9 @@ cart.total(100);         // => 90
 - Every strategy passes the same contract tests
 - The selection rule has its own tests and a default
 - Stateful strategies are never shared across threads
-- No code outside the selector asks which strategy is in use
+- No branch outside the selector tests which strategy is in use, logging and metric tags excepted
+- Every configured strategy name resolves to a strategy or fails with a clear error
+- A context shared between requests is never re-pointed with use()
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -192,6 +196,7 @@ cart.total(100);         // => 90
 - [Open/Closed Principle](../../../principles/open-closed.md) — The textbook way to be open to new behaviour and closed to modification.
 - [Composition over Inheritance](../../../principles/composition-over-inheritance.md) — A direct application: hold a behaviour, do not inherit it.
 - [Render Props](../../frontend/render-props.md) — Render props is strategy applied to how a component renders
+- [Dependency Injection](../extra/dependency-injection.md) — The strategy is the collaborator handed to the context from outside, which is what injection supplies
 
 **Alternative to**
 
@@ -215,5 +220,6 @@ cart.total(100);         // => 90
 - [Elevator](../../../designs/elevator.md) — the choice of which car answers is an interchangeable algorithm selected at the boundary and varied independently of its caller
 - [Logging Service](../../../designs/logging-service.md) — two interchangeable, swap-at-construction algorithm families is strategy's core move
 - [Rate Limiter](../../../designs/design-rate-limiter.md) — the limiter swaps Token Bucket for Sliding Window Log per endpoint with no change to calling code — Strategy's whole point
+- [Connect Four](../../../designs/connect-four.md) — Shows the refusal: four directional checkers whose bodies differ only in step values are data, not strategies
 
 <!-- relationships:end -->

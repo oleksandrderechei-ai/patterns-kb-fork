@@ -20,13 +20,13 @@ Objects that call each other directly form a many-to-many web, so one interactio
 ## Explained
 <!--meta block=explain-->
 
-A mediator is one object that all the others talk to instead of talking to each other. When something happens, an object tells the mediator, and the mediator decides who else reacts, so the rules for how they interact live in one place. Choose it over direct calls when those interaction rules are the hard part and are spread across many classes. Between two objects that talk one way, direct calls are simpler. The mediator must own real logic, because one that only forwards calls adds a hop and hides who triggered what.
+A mediator is one object that all the others, its colleagues, talk to instead of talking to each other. When something happens, an object tells the mediator, and the mediator decides who else reacts, so the rules for how they interact live in one place. Choose it over direct calls when those interaction rules are the hard part and are spread across many classes. Between two objects that talk one way, direct calls are simpler. The mediator must own real logic, because one that only forwards calls adds a hop and hides who triggered what.
 
 - **God object.** Every new rule lands in the mediator, so it grows huge and hard to test. Use one mediator per feature or screen.
 - **Rules in the wrong place.** A rule about a single object belongs in that object, so move it back out of the mediator.
-- **Single point of failure.** All control sits in one object, so it becomes a bottleneck and a hidden path to trace.
+- **Single point of failure.** A queued or networked hub caps throughput and stops everyone when it fails, so give it an error path.
 
-**Example.** A signup form has 6 widgets. If each may call the other 5 directly, that is 30 references. With a mediator it is 6 references from the widgets to the hub and 6 back, 12 in all. The hub holds one rule: submit is enabled only when terms is checked and email is filled. Six months later it also holds 40 rules about passwords, country lists and promo codes, and every change conflicts. The fix is one mediator per section (account, address, payment) of about a dozen rules each.
+**Example.** A signup form has 6 widgets. If each may call the other 5 directly, that is 30 references in the worst case. With a mediator it is 6 references from the widgets to the hub and 6 back, 12 in all. The hub holds one rule: submit is enabled only when terms is checked and email is filled. Six months later it also holds 40 rules about passwords, country lists and promo codes, and every change lands in the same class and edits collide. The fix is one mediator per section (account, address, payment) of about 14 rules each.
 
 ## How it works
 <!--meta block=structure-->
@@ -42,7 +42,7 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Message / event bus** — A fully decoupled mediator: colleagues publish typed messages and subscribe to the ones they care about, so senders and receivers never name each other.
+- **Message / event bus** — The [Observer](./observer.md) end of the range: colleagues publish typed messages and subscribe to the ones they care about, so senders and receivers never name each other, though both still share the message types. It stays a mediator only while the bus owns the routing rules; with none, it is plain publish and subscribe.
 - **Request dispatcher** — An in-process mediator that maps a request object to exactly one handler (the MediatR style), keeping controllers thin and handlers isolated.
 - **GUI director** — The classic dialog mediator: one object owns the rules that link widgets, so each widget stays dumb about its siblings.
 - **Hub / broker** — A network-scale mediator — a chat server or air-traffic controller — where clients coordinate only through the central hub, never peer-to-peer.
@@ -55,15 +55,15 @@ flowchart LR
 
 - **The objects depend on one mediator** instead of on each other, so they stay independent.
 - **The rules for how they interact** live in one place, not smeared across many classes.
-- **It turns tangled many-to-many links** into a single hub, cutting connections from roughly n² toward n.
+- **When every object calls every other**, about n(n-1) direct links become about 2n links through the hub, though the hub now depends on every colleague.
 - **Each object gets simpler** and easier to reuse elsewhere.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **The mediator can swell** as it soaks up every rule, until it does too much.
-- **Putting control in one place** makes it a bottleneck and a single point of failure.
-- **The indirection hides who actually triggers what**, making the flow harder to trace.
+- **The mediator can swell** as it soaks up every rule, until it does too much. Split it into one mediator per feature or screen.
+- **In process, putting control in one place** means every rule edit lands in one class; as a queued or networked hub it also caps throughput and is a single point of failure, so give it an error path.
+- **The indirection hides who actually triggers what**, making the flow harder to trace. Log request and handler names.
 - **It's overkill when the objects barely interact**, or only talk one way.
 
 ## When to use it
@@ -100,17 +100,27 @@ class Checkbox extends Component {
     this.mediator.notify(this, "toggled");   // tell the hub, not the button
   }
 }
+class TextField extends Component {
+  text = "";
+  type(value: string): void {
+    this.text = value;
+    this.mediator.notify(this, "changed");
+  }
+}
 class SubmitButton extends Component {
   enabled = false;
   setEnabled(on: boolean): void { this.enabled = on; }
 }
 class SignupForm implements Mediator {
-  constructor(private readonly terms: Checkbox, private readonly submit: SubmitButton) {}
+  // the hub builds its widgets, so each gets the hub at construction
+  readonly terms = new Checkbox(this);
+  readonly email = new TextField(this);
+  readonly submit = new SubmitButton(this);
 
   notify(sender: Component, event: WidgetEvent): void {
-    // one place owns the rule: submit follows the terms checkbox
-    if (sender === this.terms && event === "toggled") {
-      this.submit.setEnabled(this.terms.checked);
+    // one place owns the rule: submit needs terms checked and email filled
+    if (sender === this.terms || sender === this.email) {
+      this.submit.setEnabled(this.terms.checked && this.email.text !== "");
     }
   }
 }
@@ -119,7 +129,7 @@ class SignupForm implements Mediator {
 ## In the wild
 <!--meta block=wild-->
 
-- **MediatR** — Controllers call ISender.Send(request); MediatR resolves the single IRequestHandler for that request type from the dependency injection (DI) container and invokes it, so neither side names the other. Cross-cutting concerns slot in as IPipelineBehavior wrappers that run around every handler, and INotification with Publish() is the multi-handler broadcast variant. {#wild-mediatr}
+- **MediatR** — Controllers call ISender.Send(request); MediatR resolves the single IRequestHandler for that request type from the dependency injection (DI) container and invokes it, so neither side names the other. Cross-cutting concerns slot in as IPipelineBehavior wrappers that run around each request handler. INotification with Publish() is the separate multi-handler broadcast variant. {#wild-mediatr}
 - **MassTransit Mediator** — The MassTransit library for .NET ships an in-process mediator, added with AddMediator, that routes a request or message to its consumer without the sender referencing the consumer. It uses the same shape as MediatR, with consumers and filters. {#wild-masstransit-mediator}
 
 ## In production
@@ -129,17 +139,18 @@ class SignupForm implements Mediator {
 <!--meta polarity=knob-->
 
 - **Mediator granularity** — One mediator for the whole screen or module, or several for smaller groups of colleagues. Smaller ones stay readable.
-- **Sync or async dispatch** — Whether the mediator handles a request in the caller's thread or queues it. Queuing hides latency and needs an error path.
-- **Cross-cutting hooks** — Logging, validation and transactions run around every handler, in a fixed order.
+- **Sync or async dispatch** — Whether the mediator handles a request in the caller's thread or queues it. Queuing hides latency and needs an error path: say whether a failed request returns to the caller or goes to a retry store.
+- **Cross-cutting hooks** — Logging, validation and transactions run around each request handler, in a fixed order. The order sets what a rejected request still triggers: with logging outermost, rejections are logged.
 - **Request versus broadcast** — One handler per request, or many handlers per notification.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Mediator size** — Lines and handler count in the mediator class. Steady growth marks a new god object.
+- **Mediator size** — Lines and handler count in the mediator class. Steady growth marks a new god object. In a request dispatcher, handler count follows feature count, so watch rules per handler instead.
 - **Colleague imports** — Colleagues that import each other again show the mediator is being bypassed.
 - **Handler count per request** — Requests with no handler or several handlers when one was expected.
 - **Time in the mediator** — Latency added per dispatch, from a trace or timing.
+- **Queue depth** — How many requests wait and how long the oldest has waited, when dispatch is queued.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -147,14 +158,14 @@ class SignupForm implements Mediator {
 - **God object** — All the logic collects in the mediator and the colleagues become empty shells. Keep business rules in the colleagues or in handlers.
 - **Missing handler found late** — A request type with no registered handler fails at run time. Check registration at startup.
 - **Hidden control flow** — A call goes through the mediator and a debugger step shows nothing about who answers. Log request and handler names.
-- **Cyclic dispatch** — A handler sends a request that ends up back at itself and the stack grows.
+- **Cyclic dispatch** — A handler sends a request that ends up back at itself and the stack grows. Fail past a set dispatch depth and log the chain of request names.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- Every request type has exactly one registered handler, checked at startup
+- Every request type has exactly one registered handler, checked at startup; a notification may have many
 - Colleagues do not import each other
-- Pipeline behaviors run in a documented order
+- Cross-cutting hooks run in a documented order
 - Handlers have tests that run without the mediator
 
 ## Where it shows up

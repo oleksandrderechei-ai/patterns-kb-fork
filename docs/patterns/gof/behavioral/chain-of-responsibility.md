@@ -16,7 +16,7 @@ Hands a request down a line of handlers — each free to deal with it or pass it
 ## What it is
 <!--meta block=description-->
 
-A chain of responsibility links handler objects in a line. A request enters at the head, and each handler either deals with it or forwards it to its successor, so the sender never names the receiver. It replaces an if/else ladder with a list you can reorder or rebuild at run time. Without a catch-all at the tail, a request can fall off the end unhandled.
+A sender that hard-codes which receiver handles a request grows an if/else ladder with every new case. A chain of responsibility links handlers in a line instead: a request enters at the head, and each handler either deals with it or forwards it to its successor, so the sender never names the receiver. The list can be reordered or rebuilt at run time. Without a catch-all at the tail, a request can fall off the end unhandled.
 
 ## Explained
 <!--meta block=explain-->
@@ -26,7 +26,7 @@ A chain of responsibility links handlers in a line, each holding a reference to 
 - **Silent drop.** A request can fall off the end and nothing throws. Add a last handler that always answers and logs.
 - **Hidden path.** The path lives in a list built at run time, so log which handler took each request and test every order you ship.
 
-**Example.** An expense system routes claims through a team lead (limit 1,000 dollars), a director (10,000) and a finance chief (50,000). A 4,200 dollar claim skips the team lead and the director signs it, after two checks. A 60,000 dollar claim passes all three and falls off the end: with no last handler it returns nothing and the employee waits forever. The fix is a fourth handler that rejects anything it receives and logs the claim id. Put the finance chief first by mistake and every claim, even a 20 dollar one, lands on that desk, and nothing in the chain complains.
+**Example.** An expense system routes claims through a team lead (limit 1,000 dollars), a director (10,000) and a finance chief (50,000). A 4,200 dollar claim skips the team lead and the director signs it, after two checks. A 60,000 dollar claim passes all three and falls off the end: with no last handler it returns nothing and the employee waits forever. The fix is a fourth handler that rejects anything it receives and logs the claim id. Put the finance chief first by mistake and every claim, even a 20 dollar one, lands on that desk, and nothing in the chain complains. As written a ladder is shorter; the chain pays off once finance edits the limits in configuration.
 
 ## How it works
 <!--meta block=structure-->
@@ -62,10 +62,10 @@ flowchart LR
 ### Cons
 <!--meta polarity=con-->
 
-- **A request can slip past every handler** and go unanswered — nothing guarantees a match.
-- **The logic is scattered across a runtime list**, so the flow is harder to trace and debug.
-- **Every extra handler adds another** call and a little latency to each request.
-- **One wrong order** — or a handler that forgets to pass the request on — silently breaks the chain.
+- **A request can slip past every handler** and go unanswered, because nothing guarantees a match; end the chain with a catch-all handler that always answers and logs.
+- **The logic is scattered across a runtime list**, so the flow is harder to trace and debug; log which handler took each request.
+- **Each handler a request passes** before one answers adds a call and a little latency, so requests that reach the tail pay for the whole chain; time each handler to see it.
+- **One wrong order**, or a handler that forgets to pass the request on, silently breaks the chain; pin the order with a test and make every handler consume or forward.
 
 ## When to use it
 <!--meta block=usage-->
@@ -81,7 +81,7 @@ flowchart LR
 <!--meta polarity=avoid-->
 
 - **One object always handles the request** — call it directly; that reads clearer.
-- **Every request must be handled** — here a request that falls through becomes a silent bug.
+- **Every request must be handled** and a default reply from a catch-all handler would be wrong, because a request that falls off the end then becomes a silent bug.
 - **The order never changes** — a plain, explicit sequence beats the extra indirection.
 
 ## Code sketch
@@ -123,7 +123,7 @@ chain.review({ employee: "Mara", amountUsd: 4_200 });
 <!--meta block=wild-->
 
 - **Express.js middleware** — Functions with the (req, res, next) signature run in registration order; each either ends the cycle by sending a response or calls next() to pass control on. Calling next(err) skips straight to the error-handling middleware, distinguished by its four-argument (err, req, res, next) signature. {#wild-express}
-- **Java Servlet Filters** — Each filter doFilter(request, response, chain) does its work then calls chain.doFilter() to reach the next filter; skipping that call short-circuits the request. Order comes from web.xml filter-mapping declarations or the @WebFilter annotation, and the same chain wraps the response on the way back out. {#wild-servlet-filter}
+- **Java Servlet Filters** — Each filter doFilter(request, response, chain) does its work then calls chain.doFilter() to reach the next filter; skipping that call short-circuits the request. Order comes from web.xml filter-mapping declarations; a filter declared only with @WebFilter has no specified order. The same chain wraps the response on the way back out. {#wild-servlet-filter}
 - **ASP.NET Core middleware** — The pipeline is built in Program.cs from app.Use(...) components that receive a next delegate and decide whether to invoke it; app.Run(...) is terminal and never calls next. Registration order is execution order, and each component can run code both before and after awaiting the rest of the pipeline. {#wild-aspnet-core}
 
 ## In production
@@ -133,15 +133,15 @@ chain.review({ employee: "Mara", amountUsd: 4_200 });
 <!--meta polarity=knob-->
 
 - **Chain order** — The sequence handlers run in is the primary dial: auth before rate-limit before routing. Reordering changes behavior with no change to the handlers themselves.
-- **Terminal handler** — Whether a catch-all sits at the tail. Its presence decides whether an unmatched request gets a default response or silently drops off the end.
+- **Catch-all handler** — Whether a catch-all sits at the tail. Its presence decides whether an unmatched request gets a default response or silently drops off the end.
 - **Chain length** — Each handler adds a stack frame and a little latency to every request that passes; keep the chain as short as the routing logic allows.
-- **Short-circuit policy** — Which handlers may end the request versus which must always forward. This governs where the chain can terminate early and where it must fall through.
+- **Short-circuit policy** — Which handlers may end the request and which must always forward it. A handler that ends it early hides every handler after it.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Unhandled-request rate** — Count of requests that reach the tail without being consumed: the observable symptom of a missing or misordered handler.
-- **Per-handler latency** — Time each handler contributes; a chain-wide p99 that climbs faster than any single handler points at chain depth itself.
+- **Unhandled-request rate** — Requests per second that reach the catch-all handler or fall off the end, against a baseline taken before each deploy: a step change is the observable symptom of a missing or misordered handler.
+- **Per-handler latency** — Time each handler contributes, set against the chain's total time for the same request: the gap between the total and the sum of the handler times is dispatch cost, and a gap that grows as handlers are added points at chain depth itself.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -149,13 +149,15 @@ chain.review({ employee: "Mara", amountUsd: 4_200 });
 - **Silent fall-through** — A request matches no handler and drops off the end with no response or a bare 404, looking like a routing bug rather than a chain bug.
 - **Forgotten forward** — A handler neither consumes the request nor calls next(); every downstream handler is skipped and the request stalls or returns nothing.
 - **Order regression** — A handler placed after one that short-circuits never runs: logging installed after auth never sees rejected requests.
+- **Cyclic chain** — A runtime rebuild links a handler back to an earlier one, so the request loops until the stack overflows; reject linking a handler already in the chain.
+- **Double handling** — A handler answers the request and also forwards it, so a later handler answers again and the side effect or response repeats; a pure chain forwards only what it did not consume.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- A terminal catch-all handler is installed so no request can fall off the end unhandled.
+- A catch-all handler is installed at the tail so no request can fall off the end unhandled.
 - Handler order is pinned by a test, since the sequence is behavior and not incidental.
-- Every handler either consumes the request or forwards it, so none can silently drop it.
+- Every handler either consumes the request or forwards it, so none can silently drop it; a test sends each handler a request it should not match and asserts it reached the next handler.
 - Each handler is timed so chain depth shows up in latency traces.
 
 ## Where it shows up
@@ -182,10 +184,11 @@ chain.review({ employee: "Mara", amountUsd: 4_200 });
 - [Composite](../structural/composite.md) — A node's parent becomes its successor, so requests bubble up the tree
 - [Intercepting Validator](../../security/intercepting-validator.md) — A validator chain is the textbook request-filter use
 - [Front Controller](../../enterprise/front-controller.md) — A request chain is how a front controller runs the shared steps
+- [Open/Closed Principle](../../../principles/open-closed.md) — Adding a handler means slotting one in, not editing the others
 
 **Often confused with**
 
-- [Decorator](../structural/decorator.md) — One handler may stop the request; a decorator always passes it on
 - [Pipe-and-Filter](../../architecture/pipe-filter.md) — A handler may stop the request; a pipe-filter stage always passes data on.
+- [Decorator](../structural/decorator.md) — One handler may stop the request; a decorator normally passes it on, though a cache or check can stop it too
 
 <!-- relationships:end -->

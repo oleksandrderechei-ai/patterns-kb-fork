@@ -21,13 +21,13 @@ You want undo or rollback for an object, but reading its state out would mean op
 ## Explained
 <!--meta block=explain-->
 
-A memento is a sealed snapshot of an object's private state. The object itself creates it and can later restore from it, while whatever stores the snapshots can only hold and return them, never read inside. That gives you undo or rollback without making the object's fields public. Choose it over recording and reversing each change when the state is private and the restore must be exact. Where changes are small and frequent, recording them costs far less memory, at the price of a harder restore.
+A memento is a sealed snapshot of an object's private state. The object itself creates it and can later restore from it, while whatever stores the snapshots is meant only to hold and return them, never to read inside. That gives you undo or rollback without making the object's fields public. Choose it over recording and reversing each change when the state is private and the restore must be exact. Where changes are small and frequent, recording only what changed costs less memory, at the price of a harder restore.
 
 - **Memory.** Each snapshot is a full copy, so cost is object size times history depth. Drop old ones, for example keep only the last 50.
 - **Shallow copies.** Copying only the top level shares inner objects with live state, so later edits leak into old snapshots. Copy inner objects too.
-- **Limited reach.** A snapshot covers only the object, so a file it wrote or a request it sent stays done after a restore.
+- **Limited reach.** A snapshot covers only the object, so a file written or a request sent stays done after a restore; undo those separately.
 
-**Example.** A drawing holds 2,000 shapes at about 1 KB each, so 2 MB, and takes a snapshot before every edit. Keeping 50 snapshots costs 100 MB, so the history drops its oldest snapshot beyond 50. A developer copies the list of shapes but not the shapes inside it. You move shape 7 and undo, and the shape stays moved, because the snapshot and the live drawing share the same shape object. A test that moves a shape after the snapshot, restores, and checks the old position catches the bug.
+**Example.** A drawing holds 2,000 shapes at about 1 KB each, so 2 MB, and takes a snapshot before every edit. Keeping 50 snapshots costs 100 MB, so the history drops its oldest snapshot beyond 50. Your code copies the list of shapes but not the shapes inside it. You move shape 7 and undo, and the shape stays moved, because the snapshot and the live drawing share the same shape object. A test that moves a shape after the snapshot, restores, and checks the old position catches the bug.
 
 ## How it works
 <!--meta block=structure-->
@@ -56,7 +56,7 @@ sequenceDiagram
 - **Opaque vs. transparent state** — A true black-box memento exposes nothing to the caretaker; a looser transparent variant uses public fields for convenience and trusts callers not to abuse them.
 - **Full vs. incremental snapshots** — Store the entire state each time, or record only the delta from the previous memento — incremental mementos save memory for large objects at the cost of replay to reconstruct.
 - **Serialized / persistent mementos** — Marshal the snapshot to JSON, a blob, or disk so state survives a restart — the same shape underlies document autosave and crash recovery.
-- **[Immutable snapshots](../../functional/immutability.md)** — Make the originator's state immutable and a memento becomes a mere reference to a shared version — no copying, and undo is a pointer swap.
+- **[Immutable snapshots](../../functional/immutability.md)** — Make the originator's state immutable and a memento becomes a mere reference to a shared version: nothing is copied at snapshot time, and undo is a pointer swap. Each edit builds a new version that shares the unchanged parts, and at this point you hold a version reference rather than a memento (see the avoid list in usage).
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -67,7 +67,7 @@ sequenceDiagram
 - **It saves and restores an object's state** without exposing its internals.
 - **It keeps undo, checkpoint, and rollback logic** out of the object's core code.
 - **Whatever holds the history** does so without knowing what's inside each snapshot.
-- **Snapshots are self-contained** — easy to stack, serialize, or send elsewhere.
+- **Deep-copied full snapshots are self-contained**, so they are easy to stack, serialize or send elsewhere. Incremental ones need their predecessors, and no snapshot carries a live handle.
 
 ### Cons
 <!--meta polarity=con-->
@@ -75,8 +75,8 @@ sequenceDiagram
 - **Taking a full snapshot of a large object** costs time and memory.
 - **Something has to decide** when to drop old snapshots, or the history grows without bound.
 - **Deep-copying mutable state** is easy to get subtly wrong — shared references leak between snapshots.
-- **In languages with no "friend"-style access**, it's hard to keep a snapshot's contents truly private.
-- **A snapshot holds one object's own state**, so anything the operation pushed outward — a collaborator it mutated, a file it wrote, a request it sent, a handle it must re-acquire — is still there after the restore.
+- **In languages with no way to let one class read another's private fields (a "friend")**, it is hard to keep a snapshot's contents private. Give the caretaker a type with no readable fields. Where the language cannot enforce that, privacy rests on convention.
+- **A snapshot holds only the object's own state.** A collaborator it mutated, a file it wrote or a request it sent stays changed after the restore, and a handle it held must be re-acquired. Undo those effects separately, by recording and reversing each one ([Command](./command.md)).
 
 ## When to use it
 <!--meta block=usage-->
@@ -92,17 +92,16 @@ sequenceDiagram
 <!--meta polarity=avoid-->
 
 - **The state is trivial or already public** — a plain copy is simpler.
-- **Snapshots would be big or frequent** enough to blow your memory budget.
+- **Snapshots would be big or frequent** enough to blow your memory budget. Record and reverse each change instead (Command), or store deltas (the incremental variation).
 - **The state is already immutable**, so just keeping a reference to the old value is enough.
 
 ## Code sketch
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — an editor whose undo history is opaque snapshots"
-// The snapshot: only the Editor knows how to read one back.
-class EditorSnapshot {
-  constructor(readonly content: string, readonly cursor: number) {}
-}
+// The snapshot is an empty token; only the Editor can look up what it holds.
+class EditorSnapshot {}
+const saved = new WeakMap<EditorSnapshot, { content: string; cursor: number }>();   // module-private: never exported
 
 class Editor {
   private content = "";
@@ -112,11 +111,14 @@ class Editor {
     this.cursor = this.content.length;
   }
   save(): EditorSnapshot {
-    return new EditorSnapshot(this.content, this.cursor);   // capture full state
+    const snapshot = new EditorSnapshot();
+    saved.set(snapshot, { content: this.content, cursor: this.cursor });   // capture full state
+    return snapshot;
   }
   restore(snapshot: EditorSnapshot): void {
-    this.content = snapshot.content;
-    this.cursor = snapshot.cursor;
+    const state = saved.get(snapshot)!;
+    this.content = state.content;
+    this.cursor = state.cursor;
   }
 }
 
@@ -144,7 +146,7 @@ editor.restore(history.pop()!);    // undo, back to "hello "
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **History depth** — How many mementos the caretaker retains. Unbounded history grows memory for the whole session; a ring buffer caps it at the cost of losing the oldest undo steps.
+- **History depth** — How many mementos the caretaker retains. Unbounded history grows memory for the whole session; a ring buffer caps it at the cost of losing the oldest undo steps. Set the depth to the memory budget divided by one measured snapshot's size; for example, 2 MB snapshots and a 100 MB budget allow 50.
 - **Full vs. incremental snapshots** — Store the whole state each time (fast restore, heavy memory) or only the delta from the previous memento (light memory, but restore must replay the deltas).
 - **Snapshot frequency** — How often state is captured: per keystroke, per command, or on a timer. Finer granularity buys more undo resolution and costs more memory and copy time.
 
@@ -160,14 +162,16 @@ editor.restore(history.pop()!);    // undo, back to "hello "
 - **Unbounded history** — The caretaker never discards old mementos and memory climbs for the life of the session until it exhausts the budget.
 - **Shared-reference leak** — A shallow snapshot captures references into the live mutable state, so a later mutation silently corrupts the stored memento and undo restores the wrong thing.
 - **Snapshot cost under load** — Full snapshots of a large object taken too often dominate CPU, turning every edit into a copy of the entire state.
+- **Restore leaves outside effects behind** — A restore returns the object's own state while a file it wrote, a request it sent or a handle it held is untouched or stale, so undo looks complete and the outside world disagrees.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - Memento history is bounded by a fixed depth or size cap so it cannot grow forever.
-- Snapshots deep-copy mutable state so a later edit cannot mutate a stored memento.
+- Snapshots deep-copy mutable state so a later edit cannot mutate a stored memento, verified by a test that mutates after a save, restores and asserts the old value.
 - Snapshot size and frequency are sized against the memory budget for large originators.
-- Persistent or serialized mementos round-trip correctly across a restart if used for crash recovery.
+- Persistent or serialized mementos round-trip correctly across a restart if used for crash recovery, and carry a format version so one written by older code is migrated or refused, not restored.
+- A restore test runs after an operation that touches outside state and checks what the restore does not undo.
 
 ## Where it shows up
 <!--meta block=fluency-->

@@ -267,7 +267,6 @@ sequenceDiagram
 **Demonstrates**
 
 - [Strategy](../patterns/gof/behavioral/strategy.md) — interchangeable limiting algorithms sit behind one Limiter interface the orchestrator holds without knowing which is running
-- [Factory Method](../patterns/gof/creational/factory-method.md) — LimiterFactory reads the algorithm discriminator from heterogeneous config and constructs the matching Limiter subtype
 - [Token Bucket](../patterns/distributed/resilience/token-bucket.md) — the flagship algorithm — a per-client bucket that refills at a steady rate and permits bursts up to capacity
 - [Open/Closed Principle](../principles/open-closed.md) — adding an algorithm is a new class plus one factory case; the orchestrator and existing limiters stay untouched
 - [Interface Segregation Principle](../principles/interface-segregation.md) — Limiter is a single allow(key) method, so no algorithm carries state or behaviour it does not use
@@ -277,5 +276,6 @@ sequenceDiagram
 - [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) — The whole design is a rate limiter: one allow call per client and endpoint that returns allowed, remaining and retry-after
 - [Sliding Window](../patterns/distributed/coordination/sliding-window.md) — Sliding Window Log is one of the per-endpoint algorithms, keeping a queue of timestamps per client
 - [Immutability](../patterns/functional/immutability.md) — RateLimitResult is a read-only value, set once so the answer cannot change in flight
+- [Factory Method](../patterns/gof/creational/factory-method.md) — LimiterFactory reads the algorithm discriminator from heterogeneous config and constructs the matching Limiter subtype
 
 <!-- relationships:end -->

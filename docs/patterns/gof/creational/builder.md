@@ -20,13 +20,13 @@ An object with many fields, several of them optional, ends up with a wall of pos
 ## Explained
 <!--meta block=explain-->
 
-A builder assembles an object through small named steps, such as timeout(30), and then hands back the finished object from a build() call. It replaces one constructor with a long list of positional arguments, where you cannot tell which number means what. Choose it over constructor overloads when many fields are optional or must be checked together, because the call site then describes itself and the object is valid the moment it exists. If your language has named and default arguments, those give the same readability without a second class.
+A builder assembles an object through small named steps, such as timeout(30), and then hands back the finished object from a build() call. It replaces one constructor with a long list of positional arguments, where you cannot tell which number means what. Choose it over constructor overloads when many fields are optional or must be checked together, because the call site then describes itself and, when build() validates, the object is valid the moment it exists. If your language has named and default arguments, those give the same readability without a second class.
 
 - **Duplicated field list.** The builder repeats the product fields, so every schema change is two edits. Generate the builder or test that both lists match.
-- **Unforced steps.** A chain cannot force required steps to run, so check them in build() and throw a clear error.
-- **Leaky reuse.** A builder reused for a second object keeps values from the first, so create a new one per object.
+- **Unforced steps.** A plain chain cannot force required steps, so check them in build() and throw a clear error, or use a staged builder.
+- **Leaky reuse.** A reused builder keeps the first object's values, so create one per object or clear its state in build().
 
-**Example.** An HTTP request has 8 fields and one is required, the url. The call get("/a", 30, null, null, true, null, 3, false) cannot be read. With a builder it reads request.get("/a").timeout(30).retries(3).build(). A developer forgets the url, and \`build()\` throws "url is required" at once instead of sending a half-made request. Another developer reuses one builder for two requests, and the second request inherits retries(3) from the first. The fix is one builder per request. The cost is that adding a ninth field means editing both the request class and its builder.
+**Example.** An HTTP request has 8 fields and one is required, the url. The call get("/a", 30, null, null, true, null, 3, false) cannot be read. With a builder it reads request.url("/a").timeout(30).retries(3).build(). A developer leaves out url(), and \`build()\` throws "url is required" at once instead of sending a half-made request. Another developer reuses one builder for two requests, and the second request inherits retries(3) from the first. The fix is one builder per request. The cost is that adding a ninth field means editing both the request class and its builder.
 
 ## How it works
 <!--meta block=structure-->
@@ -63,18 +63,18 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - **Assembles a complex object** one step at a time, so construction reads top to bottom.
-- **Separates how an object is built** from what it ends up as, so the same steps can produce different products.
+- **Separates how an object is built** from what it ends up as; in the classic form one Director drives different builders to different products, while a fluent builder makes one.
 - **Replaces telescoping constructors** and long positional argument lists with named, chained steps.
 - **Can check required fields and rules** before it hands back the finished object.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **More code** — a separate builder class for each product is real boilerplate.
+- **More code**: a separate builder class for each product repeats its fields, so every schema change is two edits. Generate the builder, or use named arguments where the language has them.
 - **Overkill for simple objects** that have only a few fields.
 - **Without guards**, a half-configured builder can hand back an incomplete object.
-- **A builder holds mutable state**, so reusing one instance across builds can leak values between them.
-- **Every build spends a second, throwaway object** alongside the product — cheap once, but on a hot construction path such as a parser or serializer building one per row, you are allocating twice to get one thing.
+- **A builder holds mutable state**, so reusing one instance across builds can leak values between them; create one per object or reset it in build().
+- **Each build allocates a throwaway builder** beside the product. That is cheap once, but a parser or serializer building one object per row allocates twice on a hot path; construct directly there, or reuse one builder that resets its state.
 
 ## When to use it
 <!--meta block=usage-->
@@ -141,18 +141,18 @@ const request = new RequestBuilder()
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Required versus optional fields** — What the builder constructor demands and what has a default. Required fields in the constructor stop a half-built object.
+- **Required versus optional fields** — What the builder constructor demands and what has a default. Required fields in the constructor stop a half-built object, and a typed language rejects the omission at compile time. Rules between several fields still need the check in build.
 - **Validation point** — At each setter or once in build. Checking in build lets fields depend on each other.
-- **Reusable builder** — Whether one builder can produce many objects, and whether build copies state or hands it over.
-- **Fluent or stepwise** — A chained interface, or a step interface that forces an order.
+- **Reusable builder** — Whether one builder can produce many objects, and whether build copies state or hands it over. Copy when one builder serves many objects, since handed-over state is shared with earlier products. Hand it over only for a builder used once, which saves the copy.
+- **Fluent or stepwise** — A chained interface, or a staged builder that forces an order with one interface per step. Choose staged when a missing required field must fail at compile time; stay with the chain when the check in build is enough.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Constructor argument counts** — Constructors with many parameters, or telescoping overloads, are where a builder pays off.
-- **Build-time failures** — Count of errors raised in build, which show invalid combinations that are caught early.
+- **Constructor argument counts** — Constructors with many parameters, or telescoping overloads, are where a builder pays off. Count parameters per constructor and overloads per class, then set your team's own limit for when a class gets a builder.
+- **Build-time failures** — Count of errors raised in build, one counter per validation rule. A rising count means callers pass invalid combinations that build catches early; zero while products still fail later means build checks too little.
 - **Allocation per object** — The builder creates extra objects on a hot path, shown by a profiler.
-- **Fields added without builder change** — A field added to the product but not to the builder.
+- **Fields added without builder change** — Count of product fields the builder never sets. A test that checks both field lists match turns each gap into a failure.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -191,6 +191,8 @@ const request = new RequestBuilder()
 **Combines with**
 
 - [Principle of Least Astonishment](../../../principles/least-astonishment.md) — Named construction makes an unexpected argument order impossible
+- [Make Illegal States Unrepresentable](../../../principles/make-illegal-states-unrepresentable.md) — A staged builder makes the compiler reject build() until required fields are set
+- [Immutability](../../functional/immutability.md) — The steps mutate the builder; build() hands back one immutable product
 
 **Alternative to**
 

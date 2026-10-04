@@ -16,18 +16,18 @@ Holds off building a value until something first asks for it — then creates it
 ## What it is
 <!--meta block=description-->
 
-Lazy initialization defers building a value until the first time something needs it. An accessor checks whether the value exists, creates and stores it if not, and returns the cached copy on every later call. It avoids paying for objects a run never uses and slow startup. The cost does not vanish; it moves to the first caller.
+Building every value at startup slows boot and pays for objects a run never uses. Lazy initialization defers each build until the first time something needs it: an accessor checks whether the value exists, creates and stores it if not, and returns the cached copy on every later call. The cost does not vanish; it moves to the first caller.
 
 ## Explained
 <!--meta block=explain-->
 
-Lazy initialization builds a value the first time something asks for it, stores it, and returns the stored copy on every later request. It saves startup time and skips work for features a given run never touches. Choose it over building the value at startup only when construction is expensive and many runs never use the value, otherwise a plain value set at construction is simpler and easier to reason about.
+Lazy initialization builds a value the first time something asks for it, stores it, and returns the stored copy on every later request. It saves startup time and skips work for features a given run never touches. Choose it over building the value at startup only when construction is expensive and many runs never use the value. Otherwise a plain value set at construction is simpler and easier to reason about.
 
 - **Slow first caller.** The first caller pays the whole build time, so warm the value on a background thread if that wait is too long.
-- **Racing builds.** Two callers arriving at once can both build it, so use your language's thread-safe lazy tool, not a hand-written lock check.
+- **Racing builds.** Two callers arriving at once can both build it, so use your language's built-in once-only lazy holder, not a hand-written lock check.
 - **Late errors.** Setup errors appear mid-request, so decide whether a failed build is cached or retried, and log a failure at once.
 
-**Example.** A service has a 400 MB search index that 30 percent of requests use. Built at startup, it adds 20 s to every boot and holds 400 MB in every instance. Built lazily, the 70 percent of requests that skip search never pay, but the first search takes 20 s. Two searches arriving together both start a load, so memory briefly reaches 800 MB. A built-in once-only lazy holder makes the second wait for the first. A background load started at boot then hides the 20 s from users and reports a load error in the logs at once.
+**Example.** A service has a 400 MB search index that 30 percent of requests use. Built at startup, it adds 20 s to every boot and holds 400 MB in every instance. Built lazily, the 70 percent of requests that skip search never pay, but the first search takes 20 s. Nearly every instance soon sees a search and holds 400 MB anyway; the gain is the faster boot. Two searches arriving together both start a load, so memory briefly reaches 800 MB. A built-in once-only lazy holder makes the second search wait. A background load at boot hides the 20 s from searches after it finishes and logs a load error at once, but every instance holds 400 MB again.
 
 ## How it works
 <!--meta block=structure-->
@@ -46,7 +46,7 @@ flowchart TB
 
 - **Lazy field / lazy getter** — A nullable backing field with a check-then-create accessor — the simplest form, inlined right where the value is read.
 - **Memoized holder** — A reusable `Lazy<T>` wrapper that takes a factory, runs it at most once, and caches the outcome behind a clean `get()`.
-- **Thread-safe lazy (double-checked locking)** — Guards the first-access race so two threads don't both build the value — a fast unlocked check followed by a locked one.
+- **Thread-safe lazy (double-checked locking)** — Guards the first-access race so two threads don't both build the value — a fast unlocked check followed by a locked one. It is safe only when the unlocked read is a volatile or atomic read; without that a thread can see a half-built object, so prefer your language's once-only primitive.
 - **[Virtual Proxy](../structural/proxy.md)** — A stand-in with the real object's interface that loads the heavy subject only when a method is actually called.
 - **[Lazy Singleton](../creational/singleton.md)** — The single shared instance is created on the first `getInstance()` rather than at class-load time.
 
@@ -65,7 +65,7 @@ flowchart TB
 <!--meta polarity=con-->
 
 - **A small check on every read** — every read pays an "is it built yet?" check.
-- **The first access is slow** — a latency spike that building up front would have hidden.
+- **The first access is slow** — a latency spike that building up front would have hidden; under a locking mode every caller arriving during the build waits too, so warm the value at startup or on a background thread.
 - **If two threads reach it first at once**, they can race and build it twice unless you add locking.
 - **Building at read time hides setup and errors**, so failures surface late instead of at startup.
 - **Once several deferred values reference each other**, whichever one a caller touches first decides the order they all get built — an ordering nobody wrote down and easy to get subtly wrong.
@@ -90,8 +90,8 @@ flowchart TB
 ## Code sketch
 <!--meta block=sketch-->
 
-```typescript summary="TypeScript — a reusable lazy holder built on a closure"
-// A small holder that runs its factory at most once, then caches.
+```typescript summary="TypeScript — a reusable lazy holder built on a closure; single-threaded, synchronous factory, no locking"
+// A small holder that runs its factory until it succeeds, then caches.
 function lazy<T>(factory: () => T): () => T {
   let cached: T;
   let built = false;
@@ -110,7 +110,7 @@ interface RulesTable {
 
 // Parsing the rules is costly, so defer it until someone asks.
 const rules = lazy<RulesTable>(() => {
-  console.log("parsing rules table…");  // proves it runs at most once
+  console.log("parsing rules table…");  // prints once, on the first successful build
   const table = new Map([["standard", 1], ["priority", 3]]);
   return { lookup: (key) => table.get(key) ?? 0 };
 });
@@ -123,9 +123,9 @@ export const weightOf = (tier: string): number => rules().lookup(tier);
 <!--meta block=wild-->
 
 - **Kotlin by lazy** — A property delegate that runs its initializer on first read and caches the result. The default LazyThreadSafetyMode is SYNCHRONIZED (safe under concurrent first access); PUBLICATION and NONE relax that for single-threaded or performance-sensitive cases. {#wild-kotlin-lazy}
-- **.NET Lazy\<T>** — Wraps a factory so the value is constructed at most once on first access to the Value property. The LazyThreadSafetyMode argument selects between None, PublicationOnly (first thread to finish wins), and ExecutionAndPublication (full locking, the default). {#wild-dotnet-lazy}
-- **Python functools.cached_property** — Computes the property on first access and stores it in the instance \_\_dict\_\_ so later reads bypass the descriptor entirely. It is not thread-safe for concurrent first access, and requires the instance to have a writable \_\_dict\_\_ (no \_\_slots\_\_ without \_\_dict\_\_). {#wild-python-cached-property}
-- **Hibernate lazy loading** — Associations default to FetchType.LAZY, returning a proxy or lazy collection that issues the database fetch only when first touched. Touching it after the persistence session has closed throws LazyInitializationException, and naive iteration is the classic source of N+1 queries. {#wild-hibernate-lazy}
+- **.NET Lazy\<T>** — Wraps a factory so the value is built on first access to the Value property. The LazyThreadSafetyMode argument selects between None, PublicationOnly, and ExecutionAndPublication (full locking, the default). The default builds the value at most once. PublicationOnly lets several threads run the factory, and the first to finish wins while the other results are discarded. {#wild-dotnet-lazy}
+- **Python functools.cached_property** — Computes the property on first access and stores it in the instance \_\_dict\_\_ so later reads bypass the descriptor entirely. Since Python 3.12 it is not thread-safe for concurrent first access, because the per-property lock earlier releases held was removed. It also requires the instance to have a writable \_\_dict\_\_ (no \_\_slots\_\_ without \_\_dict\_\_). {#wild-python-cached-property}
+- **Hibernate lazy loading** — Collection associations (@OneToMany, @ManyToMany) default to FetchType.LAZY, while to-one associations (@ManyToOne, @OneToOne) default to EAGER. A lazy association is a proxy or lazy collection that issues the database fetch only when first touched. Touching it after the persistence session has closed throws LazyInitializationException, and naive iteration is the classic source of N+1 queries. {#wild-hibernate-lazy}
 
 ## In production
 <!--meta block=production-->
@@ -133,15 +133,16 @@ export const weightOf = (tier: string): number => rules().lookup(tier);
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Thread-safety mode** — Whether the guard synchronizes first access. Real named surfaces: .NET LazyThreadSafetyMode (None / PublicationOnly / ExecutionAndPublication) and Kotlin LazyThreadSafetyMode (SYNCHRONIZED / PUBLICATION / NONE). SYNCHRONIZED is safe but serializes first access; NONE is fastest but unsafe under concurrency.
+- **Thread-safety mode** — Whether the guard synchronizes first access. Real named surfaces: .NET LazyThreadSafetyMode (None / PublicationOnly / ExecutionAndPublication) and Kotlin LazyThreadSafetyMode (SYNCHRONIZED / PUBLICATION / NONE). SYNCHRONIZED is safe but serializes first access; NONE is fastest but unsafe under concurrency. Defaults are Kotlin SYNCHRONIZED and .NET ExecutionAndPublication. PUBLICATION and PublicationOnly can run the factory more than once, so use them only when the factory has no side effects.
 - **Eager warm-up** — A generic dial to force construction at startup (or on a background thread) rather than on the first hot-path request, trading fast startup back for predictable first-access latency.
-- **Failure caching policy** — Whether a factory that throws caches the failure permanently or lets the next access retry. Determines if one transient error at first use poisons the value for the process lifetime.
+- **Failure caching policy** — Whether a factory that throws caches the failure permanently or lets the next access retry. Determines if one transient error at first use poisons the value for the process lifetime. Cache deterministic failures such as bad configuration; retry transient ones such as a network error, with a bounded count or delay so every caller does not rerun an expensive factory. In .NET, with a factory method, ExecutionAndPublication and None cache the exception and PublicationOnly does not, so the thread-safety mode also sets this policy.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **First-access latency** — The one-time construction cost paid by whichever request touches the value first — visible as an outlier in per-request p99 rather than in the steady state.
+- **First-access latency** — The one-time construction cost paid by whichever request touches the value first. It shows right after a deploy or scale-out, not in steady state; at volume one slow request per process barely moves p99, so time the factory itself and emit its duration.
 - **Lazy-load fetch count** — For object-relational mapper (ORM) lazy associations, the number of deferred queries issued per request; a sudden multiple of the row count is the N+1 signature.
+- **Factory run count** — How many times the factory has run per process for a once-only value; more than one is the race signature, and a count that rises after errors means a retry policy is firing.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -154,7 +155,7 @@ export const weightOf = (tier: string): number => rules().lookup(tier);
 <!--meta polarity=check-->
 
 - Thread-safety mode is chosen deliberately for the expected concurrency at first access
-- First-access cost on the hot path is acceptable, or the value is warmed at startup
+- The factory's measured duration on a cold boot is under the request timeout, or the value is warmed at startup
 - Decide whether a failed initialization is cached or retried on the next access
 - For ORM lazy loading, confirm iteration does not fan out into N+1 queries
 
@@ -189,5 +190,6 @@ export const weightOf = (tier: string): number => rules().lookup(tier);
 **Exposed to**
 
 - [N+1 Query](../../../hazards/n-plus-1-query.md) — Can fall into n plus 1 query when loading related data on first touch fires one query per row
+- [Race Condition](../../../hazards/race-condition.md) — Two first callers both run the factory and build the value twice unless a once primitive guards it
 
 <!-- relationships:end -->

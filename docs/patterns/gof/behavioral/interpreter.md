@@ -15,25 +15,25 @@ Turns each rule of a small language into its own class, so a sentence becomes a 
 ## What it is
 <!--meta block=description-->
 
-A small language, such as a filter or a pricing rule, sprawls into tangled if and switch code where every new rule touches everything. Interpreter gives each grammar rule its own class and turns a sentence into a tree of those objects, which you evaluate by calling one method on the root. It pays off only for small, stable grammars.
+A small language, such as a filter or a pricing rule, sprawls into tangled if and switch code where every new rule touches everything. Interpreter gives each grammar rule its own class, so a sentence a parser has read becomes a tree of those objects, which you evaluate by calling one method on the root. It pays off only for small, stable grammars.
 
 ## Explained
 <!--meta block=explain-->
 
-An interpreter gives a tiny language one class per grammar rule, and a sentence in that language becomes a tree of those objects. Every class has one method, such as evaluate(context), and calling it on the root makes each node call its children, so the code reads like the grammar. Choose it over a parser generator, a tool that builds a parser from a grammar file, only when the language is small and stable: a filter, a pricing rule, a rule for who sees a feature. Interpreter does not read text, so you still need a parser to build the tree.
+An interpreter gives a tiny language one class per grammar rule, and a sentence in that language becomes a tree of those objects. Every class has one method, such as evaluate(context), and calling it on the root makes each node call its children, so the code reads like the grammar. Choose it over a parser generator, a tool that builds a parser from a grammar file, only when the language is small and stable: a filter, a pricing rule, a rule for who sees a feature. Interpreter does not read text, so you still need a parser to build the tree, which you write by hand or have a generator write.
 
 - **Class count.** Each rule adds a class, so a rich grammar becomes a pile. When the rule count keeps climbing, switch to a generator.
-- **Shared method.** A change to it touches every class, so settle it early and keep it to one.
-- **Slow on big inputs.** Walking a deep tree of objects is slow, so cache results for expressions you evaluate often.
+- **Shared method.** A change to the shared method touches every class, so settle its signature early and keep one method per node.
+- **Slow on big inputs.** A deep tree costs a call per node, so parse once and reuse it; a cached result fits only one context.
 
-**Example.** A shop writes a free-shipping rule as: order over 100 dollars OR member, AND NOT sale item. That is 5 nodes: three checks and two operators. For a member ordering 80 dollars of non-sale goods, the first check fails and the member check passes, so the OR is true. The NOT of a false sale flag is true, so the AND is true and shipping is free. Each evaluation visits all 5 nodes, so 10 rules per customer cost 50 node calls, which is fine. If the rules grow loops and functions, the classes multiply and a parser generator is the better tool.
+**Example.** A shop writes a free-shipping rule as: order over 100 dollars OR member, AND NOT sale item. That is 6 nodes: three checks and three operators (OR, AND, NOT). For a member ordering 80 dollars of non-sale goods, the first check fails and the member check passes, so the OR is true. The NOT of a false sale flag is true, so the AND is true and shipping is free. Each evaluation visits at most 6 nodes, so 10 rules per customer cost at most 60 node calls, which is fine. If the rules grow loops and functions, the classes multiply and a parser generator is the better tool.
 
 ## How it works
 <!--meta block=structure-->
 
-~~~mermaid caption="Each grammar rule is a class. Terminals sit at the leaves, nonterminals compose sub-expressions, and `interpret` walks the tree against a shared context."
+~~~mermaid caption="Each grammar rule is a class. A terminal is a leaf rule with no children, a nonterminal combines other rules, and `evaluate` walks the tree against a shared context."
 flowchart TB
-    AE["AbstractExpression with interpret(ctx)"]
+    AE["AbstractExpression with evaluate(ctx)"]
     TE["TerminalExpression, a literal or variable"]
     NE["NonterminalExpression, a rule over children"]
     CTX["Context, holds the variable bindings"]
@@ -49,7 +49,7 @@ flowchart TB
 
 - **Terminal vs. nonterminal expressions** — The core split: leaf nodes that resolve directly (a number, a variable) versus composite nodes whose result is defined in terms of their children.
 - **Context object** — External state — variable bindings, an input cursor, accumulated output — is threaded through as an explicit `Context` argument rather than hidden in the nodes.
-- **[Visitor](./visitor.md)** — Move the `interpret` logic out of the node classes into a separate visitor, so you can add operations (evaluate, print, type-check) without editing every expression.
+- **[Visitor](./visitor.md)** — Move the `evaluate` logic out of the node classes into a separate visitor, so you can add operations such as print and type-check without editing every expression. The price: a new rule class then needs a new method in every visitor, so pick it when operations change more often than rules.
 - **[Flyweight](../structural/flyweight.md) terminals** — Terminal symbols repeat constantly across an expression; share single instances of them to shrink the tree, as GoF pairs Interpreter with Flyweight.
 
 ## Trade-offs
@@ -60,16 +60,16 @@ flowchart TB
 
 - **Each grammar rule becomes its own class**, so the code reads like the grammar itself.
 - **Adding a new rule** means adding a class; the existing rules stay untouched.
-- **The parsed tree is just data** — evaluate it, print it, or transform it however you need.
+- **The parsed tree is plain data**, so a visitor can evaluate, print or transform it without editing the node classes.
 - **Each rule's behaviour** lives in one small, focused class you can test on its own.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Every rule is a class**, so a rich grammar sprawls into a pile of classes fast.
-- **Building and walking a deep tree of objects** is slow over large inputs.
+- **Every rule is a class**, so a rich grammar sprawls into a pile of classes fast; past that point, move to a parser generator.
+- **Building and walking a deep tree of objects** is slow over large inputs; parse once and reuse the tree, or compile the hot ones.
 - **It only stays practical** for small, stable grammars, not evolving real languages.
-- **Changing the shared node interface** ripples across every expression class.
+- **Changing the shared node interface** ripples across every expression class; settle it early, or move operations into a visitor.
 
 ## When to use it
 <!--meta block=usage-->
@@ -84,8 +84,8 @@ flowchart TB
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The grammar is large or changing fast** — reach for a parser generator like ANTLR instead.
-- **Speed over big inputs** is critical — a tree of objects won't keep up.
+- **The grammar is large or changing fast**: the class count keeps climbing, one change to the shared method touches every class, or authors ask for loops and functions. Reach for a parser generator like ANTLR instead.
+- **Speed over big inputs** is critical, and profiling shows tree walking, not parsing, is the cost. Cache the parsed tree first; if the walk is still the cost, compile hot expressions, as Spring Expression Language's `SpelCompilerMode` does.
 - **A regular expression or a simple lookup** already does the job.
 
 ## Code sketch
@@ -132,16 +132,17 @@ rule.evaluate({ betaTester: true, suspended: false });   // => true
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Max nesting depth** — A cap on how deeply an expression tree may nest, bounding recursion so a deeply nested input cannot exhaust the call stack of the evaluating thread.
-- **Evaluation budget** — A ceiling on time or step count for interpreting one expression, guarding against runaway or adversarial input, especially when the grammar allows repetition.
-- **AST caching** — Whether parsed expression trees are cached and reused or rebuilt on every evaluation. Reparsing per call is the usual throughput cliff.
+- **Max nesting depth** — A cap on how deeply an expression tree may nest, bounding recursion so a deeply nested input cannot exhaust the call stack of the evaluating thread. Start from the deepest legitimate expression in your own data plus headroom, and measure the stack each nesting level uses on your runtime.
+- **Evaluation budget** — A ceiling on time or step count for interpreting one expression, guarding against runaway or adversarial input, especially when the grammar allows repetition. Start from the slowest legitimate expression plus headroom, and keep the step count in per-evaluation state, not in the cached tree, which is shared.
+- **AST caching** — Whether parsed expression trees are cached and reused or rebuilt on every evaluation. Reparsing per call is the usual throughput cliff. Key the cache by expression text, bound its size with eviction, and cache the parsed tree, not results, because a result depends on the context.
 - **Context scope** — What variables, functions, and objects an expression may reach through its context. A restricted context is the guard when the expressions come from untrusted input.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Evaluation latency** — p99 time to walk one expression tree; it grows with tree size and nesting depth and is the first sign that an input is pathological.
-- **Parse-to-evaluate ratio** — How often expressions are parsed versus evaluated. A parse count that tracks the evaluate count means the AST cache is missing or absent.
+- **Evaluation latency** — p99 time to walk one expression tree; it grows with tree size and nesting depth and is an early sign of a slow input.
+- **Parse-to-evaluate ratio** — How often expressions are parsed versus evaluated. A parse count that tracks the evaluate count means the AST cache is absent or never hit.
+- **Limit rejections** — Expressions refused by the depth cap or evaluation budget, per source. A burst from one source points at an attack; a rise across all sources points at a cap set too tight. Baseline p99 evaluation latency from legitimate expressions.
 
 ### Failure modes under load
 <!--meta polarity=failure-->

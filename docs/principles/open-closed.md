@@ -88,6 +88,8 @@ The false positive is a seam over code that has one variant and changes for unre
 - [Decorator](../patterns/gof/structural/decorator.md) — Add responsibilities by wrapping, leaving the wrapped class untouched.
 - [Template Method](../patterns/gof/behavioral/template-method.md) — New behaviour arrives through a subclass hook; the algorithm skeleton stays closed.
 - [Microkernel / Plugin](../patterns/architecture/microkernel.md) — A stable extension application programming interface (API) is the principle applied to a whole product
+- [Chain of Responsibility](../patterns/gof/behavioral/chain-of-responsibility.md) — A new handler joins the chain without touching the existing ones
+- [Observer](../patterns/gof/behavioral/observer.md) — Observer extends a subject by adding listeners, never by editing it.
 
 **Specializes**
 

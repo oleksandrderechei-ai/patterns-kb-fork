@@ -96,5 +96,7 @@ Every fix closes the gap between reading and writing. **Serialize the check and 
 - [Singleton](../patterns/gof/creational/singleton.md) — Lazy initialisation can create two instances when threads check at once
 - [Cache-Aside](../patterns/caching/cache-aside.md) — A read that reloaded an old value can re-cache it just after a write's invalidation
 - [Distributed Lock](../patterns/distributed/coordination/distributed-lock.md) — A lock whose expiry races with a slow holder admits two holders
+- [Monostate](../patterns/gof/extra/monostate.md) — Two threads that update a monostate's shared static fields without a lock can interleave their writes
+- [Lazy Initialization](../patterns/gof/extra/lazy-initialization.md) — Two first callers both run the factory, so the value is built twice
 
 <!-- relationships:end -->

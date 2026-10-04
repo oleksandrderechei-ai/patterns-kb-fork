@@ -21,13 +21,13 @@ A piece of data that many parts care about, such as a view, a logger and a cache
 ## Explained
 <!--meta block=explain-->
 
-An observer setup lets one object, the subject, keep a list of listeners and call each of them whenever its state changes, so the subject never needs to know who they are. Listeners subscribe and unsubscribe while the program runs, and a new reaction is a new listener rather than an edit to the subject. Choose it over calling each dependent directly when the set of dependents changes at run time and the subject must not name them. When the same three things always react, direct calls are easier to trace. At system scale the same trade appears as [event-driven design](../../architecture/eda.md): less coupling, harder tracing of cause.
+An observer setup lets one object, the subject, keep a list of listeners (the observers) and call each of them whenever its state changes, so the subject never needs to know who they are. Listeners subscribe and unsubscribe while the program runs, and a new reaction is a new listener rather than an edit to the subject. Choose it over calling each dependent directly when the set of dependents changes at run time and the subject must not name them. When the same three things always react, direct calls are easier to trace. At system scale the same trade appears as [event-driven design](../../architecture/eda.md): less coupling, harder tracing of cause.
 
-- **No order.** Listener order is not guaranteed, so never let one listener rely on running before another.
+- **No order.** The pattern promises no listener order, and subscribe order is incidental, so never let one listener rely on running before another.
 - **Cascades.** A listener may change another subject, so keep chains shallow and log each notification.
 - **Lapsed listeners.** One that forgets to unsubscribe leaks memory and keeps running on dead data, so unsubscribe when its owner closes.
 
-**Example.** A price object notifies a chart, a log and a cache when the price changes. A screen opens a new chart each time you visit it and subscribes it, but never unsubscribes. After 100 visits the list holds 103 listeners, each price change redraws 100 charts nobody sees, and their memory is never freed. The fix is to unsubscribe when the screen closes, which returns the list to 3. Separately, if the log listener writes a new price back, the price notifies all three again, so a guard that ignores a change to the same value stops the loop.
+**Example.** A price object notifies a chart, a log and a cache when the price changes. A screen opens a new chart each time you visit it and subscribes it, but never unsubscribes. After 100 visits the list holds 103 listeners, each price change redraws 100 charts nobody sees, and their memory is never freed. The fix is to unsubscribe when the screen closes, which returns the list to 3. Separately, if the log listener writes a rounded price back, the price notifies all three again, and a guard that ignores a change to the same value ends the loop after one extra round.
 
 ## How it works
 <!--meta block=structure-->
@@ -58,7 +58,7 @@ sequenceDiagram
 - **Push vs. pull** — The subject either pushes the changed data into `update(payload)`, or just pings observers and lets each pull what it needs via `getState()`. Push is convenient, pull keeps the subject ignorant of what observers want.
 - **[Publish-Subscribe](../../messaging/pubsub.md)** — Insert a broker or event channel between subject and observers so neither holds a reference to the other — the same idea stretched across modules or processes.
 - **Typed / per-aspect events** — Notify with a topic or property name so observers subscribe to parts of the state and skip changes they don't care about.
-- **Weak references / auto-unsubscribe** — Hold observers weakly, or return a disposer from `subscribe`, so a listener that forgets to detach doesn't keep itself alive forever.
+- **Weak references / auto-unsubscribe** — Hold observers weakly so one nothing else references can be collected, though it can then stop firing without warning, or return a disposer from `subscribe` so teardown is one call that the owner must still make.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -68,15 +68,15 @@ sequenceDiagram
 
 - **The subject stays loosely coupled** — it knows only an interface, never the concrete objects listening to it.
 - **You can add or drop listeners** while the program runs, without changing the subject.
-- **A single call fans one change out** to every listener at once.
-- **New listeners need no subject edits** — new listener types plug in without editing the subject (the [open/closed principle](../../../principles/open-closed.md)).
+- **A single call fans one change out** to every listener, one after another under synchronous dispatch, so no caller loops over them.
+- **Adding a new kind of listener needs no subject edit**, which is the [open/closed principle](../../../principles/open-closed.md).
 
 ### Cons
 <!--meta polarity=con-->
 
-- **The order listeners run in is not guaranteed**, so no listener can rely on running before another.
-- **Updates can cascade** — one notification triggers another — and the chain is hard to follow.
-- **Listeners that forget to unsubscribe** (lapsed listeners) leak memory and keep firing on state nobody uses.
+- **The pattern promises no order among listeners**, and subscribe order is incidental, so no listener can rely on running before another.
+- **Updates can cascade** — one notification triggers another — and the chain is hard to follow, so keep chains shallow and guard against re-entry.
+- **Listeners that forget to unsubscribe** (lapsed listeners) stay in memory as long as the subject lives and keep firing on state nobody uses, so unsubscribe when the owner closes or return a disposer from `subscribe`.
 - **Control flow is indirect and implicit**, so stepping through it in a debugger is harder.
 
 ## When to use it
@@ -118,6 +118,7 @@ class PriceFeed {
   publish(symbol: string, price: number): void {
     if (this.#last.get(symbol) === price) return;  // skip unchanged ticks
     this.#last.set(symbol, price);
+    // a throw here skips later observers, and a retry of this price is dropped: #last is already set
     for (const observer of this.#observers) observer.onPrice(symbol, price);
   }
 }
@@ -144,23 +145,23 @@ stop(); // unsubscribed: no further callbacks
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Max-listeners threshold** — A cap on how many observers one subject holds before it warns; Node's EventEmitter defaults to 10 per event and raises a warning past it, raised or lifted with setMaxListeners. Treat the cap as a leak tripwire, not a limit to keep bumping.
-- **Dispatch mode: sync vs. async** — Whether notify fires each observer synchronously inline with the state change, or schedules them on a microtask/queue. Sync keeps ordering and causality tight; async keeps a slow observer from blocking the writer.
+- **Max-listeners threshold** — A cap on how many observers one subject holds before it warns; Node's EventEmitter defaults to 10 per event, warns past it, and setMaxListeners raises or removes the ceiling. Treat the cap as a leak tripwire, not a limit to keep bumping.
+- **Dispatch mode: sync vs. async** — Whether the subject's broadcast call (notify here, publish in the sketch) fires each observer synchronously inline with the state change, or schedules them on a microtask/queue. Sync keeps ordering and causality tight; async returns control to the subject sooner, but a microtask runs on the same thread, so only a queue drained elsewhere isolates a slow observer.
 - **Replay of last value** — Whether the subject retains its current value and hands it to a late subscriber on attach, or only forwards future changes. Replay avoids a cold observer sitting on stale defaults; plain forwarding keeps the subject stateless.
-- **Observer-error isolation** — Whether one throwing observer aborts the whole broadcast or is caught so the remaining observers still run. Isolation trades a swallowed exception for the guarantee that one bad listener can't starve the rest.
+- **Observer-error isolation** — Whether one throwing observer aborts the whole broadcast or is caught so the remaining observers still run. Isolation trades a swallowed exception for the assurance that one throwing listener cannot abort the rest, so route each caught error to a logger rather than drop it; a blocking listener still delays later ones under sync dispatch.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Listener count per subject** — How many observers are attached to each subject. A count that only ever climbs is the signature of subscriptions that never detach.
+- **Listener count per subject** — How many observers are attached to each subject. A count that keeps climbing while load is steady is the signature of subscriptions that never detach.
 - **Notify fan-out duration** — Wall time spent inside one broadcast cycle. Under synchronous dispatch a single slow observer inflates it, and every later observer waits behind it.
 - **Notification nesting depth** — How deep cascading notifications nest when one observer's reaction mutates the subject and re-triggers notify. A depth that grows per event warns of a re-entrant loop.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Lapsed-listener leak** — Observers that never unsubscribe accumulate on the subject; heap and listener count climb, and detached objects keep firing on state they no longer care about. Shows up as a rising max-listeners warning or growing retained memory.
-- **Re-entrant cascade** — An observer mutates the subject inside its own update, re-entering notify before the first pass finishes. Unbounded, it recurses until the stack overflows; bounded, it still produces surprising duplicate deliveries.
+- **Lapsed-listener leak** — Observers that never unsubscribe accumulate on the subject; heap and listener count climb, and observers whose owner has closed keep firing on state they no longer care about. Shows up as a rising max-listeners warning or growing retained memory.
+- **Re-entrant cascade** — An observer mutates the subject inside its own update, re-entering notify before the first pass finishes. Unbounded, it recurses until the stack overflows under synchronous dispatch, or keeps the queue busy forever under async; bounded, it still produces surprising duplicate deliveries.
 - **Slow or throwing observer stalls the broadcast** — Under synchronous dispatch one blocking observer delays every later one, and one that throws — without isolation — aborts the rest of the list, so downstream observers silently miss the event.
 
 ### Readiness checklist
@@ -193,6 +194,7 @@ stop(); // unsubscribed: no further callbacks
 
 - [Flux](../../frontend/flux.md) — A Flux store is an observable; views subscribe and re-render on change
 - [MVC](../../architecture/mvc.md) — Classic model-view-controller (MVC) notifies its views through exactly this registration
+- [Open/Closed Principle](../../../principles/open-closed.md) — New listeners plug in without editing the subject, which is the open/closed shape.
 
 **Generalizes**
 

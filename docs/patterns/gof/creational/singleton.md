@@ -20,7 +20,7 @@ A singleton is a class that permits one instance of itself and gives the whole p
 ## Explained
 <!--meta block=explain-->
 
-A singleton is a class that lets only one instance of itself exist, through a hidden constructor and a static accessor, and gives the whole program a fixed way to reach it. Choose it only for a resource that is truly one per process and has no interesting state, such as a logger. For everything else, create one instance where the app starts and pass it to whoever needs it, which gives the same single copy without the global access. The count is rarely the problem. The reach is: every class that calls the singleton depends on it without saying so, so tests share its state, pass or fail depending on order, and cannot swap in a fake.
+A singleton gives the whole program one shared object without passing it around: the class hides its constructor and hands out its single instance through a static accessor. Choose it only for a resource that is truly one per process and holds no state that tests or requests need to keep separate, such as a logger. For everything else, create one instance where the app starts and pass it to whoever needs it, which gives the same single copy without the global access. The count is rarely the problem. The reach is: every class that calls the singleton depends on it without saying so, so tests share its state, pass or fail depending on order, and cannot swap in a fake.
 
 - **Hidden coupling.** Callers depend on it without saying so, so let a container or your startup code own the instance and hand it in.
 - **Not global.** Each process and server holds its own copy, so use a database or lock service for anything that must be unique across servers.
@@ -47,8 +47,8 @@ classDiagram
 
 - **Eager initialization** — The instance is built at class-load time. Simplest and inherently thread-safe, but the object is created even if it's never used.
 - **[Lazy initialization](../extra/lazy-initialization.md)** — The instance is created on the first `getInstance()` call, deferring expensive setup — at the cost of needing care under concurrency.
-- **Thread-safe / double-checked locking** — Guard the lazy creation with a lock and re-check inside it, so two concurrent callers can't each build an instance.
-- **Idiom-supplied singleton** — Several languages already solve the initialization race, and using their idiom beats writing the guard by hand. A single-element `enum` in Java is constructed once by the class loader and is safe against serialization and reflection attacks as well — Effective Java calls it the best way to implement a singleton. A function-local `static` inside the accessor does the same job in C++, where the standard requires exactly one thread to run the initializer while the others wait; it is known as the Meyers singleton. Both hand the once-only guarantee to the runtime, so there is no lock and no double-check to get subtly wrong. You give up construction itself: neither form takes an argument, and the Java enum cannot extend a class.
+- **Thread-safe / [double-checked locking](../../concurrency/double-checked-locking.md)** — Guard the lazy creation with a lock and re-check inside it, so two concurrent callers can't each build an instance. On the JVM the shared field must be `volatile`, or another thread can see a half-built object.
+- **Idiom-supplied singleton** — Some languages already solve the initialization race, so you write no guard by hand. A single-element `enum` in Java is constructed once, at class initialization, and is safe against serialization and reflection attacks; Effective Java calls it often the best way to implement a singleton. A function-local `static` inside the accessor does the same job in C++ since C++11, where the standard requires exactly one thread to run the initializer while the others wait; it is known as the Meyers singleton. Both leave the once-only guarantee to the runtime, so there is no lock and no double-check to get subtly wrong. You give up constructor arguments: neither form takes one, and the Java enum cannot extend a class.
 - **[Monostate](../extra/monostate.md) (Borg)** — Allow many instances but back them all with shared static state, so every object behaves as one — uniqueness of state without uniqueness of object.
 - **Module-level singleton** — In module systems the module is cached after first load, so a plain module-level value is a de facto singleton with none of the boilerplate.
 
@@ -61,7 +61,7 @@ classDiagram
 - **Guarantees one authoritative instance** for something that really is single — a config, a connection pool, a logger.
 - **Reachable from anywhere** without passing the object through every constructor and call.
 - **Lazy creation** puts off expensive setup until the instance is first actually needed.
-- **Controls creation completely**, so it's impossible to accidentally spin up a second one.
+- **Controls creation**, so code outside the class cannot build a second instance by calling the constructor; an unguarded lazy race, reflection or serialization can still make one.
 
 ### Cons
 <!--meta polarity=con-->
@@ -80,8 +80,8 @@ classDiagram
 <!--meta polarity=when-->
 
 - **There is genuinely only one of the resource** — a hardware device, an OS handle, one log sink.
-- **An expensive, shared object** needs to be reused everywhere, like a connection pool or a cache.
-- **You need exactly one coordination point** and passing it around by hand isn't practical.
+- **An expensive, shared object** needs to be reused everywhere, like a connection pool. If it also holds a cache, bound the cache and add a test reset seam.
+- **You need exactly one coordination point** per process that must never be duplicated; across servers use a database or lock service instead.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -103,7 +103,7 @@ class AppConfig {
   private static instance: AppConfig | null = null;
   readonly settings: Settings;
 
-  // A private constructor blocks `new AppConfig()` from outside.
+  // private is a compile-time check only: plain JS or a cast can still call new.
   private constructor() {
     this.settings = Object.freeze({
       port: Number(process.env.PORT ?? 8080),
@@ -112,7 +112,7 @@ class AppConfig {
   }
 
   static getInstance(): AppConfig {
-    return (AppConfig.instance ??= new AppConfig());   // built once, on first access
+    return (AppConfig.instance ??= new AppConfig());   // built once, on first access; race-free only because JS runs one thread, so build eagerly on a threaded runtime
   }
 }
 
@@ -134,7 +134,7 @@ console.log(a === b);          // true
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Initialization timing** — Eager construction in a static field at class load is inherently race-free; lazy construction on first access defers expensive setup at the cost of needing concurrency guards. Prefer eager unless the object is costly and may go unused.
+- **Initialization timing** — Eager construction in a static field at class load has no first-access race; lazy construction on first access defers expensive setup but needs a concurrency guard. Eager still carries the static-initialization deadlock listed under failure modes. Prefer eager unless the object is costly and may go unused.
 - **Thread-safe accessor strategy** — How concurrent first callers are serialized: a fully synchronized accessor, double-checked locking on a volatile field, or the initialization-on-demand holder idiom that leans on class-load semantics for lazy, lock-free init.
 - **Reset / replacement seam** — A test-only hook to clear or swap the stored instance so each case starts clean. Without it the one instance persists for the whole process, including across an entire test suite.
 
@@ -142,7 +142,8 @@ console.log(a === b);          // true
 <!--meta polarity=signal-->
 
 - **Accessor lock contention** — If every getInstance() acquires a lock, threads block on that monitor under high call rates; visible as wait time on the lock in a contention profile.
-- **Constructor invocation count** — Instrument the private constructor and count how often it runs; across a process it must fire exactly once. A second construction means the uniqueness guard is broken.
+- **Constructor invocation count** — Instrument the private constructor and count how often it runs; it must fire exactly once per class loader, or per resolved module path in Node. A second construction means the uniqueness guard is broken or the class was loaded twice.
+- **Order sensitivity** — Run the suite in shuffled order and each case alone; a case that fails only after another points to state leaked through the instance.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -150,6 +151,7 @@ console.log(a === b);          // true
 - **Duplicate instances from an init race** — Under concurrent first access, unsynchronized lazy creation lets two threads each construct one instance; the extras leak and cause intermittent, hard-to-reproduce inconsistency.
 - **Static-initialization deadlock** — Two singletons that reference each other during static initialization can deadlock or expose a half-constructed instance, since class init holds a per-class lock until it completes.
 - **State leaks across tests** — The process-wide instance carries mutable state from one test into the next, producing order-dependent flakiness that vanishes when a case runs in isolation.
+- **Duplicate instances from a doubled module** — One module resolved from two paths, a second installed copy of a package, or a second class loader builds two instances; the constructor count above shows it.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -190,8 +192,8 @@ console.log(a === b);          // true
 
 **Often confused with**
 
-- [Service Locator](../extra/service-locator.md) — Both hand back a shared instance; dependency injection (DI) is usually better
 - [Monostate](../extra/monostate.md) — Shared state vs. a single object — often conflated
+- [Service Locator](../extra/service-locator.md) — A singleton fixes one class as its only instance; a service locator is a registry that returns many services by key.
 
 **Prevents**
 

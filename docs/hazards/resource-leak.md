@@ -69,13 +69,14 @@ Then make the wait survivable. Add an **acquisition timeout** so a caller that c
 
 **Mitigated by**
 
-- [Object Pool](../patterns/gof/extra/object-pool.md) — Checkout/return discipline and validation reclaim what callers forget to release
 - [Thread Pool](../patterns/concurrency/thread-pool.md) — Bounded, reused, lifecycle-managed workers instead of leak-prone ad-hoc threads
 - [Semaphore](../patterns/concurrency/semaphore.md) — Acquire-with-timeout and a guaranteed release keep permits from draining away
+- [Object Pool](../patterns/gof/extra/object-pool.md) — Centralised checkout and return plus leak detection bound and surface a missed release; an object never returned is still lost
 
 **Threatens**
 
 - [Lease](../patterns/distributed/coordination/lease.md) — A holder that never releases keeps the grant until the lease expires
 - [Big Compute](../patterns/architecture/big-compute.md) — Burst pools are the case where a leak costs most.
+- [Iterator](../patterns/gof/behavioral/iterator.md) — An abandoned lazy iterator keeps its handle open until it is closed.
 
 <!-- relationships:end -->

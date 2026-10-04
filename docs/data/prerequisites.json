@@ -9,7 +9,7 @@
       "definition": "Exactly one instance, globally accessible",
       "route": "/patterns/gof/creational/singleton.html",
       "requires": [],
-      "related": ["dependency-injection", "service-locator", "monostate", "lazy-initialization", "abstract-factory", "null-object", "double-checked-locking"]
+      "related": ["dependency-injection", "monostate", "lazy-initialization", "abstract-factory", "null-object", "double-checked-locking", "service-locator"]
     },
     {
       "id": "factory-method",
@@ -25,7 +25,7 @@
       "definition": "Families of related objects behind one interface",
       "route": "/patterns/gof/creational/abstract-factory.html",
       "requires": [],
-      "related": ["prototype", "builder", "singleton", "bridge"]
+      "related": ["prototype", "builder", "singleton", "bridge", "dependency-injection"]
     },
     {
       "id": "builder",
@@ -33,7 +33,7 @@
       "definition": "Construct a complex object step by step",
       "route": "/patterns/gof/creational/builder.html",
       "requires": [],
-      "related": ["abstract-factory", "factory-method", "prototype", "least-astonishment"]
+      "related": ["abstract-factory", "factory-method", "prototype", "least-astonishment", "make-illegal-states-unrepresentable", "immutability"]
     },
     {
       "id": "prototype",
@@ -65,7 +65,7 @@
       "definition": "Tree structures — treat parts and wholes alike",
       "route": "/patterns/gof/structural/composite.html",
       "requires": [],
-      "related": ["iterator", "visitor", "atomic-design", "flyweight", "interpreter", "chain-of-responsibility", "decorator", "specification"]
+      "related": ["visitor", "atomic-design", "flyweight", "interpreter", "chain-of-responsibility", "specification", "decorator", "iterator"]
     },
     {
       "id": "decorator",
@@ -73,7 +73,7 @@
       "definition": "Attaches behavior without changing the class",
       "route": "/patterns/gof/structural/decorator.html",
       "requires": [],
-      "related": ["proxy", "composite", "adapter", "chain-of-responsibility", "open-closed", "composition-over-inheritance", "render-props", "liskov-substitution"]
+      "related": ["proxy", "adapter", "open-closed", "composition-over-inheritance", "render-props", "liskov-substitution", "composite", "chain-of-responsibility"]
     },
     {
       "id": "facade",
@@ -89,7 +89,7 @@
       "definition": "Shares state to support huge numbers of objects",
       "route": "/patterns/gof/structural/flyweight.html",
       "requires": [],
-      "related": ["factory-method", "object-pool", "composite", "interpreter", "state"]
+      "related": ["factory-method", "object-pool", "composite", "interpreter", "state", "immutability"]
     },
     {
       "id": "proxy",
@@ -105,7 +105,7 @@
       "definition": "Passes a request along a chain of handlers",
       "route": "/patterns/gof/behavioral/chain-of-responsibility.html",
       "requires": [],
-      "related": ["command", "composite", "decorator", "intercepting-validator", "front-controller", "pipe-filter"]
+      "related": ["command", "composite", "intercepting-validator", "front-controller", "pipe-filter", "decorator", "open-closed"]
     },
     {
       "id": "command",
@@ -129,7 +129,7 @@
       "definition": "Traverses a collection without exposing its structure",
       "route": "/patterns/gof/behavioral/iterator.html",
       "requires": [],
-      "related": ["aggregate", "composite", "factory-method", "visitor"]
+      "related": ["aggregate", "factory-method", "visitor", "composite", "copy-on-write"]
     },
     {
       "id": "mediator",
@@ -153,7 +153,7 @@
       "definition": "Notifies dependents automatically on state change",
       "route": "/patterns/gof/behavioral/observer.html",
       "requires": [],
-      "related": ["flux", "mvc", "mediator", "future-promise"]
+      "related": ["flux", "mvc", "mediator", "future-promise", "open-closed"]
     },
     {
       "id": "state",
@@ -169,7 +169,7 @@
       "definition": "Swaps an algorithm's implementation at runtime",
       "route": "/patterns/gof/behavioral/strategy.html",
       "requires": [],
-      "related": ["state", "null-object", "microkernel", "template-method", "feature-flag", "bridge", "command", "open-closed", "composition-over-inheritance", "render-props", "specification"]
+      "related": ["state", "null-object", "microkernel", "template-method", "feature-flag", "bridge", "command", "open-closed", "composition-over-inheritance", "render-props", "specification", "dependency-injection"]
     },
     {
       "id": "template-method",
@@ -193,7 +193,7 @@
       "definition": "Dependencies are handed in, never built inside",
       "route": "/patterns/gof/extra/dependency-injection.html",
       "requires": [],
-      "related": ["hexagonal", "singleton", "service-locator", "monostate", "currying", "dependency-inversion", "convention-over-configuration"]
+      "related": ["hexagonal", "singleton", "service-locator", "monostate", "currying", "dependency-inversion", "convention-over-configuration", "abstract-factory", "strategy"]
     },
     {
       "id": "null-object",
@@ -201,7 +201,7 @@
       "definition": "A do-nothing stand-in instead of a null check",
       "route": "/patterns/gof/extra/null-object.html",
       "requires": [],
-      "related": ["strategy", "singleton", "factory-method", "dummy-object", "liskov-substitution"]
+      "related": ["strategy", "singleton", "factory-method", "dummy-object", "liskov-substitution", "fallback"]
     },
     {
       "id": "object-pool",
@@ -217,7 +217,7 @@
       "definition": "A registry that hands back shared services on request",
       "route": "/patterns/gof/extra/service-locator.html",
       "requires": [],
-      "related": ["singleton", "dependency-injection", "provider", "lazy-initialization"]
+      "related": ["dependency-injection", "provider", "lazy-initialization", "singleton"]
     },
     {
       "id": "lazy-initialization",
@@ -481,7 +481,7 @@
       "definition": "Return a reduced answer — a stale copy, a default, a simpler result — when a dependency fails, so the request still succeeds",
       "route": "/patterns/distributed/resilience/fallback.html",
       "requires": [],
-      "related": ["circuit-breaker", "timeout-deadline", "load-shedding", "failover", "bulkhead"]
+      "related": ["circuit-breaker", "timeout-deadline", "load-shedding", "failover", "bulkhead", "null-object"]
     },
     {
       "id": "retry-backoff",
@@ -1305,7 +1305,7 @@
       "definition": "Readers never lock — writers publish a new copy",
       "route": "/patterns/concurrency/copy-on-write.html",
       "requires": [],
-      "related": ["lock-free", "rw-lock"]
+      "related": ["lock-free", "rw-lock", "iterator"]
     },
     {
       "id": "mutex",
@@ -1769,7 +1769,7 @@
       "definition": "Never mutate — always return new data",
       "route": "/patterns/functional/immutability.html",
       "requires": [],
-      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "dto"]
+      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "dto", "builder", "flyweight"]
     },
     {
       "id": "lens-optics",
@@ -2353,7 +2353,7 @@
       "definition": "Open for extension, closed for modification — add behavior by adding code, not editing it",
       "route": "/principles/open-closed.html",
       "requires": [],
-      "related": ["liskov-substitution", "dependency-inversion", "strategy", "decorator", "template-method", "microkernel"]
+      "related": ["liskov-substitution", "dependency-inversion", "strategy", "decorator", "template-method", "microkernel", "chain-of-responsibility", "observer"]
     },
     {
       "id": "liskov-substitution",
@@ -2457,7 +2457,7 @@
       "definition": "Shape types so an invalid combination of values cannot be written, and the compiler rejects it",
       "route": "/principles/make-illegal-states-unrepresentable.html",
       "requires": [],
-      "related": ["value-object", "immutability", "fail-fast", "state", "encapsulation", "kiss"]
+      "related": ["value-object", "immutability", "fail-fast", "state", "encapsulation", "kiss", "builder"]
     },
     {
       "id": "rule-of-three",

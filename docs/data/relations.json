@@ -1224,13 +1224,6 @@
       "note_b": "a pool of live connections amortises setup cost across a million checks a second inside the latency budget"
     },
     {
-      "a": "elevator",
-      "verb": "demonstrates",
-      "b": "state",
-      "note_a": "a car's direction is an explicit IDLE/UP/DOWN state machine whose value alone decides whether step() stops, reverses, or advances",
-      "note_b": "each Elevator's per-tick behaviour is dispatched entirely on its current direction state — the textbook use of the pattern"
-    },
-    {
       "a": "fb-news-feed",
       "verb": "demonstrates",
       "b": "fan-out",
@@ -3044,13 +3037,6 @@
     {
       "a": "design-rate-limiter",
       "verb": "demonstrates",
-      "b": "factory-method",
-      "note_a": "LimiterFactory reads the algorithm discriminator from heterogeneous config and constructs the matching Limiter subtype",
-      "note_b": "creation of the right limiter from runtime config is concentrated in one factory, exactly the problem factories solve"
-    },
-    {
-      "a": "design-rate-limiter",
-      "verb": "demonstrates",
       "b": "token-bucket",
       "note_a": "the flagship algorithm — a per-client bucket that refills at a steady rate and permits bursts up to capacity",
       "note_b": "Rate Limiter implements Token Bucket end to end, including on-demand refill and retry-time math"
@@ -4390,13 +4376,6 @@
       "b": "race-condition",
       "note_a": "A reader never observes a half-updated structure — it sees one complete version or the next",
       "note_b": "Publish a finished copy rather than mutating in place, so no reader can catch a partial write"
-    },
-    {
-      "a": "object-pool",
-      "verb": "prevents-hazard",
-      "b": "resource-leak",
-      "note_a": "A pool with checkout/return discipline and validation reclaims what callers forget",
-      "note_b": "Checkout/return discipline and validation reclaim what callers forget to release"
     },
     {
       "a": "object-pool",
@@ -6947,13 +6926,6 @@
       "note_b": "A dispatcher routes each request object to its one handler"
     },
     {
-      "a": "iterator",
-      "verb": "combines-with",
-      "b": "composite",
-      "note_a": "Iterate a tree uniformly",
-      "note_b": "Iterate a tree uniformly"
-    },
-    {
       "a": "mediator",
       "verb": "often-confused-with",
       "b": "observer",
@@ -7145,13 +7117,6 @@
     {
       "a": "singleton",
       "verb": "often-confused-with",
-      "b": "service-locator",
-      "note_a": "Both hand back a shared instance; dependency injection (DI) is usually better",
-      "note_b": "Both hand back a shared instance; dependency injection (DI) is usually better"
-    },
-    {
-      "a": "singleton",
-      "verb": "often-confused-with",
       "b": "monostate",
       "note_a": "Shared state vs. a single object — often conflated",
       "note_b": "Both yield one shared state — Monostate hides it behind ordinary instances, Singleton behind one global object."
@@ -7318,13 +7283,6 @@
       "note_b": "Add behavior vs. control access — same shape"
     },
     {
-      "a": "composite",
-      "verb": "often-confused-with",
-      "b": "decorator",
-      "note_a": "Both wrap recursively; intent differs",
-      "note_b": "Both wrap recursively; intent differs"
-    },
-    {
       "a": "adapter",
       "verb": "often-confused-with",
       "b": "decorator",
@@ -7337,13 +7295,6 @@
       "b": "adapter",
       "note_a": "Wrap an external system vs. convert an interface",
       "note_b": "Wrap an external system vs. convert an interface"
-    },
-    {
-      "a": "chain-of-responsibility",
-      "verb": "often-confused-with",
-      "b": "decorator",
-      "note_a": "One handler may stop the request; a decorator always passes it on",
-      "note_b": "Always augment and forward vs. maybe handle and halt"
     },
     {
       "a": "adapter",
@@ -9915,13 +9866,6 @@
       "note_b": "Fan-out is the send half of scatter-gather, which then adds a collect and merge step"
     },
     {
-      "a": "adapter",
-      "verb": "often-confused-with",
-      "b": "proxy",
-      "note_a": "Changes one interface into the one the client expects",
-      "note_b": "Keeps the same interface as the real object and controls access to it"
-    },
-    {
       "a": "event-sourcing",
       "verb": "often-confused-with",
       "b": "change-data-capture",
@@ -12106,13 +12050,6 @@
       "note_b": "A service layer tends to collect every use case into one manager class"
     },
     {
-      "a": "facade",
-      "verb": "exposed-to",
-      "b": "god-object",
-      "note_a": "Can fall into god object when a facade that starts holding state or logic becomes the same class",
-      "note_b": "A facade that starts holding state or logic becomes the same class"
-    },
-    {
       "a": "microservices",
       "verb": "exposed-to",
       "b": "golden-hammer",
@@ -13056,6 +12993,167 @@
       "b": "busy-database",
       "note_a": "Moves analytical reads to a separate store, so an analyst's query stops competing with checkout.",
       "note_b": "Analytical reads on the operational store are what a separate analytics path takes off it."
+    },
+    {
+      "a": "design-rate-limiter",
+      "verb": "demonstrates",
+      "b": "factory-method",
+      "note_a": "LimiterFactory reads the algorithm discriminator from heterogeneous config and constructs the matching Limiter subtype",
+      "note_b": "LimiterFactory.create switches on a config string to pick the limiter class: the parameterized variation, with no creator subclass"
+    },
+    {
+      "a": "adapter",
+      "verb": "often-confused-with",
+      "b": "proxy",
+      "note_a": "Convert an interface vs. keep the same interface and control access",
+      "note_b": "Keeps the same interface as the real object and controls access to it"
+    },
+    {
+      "a": "composite",
+      "verb": "often-confused-with",
+      "b": "decorator",
+      "note_a": "Both wrap recursively; a composite combines many children, a decorator adds behaviour to one wrapped object",
+      "note_b": "Both wrap recursively; a decorator adds behaviour to one wrapped object, a composite combines many children"
+    },
+    {
+      "a": "chain-of-responsibility",
+      "verb": "often-confused-with",
+      "b": "decorator",
+      "note_a": "One handler may stop the request; a decorator normally passes it on, though a cache or check can stop it too",
+      "note_b": "Layers behaviour on a call and normally forwards it, vs. a handler that may deal with the request and stop"
+    },
+    {
+      "a": "facade",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Can fall into god object when a facade starts holding state or logic and grows into one class that everything leans on",
+      "note_b": "A facade that starts holding state or logic grows into one class that everything leans on"
+    },
+    {
+      "a": "iterator",
+      "verb": "combines-with",
+      "b": "composite",
+      "note_a": "One iterator walks leaves and branches alike",
+      "note_b": "An iterator walks the composite tree so callers need not write the recursion"
+    },
+    {
+      "a": "elevator",
+      "verb": "demonstrates",
+      "b": "state",
+      "note_a": "a car's direction is an explicit IDLE/UP/DOWN state machine, held as an enum and switched in step() together with the pending stops, not a class per state",
+      "note_b": "a car's IDLE/UP/DOWN direction is an explicit state machine, held as an enum and switched in step(), not a class per state"
+    },
+    {
+      "a": "singleton",
+      "verb": "often-confused-with",
+      "b": "service-locator",
+      "note_a": "A singleton fixes one class as its only instance; a service locator is a registry that returns many services by key.",
+      "note_b": "A singleton is one class that is its own sole instance; a locator is a registry that returns many services by key, each with its own lifetime."
+    },
+    {
+      "a": "object-pool",
+      "verb": "prevents-hazard",
+      "b": "resource-leak",
+      "note_a": "Centralises acquire and release so a missed return is bounded and detectable; the leaked object is still lost",
+      "note_b": "Centralised checkout and return plus leak detection bound and surface a missed release; an object never returned is still lost"
+    },
+    {
+      "a": "abstract-factory",
+      "verb": "combines-with",
+      "b": "dependency-injection",
+      "note_a": "A container or the composition root hands the client the one factory it uses",
+      "note_b": "A whole factory family is a collaborator worth handing in, so the client never picks a family itself"
+    },
+    {
+      "a": "builder",
+      "verb": "combines-with",
+      "b": "make-illegal-states-unrepresentable",
+      "note_a": "A staged builder makes the compiler reject build() until required fields are set",
+      "note_b": "A staged builder applies this to construction, so a half-set object cannot be built"
+    },
+    {
+      "a": "immutability",
+      "verb": "combines-with",
+      "b": "builder",
+      "note_a": "A builder assembles a many-field immutable object before it is frozen",
+      "note_b": "The steps mutate the builder; build() hands back one immutable product"
+    },
+    {
+      "a": "immutability",
+      "verb": "combines-with",
+      "b": "flyweight",
+      "note_a": "Flyweight puts one never-changed copy behind many objects",
+      "note_b": "The shared part is read-only, so one copy can serve every object"
+    },
+    {
+      "a": "chain-of-responsibility",
+      "verb": "combines-with",
+      "b": "open-closed",
+      "note_a": "Adding a handler means slotting one in, not editing the others",
+      "note_b": "A new handler joins the chain without touching the existing ones"
+    },
+    {
+      "a": "iterator",
+      "verb": "exposed-to",
+      "b": "resource-leak",
+      "note_a": "A lazy iterator over a file, socket or database cursor leaks its handle when it is abandoned before it is drained or closed.",
+      "note_b": "An abandoned lazy iterator keeps its handle open until it is closed."
+    },
+    {
+      "a": "copy-on-write",
+      "verb": "combines-with",
+      "b": "iterator",
+      "note_a": "An iterator holds the version that existed when it was created",
+      "note_b": "Walk a snapshot taken at the start, so a mid-walk write never reaches the cursor"
+    },
+    {
+      "a": "observer",
+      "verb": "combines-with",
+      "b": "open-closed",
+      "note_a": "New listeners plug in without editing the subject, which is the open/closed shape.",
+      "note_b": "Observer extends a subject by adding listeners, never by editing it."
+    },
+    {
+      "a": "connect-four",
+      "verb": "demonstrates",
+      "b": "strategy",
+      "note_a": "Refuses a WinChecker Strategy for win detection: the four directions differ only in step values, so one helper driven by vectors replaces four classes",
+      "note_b": "Shows the refusal: four directional checkers whose bodies differ only in step values are data, not strategies"
+    },
+    {
+      "a": "strategy",
+      "verb": "combines-with",
+      "b": "dependency-injection",
+      "note_a": "The strategy is the collaborator handed to the context from outside, which is what injection supplies",
+      "note_b": "A swappable algorithm is a typical thing to inject, so the caller never builds it"
+    },
+    {
+      "a": "fallback",
+      "verb": "combines-with",
+      "b": "null-object",
+      "note_a": "An empty-list or no-op default is a null object; count how often it runs",
+      "note_b": "A fallback's static default, such as an empty list, can be a null object, so callers keep one call shape"
+    },
+    {
+      "a": "service-locator",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Can become a god object when one shared registry attracts every unrelated service",
+      "note_b": "A shared registry that answers every request is one way the object everything reaches into forms"
+    },
+    {
+      "a": "monostate",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "Can fall into race condition when two threads update the shared static fields without a lock",
+      "note_b": "Two threads that update a monostate's shared static fields without a lock can interleave their writes"
+    },
+    {
+      "a": "lazy-initialization",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "Two first callers both run the factory and build the value twice unless a once primitive guards it",
+      "note_b": "Two first callers both run the factory, so the value is built twice"
     }
   ],
   "group_order": {

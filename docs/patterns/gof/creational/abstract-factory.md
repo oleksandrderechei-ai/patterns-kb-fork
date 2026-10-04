@@ -16,18 +16,18 @@ Hands the client one interface that produces a whole family of matching objects 
 ## What it is
 <!--meta block=description-->
 
-Objects that must be used together, such as a button, a checkbox and a menu for one platform, are easy to mix across families. An abstract factory is one interface that creates a whole matching set, with one concrete factory per family. The client never names a concrete class, so a mismatched combination cannot be built.
+Objects that must be used together, such as a button, a checkbox and a menu for one platform, are easy to mix across families. An abstract factory is one interface that creates a whole matching set, with one concrete factory per family. The client never names a concrete class and takes every product from one factory, so it cannot mix families.
 
 ## Explained
 <!--meta block=explain-->
 
-An abstract factory is an object that creates a whole set of related products, such as a button, a checkbox and a menu, through one interface, with one concrete factory per family such as Windows, macOS or a dark theme. The client asks the factory for each product and never names a concrete class, so every product it holds comes from the same family. Choose it over calling constructors directly when two or more products must travel together and a mismatch, such as a Windows button in a macOS dialog, would be a real bug. With one family, or product kinds that change more often than families, plain constructors are cheaper and clearer.
+An abstract factory is an object that creates a whole set of related products, such as a button, a checkbox and a menu, through one interface. It has one concrete factory per family, such as Windows, macOS or a dark theme. The client asks the factory for each product and never names a concrete class, so every product it holds comes from the same family. Choose it over calling constructors directly when two or more products must travel together and a mismatch, such as a Windows button in a macOS dialog, would be a real bug. With one family, or product kinds that change more often than families, plain constructors are cheaper and clearer.
 
 - **Rigid product list.** One new product kind means editing the factory interface and every family behind it. Keep the list short and stable.
 - **Invisible family.** The call site does not show which family is in use, since it was chosen at assembly. Log it at startup.
 - **More layers.** Extra classes and indirection compared with calling a constructor.
 
-**Example.** A UI toolkit has 3 families (Windows, macOS, Linux) and 2 product kinds (button, checkbox). That is 6 product classes and 3 factories, and a dialog built from the macOS factory cannot receive a Windows checkbox. Now design asks for a slider. The factory interface gains a createSlider method, so all 3 factories need an edit and you write 3 slider classes: 6 changes. Adding a fourth family instead costs one factory and 3 product classes, with no change to any dialog. That asymmetry is the trade: new families are cheap, new product kinds are not.
+**Example.** A UI toolkit has 3 families (Windows, macOS, Linux) and 2 product kinds (button, checkbox). That is 6 product classes and 3 factories, and a dialog built from the macOS factory cannot receive a Windows checkbox. Now design asks for a slider. The factory interface gains a createSlider method, so the interface changes once, all 3 factories need an edit and you write 3 slider classes: 7 changes. Adding a fourth family instead costs one factory and 2 product classes: 3 changes, with no change to any dialog. That asymmetry is the trade: new families are cheap, new product kinds are not.
 
 ## How it works
 <!--meta block=structure-->
@@ -48,7 +48,7 @@ classDiagram
 - **[Factory-Method internals](./factory-method.md)** — Each `create*` operation is itself a Factory Method that concrete factories override — the classic way the two patterns compose.
 - **[Prototype](./prototype.md)-backed factory** — The factory stores prototypical instances and clones them per request, so a single factory class can serve many families without a subclass each.
 - **[Singleton](./singleton.md) factory** — Because one factory per family usually suffices, concrete factories are frequently exposed as singletons or injected once at composition time.
-- **Registry / parameterized factory** — A single factory keyed by a family identifier looks products up in a map instead of dedicating a subclass to every family.
+- **Registry / parameterized factory** — A single factory keyed by a family identifier looks products up in a map instead of dedicating a subclass to every family. The cost is that a missing or mistyped key fails at run time, not at compile time.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -56,15 +56,15 @@ classDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Objects a client uses together** always come from one matching family, so mismatched pieces can't be built.
+- **A client that takes every product from one factory** always gets a matching family, so it cannot mix pieces; code that builds products elsewhere still can.
 - **Callers talk only to interfaces**, never to concrete classes, so implementations stay swappable.
 - **Switching to a whole new family** — a theme, a platform, a backend — is one change: which factory you create.
-- **Keeps all the object-creation logic in one place**, which simplifies testing and wiring.
+- **A family's creation logic lives in one factory**, so a test or a config change swaps every product it makes by swapping that one object; each factory still needs its own test.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Adding a new kind of product** means editing the interface and every factory that implements it.
+- **Adding a new kind of product** means editing the interface and every factory that implements it, so keep the product list short and stable and weigh each new kind against that cost.
 - **More classes and layers of indirection** than simply calling a constructor.
 - **Overkill when there is only one family**, or the products never change as a set.
 - **The set of products is fixed up front**, so a product type added later fits awkwardly.
@@ -77,7 +77,7 @@ classDiagram
 
 - **Your code has to work** with several interchangeable families of related objects without knowing which one it's using.
 - **You need a guarantee** that objects created together are compatible with each other.
-- **You want to pick** and configure a whole family in one place — at startup, or in a dependency-injection container.
+- **You want to pick** and configure a whole family in one place — at startup, or in a [dependency-injection container](../extra/dependency-injection.md).
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -121,8 +121,8 @@ console.log(renderToolbar(prefersDark ? new DarkThemeFactory() : new LightThemeF
 ## In the wild
 <!--meta block=wild-->
 
-- **.NET DbProviderFactory** — The abstract System.Data.Common.DbProviderFactory declares CreateConnection, CreateCommand, CreateParameter and CreateCommandBuilder; each ADO.NET provider ships a concrete subclass (for example SqlClientFactory.Instance) returning a matched set for one database. DbProviderFactories.GetFactory resolves one by provider invariant name, so the same data-access code runs against any registered provider without naming its classes. {#wild-dbproviderfactory}
-- **Swing Look and Feel** — UIManager holds the current LookAndFeel, and each look and feel supplies the matching UI delegate for every Swing component, so buttons, scroll bars and menus all come from one family. Switching the look and feel swaps the whole family at once. {#wild-swing-look-and-feel}
+- **.NET DbProviderFactory** — The abstract System.Data.Common.DbProviderFactory declares CreateConnection, CreateCommand, CreateParameter and CreateCommandBuilder, among other create methods; each ADO.NET provider ships a concrete subclass (for example SqlClientFactory.Instance) returning a matched set for one database. DbProviderFactories.GetFactory resolves one by provider invariant name, so data-access code written against the common ADO.NET base types and portable SQL runs against any registered provider without naming its classes. {#wild-dbproviderfactory}
+- **Swing Look and Feel** — UIManager holds the current LookAndFeel, and each look and feel supplies the matching UI delegate for every Swing component, so buttons, scroll bars and menus all come from one family. Switching the look and feel applies to components created afterwards; components already on screen keep their old delegates until their component tree is refreshed. {#wild-swing-look-and-feel}
 
 ## In production
 <!--meta block=production-->
@@ -182,6 +182,7 @@ console.log(renderToolbar(prefersDark ? new DarkThemeFactory() : new LightThemeF
 - [Prototype](./prototype.md) — A concrete factory can clone registered prototypes instead of newing them
 - [Singleton](./singleton.md) — One concrete factory per family, usually held as a single instance
 - [Bridge](../structural/bridge.md) — A family factory is a natural place to choose a bridge's implementor
+- [Dependency Injection](../extra/dependency-injection.md) — A container or the composition root hands the client the one factory it uses
 
 **Alternative to**
 

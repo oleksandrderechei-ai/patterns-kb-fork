@@ -214,6 +214,7 @@ for (const r of routes) send(r.host);
 **Combines with**
 
 - [Lock-Free](./lock-free.md) — Publishing the new version is one atomic reference swap
+- [Iterator](../gof/behavioral/iterator.md) — An iterator holds the version that existed when it was created
 
 **Alternative to**
 

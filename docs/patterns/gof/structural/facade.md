@@ -15,18 +15,18 @@ Wraps a sprawling subsystem behind a single, task-oriented interface — so call
 ## What it is
 <!--meta block=description-->
 
-A facade is one object offering a few methods named after the tasks callers want, over a set of lower-level classes. It absorbs the call order and wiring, so clients stop depending on subsystem internals and the subsystem stays free to change. It holds no subsystem logic of its own: it orchestrates and delegates, and advanced callers can still reach past it.
+Callers of a many-class subsystem each repeat the same call order and break when one class changes. A facade is one object with a few methods named after the tasks callers want. It absorbs the call order and wiring, so clients stop depending on subsystem internals and the subsystem stays free to change. It holds no subsystem logic of its own: it orchestrates and delegates, and advanced callers can still reach past it.
 
 ## Explained
 <!--meta block=explain-->
 
-A facade is one object that offers a few methods named after the tasks callers want, such as \`placeOrder\`, and does the work by calling the many classes behind it in the right order. Callers stop depending on those classes, so you can rework them freely and break nobody. Choose it when a handful of workflows account for most uses of a subsystem and you want its inside free to change. If callers need the fine controls most of the time, the facade only gets in the way.
+A facade is one object that offers a few methods named after the tasks callers want, such as \`placeOrder\`, and does the work by calling the many classes behind it in the right order. Callers stop depending on those classes, so you can rework them freely while every caller stays behind the facade. Choose it when a handful of workflows account for most uses of a subsystem. If callers need the fine controls most of the time, the facade only gets in the way. Pick an [Adapter](adapter.md) instead when you only convert one interface into another.
 
 - **Growth.** Convenient entry points attract unrelated operations until every team edits one class. Give each facade one family of workflows.
 - **Hidden power.** It hides fine controls, so keep an escape hatch to the raw parts, knowing each caller who uses it voids the isolation.
 - **Signature debt.** Every method you add is a signature you promise to keep, so widen the facade only for requests from several callers.
 
-**Example.** Placing an order means 5 calls, to inventory, pricing, payment, shipping and email, in that order, and 12 screens each repeat the sequence. A facade method placeOrder makes the five calls once, so a change to the payment call is one edit, not 12. Over a year the facade gains refund, reportSales and exportTaxes, and each of 4 teams edits the same file. The fix is to move those 3 methods to their own facades and leave placeOrder alone. The cost is one more class to find and keep in step with the subsystem.
+**Example.** Placing an order means 4 calls, to inventory, payment, shipping and email, in that order, and 12 screens each repeat the sequence. A facade method \`placeOrder\` makes the four calls once, so a change to the payment call is one edit, not 12. Over a year the facade gains \`refund\`, \`reportSales\` and \`exportTaxes\`, and each of 4 teams edits the same file. The fix is to move those 3 methods to their own facades and leave \`placeOrder\` alone. The cost is up to three more classes to find and keep in step with the subsystem.
 
 ## How it works
 <!--meta block=structure-->
@@ -45,7 +45,7 @@ flowchart LR
 
 - **Opaque vs. transparent** — A transparent facade leaves the subsystem classes public, so power users can still reach past it; an opaque one hides them entirely, trading flexibility for a smaller blast radius.
 - **Session facade** — A coarse-grained facade over fine-grained business objects, exposing whole use cases as single calls — the classic answer to chatty round-trips across a network boundary.
-- **Module / package facade** — A single entry file that re-exports a package's intended public surface, keeping deep internal paths private — the everyday "barrel" or index module.
+- **Module / package facade** — A single entry file that re-exports a package's intended public surface, the everyday "barrel" or index module. Deep internal paths stay private only if the package or a lint rule blocks direct imports. It counts as a facade only when its exports are task-shaped, because a plain re-export hides paths, not complexity.
 - **Static facade** — A namespace of free functions over the subsystem rather than an instance. Convenient, but harder to substitute in tests since there's nothing to inject.
 
 ## Trade-offs
@@ -55,17 +55,17 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Gives callers one small, stable entry point** instead of many moving parts.
-- **Separates your code from the subsystem's internals**, so you can rework them freely behind it.
+- **Separates your code from the subsystem's internals**, so you can rework them freely behind it, as long as no caller bypasses the facade or handles a subsystem type.
 - **Lowers the learning curve** — the common task becomes a single call.
-- **A natural place to add cross-cutting concerns like** logging, auth, or transactions.
+- **A natural place to add cross-cutting concerns like** logging, timing or one transaction around the call sequence, but only for callers that go through it. A bypassing caller skips them, so enforce auth where it cannot be skipped.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **God-object risk** — it can swell into a [god object](../../../hazards/god-object.md) that the whole codebase leans on.
-- **Can hide useful features** — power users still need an escape hatch to the raw parts.
-- **One more layer to keep in sync** as the subsystem grows.
-- **Tempts you to bolt unrelated operations** onto one convenient interface.
+- **God-object risk** — it swells into a [god object](../../../hazards/god-object.md) the whole codebase leans on, so give each facade one family of workflows.
+- **Can hide useful features** — power users still need an escape hatch to the raw parts, but each caller who uses it binds to subsystem internals, so count how often it is used.
+- **One more layer to keep in sync** as the subsystem grows, so run each method against the real subsystem or a close fake.
+- **Tempts you to bolt unrelated operations** onto one convenient interface, so add a method only when several callers ask for it.
 
 ## When to use it
 <!--meta block=usage-->
@@ -121,8 +121,8 @@ class CheckoutService {
 ## In the wild
 <!--meta block=wild-->
 
-- **Python requests** — Its verb-named get/post calls and the Session object sit over urllib3, hiding connection pooling, Transport Layer Security (TLS), content decoding, redirect following and cookie persistence behind a small task-oriented API that returns a Response. {#wild-python-requests}
-- **jQuery** — Collapses cross-browser DOM traversal, event binding and XMLHttpRequest setup into one chainable $() API, papering over the inconsistencies between legacy browser DOM and event implementations. {#wild-jquery}
+- **Python requests** — Its verb-named get/post calls and the Session object sit over urllib3, hiding connection pooling, Transport Layer Security (TLS) and content decoding behind a small task-oriented API that returns a Response. Session adds its own redirect following and cookie persistence, so it is a facade with some logic of its own. {#wild-python-requests}
+- **jQuery** — Collapses cross-browser Document Object Model (DOM) traversal, event binding and XMLHttpRequest setup into one chainable $() API. {#wild-jquery}
 
 ## In production
 <!--meta block=production-->
@@ -148,14 +148,15 @@ class CheckoutService {
 
 - **God facade** — The facade absorbs logic and becomes a class nobody can change.
 - **Bypass** — Teams call the subsystem directly, and the facade is one of two ways in.
-- **Hidden cost** — One simple call fans out to many remote calls and callers cannot see it.
+- **Hidden cost** — One simple call fans out to many remote calls and callers cannot see it, so document each method's calls.
 - **Leaky errors** — The subsystem's exceptions pass through and callers import its types anyway.
+- **Partial failure** — A middle call fails after earlier calls took effect, so a retry repeats those calls.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - The facade holds no business rules, only orchestration
-- Subsystem types do not appear in the facade's signatures
+- Subsystem types do not appear in the facade's method signatures or errors; the constructor may take them for test injection
 - The facade documents the calls and cost behind each method
 - A test runs each facade method against the real subsystem or a close fake
 
@@ -195,7 +196,7 @@ class CheckoutService {
 
 **Exposed to**
 
-- [God Object](../../../hazards/god-object.md) — Can fall into god object when a facade that starts holding state or logic becomes the same class
+- [God Object](../../../hazards/god-object.md) — Can fall into god object when a facade starts holding state or logic and grows into one class that everything leans on
 
 **Demonstrated by**
 
