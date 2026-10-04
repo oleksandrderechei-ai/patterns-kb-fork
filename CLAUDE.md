@@ -67,7 +67,7 @@ kb-comparison-blocks, kb-compose, kb-design-architecture, kb-design-entities,
 kb-design-interface, kb-design-levels, kb-design-problem, kb-design-requirements,
 kb-design-review, kb-design-sizing, kb-design-tradeoffs, kb-discuss, kb-edit, kb-explain,
 kb-fact-check, kb-find, kb-grill-design, kb-grill-page, kb-harvest, kb-hazard-blocks,
-kb-intake, kb-move, kb-pattern-blocks, kb-principle-blocks, kb-sketch, kb-theme-blocks,
+kb-improve, kb-intake, kb-move, kb-pattern-blocks, kb-principle-blocks, kb-sketch, kb-theme-blocks,
 kb-vocab, page-audit, pattern-tech-map, retire-gotcha, site-audit, site-component, site-extract,
 stack-pick, style-pattern-doc, style-simple, style-system-design, style-technical, sys-design.
 

@@ -21,6 +21,7 @@ Which skill owns what:
 |---|---|
 | adding a page of any kind | **kb-add** |
 | fixing prose, metadata or a relationship on a page that exists | **kb-edit** |
+| raising a page, an area or a kind to expert-grade in plain words: six reader reviews merged into one applied edit plan, ending in a pull request | **kb-improve** (findings only: **kb-design-review**) |
 | where a page appears on its hub, or re-filing it into another area | **kb-move** (a new page's row: **kb-add**) |
 | any block of a pattern page | **kb-pattern-blocks** |
 | any block of a hazard page | **kb-hazard-blocks** |
@@ -80,12 +81,14 @@ handoff when the conversation concludes somewhere else.
 
 ## Read-only agents
 
-**Four agents keep the corpus out of the main context and change nothing**, because a page costs
+**Five agents keep the corpus out of the main context and change nothing**, because a page costs
 about 4k tokens ([the root layer](../../CLAUDE.md) gives the figure) and a conversation
 holds several:
 `kb-scout` (one question → a cited brief), `kb-page-analyst` (one page → a discussion pack),
-`component-designer` (one bounded component → a **kb-compose** brief) and `design-critic` (a
-draft → adversarial findings).
+`kb-persona-reviewer` (one page, read as one reader → anchored findings; as the synthesizer,
+several readers' findings → one edit plan, for **kb-improve**), `component-designer` (one
+bounded component → a **kb-compose** brief) and `design-critic` (a draft → adversarial
+findings).
 Scouting agents open with `kb.mjs brief <query>`, which returns find hits, the governing
 theme's decide table and the top hits' neighbours in one call. **sys-design** is the
 conductor that drives them through a full design — interview → requirements →
@@ -101,8 +104,9 @@ gate for `gate-red`.
 ## The writing agent
 
 **`kb-author` writes pages**: it authors and updates the markdown under `docs/` for batch
-work, each invocation owning a disjoint set of ids so several run in parallel. It does not run
-`make gen`; the orchestrator does that once at the end.
+work, each invocation owning a disjoint set of ids so several run in parallel, and it applies
+the edit plan in **kb-improve** and its batch workflow, `.claude/workflows/kb-improve-batch.mjs`.
+It does not run `make gen`; the orchestrator does that once at the end.
 
 ## Agent models
 
@@ -114,6 +118,7 @@ Workers run on Sonnet; the three agents that judge a design run on Opus.
 | `claim-audit` | sonnet | no |
 | `gate-triage` | sonnet | no |
 | `kb-author` | sonnet | yes, pages under `docs/` |
+| `kb-persona-reviewer` | sonnet | no |
 | `kb-page-analyst` | opus | no |
 | `component-designer` | opus | no |
 | `design-critic` | opus | no |
