@@ -473,7 +473,7 @@
       "definition": "Stops calling a service that's already failing",
       "route": "/patterns/distributed/resilience/circuit-breaker.html",
       "requires": ["timeout-deadline"],
-      "related": ["retry-backoff", "bulkhead", "health-endpoint", "fail-fast", "service-mesh", "self-healing", "fault-injection", "messaging-bridge", "service-discovery", "fallback"]
+      "related": ["retry-backoff", "bulkhead", "health-endpoint", "fail-fast", "service-mesh", "self-healing", "fault-injection", "messaging-bridge", "service-discovery", "fallback", "load-shedding"]
     },
     {
       "id": "fallback",
@@ -577,7 +577,7 @@
       "definition": "Rejects work early once the server is past what it can serve",
       "route": "/patterns/distributed/resilience/load-shedding.html",
       "requires": [],
-      "related": ["rate-limiter", "load-leveling", "bulkhead", "backpressure", "retry-backoff", "autoscaling", "request-coalescing", "design-for-operations", "build-for-business", "feature-flag", "fallback", "leaky-bucket"]
+      "related": ["rate-limiter", "load-leveling", "bulkhead", "backpressure", "retry-backoff", "autoscaling", "request-coalescing", "design-for-operations", "build-for-business", "feature-flag", "fallback", "leaky-bucket", "circuit-breaker"]
     },
     {
       "id": "fault-injection",
@@ -2313,7 +2313,7 @@
       "definition": "Prefer the simplest design that actually meets the requirement",
       "route": "/principles/kiss.html",
       "requires": [],
-      "related": ["yagni", "least-astonishment", "separation-of-concerns", "managed-services", "build-for-business", "transaction-script", "convention-over-configuration"]
+      "related": ["yagni", "least-astonishment", "separation-of-concerns", "managed-services", "build-for-business", "transaction-script", "convention-over-configuration", "make-illegal-states-unrepresentable"]
     },
     {
       "id": "yagni",
@@ -2457,7 +2457,7 @@
       "definition": "Shape types so an invalid combination of values cannot be written, and the compiler rejects it",
       "route": "/principles/make-illegal-states-unrepresentable.html",
       "requires": [],
-      "related": ["value-object", "immutability", "fail-fast", "state", "encapsulation"]
+      "related": ["value-object", "immutability", "fail-fast", "state", "encapsulation", "kiss"]
     },
     {
       "id": "rule-of-three",

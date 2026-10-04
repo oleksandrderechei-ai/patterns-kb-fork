@@ -1353,7 +1353,7 @@
       },
       "resilience": {
         "role": "Isolate failures to one compartment",
-        "tour": "Partitioning connection pools, threads, or capacity per dependency means one overwhelmed downstream can only sink its own compartment, not drag every caller down with it — the resilience analogue of a ship's watertight compartments, and the reason for the name.",
+        "tour": "Partition pools, threads or capacity per dependency, so an overwhelmed downstream sinks only its own compartment, like a ship's watertight compartments.",
         "fluency": "Isolate failures to one compartment, so the rest of the service keeps serving while that one is stuck."
       },
       "microservices-design": {
@@ -1520,14 +1520,14 @@
     "/patterns/distributed/resilience/retry-backoff.html": {
       "resilience": {
         "role": "Ride out transient failures",
-        "tour": "Most failures at scale are transient — a dropped packet, a momentary overload — and trying again after a short, increasing delay resolves them without any human involved. Backoff, plus jitter, keeps a whole fleet of retrying clients from synchronizing into the next overload.",
+        "tour": "Most failures at scale are transient: a dropped packet, a short overload. Trying again after a short, increasing delay resolves them without any human involved. Backoff, plus jitter, keeps a whole fleet of retrying clients from synchronizing into the next overload.",
         "fluency": "Ride out transient failures, so a blip that clears on its own never reaches the caller as an error."
       }
     },
     "/patterns/distributed/resilience/timeout-deadline.html": {
       "resilience": {
         "role": "Never wait forever",
-        "tour": "Every call across a network needs an upper bound on how long you'll wait, or one slow dependency quietly exhausts the threads, connections, or memory of everything upstream of it. A deadline turns an indefinite hang into a bounded, recoverable failure.",
+        "tour": "Every call across a network needs an upper bound on how long you'll wait, or one slow dependency exhausts the threads, connections, or memory of everything upstream of it. A deadline turns an indefinite hang into a bounded, recoverable failure.",
         "fluency": "Never wait forever — a bounded wait is what gives the thread, the socket and the caller an answer."
       }
     },
@@ -2175,7 +2175,7 @@
       },
       "resilience": {
         "role": "Make retries and redelivery safe",
-        "tour": "Once retries and redelivery are a given, every operation that can be repeated needs to produce the same result whether it runs once or five times. Without it, the retries meant to improve resilience instead corrupt state.",
+        "tour": "Once retries and redelivery are a given, every operation that can be repeated needs to produce the same result whether it runs once or five times. Without it, the retries meant to improve resilience can corrupt state.",
         "fluency": "Make retries and redelivery safe"
       },
       "api-design": {

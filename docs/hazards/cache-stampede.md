@@ -80,5 +80,6 @@ Two moves defuse it. **[Request coalescing](../patterns/distributed/resilience/r
 **Threatens**
 
 - [Cache-Aside](../patterns/caching/cache-aside.md) — A miss makes each caller rebuild the value, so concurrent misses on a hot key all hit the source
+- [Bitly](../designs/bitly.md) — A design where one expiry puts every edge miss on a single row.
 
 <!-- relationships:end -->

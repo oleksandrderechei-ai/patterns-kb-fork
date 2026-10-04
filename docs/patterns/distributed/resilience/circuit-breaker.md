@@ -22,14 +22,14 @@ When a service you call stops answering, every call to it waits, holding a threa
 ## Explained
 <!--meta block=explain-->
 
-A circuit breaker is a gate in front of one dependency. It counts recent failures and, once there are too many, stops sending calls and answers at once from a [fallback](fallback.md), such as a cached value or a plain error. Without it, a slow or dead dependency still costs a full wait per call, so every thread in your service ends up waiting and the healthy parts starve. With it, the failed calls cost nothing and the sick service gets quiet time to recover. After a cooldown the gate lets one trial call through: if it works, the gate closes again; if not, it stays open. Choose it over a plain [timeout](timeout-deadline.md) plus retry when the dependency is slow rather than down, because a timeout limits one call while a breaker limits the attempts of every copy of your service together.
+A circuit breaker is a gate in front of one dependency. It counts recent failures and, once there are too many, stops sending calls and answers at once from a [fallback](fallback.md), such as a cached value or a plain error. Without it, a slow or dead dependency still costs a full wait per call, so every thread in your service ends up waiting and the healthy parts starve. With it, the failed calls cost a fallback instead of a wait and the sick service gets quiet time to recover. After a cooldown the gate lets one trial call through: if it works, the gate closes again; if not, it stays open. Add it to a plain [timeout](timeout-deadline.md) plus retry when the dependency is slow rather than down, because a timeout bounds one call while a breaker stops this process making the next call at all and, with shared state, every copy of your service.
 
 - **Thresholds to tune.** They depend on your traffic, so test against a service made slow, not one switched off.
 - **Masked degradation.** An open gate hides a half-healthy service, so keep health checks running.
 - **Uneven counters.** Per-process counters make each copy learn of an outage alone, so share the state if they must trip together.
 - **Rush at cooldown end.** Every caller returns at once, so allow just one trial call.
 
-**Example.** Checkout calls a fraud-check service that answers in 50 ms. Checkout has 200 threads, takes 100 requests a second and times out fraud calls after 1 s. The service slows to 10 s. Without a breaker, 100 requests a second times 1 s ties up about 100 threads and makes every checkout a second slower; a retry per failure, or double the traffic, needs all 200 and the site stalls. With a breaker set to open after 20 failures in 10 s, it opens about 1.2 s after the slowdown and checkout answers in milliseconds again, queuing orders for manual review. That costs a review backlog while it stays open. Every 30 s one trial call tests the service.
+**Example.** Checkout calls a fraud-check service that answers in 50 ms. Checkout has 200 threads, takes 100 requests a second and times out fraud calls after 1 s. The service slows to 10 s. Without a breaker, 100 requests a second times 1 s ties up about 100 threads and makes every checkout a second slower; a retry per failure, or double the traffic, needs all 200 and the site stalls. With a breaker set to open after 20 failures in 10 s, it opens about 1.2 s after the slowdown and checkout answers in milliseconds again, queuing orders for manual review. That queues about 3,000 orders per 30 s open. Every 30 s one trial call tests the service.
 
 ## How it works
 <!--meta block=structure-->
@@ -70,7 +70,7 @@ stateDiagram-v2
 - **Count-based vs. time-window** — Trip after N consecutive failures, or after a failure rate (e.g. >50% of calls in the last 10 s). Rate-based handles bursty traffic more fairly.
 - **Accelerated tripping on an informative error** — Some failures announce themselves. A 429 or a 503 carrying a retry-after hint says the callee is already shedding load and names how long it wants to be left alone, which is enough evidence to open on the first response instead of waiting for a count to accumulate — and enough to hold open for the interval advertised rather than a cooldown you guessed. You are trusting a number the callee chose, so bound it: a mistaken or absurd hint would otherwise keep you open long after the dependency recovered.
 - **Half-open trial policies** — Allow a single probe, or a limited number of concurrent trials, before deciding to close. With shared state, a short-lived lease decides who probes: one replica wins it, the rest stay open until the winner reports back.
-- **Fallback / graceful degradation** — An open breaker can return a cached value, a default, or a queued request instead of a bare error — pairs naturally with the [Null Object](../../gof/extra/null-object.md) idea.
+- **[Fallback](./fallback.md) / degraded answer** — An open breaker can return a cached value, a default, or a queued request instead of a bare error. See [Null Object](../../gof/extra/null-object.md).
 - **Per-endpoint vs. per-dependency** — One breaker per remote host, or a finer breaker per operation. Finer granularity isolates a single bad endpoint without cutting off a whole service.
 - **Per-instance vs. shared state** — Counters and the open flag live in process memory, or in a store every replica reads — a row or key per dependency that expires on its own, so the open state clears without anyone sweeping it. In-process costs nothing on the call path and nothing to operate. Shared state trips the whole fleet on one replica's evidence, at the price of a lookup on the hot path and a dependency of its own in the failure path.
 - **Who closes the breaker** — Normally the breaker closes itself after a successful probe. Two extensions matter under a tight recovery objective: let the recovered dependency clear its own open record rather than waiting out someone else's cooldown, and give operators an explicit force-open and force-close so a known-bad dependency can be cut off, or a healthy one restored, without a deploy. Both need shared state to act on.
@@ -82,7 +82,7 @@ stateDiagram-v2
 ### Pros
 <!--meta polarity=pro-->
 
-- **Stops cascading failures** from spreading across services.
+- **Stops cascades** — One dependency's slowness no longer spreads upward as thread starvation, given a timeout on every wrapped call and a fallback that absorbs the error (see con 4).
 - **Fails fast** — frees threads, sockets, and memory that would block.
 - **Gives the failing dependency space to recover** instead of hammering it.
 - **Its state is a high-signal health metric** for dashboards and alerts.
@@ -111,9 +111,9 @@ stateDiagram-v2
 
 - **The call is local**, in-process, and can't fail in this way.
 - **Failures are permanent, not transient** — fix the call, don't trip around it.
-- **A simple** [timeout](./timeout-deadline.md) plus a bounded [retry](./retry-backoff.md) already covers the risk.
+- **Timeout plus bounded retry suffices**: A [timeout](./timeout-deadline.md) plus a bounded [retry](./retry-backoff.md) already absorbs the blips. Add the breaker once failures are sustained, and [bulkhead](./bulkhead.md) when the shared pool is the problem.
 
-Prevents the smell of a whole system frozen behind one dead dependency — a step toward the [Big Ball of Mud](../../../hazards/big-ball-of-mud.md) failure mode where nothing is isolated.
+Without it, one dead dependency freezes every caller behind it, the chain reaction named in [cascading failure](../../../hazards/cascading-failure.md).
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -141,7 +141,8 @@ class Breaker {
       this.failures = 0;                                     // success closes it
       return result;
     } catch (err) {
-      if (++this.failures >= this.threshold) this.openedAt = Date.now(); // a failed probe restarts the cooldown
+      const n = ++this.failures;
+      if (n === this.threshold || state === "half-open") this.openedAt = Date.now(); // first opener owns the deadline; only a failed probe restarts it
       throw err;
     } finally { this.probing = false; }
   }
@@ -156,21 +157,29 @@ class SharedBreaker {
     private readonly vendor: string,  // "idVendor" | "sanctionsVendor"
     private readonly threshold = 5, private readonly cooldownMs = 30_000,
   ) {}
+  private readonly holdMs = this.cooldownMs * 10;  // the open record outlives the cooldown
   private key(s: string) { return `cb:${this.vendor}:${s}`; }
   async call<T>(flowId: string, fn: () => Promise<T>): Promise<T> {
-    if (await this.state(flowId) === "open") throw new VendorUnavailable(this.vendor); // fail fast
+    const state = await this.state(flowId);
+    if (state === "open") throw new VendorUnavailable(this.vendor); // fail fast
     try {
       const result = await fn();
       await Promise.all(["open", "failures", "probe"].map(s => this.kv.del(this.key(s))));
       return result;                  // success closes the breaker for everyone
     } catch (err) {
+      if (state === "half-open") {
+        await this.kv.set(this.key("open"), String(Date.now()), this.holdMs); // a failed probe restarts the cooldown
+        throw err;
+      }
       const failures = await this.kv.incr(this.key("failures"), this.cooldownMs);
-      if (failures >= this.threshold) await this.kv.set(this.key("open"), "1", this.cooldownMs);
+      if (failures >= this.threshold) await this.kv.setIfAbsent(this.key("open"), String(Date.now()), this.holdMs); // first opener owns the deadline
       throw err;
     }
   }
   private async state(flowId: string): Promise<"closed" | "open" | "half-open"> {
-    if (!(await this.kv.get(this.key("open")))) return "closed";
+    const openedAt = await this.kv.get(this.key("open"));
+    if (!openedAt) return "closed";
+    if (Date.now() - Number(openedAt) < this.cooldownMs) return "open";
     // Exactly one replica wins the probe lease and goes half-open. The rest stay
     // open, so a recovering vendor sees one request instead of the whole fleet.
     const won = await this.kv.setIfAbsent(this.key("probe"), flowId, this.cooldownMs);
@@ -200,7 +209,7 @@ await new SharedBreaker(kv, "idVendor").call(flowId, () => verifyDocument(person
 - **Rolling window and minimum volume** — How many calls or how much time failures are measured over, plus the minimum call count before a rate means anything (slidingWindowSize, minimumNumberOfCalls, requestVolumeThreshold).
 - **Open-state duration (cooldown)** — How long the breaker stays open before it admits a probe (waitDurationInOpenState, resetTimeout, sleepWindow). Size it from the dependency's observed recovery time, not from a round number.
 - **Half-open trial count** — How many probe calls are admitted while half-open before the breaker decides to close or re-open (permittedNumberOfCallsInHalfOpenState).
-- **What counts as a failure** — Which exceptions and timeouts increment the counter, and whether a call slower than a latency threshold counts even when it eventually returns (slowCallDurationThreshold, slowCallRateThreshold).
+- **What counts as a failure** — Which exceptions and timeouts increment the counter, and whether a call slower than a latency threshold counts even when it eventually returns (slowCallDurationThreshold, slowCallRateThreshold). Exclude errors that blame the caller (malformed request, not found); count timeouts, connection errors, 5xx and the shedding signals variations-item-2 describes.
 - **Where the state lives** — In-process counters, or a shared record per dependency that expires on its own. The shared form trips the fleet together and lets a recovered callee or an operator clear it directly; it also puts a lookup on every call and a store in the failure path.
 
 ### Signals to watch
@@ -284,6 +293,10 @@ await new SharedBreaker(kv, "idVendor").call(flowId, () => verifyDocument(person
 **Requires**
 
 - [Timeout / Deadline](./timeout-deadline.md) — You can't trip on slowness without bounding how long a call may take.
+
+**Often confused with**
+
+- [Load Shedding](./load-shedding.md) — The breaker guards a caller against a sick callee; shedding guards a server against its own saturation.
 
 **Prevents**
 

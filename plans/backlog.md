@@ -8,6 +8,14 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
 ## Features
 
 - A skill that uses the case studies as references to successful designs.
+- From the kb-improve pilot (its pull request, #30, has the findings):
+  - a `kb.mjs get <id> --block solves` read, so reviewers can judge the symptom phrases;
+  - an `architecture` block for the `resilience` theme and a `sketch` block for `kiss`;
+  - the edges drafted but over the cap: `distributed-monolith` to `aggregate` and to
+    `chatty-io`;
+  - an owner call on whether `alternative-to` may record a rejected option, which three
+    drafted `bitly` edges wait on (`refresh-ahead`, `sweeper`, `idempotency`);
+  - the first run of `.claude/workflows/kb-improve-batch.mjs`, on two pages.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 

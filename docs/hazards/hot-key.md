@@ -79,5 +79,6 @@ The fix is to stop routing all of the hot key's traffic to one place. **Replicat
 - [Cache-Aside](../patterns/caching/cache-aside.md) — One popular key lives on a single cache node, and every reader goes to it
 - [Consistent Hashing](../patterns/distributed/routing/consistent-hashing.md) — Placement by hash balances key count, not traffic
 - [Sharding](../patterns/distributed/routing/sharding.md) — A sharded cache puts a viral key on exactly one shard
+- [Bitly](../designs/bitly.md) — A design where one link carries most of the read load.
 
 <!-- relationships:end -->

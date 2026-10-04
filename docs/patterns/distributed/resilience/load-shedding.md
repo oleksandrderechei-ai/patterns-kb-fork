@@ -225,6 +225,7 @@ export async function handle(req: Request, run: () => Promise<Response>) {
 **Often confused with**
 
 - [Leaky Bucket](./leaky-bucket.md) — Shedding refuses by measured saturation and never makes the caller wait.
+- [Circuit Breaker](./circuit-breaker.md) — Shedding refuses by measured saturation; a breaker stops calling what already failed.
 
 **Prevents**
 
