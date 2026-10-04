@@ -65,7 +65,7 @@
       "definition": "Tree structures — treat parts and wholes alike",
       "route": "/patterns/gof/structural/composite.html",
       "requires": [],
-      "related": ["iterator", "visitor", "atomic-design", "flyweight", "interpreter", "chain-of-responsibility", "specification", "decorator"]
+      "related": ["visitor", "atomic-design", "flyweight", "interpreter", "chain-of-responsibility", "specification", "decorator", "iterator"]
     },
     {
       "id": "decorator",
@@ -105,7 +105,7 @@
       "definition": "Passes a request along a chain of handlers",
       "route": "/patterns/gof/behavioral/chain-of-responsibility.html",
       "requires": [],
-      "related": ["command", "composite", "intercepting-validator", "front-controller", "decorator"]
+      "related": ["command", "composite", "intercepting-validator", "front-controller", "decorator", "open-closed"]
     },
     {
       "id": "command",
@@ -129,7 +129,7 @@
       "definition": "Traverses a collection without exposing its structure",
       "route": "/patterns/gof/behavioral/iterator.html",
       "requires": [],
-      "related": ["aggregate", "composite", "factory-method", "visitor"]
+      "related": ["aggregate", "factory-method", "visitor", "composite", "copy-on-write"]
     },
     {
       "id": "mediator",
@@ -153,7 +153,7 @@
       "definition": "Notifies dependents automatically on state change",
       "route": "/patterns/gof/behavioral/observer.html",
       "requires": [],
-      "related": ["flux", "mvc", "mediator", "future-promise"]
+      "related": ["flux", "mvc", "mediator", "future-promise", "open-closed"]
     },
     {
       "id": "state",
@@ -169,7 +169,7 @@
       "definition": "Swaps an algorithm's implementation at runtime",
       "route": "/patterns/gof/behavioral/strategy.html",
       "requires": [],
-      "related": ["state", "null-object", "microkernel", "template-method", "feature-flag", "bridge", "command", "open-closed", "composition-over-inheritance", "render-props", "specification"]
+      "related": ["state", "null-object", "microkernel", "template-method", "feature-flag", "bridge", "command", "open-closed", "composition-over-inheritance", "render-props", "specification", "dependency-injection"]
     },
     {
       "id": "template-method",
@@ -193,7 +193,7 @@
       "definition": "Dependencies are handed in, never built inside",
       "route": "/patterns/gof/extra/dependency-injection.html",
       "requires": [],
-      "related": ["hexagonal", "singleton", "service-locator", "monostate", "currying", "dependency-inversion", "convention-over-configuration", "abstract-factory"]
+      "related": ["hexagonal", "singleton", "service-locator", "monostate", "currying", "dependency-inversion", "convention-over-configuration", "abstract-factory", "strategy"]
     },
     {
       "id": "null-object",
@@ -1305,7 +1305,7 @@
       "definition": "Readers never lock — writers publish a new copy",
       "route": "/patterns/concurrency/copy-on-write.html",
       "requires": [],
-      "related": ["lock-free", "rw-lock"]
+      "related": ["lock-free", "rw-lock", "iterator"]
     },
     {
       "id": "mutex",
@@ -2353,7 +2353,7 @@
       "definition": "Open for extension, closed for modification — add behavior by adding code, not editing it",
       "route": "/principles/open-closed.html",
       "requires": [],
-      "related": ["liskov-substitution", "dependency-inversion", "strategy", "decorator", "template-method", "microkernel"]
+      "related": ["liskov-substitution", "dependency-inversion", "strategy", "decorator", "template-method", "microkernel", "chain-of-responsibility", "observer"]
     },
     {
       "id": "liskov-substitution",

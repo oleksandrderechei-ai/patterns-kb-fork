@@ -254,5 +254,6 @@ stateDiagram-v2
 - [Value Object](../patterns/ddd/value-object.md) — Player is a name-and-colour data holder with no logic, and Move records (player,row,col) for undo
 - [Composition over Inheritance](../principles/composition-over-inheritance.md) — A computer opponent is a separate BotEngine collaborator, not a BotPlayer subclass, keeping Player pure
 - [Open/Closed Principle](../principles/open-closed.md) — Board size, undo, and a bot opponent each slot in behind makeMove and Board without editing the core rules
+- [Strategy](../patterns/gof/behavioral/strategy.md) — Refuses a WinChecker Strategy for win detection: the four directions differ only in step values, so one helper driven by vectors replaces four classes
 
 <!-- relationships:end -->

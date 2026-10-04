@@ -225,7 +225,6 @@ stateDiagram-v2
 
 **Demonstrates**
 
-- [State](../patterns/gof/behavioral/state.md) — a car's direction is an explicit IDLE/UP/DOWN state machine whose value alone decides whether step() stops, reverses, or advances
 - [Strategy](../patterns/gof/behavioral/strategy.md) — selectBestElevator is a dispatch policy behind a fixed signature — wait-time for a busy tower, energy-saving for a quiet building — swapped without touching movement
 - [Value Object](../patterns/ddd/value-object.md) — Request is immutable and compared by (floor, type), so PICKUP_UP and PICKUP_DOWN at one floor are distinct stops
 - [Separation of Concerns](../principles/separation-of-concerns.md) — the controller coordinates dispatch while each car owns its own movement and knows nothing of the others
@@ -233,5 +232,6 @@ stateDiagram-v2
 - [You Aren't Gonna Need It (YAGNI)](../principles/yagni.md) — immediate dispatch is chosen over a pending-request queue, and no shared IRequestHandler interface is forced where there is no real polymorphism
 - [Open/Closed Principle](../principles/open-closed.md) — an express car drops in via an isExpress flag and a restricted addRequest without editing Request or step()
 - [Producer-Consumer](../patterns/concurrency/producer-consumer.md) — concurrent hall calls are handled by writers enqueueing onto a thread-safe queue that step() drains at the top of each tick
+- [State](../patterns/gof/behavioral/state.md) — a car's direction is an explicit IDLE/UP/DOWN state machine, held as an enum and switched in step() together with the pending stops, not a class per state
 
 <!-- relationships:end -->

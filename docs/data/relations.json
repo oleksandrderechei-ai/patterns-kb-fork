@@ -1224,13 +1224,6 @@
       "note_b": "a pool of live connections amortises setup cost across a million checks a second inside the latency budget"
     },
     {
-      "a": "elevator",
-      "verb": "demonstrates",
-      "b": "state",
-      "note_a": "a car's direction is an explicit IDLE/UP/DOWN state machine whose value alone decides whether step() stops, reverses, or advances",
-      "note_b": "each Elevator's per-tick behaviour is dispatched entirely on its current direction state — the textbook use of the pattern"
-    },
-    {
       "a": "fb-news-feed",
       "verb": "demonstrates",
       "b": "fan-out",
@@ -6952,13 +6945,6 @@
       "b": "mediator",
       "note_a": "Request objects give a dispatcher something uniform to route",
       "note_b": "A dispatcher routes each request object to its one handler"
-    },
-    {
-      "a": "iterator",
-      "verb": "combines-with",
-      "b": "composite",
-      "note_a": "Iterate a tree uniformly",
-      "note_b": "Iterate a tree uniformly"
     },
     {
       "a": "mediator",
@@ -12923,6 +12909,62 @@
       "b": "god-object",
       "note_a": "Can fall into god object when a facade starts holding state or logic and grows into one class that everything leans on",
       "note_b": "A facade that starts holding state or logic grows into one class that everything leans on"
+    },
+    {
+      "a": "chain-of-responsibility",
+      "verb": "combines-with",
+      "b": "open-closed",
+      "note_a": "Adding a handler means slotting one in, not editing the others",
+      "note_b": "A new handler joins the chain without touching the existing ones"
+    },
+    {
+      "a": "iterator",
+      "verb": "exposed-to",
+      "b": "resource-leak",
+      "note_a": "A lazy iterator over a file, socket or database cursor leaks its handle when it is abandoned before it is drained or closed.",
+      "note_b": "An abandoned lazy iterator keeps its handle open until it is closed."
+    },
+    {
+      "a": "iterator",
+      "verb": "combines-with",
+      "b": "composite",
+      "note_a": "One iterator walks leaves and branches alike",
+      "note_b": "An iterator walks the composite tree so callers need not write the recursion"
+    },
+    {
+      "a": "copy-on-write",
+      "verb": "combines-with",
+      "b": "iterator",
+      "note_a": "An iterator holds the version that existed when it was created",
+      "note_b": "Walk a snapshot taken at the start, so a mid-walk write never reaches the cursor"
+    },
+    {
+      "a": "observer",
+      "verb": "combines-with",
+      "b": "open-closed",
+      "note_a": "New listeners plug in without editing the subject, which is the open/closed shape.",
+      "note_b": "Observer extends a subject by adding listeners, never by editing it."
+    },
+    {
+      "a": "elevator",
+      "verb": "demonstrates",
+      "b": "state",
+      "note_a": "a car's direction is an explicit IDLE/UP/DOWN state machine, held as an enum and switched in step() together with the pending stops, not a class per state",
+      "note_b": "a car's IDLE/UP/DOWN direction is an explicit state machine, held as an enum and switched in step(), not a class per state"
+    },
+    {
+      "a": "connect-four",
+      "verb": "demonstrates",
+      "b": "strategy",
+      "note_a": "Refuses a WinChecker Strategy for win detection: the four directions differ only in step values, so one helper driven by vectors replaces four classes",
+      "note_b": "Shows the refusal: four directional checkers whose bodies differ only in step values are data, not strategies"
+    },
+    {
+      "a": "strategy",
+      "verb": "combines-with",
+      "b": "dependency-injection",
+      "note_a": "The strategy is the collaborator handed to the context from outside, which is what injection supplies",
+      "note_b": "A swappable algorithm is a typical thing to inject, so the caller never builds it"
     }
   ],
   "group_order": {

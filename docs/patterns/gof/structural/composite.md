@@ -190,13 +190,13 @@ root.size();  // 9600 — a file and a folder answer the very same call
 
 **Combines with**
 
-- [Iterator](../behavioral/iterator.md) — Iterate a tree uniformly
 - [Visitor](../behavioral/visitor.md) — Apply an operation across a whole tree
 - [Atomic Design](../../frontend/atomic-design.md) — Atomic design is composite plus a naming discipline for a design system
 - [Flyweight](./flyweight.md) — Leaf nodes with identical content can be one shared instance
 - [Interpreter](../behavioral/interpreter.md) — A grammar's nonterminals are composites holding sub-expressions
 - [Chain of Responsibility](../behavioral/chain-of-responsibility.md) — Unhandled requests can climb from child to parent up the tree
 - [Specification](../../enterprise/specification.md) — A specification tree is a composite of rules.
+- [Iterator](../behavioral/iterator.md) — An iterator walks the composite tree so callers need not write the recursion
 
 **Often confused with**
 

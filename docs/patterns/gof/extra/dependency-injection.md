@@ -190,6 +190,7 @@ const underTest = new ReminderService(frozenClock, captureMailer);
 - [Dependency Inversion Principle](../../../principles/dependency-inversion.md) — The wiring-time mechanism that realises dependency inversion.
 - [Convention over Configuration](../../../principles/convention-over-configuration.md) — Autowiring is dependency injection steered by convention
 - [Abstract Factory](../creational/abstract-factory.md) — A whole factory family is a collaborator worth handing in, so the client never picks a family itself
+- [Strategy](../behavioral/strategy.md) — A swappable algorithm is a typical thing to inject, so the caller never builds it
 
 **Alternative to**
 

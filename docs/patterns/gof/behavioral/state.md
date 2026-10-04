@@ -21,13 +21,13 @@ An object whose behavior depends on its mode grows the same switch on a status f
 ## Explained
 <!--meta block=explain-->
 
-The state pattern gives each mode of an object its own class, and the object forwards every request to the class for its current mode. Behaviour that was a switch on a status field in every method becomes one method per state class, and each state also says which state comes next. Choose it over an enum and one switch when the rules for what may follow what are the hard part, because they now sit where you can read and test them one state at a time.
+The state pattern gives each mode of an object its own class, and the object (the context) forwards every request to the class for its current mode. Behaviour that was a switch on a status field in every method becomes one method per state class, and each state also says which state comes next. Choose it over an enum and one switch when the rules for what may follow what are the hard part, because they now sit where you can read and test them one state at a time.
 
 - **Scattered machine.** No single file shows all transitions, so tracing a bug means hopping between classes. Keep the state diagram beside the code.
 - **Outgrown classes.** When states multiply or you need guards, history or an audit log, move to a transition table or a state machine library.
-- **Shared data.** A state must reach back into the holding object for it, so pass the data in as an argument.
+- **Shared data.** A state must reach back into the context object for it, so pass the data in as an argument.
 
-**Example.** An order has four states: New, Paid, Shipped and Cancelled, and four requests: pay, ship, cancel and refund. A switch design checks the status in each of 4 methods, 16 branches in all. State classes give 4 classes of 4 methods, still 16 methods, but each class holds one state's rules: Shipped refuses cancel and Paid allows it. The cost shows when you ask what leads to Cancelled: you open the New and Paid classes to find out. A table of 4 rows (New to Paid, New to Cancelled, Paid to Shipped, Paid to Cancelled) shows it at once, and once refunds need a time limit, a table is the better form.
+**Example.** An order has four states: New, Paid, Shipped and Cancelled, and four requests: pay, ship, cancel and refund. A switch checks the status in each of 4 methods: 16 branches. State classes give 4 classes of 4 methods, still 16, but each class holds one state's rules: Shipped refuses cancel; Paid allows cancel and refund, both ending in Cancelled. The cost shows when you ask what leads to Cancelled: you open all four classes to learn that only New and Paid do. A table of 4 rows (New to Paid, New to Cancelled, Paid to Shipped, Paid to Cancelled) shows it at once, and once refunds need a guard such as a time limit, a table is better.
 
 ## How it works
 <!--meta block=structure-->
@@ -51,7 +51,7 @@ stateDiagram-v2
 - **State objects vs. transition table** — Model states as polymorphic classes, or as a data table mapping (state, event) to a next state and action. Tables are compact and easy to inspect; objects carry richer per-state behavior.
 - **Context-driven vs. state-driven transitions** — The context can decide the next state, or each state can name its own successor. Letting states transition themselves keeps the rules local, at the cost of coupling states to one another.
 - **Shared vs. per-context state instances** — When states hold no data of their own, share a single flyweight instance across all contexts. When they carry per-object data, each context needs its own.
-- **Hierarchical state machines (statecharts)** — Nest states so that child states inherit the transitions of their parent. This tames the combinatorial blow-up that flat machines suffer once modes multiply.
+- **Hierarchical state machines (statecharts)** — Nest states so that child states inherit the transitions of their parent, so a shared transition such as cancel is written once. That trims the repeated transitions behind state explosion; independent dimensions need parallel states, not nesting.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -61,16 +61,17 @@ stateDiagram-v2
 
 - **Replaces sprawling if/switch checks** on the current mode with a set of small, focused classes.
 - **Each state keeps its own transition rules** in one place, instead of scattering them across methods.
-- **Adding a state** means writing one new class and leaving the existing ones untouched (open for extension).
+- **Adding a state** means writing one new class and editing only the states that lead to it; the others stay untouched.
 - **Turns a state machine** that was only implied by scattered flags into explicit classes you can test one at a time.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **More classes and indirection** than a handful of simple modes may warrant.
-- **Transition logic spreads across many state classes**, so no single place shows the whole machine.
+- **Transition logic spreads across many state classes**, so no single place shows the whole machine; keep a state diagram beside the code.
 - **A state that needs shared data** has to reach back into the context object to get it.
 - **Overkill when a plain enum and one switch** would read more clearly.
+- **Adding a request** means editing every state class, so a fifth request in the order example is 4 edits; weigh how often states change against how often requests change.
 
 ## When to use it
 <!--meta block=usage-->
@@ -140,7 +141,7 @@ article.publish(); // in-review -> published
 - **State as class, enum or table** — A class per state, an enum with a switch, or a transition table. Classes pay off when each state has many behaviors.
 - **Who owns transitions** — The context, the states or a central table. States that pick the next state are easy to follow and couple them to each other.
 - **Shared or per-context state objects** — A state with no data can be one shared instance. A state with data needs one per context.
-- **Guards and entry actions** — Conditions on a transition and work done on enter or exit.
+- **Guards, entry and exit actions** — Conditions that allow or refuse a transition, and work run on entering or leaving a state. A failed guard should reject and log the event, which feeds the illegal-transition signal, unless ignoring it is deliberate. A few guards fit in a state's method; once they multiply, move to a table or library.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -155,7 +156,7 @@ article.publish(); // in-review -> published
 
 - **Hidden states in flags** — Booleans next to the state objects create combinations nobody modelled. Fold them into states.
 - **Missing transition** — An event arrives in a state that has no rule for it and is dropped silently. Decide: reject or ignore, on purpose.
-- **State explosion** — Combining two independent dimensions in one machine multiplies the states. Split into two machines or use nested states.
+- **State explosion** — Combining two independent dimensions in one machine multiplies the states. Split into two machines or use parallel states; nested states only remove repeated transitions.
 - **Races** — Two threads send events to one context and the transition runs twice. Serialize event handling.
 
 ### Readiness checklist
@@ -195,7 +196,7 @@ article.publish(); // in-review -> published
 
 **Demonstrated by**
 
-- [Elevator](../../../designs/elevator.md) — each Elevator's per-tick behaviour is dispatched entirely on its current direction state — the textbook use of the pattern
 - [BookMyShow](../../../designs/bookmyshow.md) — temporary seat holds are modelled as explicit states rather than a second boolean flag
+- [Elevator](../../../designs/elevator.md) — a car's IDLE/UP/DOWN direction is an explicit state machine, held as an enum and switched in step(), not a class per state
 
 <!-- relationships:end -->
