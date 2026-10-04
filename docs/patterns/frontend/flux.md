@@ -21,13 +21,13 @@ When any component can change shared state, a wrong value on screen has no singl
 ## Explained
 <!--meta block=explain-->
 
-Flux sends every state change around one loop in one direction. A view describes what happened as an action, a plain record such as "add item 7". A store applies it with one function, the reducer, which takes the old state and the action and returns the new state. The views then redraw from that state. A component cannot repair state where it noticed the problem; it can only describe what happened and wait for the next state. So a session becomes an ordered list of named changes you can log, replay or step back through, much like [event sourcing](../architecture/event-sourcing.md) on the client. Choose it over components setting shared state directly when many distant components read and write the same state and you cannot tell what changed it.
+Flux sends every state change around one loop in one direction. A view describes what happened as an action, a plain record such as "add item 7". A store applies it with one function, the reducer, which takes the old state and the action and returns the new state. The views then redraw from that state. A component cannot repair state where it noticed the problem; it can only describe what happened and wait for the next state. So a session becomes an ordered list of named changes you can log, replay or step back through, much like [event sourcing](../architecture/event-sourcing.md) on the client. The reducer form is Redux's refinement; classic Flux used a dispatcher and several stores that update themselves. Choose it over components setting shared state directly when many distant components read and write the same state and you cannot tell what changed it.
 
-- **Ceremony.** Actions and reducers add files for what a setter did, so use a helper library that generates them.
+- **Boilerplate.** Actions and reducers add files for what a setter did, so use a helper library that generates them.
 - **Longer trail.** Following a click takes several hops, so log every action and use a tool that replays them.
 - **Over-sharing.** Putting everything in the store couples unrelated parts, so keep state one component owns, such as an open dropdown, in that component.
 
-**Example.** A shop shows the cart count in the header, on the cart page and on the checkout button. Each component sets the count itself, and one day the header shows 3 while the page shows 2. With the loop, every change is an action such as ADD_ITEM 7, and all three components read the same state. The log shows 5 actions, and replaying the first 4 reproduces the bug at the step that caused it. The cost is that adding one item now touches an action, a reducer and a selector where a single setter used to be.
+**Example.** A shop shows the cart count in the header, on the cart page and on the checkout button. Each component sets the count itself, and one day the header shows 3 while the page shows 2. With the loop, every change is an action such as ADD_ITEM 7, and all three components read the same state, so they cannot disagree. If the count is still wrong, the log shows 5 actions: replaying the first 4 gives the correct 3, and the fifth, REMOVE_ITEM 7, gives the wrong 2, so you look at one reducer case. The cost is that adding one item now touches an action, a reducer and a selector where a single setter used to be.
 
 ## How it works
 <!--meta block=structure-->
@@ -43,9 +43,9 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Classic Flux** — The original Facebook design: a single dispatcher fans actions out to multiple independent stores, each owning one slice of domain state. Reach for the multi-store shape when different slices have genuinely separate lifecycles and you want the dispatcher to coordinate cross-store updates.
-- **Redux** — Collapses the many stores into one, and requires reducers to be pure functions of `(state, action)`. This makes the whole history a fold over an action log — essentially client-side event-sourcing — which is what enables time-travel debugging and trivial replay. The default choice when you want one auditable source of truth.
-- **Redux Toolkit** — Redux's own maintainers ship the answer to the boilerplate complaint: `createSlice` generates the action creators and the reducer from a single declaration, `configureStore` assembles the store and its middleware, and an immutable update is written as though it mutated. It is presented as the standard way to write Redux rather than an optional extra, so hand-written action constants and switch statements now read as legacy code. What you give up is visibility — the actions and reducers you debug are generated, so the action log names things you never typed.
-- **Lighter stores** — Libraries like Zustand, Vuex, and Pinia keep the unidirectional discipline but shed most of the ceremony — no separate action creators or dispatch strings, just typed update functions. Pick these when you want the traceability without the boilerplate, and can accept a looser contract than pure reducers.
+- **Redux** — Collapses the many stores into one and relies on reducers being pure functions of `(state, action)`, by convention rather than enforcement. This makes the whole history a fold over an action log, which is client-side event sourcing and is what enables time-travel debugging and replay while effects stay outside reducers. The baseline when you want one auditable source of truth.
+- **Redux Toolkit** — `createSlice` generates the action creators and the reducer from one declaration, `configureStore` builds the store and its middleware, and updates are written as if they mutated. It is the standard way to write Redux, so hand-written action constants and switch statements are the older style. The cost is that the actions you debug are generated, so the action log names things you never typed.
+- **Lighter stores** — Zustand and Pinia keep the unidirectional discipline but shed most of the boilerplate: no separate action creators or dispatch strings, just typed update functions. Vuex keeps string-named mutations and actions, committed and dispatched by type. Pick these when you want the traceability without the boilerplate, and can accept a looser contract than pure reducers.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -54,8 +54,8 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **State transitions are predictable and traceable** — every change is a named action passing through one place.
-- **Time-travel debugging**: because state is rebuilt from an action log, you can step back and forth through history.
-- **No divergent copies** — a [single source of truth](../../principles/dry.md) means two parts of the UI cannot silently hold divergent copies of the same data.
+- **Time-travel debugging**: when reducers stay pure and effects stay outside them, recorded actions let you step back and forth through history; the log is held in memory unless you persist it.
+- **No divergent copies** — a [single source of truth](../../principles/dry.md) means two parts of the UI cannot hold different copies of the same data, as long as components read the store and do not copy its values into local state.
 - **Pure reducers are trivial to unit-test** — same input, same output, no mocking.
 
 ### Cons
@@ -64,6 +64,7 @@ flowchart LR
 - **Boilerplate** — actions, reducers, and wiring add ceremony for what a direct setter would do.
 - **Indirection**: following a click to its effect means tracing through action and reducer instead of reading one function.
 - **Easy to over-centralize**. Local UI state a component could own gets hoisted into the global store, coupling unrelated parts.
+- **Side effects need a home** — fetches and timers sit outside the reducers, in action creators or middleware, and replay must not fire them again.
 
 ## When to use it
 <!--meta block=usage-->
@@ -147,9 +148,9 @@ store.dispatch({ type: "add", by: 5 }); // count: 6
 <!--meta polarity=failure-->
 
 - **Boilerplate sprawl** — Every small change needs an action type, a creator and a reducer case, and the team starts to skip the pattern. Use helpers that generate them.
-- **Mutation in reducers** — A reducer edits state in place, so subscribers see no change and the view goes stale. Freeze state in development.
+- **Mutation in reducers** — A reducer edits state in place, so subscribers that compare by reference see no change and the view goes stale. Freeze state in development.
 - **Everything in the store** — Form fields and hover flags go in the store and every keystroke dispatches. Keep ephemeral state local.
-- **Action ordering bugs** — Two actions dispatched from one handler or from effects arrive in an order nobody planned, and the state depends on it.
+- **Action ordering bugs** — Two actions dispatched from one handler or from effects arrive in an order nobody planned, and the state depends on it. Dispatch one action per user event and let the reducer compute the rest; log action order in development.
 
 ### Readiness checklist
 <!--meta polarity=check-->
