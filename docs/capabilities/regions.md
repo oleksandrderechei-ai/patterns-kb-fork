@@ -114,5 +114,6 @@ Active-active raises the cost the other shapes let you defer. Two regions accept
 
 - [Deployment Stamp](../patterns/distributed/routing/deployment-stamp.md) — A stamp per region or zone is how multi-region deployments are actually cut.
 - [Failover](../patterns/distributed/coordination/failover.md) — Multi-zone managed services promote a standby in another zone without a person in the loop.
+- [Geode](../patterns/distributed/routing/geode.md) — A global anycast entry point sends each request to the nearest healthy region.
 
 <!-- relationships:end -->

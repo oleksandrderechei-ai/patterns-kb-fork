@@ -68,10 +68,10 @@ export const MAP_PAGE_TEXT: Readonly<Record<string, MapPageText>> = {
   stack: {
     description: 'Every pattern against the cloud service that sells it: AWS, Azure, Google Cloud and the open-source alternative, taken from the capability pages.',
     tags: ['cloud', 'integration'],
-    from: 'docs/data/relations.json and the capability pages',
+    from: 'docs/data/relations.json, docs/data/stack.json and the capability pages',
     lead: [
       'Every pattern in the knowledge base has a row. Where a cloud sells the pattern ready-made, the cells name the product, and the small line under the pattern links the capability row those products come from.',
-      'A dash means this index records no product: either none exists, because the pattern is code you write rather than a service you rent, or the mapping has not been written yet. A dash is a gap in the index, not a claim about the market.',
+      'A dash means this index records no product. Where the band note or the line under the pattern says so, none exists, because the pattern is code you write rather than a service you rent. Any other dash is a mapping not written yet: a gap in the index, not a claim about the market.',
     ],
     component: 'StackIndex/StackIndex.astro',
     toc: true,

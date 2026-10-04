@@ -1,6 +1,6 @@
 ---
 name: site-audit
-description: "Look at the built Astro site as a reader does — pages, four widths, both themes — and write a dated record of what is wrong, each finding a measurement. Use when the site is about to be shown, after a layout or token change, or when something looks off and no gate agrees. Not for markup quality (page-audit) or the accessibility gates."
+description: "Look at the built Astro site as a reader does — pages, four widths, both themes — and report what is wrong in the chat, each finding a measurement. Use when the site is about to be shown, after a layout or token change, or when something looks off and no gate agrees. Not for markup quality (page-audit) or the accessibility gates."
 ---
 
 # Audit the site with your eyes
@@ -21,7 +21,7 @@ shows the column that is not there. It applies to the Astro site, built from `do
    ```
 
 2. **Let the gates go first.** Contrast, labels and focusable regions are a gate's job; fix
-   what they report before you look, and never write it into the record.
+   what they report before you look, and never put it in the report.
 
    ```bash
    make validate
@@ -41,16 +41,16 @@ shows the column that is not there. It applies to the Astro site, built from `do
 5. **Turn every impression into a number** with the browser that took the shot: an element's
    `getBoundingClientRect()`, its `scrollWidth` against its `clientWidth`, a computed style.
    Measure the suspect element and the container it should fit in; each can look right alone.
-6. **Write the record** at `docs/records/YYYY-MM-DD-site-visual-audit.md`, with its map row in
-   the same change: a one-line statement, the commands that repeat the measurements, the scope
-   (build, widths, themes, pages), what was fixed and which gate now holds it (or that none
-   does), the open findings with their numbers and no rank or owner, and what was not audited —
-   motion, print, forced colours, real assistive technology and every width between the four.
+6. **Report in the chat**, never in a file: a one-line statement, the commands that repeat the
+   measurements, the scope (build, widths, themes, pages), what was fixed and which gate now
+   holds it (or that none does), the open findings with their numbers and no rank or owner, and
+   what was not audited — motion, print, forced colours, real assistive technology and every
+   width between the four.
 
 ## Done means
 
 - `make validate` was green before you looked.
 - All fifty-six images were opened, not the five you expected trouble in.
-- Every finding in the record carries a measurement, not an adjective.
+- Every finding in the report carries a measurement, not an adjective.
 - Each fix names the gate that now prevents it, or says plainly that nothing does.
-- The record has its map row.
+- Nothing was written under `docs/` but the fixes themselves.

@@ -236,4 +236,8 @@ const result = await client.callTool("incident_search", { service: "checkout" })
 
 - [Agent2Agent](../coordination/a2a.md) — This one gives an application tools and data; the other hands work to a peer agent
 
+**Implemented by**
+
+- [Data & Analytics](../../../capabilities/data-analytics.md) — A managed gateway turns existing APIs into MCP tools without writing a server.
+
 <!-- relationships:end -->

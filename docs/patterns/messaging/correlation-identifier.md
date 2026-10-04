@@ -221,7 +221,6 @@ await webhook.deliver(clientUrl, { flowId, state: "cleared" }); // … and on th
 - [Publish-Subscribe](./pubsub.md) — A topic hides who is listening; the id is what stitches the trail back together
 - [Design for Operations](../../principles/design-for-operations.md) — The correlation id is what makes a distributed incident legible
 - [Asynchronous Request-Reply](../distributed/routing/async-request-reply.md) — A request queue and a reply queue need the id to route the answer back to the caller that is waiting
-- [Observability Platform](../../capabilities/observability-platform.md) — The platform stores and indexes it, but the propagation is still your code's job
 
 **Enables**
 
@@ -240,6 +239,6 @@ await webhook.deliver(clientUrl, { flowId, state: "cleared" }); // … and on th
 
 **Implemented by**
 
-- [Messaging & Eventing](../../capabilities/messaging.md) — Integration platforms and the Camel library ship the step that matches replies to their requests as a ready-made building block.
+- [Observability Platform](../../capabilities/observability-platform.md) — Distributed tracing propagates the identifier across every hop and lets you search by it.
 
 <!-- relationships:end -->

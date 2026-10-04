@@ -15,16 +15,12 @@ finds, so the docs-map gate fails one, and it fails a row whose page has moved.
 
 ## Working files
 
-The pages no area lists, because they hold this repository's work in progress or its dated
-records rather than knowledge.
+The pages no area lists, because they hold this repository's work in progress rather than
+knowledge.
 
 | Page | Read it when |
 | --- | --- |
 | [Trap inbox](inbox.md) | a trap cost you time and nothing in the repository warns about it yet: add an entry, or retire one by its exit ladder |
-| [Skill shape baseline](records/2026-09-24-skill-shape-baseline.md) | you want what was measured on a day and what was fixed: a dated record in `records/`, here the 46 older skills' shape gaps, all fixed on 2026-09-28 |
-| [Migration round trip](records/2026-09-30-migration-round-trip.md) | you want the proof the markdown migration lost nothing: RT-1 and RT-2's last numbers, the losses decided on purpose, the P7 measurements, and the test behind each oracle scenario |
-| [One reading depth](records/2026-10-01-one-reading-depth.md) | you want what the owner's dev-testing feedback changed: one reading depth, the search ranking, the counts, the relevance rates, the per-gate timings and four sizing doubts left open |
-| [Site evaluation and fix pass](records/2026-10-01-site-evaluation.md) | you want the seven-dimension evaluation of the KB and its site and what the same pass fixed: the scores, the before and after counts, the page-weight measurements and the decisions left for the owner |
 
 ## Pages by area
 

@@ -1,6 +1,6 @@
 {
   "version": 1,
   "updated": "2026-10-02",
-  "note": "The vocabulary gate's exceptions (tools/src/gates/check-vocabulary.ts reads it; nothing generates from it). An entry is { name, match, reason, owner, since }: match is an exact path or a whole-path glob, and the entry excuses every banned phrasing in the markdown files it matches. A banned phrasing is a failure, never a category, so every entry owes an owner and a since date, and a whole run fails an entry that excuses nothing, so an exception cannot outlive its cause. The list ships empty (exceptions-C8). The fixture trees, changelogs and dated records are left out by the gate itself, and a single line opts out with <!-- vocab-ok -->; neither needs an entry. Edit this file, then run: make gate G=check-vocabulary.",
+  "note": "The vocabulary gate's exceptions (tools/src/gates/check-vocabulary.ts reads it; nothing generates from it). An entry is { name, match, reason, owner, since }: match is an exact path or a whole-path glob, and the entry excuses every banned phrasing in the markdown files it matches. A banned phrasing is a failure, never a category, so every entry owes an owner and a since date, and a whole run fails an entry that excuses nothing, so an exception cannot outlive its cause. The list ships empty (exceptions-C8). The fixture trees, changelogs and a single line opts out with <!-- vocab-ok --> and needs no entry. Edit this file, then run: make gate G=check-vocabulary.",
   "entries": []
 }

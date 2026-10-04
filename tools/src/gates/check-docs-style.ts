@@ -15,7 +15,7 @@
  * since they are read raw, plus the hand-written site pages (`*.mdx` under
  * site/src/content/docs/ that carry no generator stamp). Exercises and hubs
  * are never measured. Named files narrow it and never widen it: a named file
- * outside the set (a layer, a dated record, an exercise, a working file such
+ * outside the set (a layer, a refused file, an exercise, a working file such
  * as the trap inbox, a stamped hub) is skipped, so a run over the files a
  * change touched finds nothing the whole run would not. Naming the structure
  * file widens it back to the whole set, which that file decides.

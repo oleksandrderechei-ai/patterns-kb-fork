@@ -196,7 +196,6 @@ async function handle(req: Request): Promise<Response> {
 - [Valet Key](./valet-key.md) — Screen at the gate, then hand out scoped keys
 - [Intercepting Validator](../../security/intercepting-validator.md) — The gatekeeper validates before forwarding
 - [Identity Is the Perimeter](../../../principles/identity-as-perimeter.md) — The gate is one checkpoint, not the whole boundary
-- [Networking](../../../capabilities/networking.md) — In a cloud network this is the managed web application firewall (WAF) or application programming interface (API) gateway.
 
 **Specializes**
 
@@ -213,5 +212,9 @@ async function handle(req: Request): Promise<Response> {
 **Demonstrated by**
 
 - [Persona Identification & Sanction Check (V2)](../../../designs/persona-identification-v2.md) — a single edge that owns three different refusals — unauthenticated, over the limit, and behind on the drain
+
+**Implemented by**
+
+- [Networking](../../../capabilities/networking.md) — A web application firewall in front of the service is the managed form of the gatekeeper.
 
 <!-- relationships:end -->

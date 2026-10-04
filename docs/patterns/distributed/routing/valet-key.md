@@ -233,6 +233,5 @@ const uploadUrl = `https://blobs.example.com/${resource}?exp=${key.expiresAt}&si
 **Implemented by**
 
 - [Storage](../../../capabilities/storage.md) — Pre-signed URLs, shared access signatures and signed URLs are this pattern, already implemented.
-- [Identity & Access](../../../capabilities/identity.md) — Issued by the cloud's token service rather than by you.
 
 <!-- relationships:end -->

@@ -236,6 +236,7 @@ await runSaga([
 
 **Implemented by**
 
-- [Messaging & Eventing](../../../capabilities/messaging.md) — A managed state machine can hold the undo steps and run them in reverse when a later step fails.
+- [Compute](../../../capabilities/compute.md) — Workflow engines run the compensations for you: each step declares its undo, and the engine replays them after a failure.
+- [Workflow orchestrators](../../../comparisons/workflow-orchestrators.md) — How much of the compensation each orchestrator writes for you.
 
 <!-- relationships:end -->

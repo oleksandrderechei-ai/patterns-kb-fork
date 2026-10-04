@@ -53,7 +53,7 @@ An object store keeps whole files, called objects, in one flat namespace, each a
 | Cold tiering | Storage classes down to deep archive | Access tiers down to archive | Storage classes down to archive | Lifecycle transition to a remote tier | Lifecycle rules onto cheaper pools | You place volumes on the disks you choose |
 | Cost of reading it all back out | Metered egress per gigabyte | Metered egress per gigabyte | Metered egress per gigabyte | Bandwidth you already pay for | Bandwidth you already pay for | Bandwidth you already pay for |
 | Also serves block or file | No — separate services | No — separate services | No — separate services | No — object only | Yes — block volumes and a POSIX filesystem | A filer with a FUSE mount |
-| Governance to weigh | Vendor roadmap; no fork available | Vendor roadmap; no fork available | Vendor roadmap; no fork available | AGPL reach, and 2025 console features moved toward the commercial build | Foundation-governed, many contributing vendors | Community project with a small core team |
+| Governance to weigh | Vendor roadmap; no fork available | Vendor roadmap; no fork available | Vendor roadmap; no fork available | AGPL reach; the community repository went into maintenance in December 2025 and is no longer maintained | Foundation-governed, many contributing vendors | Community project with a small core team |
 
 ## Choosing between them
 <!--meta block=choosing-->

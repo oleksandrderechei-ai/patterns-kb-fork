@@ -22,7 +22,7 @@ import {
   SERVICE_COLUMNS,
   stackData,
   tableRows,
-  UNBUYABLE,
+  type StackNotes,
   type Linkify,
   type Relation,
   type StackRow,
@@ -97,21 +97,51 @@ const docs: Record<string, string> = {
   'docs/comparisons/cache-servers.md': CACHE_SERVERS,
 };
 
-function rowsOf(relations: Relation[]): StackRow[] {
-  const s = buildStack(STRUCTURE, relations, (source) => docs[source] ?? '', linkify);
+/** The book's band is unbuyable as a whole; one caching pattern is unbuyable on its own. */
+const NOTES: StackNotes = { bands: { gof: 'Inside one process.' }, patterns: { lonely: 'Code you write.' } };
+
+function rowsOf(relations: Relation[], notes?: StackNotes): StackRow[] {
+  const s = buildStack(STRUCTURE, relations, (source) => docs[source] ?? '', linkify, notes);
   return s.bands.flatMap((b) => b.groups.flatMap((g) => g.rows));
 }
 
 describe('the stack index', () => {
   it('bands the patterns in reading order, labelling the groups of a subdivided band only', () => {
-    const s = buildStack(STRUCTURE, [], (x) => docs[x] ?? '', linkify);
+    const s = buildStack(STRUCTURE, [], (x) => docs[x] ?? '', linkify, NOTES);
     expect(s.bands.map((b) => [b.id, b.label, b.description, b.groups.map((g) => g.label ?? '-')])).toEqual([
       ['gof', 'Objects', 'The book', ['Creational']],
       ['caching', 'Caching', 'Keeping answers close', ['-']],
     ]);
-    expect(s.bands[0]?.unbuyable).toBe(UNBUYABLE['gof']);
+    expect(s.bands[0]?.unbuyable).toBe('Inside one process.');
     expect(s.bands[1]).not.toHaveProperty('unbuyable');
     expect([s.patterns, s.covered, s.rows]).toEqual([4, 0, 4]);
+    expect([s.sold, s.byNature, s.open]).toEqual([0, 2, 2]);
+  });
+
+  it('tells a dash that is a verdict from a gap: a band note, or a reason of its own', () => {
+    const rows = rowsOf([{ a: 'caches', verb: 'implements', b: 'cache-aside', maps_a: 'mapping-row-1' }], NOTES);
+    expect(rows.map((r) => [r.pattern.title, r.state, r.reason ?? '-'])).toEqual([
+      ['Singleton', 'none', '-'],
+      ['Cache-Aside', 'mapped', '-'],
+      ['Write-Through', 'gap', '-'],
+      ['Lonely', 'none', 'Code you write.'],
+    ]);
+    expect(rows.find((r) => r.state === 'none' && r.reason !== undefined)?.cells).toEqual(SERVICE_COLUMNS.map(() => DASH));
+    const s = buildStack(STRUCTURE, [{ a: 'caches', verb: 'implements', b: 'cache-aside' }], (x) => docs[x] ?? '', linkify, NOTES);
+    expect([s.sold, s.byNature, s.open]).toEqual([1, 2, 1]);
+  });
+
+  it('refuses a reason a capability contradicts, one its band already gives, and a name the index does not hold', () => {
+    const build = (relations: Relation[], notes: StackNotes) => () => buildStack(STRUCTURE, relations, (x) => docs[x] ?? '', linkify, notes);
+    expect(build([{ a: 'caches', verb: 'implements', b: 'lonely' }], NOTES)).toThrow(
+      'docs/data/stack.json says no cloud sells lonely, but caches implements it',
+    );
+    expect(build([], { bands: NOTES.bands, patterns: { singleton: 'x' } })).toThrow(
+      'docs/data/stack.json gives singleton a reason of its own, but its band "gof" already says none of its patterns is for sale',
+    );
+    expect(build([], { bands: { ghost: 'x' }, patterns: { nobody: 'y', 'stale-cache': 'z' } })).toThrow(
+      'docs/data/stack.json names band "ghost", pattern "nobody", pattern "stale-cache", which the stack index does not hold',
+    );
   });
 
   it("copies a pinned mapping row's cells, links each for its column, and names the row it came from", () => {
@@ -210,11 +240,11 @@ describe('the stack index', () => {
   });
 
   it('refuses to call a band unbuyable once a capability sells one of its patterns', () => {
-    expect(() => buildStack(STRUCTURE, [{ a: 'caches', verb: 'implements', b: 'singleton' }], (x) => docs[x] ?? '', linkify)).toThrow(
+    expect(() => buildStack(STRUCTURE, [{ a: 'caches', verb: 'implements', b: 'singleton' }], (x) => docs[x] ?? '', linkify, NOTES)).toThrow(
       'the stack index calls band "gof" unbuyable, but a capability implements singleton',
     );
     // A comparison arguing the choice is no product for sale: the band stays unbuyable.
-    expect(() => buildStack(STRUCTURE, [{ a: 'cache-servers', verb: 'implements', b: 'singleton' }], (x) => docs[x] ?? '', linkify)).not.toThrow();
+    expect(() => buildStack(STRUCTURE, [{ a: 'cache-servers', verb: 'implements', b: 'singleton' }], (x) => docs[x] ?? '', linkify, NOTES)).not.toThrow();
   });
 
   it('reads each capability page once, however many rows it pins', () => {
@@ -312,6 +342,12 @@ describe('reading a tree', () => {
 });
 
 describe('the real tree', () => {
+  it('reads its verdicts from stack.json, and every count adds up', async () => {
+    const s = await stackData(REPO_ROOT);
+    expect(s.bands.find((b) => b.id === 'gof')?.unbuyable).toMatch(/inside one process/);
+    expect(s.sold + s.byNature + s.open).toBe(s.patterns);
+  });
+
   it("lists the rows today's stack page lists, cell for cell", async () => {
     const today = path.join(REPO_ROOT, 'site/map/stack.html');
     // The HTML page leaves at the cutover, and this comparison with it.

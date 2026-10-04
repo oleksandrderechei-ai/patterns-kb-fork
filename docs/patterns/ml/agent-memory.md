@@ -229,4 +229,8 @@ async function recall(scope: Memory["scope"], store: Store, tokenBudget: number)
 
 - [Context Engineering](./context-engineering.md) — This decides what survives the session; that decides what enters this one
 
+**Implemented by**
+
+- [Data & Analytics](../../capabilities/data-analytics.md) — The agent platforms sell memory as a service: they extract, store and retrieve it per user.
+
 <!-- relationships:end -->

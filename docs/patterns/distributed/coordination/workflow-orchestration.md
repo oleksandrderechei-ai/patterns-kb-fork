@@ -244,7 +244,6 @@ export async function personaFlow(
 **Implemented by**
 
 - [Compute](../../../capabilities/compute.md) — Step Functions and Durable Functions persist each step, so a crash resumes instead of restarting.
-- [Messaging & Eventing](../../../capabilities/messaging.md) — The same state machines sold as an integration service, driving the steps between your queues.
 - [Workflow orchestrators](../../../comparisons/workflow-orchestrators.md) — The engines that make a long process durable, argued one against another.
 
 <!-- relationships:end -->

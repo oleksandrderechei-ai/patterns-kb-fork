@@ -4,9 +4,8 @@ A knowledge base of 255 software design patterns, 41 design case studies, 51 the
 hazards, 36 principles, 10 cloud capabilities and 10 product comparisons — 448 pages in all.
 **It is data that happens to render**, not a site that happens to hold data.
 
-> **Migrated** to markdown under `docs/` and an Astro site built from it
-> ([the record](docs/records/2026-09-30-migration-round-trip.md)). The migration is done and
-> awaits the owner's dev testing: [Testing the site](docs/concepts/testing-the-site.md).
+> **Migrated** to markdown under `docs/` and an Astro site built from it. The migration is
+> done and awaits the owner's dev testing: [Testing the site](docs/concepts/testing-the-site.md).
 
 ## The one thing to understand
 

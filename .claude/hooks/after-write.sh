@@ -175,6 +175,9 @@ check_data() {
     docs/data/products.json)
       note "docs/data/products.json is the product registry: the products gate holds it to the capability pages' mapping tables, the site's stack index links through it, and json-sanity holds its source header. Fetch a URL before adding it. Run: make gate G=check-products && make gate G=check-json"
       ;;
+    docs/data/stack.json)
+      note "docs/data/stack.json says which dashes on the stack index (map/stack.html) are verdicts: a band note, or one pattern's reason no cloud sells it. buildStack in tools/src/lib/site-map.ts reads it and refuses an entry an implements edge contradicts; json-sanity holds its source header. Run: make gate G=check-json && make tools-test T=site-map && make site-build"
+      ;;
     docs/data/search-synonyms.json)
       note "docs/data/search-synonyms.json is the search synonym bridge: kb.mjs find reads it, the search-synonyms gate holds its rules, docs/reference/search-synonyms.md is rendered from it, and json-sanity holds its source header. Run: make synonyms && make gate G=check-search-synonyms && make gate G=check-json && make tools-test T=relevance"
       ;;

@@ -86,5 +86,6 @@ Whatever you pick, write every consumer to survive seeing a message twice — th
 - [Publish-Subscribe](../patterns/messaging/pubsub.md) — Fan-out is table stakes in all of them — the comparison is where the filtering happens.
 - [Competing Consumers](../patterns/messaging/competing-consumers.md) — Queue-shaped contenders scale this way; log-shaped ones cap it at the partition count.
 - [Queue-Based Load Leveling](../patterns/distributed/resilience/load-leveling.md) — The buffer between producer and consumer is what you are choosing a product for.
+- [Sequential Convoy](../patterns/messaging/sequential-convoy.md) — Each broker scopes ordering differently: per partition, per queue or per message group.
 
 <!-- relationships:end -->

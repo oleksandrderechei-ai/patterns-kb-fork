@@ -10,8 +10,9 @@
  *
  *   layer              a CLAUDE.md. Its shape and budget are the context-layers
  *                      gate's; it carries no block, and this gate does not hold it.
- *   frontmatter-free   a file under one of FREE_ROOTS (the dated records). It
- *                      carries no block, and one on it is a finding.
+ *   refused            a file under one of REFUSED_ROOTS (where dated records
+ *                      used to sit). None is kept: a check's findings go to the
+ *                      chat or to its skill's issue, so any file there fails.
  *   exercise           a file under EXERCISES. Only the exercise keys; the
  *                      mirror computes the rest. The KB has none yet.
  *   page               everything else: the page block of `lib/page-block.ts`,
@@ -45,7 +46,7 @@
  * placeholder for every other, which is still a finding — a key filled in with
  * a guess would be green and wrong. For `status` that is the whole of the
  * repair: which of the three a page is, is a decision about the page
- * (maturity-C2). It writes nothing on an exercise or a frontmatter-free file,
+ * (maturity-C2). It writes nothing on an exercise or a refused file,
  * and leaves a key declared twice as it stands.
  *
  * The page list is what git lists under docs/ that is still on disk: a page
@@ -68,8 +69,8 @@ export const NAME = 'frontmatter';
 /** The page tree. */
 export const PAGE_TREE = 'docs/';
 
-/** Roots whose files carry no block: the dated records (frontmatter-C11). */
-export const FREE_ROOTS: readonly string[] = ['docs/records/'];
+/** Roots no file may sit under: dated records are not kept. */
+export const REFUSED_ROOTS: readonly string[] = ['docs/records/'];
 
 /** The exercise tree, held to the exercise regime (frontmatter-C8). */
 export const EXERCISES = 'docs/exercises/';
@@ -80,12 +81,12 @@ export const STRUCTURE = 'docs/data/site-structure.json';
 /** What `--fix` writes for a key only a person can answer. Assembled so this file carries none. */
 export const MARKER = ['CHANGE', 'ME'].join('-');
 
-export type Regime = 'layer' | 'free' | 'exercise' | 'page';
+export type Regime = 'layer' | 'refused' | 'exercise' | 'page';
 
 /** Which regime holds a file under the page tree. */
 export function regimeOf(file: string): Regime {
   if (path.posix.basename(file) === 'CLAUDE.md') return 'layer';
-  if (FREE_ROOTS.some((r) => file.startsWith(r))) return 'free';
+  if (REFUSED_ROOTS.some((r) => file.startsWith(r))) return 'refused';
   if (file.startsWith(EXERCISES)) return 'exercise';
   return 'page';
 }
@@ -282,7 +283,7 @@ export const spec: GateSpec = {
 
     const parsed = frontmatterMany(ctx.root, files, { lists: true });
     const raws = frontmatterMany(ctx.root, files, { raw: true });
-    const counts: Record<Regime, number> = { layer: 0, free: 0, exercise: 0, page: 0 };
+    const counts: Record<Regime, number> = { layer: 0, refused: 0, exercise: 0, page: 0 };
 
     for (const f of files) {
       const regime = regimeOf(f);
@@ -291,8 +292,8 @@ export const spec: GateSpec = {
       const hasFm = hasFrontmatter(text);
       const rawDesc = (raws.get(f) as Record<string, string>)['description'] ?? '';
 
-      if (regime === 'free') {
-        if (hasFm) ctx.fail(f, `files under ${FREE_ROOTS.join(', ')} carry no frontmatter — a dated record is not a page`);
+      if (regime === 'refused') {
+        ctx.fail(f, "dated records are not kept — report a check's findings in the chat or in the issue its skill opens, and delete this file");
         continue;
       }
       if (regime === 'exercise') {
@@ -380,7 +381,7 @@ export const spec: GateSpec = {
     }
 
     const repaired = ctx.repairs > 0 ? `, ${String(ctx.repairs)} key(s) added` : '';
-    return `[${NAME}] OK — ${String(counts.page)} pages, ${String(counts.exercise)} exercises, ${String(counts.free)} frontmatter-free${repaired}`;
+    return `[${NAME}] OK — ${String(counts.page)} pages, ${String(counts.exercise)} exercises${repaired}`;
   },
 };
 

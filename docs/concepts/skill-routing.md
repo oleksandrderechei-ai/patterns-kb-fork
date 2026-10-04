@@ -64,7 +64,7 @@ These check the repo's own tools and docs rather than the KB:
 | moving an entry out of the [trap inbox](../inbox.md) into its home | `retire-gotcha` |
 | checking that the docs and harness files still say what the tree does | `docs-sweep` |
 | reading a built page of the Astro site as a machine reader would | `page-audit` |
-| looking at the built Astro site at four widths, into a dated record | `site-audit` |
+| looking at the built Astro site at four widths, reported in the chat | `site-audit` |
 | a site component or the shared stylesheets | `site-component` |
 
 The last three serve the Astro site under `site/`.

@@ -311,5 +311,6 @@ async function runFlow(flowId: string, personaId: string): Promise<void> {
 **Implemented by**
 
 - [Workflow orchestrators](../../../comparisons/workflow-orchestrators.md) — Which engine runs your sagas — Temporal, Airflow, Argo, Prefect or the cloud state machines.
+- [Compute](../../../capabilities/compute.md) — A managed workflow engine runs the orchestrated saga and survives a crash mid-way.
 
 <!-- relationships:end -->

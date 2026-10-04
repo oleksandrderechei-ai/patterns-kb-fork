@@ -338,12 +338,33 @@ describe('link', () => {
     expect(read(BREAKER)).toMatch(/## Stray\n\nNot a block\.\n\n## How it relates\n<!--meta block=relationships-->\n\n<!-- relationships:start -->\n[^]*<!-- relationships:end -->\n$/);
   });
 
+  it('pins an implements edge to a table row with its label, and refuses a pin it cannot make', async () => {
+    edit(STEADY, (t) => `${t}\n## What each cloud calls it\n<!--meta block=mapping-->\n\n| Capability | AWS |\n| --- | --- |\n| Blobs | S3 |\n| Queues | SQS |\n`);
+    expect(await fails('link', 'steady', 'implements', 'queue', '--maps', 'mapping-row-9')).toBe(
+      '--maps: steady has no row "mapping-row-9" in its mapping or matrix table (rows: mapping-row-1 Blobs; mapping-row-2 Queues)',
+    );
+    expect(await fails('link', 'steady', 'combines-with', 'queue', '--maps', 'mapping-row-2')).toBe(
+      '--maps: only an implements edge pins a table row, and this edge reads "combines-with"',
+    );
+    // Written from the pattern's side, the record still reads implements from the page that holds the row.
+    await ok('link', 'queue', 'implemented-by', 'steady', '--note', 'Bought', '--note-back', 'Sells it', '--maps', 'mapping-row-2');
+    expect(json<RelationsFile>(RELATIONS).relations.at(-1)).toEqual({
+      a: 'steady',
+      verb: 'implements',
+      b: 'queue',
+      note_a: 'Sells it',
+      note_b: 'Bought',
+      maps_a: 'mapping-row-2',
+      maps_label_a: 'Queues',
+    });
+  });
+
   it('refuses a second edge between two pages, a page related to itself, and a bad invocation', async () => {
     expect(await fails('link', 'retry', 'alternative-to', 'breaker')).toBe('retry already relates to breaker via "combines-with" — edit that edge instead of adding a second one');
     expect(await fails('link', 'storm', 'combines-with', 'breaker')).toBe('storm already relates to breaker via "mitigated-by" — edit that edge instead of adding a second one');
     expect(await fails('link', 'retry', 'combines-with', 'retry')).toBe('a page cannot relate to itself');
     const usage = await fails('link', 'retry', 'loves', 'queue');
-    expect(usage).toMatch(/^usage: kb\.mjs link <from> <verb> <to> \[--note "…"\] \[--note-back "…"\] \[--group "…"\] \[--group-back "…"\]\nverbs: combines-with, alternative-to, /);
+    expect(usage).toMatch(/^usage: kb\.mjs link <from> <verb> <to> \[--note "…"\] \[--note-back "…"\] \[--group "…"\] \[--group-back "…"\] \[--maps <row-id>\]\nverbs: combines-with, alternative-to, /);
     expect(await fails('link', 'retry', 'combines-with')).toBe(usage.replace(/verbs: .*$/, (v) => v));
     expect(await fails('link', 'nope', 'combines-with', 'queue')).toBe('unknown id: nope');
     expect(await fails('link', 'retry', 'combines-with', 'queue', '--group', ' ')).toBe('--group: cannot be empty');

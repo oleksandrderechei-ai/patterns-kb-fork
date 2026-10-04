@@ -81,5 +81,6 @@ Before any of them, try doing less. A queue, an idempotent consumer and a status
 
 - [Saga](../patterns/distributed/coordination/saga.md) — Temporal and the cloud state machines run the saga for you — the compensating steps become code or a definition the engine replays, not retry scaffolding in your service
 - [Workflow Orchestration](../patterns/distributed/coordination/workflow-orchestration.md) — The engines that make a long process durable, argued one against another.
+- [Compensating Transaction](../patterns/distributed/resilience/compensating-transaction.md) — How each engine runs the undo steps when a run fails half-way.
 
 <!-- relationships:end -->

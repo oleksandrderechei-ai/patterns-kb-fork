@@ -10,9 +10,9 @@ One index answers "what do I buy for this pattern", and shows the gaps as plainl
 
 ## Gotchas
 
-The rows come from `tools/src/lib/site-map.ts` at build time: an `implements` relation with a pinned mapping row copies that row's cells; one without links the capability's whole table; none is a dash. An `implements` relation from a comparison page adds a Compare link to the row, and counts the pattern as covered even when its cells are dashes. A dash records a gap in the index, never a claim about the market.
+The rows come from `tools/src/lib/site-map.ts` at build time: an `implements` relation with a pinned mapping row copies that row's cells; one without links the capability's whole table; none is a dash. An `implements` relation from a comparison page adds a Compare link to the row, and counts the pattern as covered even when its cells are dashes.
 
-A band the lib calls unbuyable fails the build the moment a capability implements one of its patterns: the note would be wrong.
+A dash is a verdict only where `docs/data/stack.json` gives one: a band note, or a pattern's own reason (row state `none`, the reason printed under the pattern). Every other dash is a `gap` in the index, never a claim about the market. A verdict fails the build the moment a capability implements the pattern: the note would be wrong.
 
 Product links are the one kind of outbound link the site writes; the registry is `docs/data/products.json`, linked by `productLinker` in `tools/src/lib/site-map.ts`.
 

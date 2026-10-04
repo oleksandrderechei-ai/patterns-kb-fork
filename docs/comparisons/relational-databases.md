@@ -45,7 +45,7 @@ A relational database gives you tables, joins and a transaction that either comm
 | License | PostgreSQL License, permissive | GPLv2, Oracle-owned | GPLv2, community fork | Public domain | Source-available, enterprise license |
 | What you run | A server process | A server process | A server process | A library in your process | A cluster of nodes |
 | Write scale past one node | Split the data yourself | Split the data yourself | Split the data yourself | One writer, by design | Any node accepts writes |
-| Managed by the big three clouds | All three | All three | Amazon RDS; not everywhere | Nothing to manage | Vendor-operated service |
+| Managed by the big three clouds | All three | All three | Amazon RDS only; Azure Database for MariaDB retired in September 2025 | Nothing to manage | Vendor-operated service |
 | Extension ecosystem | Widest: PostGIS, pgvector | Plugins, narrower | MySQL plugins plus its own | Built-in modules only | Wire protocol, not the extensions |
 | What compatibility buys you | The protocol others copy | MariaDB and its forks speak it | Mostly MySQL, drifting | A file format readable anywhere | Your driver ports; your SQL may not |
 | Self-hosted ops burden | Backups and failover are yours | Backups and failover are yours | Backups and failover are yours | Copy the file | Rebalancing is automatic, the cluster is not |
@@ -73,7 +73,6 @@ The cloud's own compatible engines are the third trade. Aurora and AlloyDB keep 
 
 **Combines with**
 
-- [Replication](../patterns/distributed/coordination/replication.md) — Read replicas are how the single-writer engines grow before you shard.
 - [Sharding](../patterns/distributed/routing/sharding.md) — Splitting by key is the write-scale answer the single-writer engines leave to you.
 
 **Specializes**
@@ -84,5 +83,6 @@ The cloud's own compatible engines are the third trade. Aurora and AlloyDB keep 
 
 - [Quorum & Consensus](../patterns/distributed/coordination/quorum-consensus.md) — A transaction spanning regions costs a quorum round trip per commit, which is the line between one primary and many.
 - [Write-Ahead Log](../patterns/distributed/coordination/write-ahead-log.md) — Every engine here writes its intent to a log before the page, which is what makes crash recovery and replication possible at all.
+- [Replication](../patterns/distributed/coordination/replication.md) — How each engine serves reads from replicas, lag included.
 
 <!-- relationships:end -->

@@ -232,4 +232,8 @@ return task.artifacts;    // untrusted content — validate before it reaches yo
 
 - [Model Context Protocol](../routing/mcp.md) — That one connects an application to capabilities; this one connects independent agents
 
+**Implemented by**
+
+- [Data & Analytics](../../../capabilities/data-analytics.md) — Each cloud's managed agent runtime speaks A2A, so a hosted agent can call another.
+
 <!-- relationships:end -->

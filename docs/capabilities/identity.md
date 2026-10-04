@@ -54,12 +54,12 @@ Identity services decide who is calling and what they may do, from the caller ra
 | Workforce directory and single sign-on | AWS IAM Identity Center | Microsoft Entra ID | Cloud Identity | [Keycloak](../comparisons/identity-providers.md) |
 | Resource authorization engine | AWS IAM | Azure RBAC | Cloud IAM | Open Policy Agent, OpenFGA |
 | Workload identity attached to compute | IAM role, via instance profile or task role | managed identity | service account | SPIFFE/SPIRE |
-| Short-lived credential issuance | AWS STS | Microsoft Entra token service | Security Token Service | OpenBao |
+| Short-lived credential issuance | AWS STS | Microsoft Entra ID access tokens | Security Token Service | OpenBao |
 | Workload identity federation from outside | IAM OIDC or SAML provider with AssumeRole | workload identity federation | Workload Identity Federation | SPIFFE/SPIRE |
 | Workload identity for Kubernetes | EKS Pod Identity; IAM roles for service accounts | Microsoft Entra Workload ID | Workload Identity Federation for GKE | SPIFFE/SPIRE |
 | Customer and consumer identity | Amazon Cognito | Microsoft Entra External ID | Identity Platform | Keycloak, Authentik |
 | Conditional and context-aware access | IAM policy conditions, including `aws:MultiFactorAuthPresent` | Microsoft Entra Conditional Access | Context-Aware Access | no direct open-source equivalent |
-| Just-in-time privilege elevation | no first-party equivalent | Microsoft Entra Privileged Identity Management | Privileged Access Manager | no direct open-source equivalent |
+| Just-in-time privilege elevation | no first-party managed service | Microsoft Entra Privileged Identity Management | Privileged Access Manager | no direct open-source equivalent |
 | Guardrails above the account boundary | AWS Organizations service control policies | management groups with Azure Policy | organization policy constraints | Open Policy Agent |
 | Secrets management | AWS Secrets Manager | Azure Key Vault | Secret Manager | OpenBao |
 | Key management | AWS KMS | Azure Key Vault; Managed HSM | Cloud KMS | OpenBao |
@@ -120,7 +120,6 @@ Human sessions and workload credentials pull the lifetime dial in opposite direc
 - [Federated Identity](../patterns/distributed/coordination/federated-identity.md) — Workload identity federation and external IdP trust are this pattern as a platform feature.
 - [Authentication Enforcer](../patterns/security/authentication-enforcer.md) — The managed identity provider is the enforcement point.
 - [Authorization Enforcer (RBAC)](../patterns/security/authorization-enforcer.md) — The resource authorization engine evaluates every control-plane call.
-- [Valet Key](../patterns/distributed/routing/valet-key.md) — Short-lived scoped credentials are the general form of the delegated-access token.
 - [Secure Logger](../patterns/security/secure-logger.md) — The control-plane audit trail is append-only, so a caller inside the account cannot edit what it already recorded.
 - [Secure Session Manager](../patterns/security/secure-session-manager.md) — Customer identity services issue, expire and revoke sign-in sessions for you.
 

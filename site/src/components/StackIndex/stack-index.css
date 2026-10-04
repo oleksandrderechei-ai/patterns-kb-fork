@@ -22,6 +22,7 @@
   vertical-align: top;
 }
 .kb-stack-source,
+.kb-stack-reason,
 .kb-stack-compare {
   display: block;
   /* The pattern's name holds the row header's width; the lines under it wrap
@@ -30,11 +31,13 @@
   font-weight: 400;
   font-size: var(--sl-text-xs);
 }
-.kb-stack-source a {
+.kb-stack-source a,
+.kb-stack-reason {
   color: var(--sl-color-gray-3);
 }
 .kb-stack-row--gap td,
-.kb-stack-row--linked td {
+.kb-stack-row--linked td,
+.kb-stack-row--none td {
   color: var(--sl-color-gray-4);
 }
 .kb-product::after {

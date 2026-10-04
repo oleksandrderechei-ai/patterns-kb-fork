@@ -1,6 +1,6 @@
 {
   "version": 1,
   "updated": "2026-10-02",
-  "note": "The harness-shape gate’s exceptions (tools/src/gates/check-harness.ts reads it; nothing generates from it). An entry excuses one skill’s description and body findings — the \"Use when\" trigger and \"Not for\" boundary, the gap, the numbered steps and the closing \"Done means\" list — and never a missing SKILL.md, name or description. The list ships empty: the skills written before the skill shape was gated have all been reshaped to it (the migration's P4b, docs/records/2026-09-30-migration-round-trip.md). A new entry needs a reason, an owner and a date, and the gate fails an entry that excuses nothing. An entry is { name, match, reason, owner, since }: match is an exact path or a whole-path glob. Edit this file, then run: make gate G=check-harness.",
+  "note": "The harness-shape gate’s exceptions (tools/src/gates/check-harness.ts reads it; nothing generates from it). An entry excuses one skill’s description and body findings — the \"Use when\" trigger and \"Not for\" boundary, the gap, the numbered steps and the closing \"Done means\" list — and never a missing SKILL.md, name or description. The list ships empty: the skills written before the skill shape was gated have all been reshaped to it (the migration's P4b). A new entry needs a reason, an owner and a date, and the gate fails an entry that excuses nothing. An entry is { name, match, reason, owner, since }: match is an exact path or a whole-path glob. Edit this file, then run: make gate G=check-harness.",
   "entries": []
 }

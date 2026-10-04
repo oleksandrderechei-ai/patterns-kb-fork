@@ -250,4 +250,8 @@ async function handle(msg: Message) {
 - [Dead Letter Channel](./dead-letter-channel.md) — A message that cannot be decoded has to leave the partition, or it blocks every message behind it
 - [Canonical Data Model](./canonical-data-model.md) — Encoding rules say how the canonical fields are written on the wire and how they may change
 
+**Implemented by**
+
+- [Messaging & Eventing](../../capabilities/messaging.md) — A schema registry stores each schema version and checks that a new one stays compatible.
+
 <!-- relationships:end -->

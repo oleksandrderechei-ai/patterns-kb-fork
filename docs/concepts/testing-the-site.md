@@ -348,7 +348,7 @@ The gates and flows prove that the site works; they do not prove that it reads w
 
 - **Visual taste**: spacing, hierarchy and colour choices past the contrast floor. Look at the
   `make site-shots` pictures, or run the **site-audit** skill, which walks the same pages and
-  writes a dated record of what looks wrong.
+  reports what looks wrong, each finding measured.
 - **Copy quality**: whether a page's prose is clear, true and in the house register. Review
   catches it, with the kb-design-review and kb-fact-check skills for depth.
 - **Widths other than the three**: the flows run at 1600px and 390px, and 14 of them at 800px;

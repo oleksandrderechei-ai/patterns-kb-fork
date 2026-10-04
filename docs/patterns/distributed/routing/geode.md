@@ -233,4 +233,8 @@ async function read(
 
 - [Deployment Stamp](./deployment-stamp.md) — A stamp can stand alone and owns a slice of users; a geode never stands alone and every node is equal
 
+**Implemented by**
+
+- [Regions & Availability](../../../capabilities/regions.md) — A global anycast entry point steers each request to the nearest healthy deployment.
+
 <!-- relationships:end -->

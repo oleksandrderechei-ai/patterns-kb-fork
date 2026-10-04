@@ -10,9 +10,8 @@
  * terms ban has no one replacement to name.
  *
  * Then the prose. The scan set is every markdown file git lists, committed or
- * not, minus ignored files, the fixture trees, changelogs and dated records
- * (glossary-C4): a changelog entry and a dated record are written in the words
- * of their day, and a fixture tree is broken on purpose and asserted byte for
+ * not, minus ignored files, the fixture trees and changelogs (glossary-C4): a
+ * changelog entry is written in the words of its day, and a fixture tree is broken on purpose and asserted byte for
  * byte. Matching is literal and case-blind, whole-word by the ASCII rule — a
  * match starts and ends at a line edge or beside anything but a letter, digit
  * or underscore — and a trailing `s` or `es` still matches (glossary-C5).
@@ -67,14 +66,9 @@ export function isChangelog(file: string): boolean {
   return path.posix.basename(file) === 'CHANGELOG.md';
 }
 
-/** A dated record (spec: kb.harness.truth-sweep): `docs/records/YYYY-MM-DD-<subject>.md`, true on its date. */
-export function isDatedRecord(file: string): boolean {
-  return /^docs\/records\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/.test(file);
-}
-
 /** The one predicate the listed scan set and a named path both pass through. */
 export function unscanned(file: string): boolean {
-  return FIXTURE_TREES.some((t) => file.startsWith(t)) || isChangelog(file) || isDatedRecord(file);
+  return FIXTURE_TREES.some((t) => file.startsWith(t)) || isChangelog(file);
 }
 
 const isMarkdown = (file: string): boolean => file.endsWith('.md') || file.endsWith('.mdx');

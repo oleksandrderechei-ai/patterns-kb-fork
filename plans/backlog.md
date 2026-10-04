@@ -26,7 +26,7 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   - json-sanity prints V8's parse message for `not json` across two stderr lines: collapse
     whitespace in `tidy` (`tools/src/gates/check-json.ts`), as `tools/src/lib/data-json.ts` does.
 
-- From the 2026-10-01 site evaluation ([record](../docs/records/2026-10-01-site-evaluation.md)),
+- From the 2026-10-01 site evaluation,
   round 3 closed every item but one:
   - **Sketch languages.** 96% of pattern sketches are TypeScript; the concurrency patterns
     (semaphore, lock-free, rw-lock, thread-pool) would read more truly in Go, Java or Rust.
@@ -36,8 +36,7 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   `<use href>` per button would save about 35,000 a hub (`site/src/components/Favourites/`,
   `Practiced/`); `hubRaw` was re-measured to 149,000 on 2026-10-02 instead.
 
-- Left open when the migration plan was deleted (its history is in git and
-  [the migration record](../docs/records/2026-09-30-migration-round-trip.md)):
+- Left open when the migration plan was deleted (its history is in git):
   - The CLI's inflected top-1 measures exactly its 98.5% floor; its five misses are not ties.
   - `pages.yml` has not been dispatched by hand, as workflow-edits.md asks.
   - The search box does not show a page's requires and related.

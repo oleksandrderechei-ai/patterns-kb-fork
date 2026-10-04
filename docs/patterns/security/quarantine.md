@@ -235,4 +235,8 @@ async function quarantine(ref: ArtifactRef, untrusted: Store, trusted: Store, au
 
 - [Gatekeeper](../distributed/routing/gatekeeper.md) — Gatekeeper validates a request at runtime; quarantine validates an artifact before you ever ship it
 
+**Implemented by**
+
+- [Storage](../../capabilities/storage.md) — Object malware scanning holds an upload apart until it is checked, then promotes or deletes it.
+
 <!-- relationships:end -->

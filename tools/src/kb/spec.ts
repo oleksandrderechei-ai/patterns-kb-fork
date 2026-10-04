@@ -116,6 +116,7 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
       { flag: '--note-back "…"' },
       { flag: '--group "…"', desc: 'the heading this side sits under on its page, when it is not the verb\'s own' },
       { flag: '--group-back "…"', desc: 'the same for the other side' },
+      { flag: '--maps <row-id>', desc: 'on an implements edge, the capability mapping row or comparison matrix row it pins (mapping-row-N, matrix-row-N); the row\'s label is written beside it, and the relations gate fails the pin once that row moves' },
     ],
     note: 'Each side may phrase its note its own way; only the edge and its verb must agree. Regrouping an edge is `unlink` then `link --group`.',
   },

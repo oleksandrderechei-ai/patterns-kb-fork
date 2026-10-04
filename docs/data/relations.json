@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated": "2026-10-02",
-  "note": "Every typed edge between two pages, once: a verb on one page and its inverse on the other are one record. The single source: gen-relations (make gen) splices every page's relationships block (the marked block <!-- relationships:start --> … <!-- relationships:end -->) from it through tools/src/lib/render-relations.ts, the relations gate holds every edge closed and paired, and gen-prerequisites builds docs/data/prerequisites.json from it. node scripts/kb.mjs link and unlink write whole records; an edit by hand is fine too, then run make gen. A record is {a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b?}: `verb` is read from a's side and b reads its inverse (the verbs and their inverses are docs/data/content-model.json's; of a pair, the verb listed first there is the one written, and a symmetric verb is its own inverse). note_* is that side's note as markdown inline text, its links relative to that side's own page; group_* is a custom group heading, present only when it is not the verb's label; maps_* names the element on that side's page the edge maps to (a capability's mapping row). A page lists its sides in record order inside each group; group_order pins a page's group order where it is not the default (verb labels in the content model's order, then custom headings). Edit this file, never the rendered block; an edge whose other side is missing is a finding.",
+  "updated": "2026-10-04",
+  "note": "Every typed edge between two pages, once: a verb on one page and its inverse on the other are one record. The single source: gen-relations (make gen) splices every page's relationships block (the marked block <!-- relationships:start --> … <!-- relationships:end -->) from it through tools/src/lib/render-relations.ts, the relations gate holds every edge closed and paired, and gen-prerequisites builds docs/data/prerequisites.json from it. node scripts/kb.mjs link and unlink write whole records; an edit by hand is fine too, then run make gen. A record is {a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b?, maps_label_a?, maps_label_b?}: `verb` is read from a's side and b reads its inverse (the verbs and their inverses are docs/data/content-model.json's; of a pair, the verb listed first there is the one written, and a symmetric verb is its own inverse). note_* is that side's note as markdown inline text, its links relative to that side's own page; group_* is a custom group heading, present only when it is not the verb's label; maps_* names the element on that side's page the edge maps to (a capability's mapping row, a comparison's matrix row), and maps_label_* is that row's first cell as plain text: row ids are positional, so the relations gate fails a pin whose row no longer reads its label (kb.mjs link --maps writes both). A page lists its sides in record order inside each group; group_order pins a page's group order where it is not the default (verb labels in the content model's order, then custom headings). Edit this file, never the rendered block; an edge whose other side is missing is a finding.",
   "relations": [
     {
       "a": "application-platforms",
@@ -16,7 +16,8 @@
       "b": "autoscaling",
       "note_a": "Scale sets, autoscaling groups and managed instance groups are this pattern as a platform feature.",
       "note_b": "Every cloud sells this: you supply the metric and the bounds, the platform adds and removes instances.",
-      "maps_a": "mapping-row-3"
+      "maps_a": "mapping-row-3",
+      "maps_label_a": "Autoscaling group of identical VMs"
     },
     {
       "a": "compute",
@@ -24,7 +25,8 @@
       "b": "blue-green-deployment",
       "note_a": "Deployment slots and managed rollouts do the swap for you.",
       "note_b": "Managed compute platforms ship this as a deployment strategy rather than something you script.",
-      "maps_a": "mapping-row-14"
+      "maps_a": "mapping-row-14",
+      "maps_label_a": "Blue/green deployment with instant rollback"
     },
     {
       "a": "compute",
@@ -32,7 +34,8 @@
       "b": "canary-release",
       "note_a": "Weighted traffic splitting across revisions is built into the managed runtimes.",
       "note_b": "Serverless and container platforms expose this as a percentage on a revision.",
-      "maps_a": "mapping-row-15"
+      "maps_a": "mapping-row-15",
+      "maps_label_a": "Progressive canary rollout"
     },
     {
       "a": "compute",
@@ -40,7 +43,8 @@
       "b": "container-orchestration",
       "note_a": "Managed Kubernetes is this control loop rented by the hour: you declare the desired state, the service reconciles it.",
       "note_b": "Managed Kubernetes is this control loop rented by the hour: you declare the desired state, the service reconciles it.",
-      "maps_a": "mapping-row-10"
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed Kubernetes"
     },
     {
       "a": "compute",
@@ -48,7 +52,8 @@
       "b": "big-compute",
       "note_a": "Batch and high-performance computing (HPC) schedulers acquire the cores, run the job and release them, which is the whole shape of this.",
       "note_b": "Batch and high-performance computing (HPC) schedulers acquire the cores, run the job and release them, which is the whole shape of this.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Batch and HPC job scheduling"
     },
     {
       "a": "compute",
@@ -56,7 +61,8 @@
       "b": "workflow-orchestration",
       "note_a": "Step Functions and Durable Functions persist each step, so a crash resumes instead of restarting.",
       "note_b": "Step Functions and Durable Functions persist each step, so a crash resumes instead of restarting.",
-      "maps_a": "mapping-row-17"
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Stateful workflow orchestration"
     },
     {
       "a": "compute",
@@ -64,7 +70,8 @@
       "b": "rolling-deployment",
       "note_a": "Instance refresh, scale set rolling upgrades and managed instance group updates replace a fleet in batches for you.",
       "note_b": "Every cloud fleet service sells this as a setting: you choose the batch size and the health gate, the platform does the roll.",
-      "maps_a": "mapping-row-19"
+      "maps_a": "mapping-row-19",
+      "maps_label_a": "Rolling update of a fleet"
     },
     {
       "a": "compute",
@@ -72,7 +79,8 @@
       "b": "actor-model",
       "note_a": "Durable entities and the open-source actor runtimes give each actor its own state and a single-threaded mailbox.",
       "note_b": "Only Azure sells this ready-made, as durable entities; elsewhere you run an actor framework such as Orleans, Dapr or Akka.",
-      "maps_a": "mapping-row-21"
+      "maps_a": "mapping-row-21",
+      "maps_label_a": "Virtual actors with per-instance state"
     },
     {
       "a": "compute",
@@ -80,7 +88,8 @@
       "b": "external-configuration-store",
       "note_a": "A managed configuration store holds settings outside the deployment, so changing one is an API call rather than a redeploy.",
       "note_b": "Every cloud sells a managed configuration store; you still decide how your service reloads a changed value.",
-      "maps_a": "mapping-row-22"
+      "maps_a": "mapping-row-22",
+      "maps_label_a": "Runtime configuration and feature flags"
     },
     {
       "a": "compute",
@@ -88,7 +97,8 @@
       "b": "feature-flag",
       "note_a": "Managed flag services evaluate and roll out flags for you, with targeting and gradual percentages built in.",
       "note_b": "Clouds sell flag evaluation and rollout as a service; removing the flag from your code once it has served stays your job.",
-      "maps_a": "mapping-row-22"
+      "maps_a": "mapping-row-22",
+      "maps_label_a": "Runtime configuration and feature flags"
     },
     {
       "a": "data-analytics",
@@ -96,7 +106,8 @@
       "b": "mapreduce",
       "note_a": "Managed Spark and the serverless query engines run this without a cluster to operate.",
       "note_b": "Available as a managed service rather than a cluster you run.",
-      "maps_a": "mapping-row-4"
+      "maps_a": "mapping-row-4",
+      "maps_label_a": "Managed Spark"
     },
     {
       "a": "data-analytics",
@@ -104,7 +115,8 @@
       "b": "pipe-filter",
       "note_a": "Managed pipeline services are this pattern with the stages as a product.",
       "note_b": "Managed extract, transform, load (ETL) services are this, with the stages configured rather than coded.",
-      "maps_a": "mapping-row-6"
+      "maps_a": "mapping-row-6",
+      "maps_label_a": "Stream processing"
     },
     {
       "a": "data-analytics",
@@ -112,7 +124,8 @@
       "b": "batching",
       "note_a": "Warehouse loads and stream windows batch on your behalf.",
       "note_b": "The managed pipeline decides the batch boundary for you.",
-      "maps_a": "mapping-row-3"
+      "maps_a": "mapping-row-3",
+      "maps_label_a": "Batch ETL pipelines"
     },
     {
       "a": "data-analytics",
@@ -155,7 +168,8 @@
       "b": "federated-identity",
       "note_a": "Workload identity federation and external IdP trust are this pattern as a platform feature.",
       "note_b": "Every cloud implements this for both workforce and workload identity.",
-      "maps_a": "mapping-row-1"
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Workforce directory and single sign-on"
     },
     {
       "a": "identity",
@@ -163,7 +177,8 @@
       "b": "authentication-enforcer",
       "note_a": "The managed identity provider is the enforcement point.",
       "note_b": "The cloud's identity service is this, operated for you.",
-      "maps_a": "mapping-row-7"
+      "maps_a": "mapping-row-7",
+      "maps_label_a": "Customer and consumer identity"
     },
     {
       "a": "identity",
@@ -171,7 +186,8 @@
       "b": "authorization-enforcer",
       "note_a": "The resource authorization engine evaluates every control-plane call.",
       "note_b": "The cloud's identity and access management (IAM) engine is this, applied to every resource.",
-      "maps_a": "mapping-row-2"
+      "maps_a": "mapping-row-2",
+      "maps_label_a": "Resource authorization engine"
     },
     {
       "a": "message-brokers",
@@ -193,7 +209,8 @@
       "b": "message-queue",
       "note_a": "Managed queues are this pattern with the broker operated for you.",
       "note_b": "Every cloud sells this outright.",
-      "maps_a": "mapping-row-1"
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Point-to-point queue"
     },
     {
       "a": "messaging",
@@ -201,7 +218,8 @@
       "b": "pubsub",
       "note_a": "Topics and subscriptions, with fan-out handled by the broker.",
       "note_b": "A managed topic is this pattern as a product.",
-      "maps_a": "mapping-row-2"
+      "maps_a": "mapping-row-2",
+      "maps_label_a": "Publish-subscribe fan-out"
     },
     {
       "a": "messaging",
@@ -209,7 +227,8 @@
       "b": "dead-letter-channel",
       "note_a": "A dead-letter queue or topic is configuration, not code, on managed brokers.",
       "note_b": "Managed brokers ship this as a per-queue setting.",
-      "maps_a": "mapping-row-5"
+      "maps_a": "mapping-row-5",
+      "maps_label_a": "Dead-letter destination"
     },
     {
       "a": "messaging",
@@ -217,7 +236,8 @@
       "b": "competing-consumers",
       "note_a": "Consumer groups and visibility timeouts implement the competition for you.",
       "note_b": "The managed broker handles lease and redelivery.",
-      "maps_a": "mapping-row-1"
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Point-to-point queue"
     },
     {
       "a": "messaging",
@@ -225,15 +245,8 @@
       "b": "load-leveling",
       "note_a": "A queue between producer and consumer is what the managed service is for.",
       "note_b": "The canonical reason to put a managed queue in the path.",
-      "maps_a": "mapping-row-1"
-    },
-    {
-      "a": "messaging",
-      "verb": "implements",
-      "b": "workflow-orchestration",
-      "note_a": "The same state machines sold as an integration service, driving the steps between your queues.",
-      "note_b": "The same state machines sold as an integration service, driving the steps between your queues.",
-      "maps_a": "mapping-row-12"
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Point-to-point queue"
     },
     {
       "a": "messaging",
@@ -241,7 +254,8 @@
       "b": "fan-out",
       "note_a": "A topic delivers one publish to every subscriber, which is this pattern as a hosted primitive.",
       "note_b": "A topic delivers one publish to every subscriber, which is this pattern as a hosted primitive.",
-      "maps_a": "mapping-row-2"
+      "maps_a": "mapping-row-2",
+      "maps_label_a": "Publish-subscribe fan-out"
     },
     {
       "a": "messaging",
@@ -249,7 +263,8 @@
       "b": "content-based-router",
       "note_a": "An event bus matches the message body against rules and picks the destination for you.",
       "note_b": "An event bus matches the message body against rules and picks the destination for you.",
-      "maps_a": "mapping-row-3"
+      "maps_a": "mapping-row-3",
+      "maps_label_a": "Event bus with content routing"
     },
     {
       "a": "messaging",
@@ -257,7 +272,8 @@
       "b": "sequential-convoy",
       "note_a": "First in, first out (FIFO) message groups and broker sessions keep one related run in order while others proceed in parallel.",
       "note_b": "First in, first out (FIFO) message groups and broker sessions keep one related run in order while others proceed in parallel.",
-      "maps_a": "mapping-row-6"
+      "maps_a": "mapping-row-6",
+      "maps_label_a": "Ordered delivery"
     },
     {
       "a": "messaging",
@@ -265,7 +281,8 @@
       "b": "scheduling",
       "note_a": "Delay and schedule fields on a message move the timer into the broker.",
       "note_b": "A managed broker holds the message until its scheduled time, so no scheduler process of yours has to stay alive to fire it.",
-      "maps_a": "mapping-row-8"
+      "maps_a": "mapping-row-8",
+      "maps_label_a": "Delayed and scheduled delivery"
     },
     {
       "a": "messaging",
@@ -273,7 +290,8 @@
       "b": "eda",
       "note_a": "An event bus carries the events and routes them to consumers for you.",
       "note_b": "Managed event buses give you the delivery and routing, and you write the producers and consumers.",
-      "maps_a": "mapping-row-3"
+      "maps_a": "mapping-row-3",
+      "maps_label_a": "Event bus with content routing"
     },
     {
       "a": "messaging",
@@ -281,15 +299,8 @@
       "b": "producer-consumer",
       "note_a": "A managed queue is the buffer between the producers and the consumers.",
       "note_b": "A managed queue replaces the in-process buffer when producers and consumers run as separate services.",
-      "maps_a": "mapping-row-1"
-    },
-    {
-      "a": "messaging",
-      "verb": "implements",
-      "b": "compensating-transaction",
-      "note_a": "Workflow definitions run the undo steps for a failed run.",
-      "note_b": "A managed state machine can hold the undo steps and run them in reverse when a later step fails.",
-      "maps_a": "mapping-row-12"
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Point-to-point queue"
     },
     {
       "a": "messaging",
@@ -297,7 +308,8 @@
       "b": "message-router",
       "note_a": "A subscription filter makes the broker deliver only the messages that match.",
       "note_b": "Subscription filters move the routing decision into the broker.",
-      "maps_a": "mapping-row-7"
+      "maps_a": "mapping-row-7",
+      "maps_label_a": "Filtering on the subscription"
     },
     {
       "a": "messaging",
@@ -305,7 +317,8 @@
       "b": "splitter",
       "note_a": "Integration flows and the Apache Camel library cover the step that splits one message into many.",
       "note_b": "Integration platforms and the Camel library ship the step that splits one message into many as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -313,7 +326,8 @@
       "b": "aggregator",
       "note_a": "Integration flows and the Apache Camel library cover the step that combines related messages into one.",
       "note_b": "Integration platforms and the Camel library ship the step that combines related messages into one as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -321,7 +335,8 @@
       "b": "scatter-gather",
       "note_a": "Integration flows and the Apache Camel library cover the step that sends a request to several parties and collects the replies.",
       "note_b": "Integration platforms and the Camel library ship the step that sends a request to several parties and collects the replies as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -329,7 +344,8 @@
       "b": "content-enricher",
       "note_a": "Integration flows and the Apache Camel library cover the step that adds data to a message in flight.",
       "note_b": "Integration platforms and the Camel library ship the step that adds data to a message in flight as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -337,7 +353,8 @@
       "b": "message-translator",
       "note_a": "Integration flows and the Apache Camel library cover the step that converts a message between formats.",
       "note_b": "Integration platforms and the Camel library ship the step that converts a message between formats as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -345,7 +362,8 @@
       "b": "wire-tap",
       "note_a": "Integration flows and the Apache Camel library cover the step that copies messages to a side channel.",
       "note_b": "Integration platforms and the Camel library ship the step that copies messages to a side channel as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -353,7 +371,8 @@
       "b": "recipient-list",
       "note_a": "Integration flows and the Apache Camel library cover the step that sends a message to a computed list of recipients.",
       "note_b": "Integration platforms and the Camel library ship the step that sends a message to a computed list of recipients as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -361,7 +380,8 @@
       "b": "routing-slip",
       "note_a": "Integration flows and the Apache Camel library cover the step that sends a message along a route it carries.",
       "note_b": "Integration platforms and the Camel library ship the step that sends a message along a route it carries as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -369,7 +389,8 @@
       "b": "resequencer",
       "note_a": "Integration flows and the Apache Camel library cover the step that restores the order of out-of-order messages.",
       "note_b": "Integration platforms and the Camel library ship the step that restores the order of out-of-order messages as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -377,7 +398,8 @@
       "b": "polling-consumer",
       "note_a": "Integration flows and the Apache Camel library cover the step that pulls messages on a schedule.",
       "note_b": "Integration platforms and the Camel library ship the step that pulls messages on a schedule as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Point-to-point queue"
     },
     {
       "a": "messaging",
@@ -385,23 +407,8 @@
       "b": "messaging-bridge",
       "note_a": "Integration flows and the Apache Camel library cover the step that connects two messaging systems.",
       "note_b": "Integration platforms and the Camel library ship the step that connects two messaging systems as a ready-made building block.",
-      "maps_a": "mapping-row-16"
-    },
-    {
-      "a": "messaging",
-      "verb": "implements",
-      "b": "correlation-identifier",
-      "note_a": "Integration flows and the Apache Camel library cover the step that matches replies to their requests.",
-      "note_b": "Integration platforms and the Camel library ship the step that matches replies to their requests as a ready-made building block.",
-      "maps_a": "mapping-row-16"
-    },
-    {
-      "a": "messaging",
-      "verb": "implements",
-      "b": "claim-check",
-      "note_a": "Integration flows and the Apache Camel library cover the step that stores the payload aside and passes a reference.",
-      "note_b": "Integration platforms and the Camel library ship the step that stores the payload aside and passes a reference as a ready-made building block.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Message routing and transformation flows"
     },
     {
       "a": "messaging",
@@ -409,7 +416,8 @@
       "b": "outbox",
       "note_a": "Change feeds and Debezium read committed rows and publish them, which is the relay half of this pattern.",
       "note_b": "Change data capture can read the outbox table and publish its rows, so you do not write the relay.",
-      "maps_a": "mapping-row-17"
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Change data capture"
     },
     {
       "a": "messaging",
@@ -417,7 +425,8 @@
       "b": "event-sourcing",
       "note_a": "An event store database keeps the append-only log of events per entity.",
       "note_b": "A purpose-built event store gives you the append, per-stream read and subscription that this pattern needs.",
-      "maps_a": "mapping-row-18"
+      "maps_a": "mapping-row-18",
+      "maps_label_a": "Event store database"
     },
     {
       "a": "load-balancers-and-gateways",
@@ -432,7 +441,8 @@
       "b": "load-balancer",
       "note_a": "Layer-4 and layer-7 balancers are the pattern sold as a managed endpoint.",
       "note_b": "Every cloud sells this at both layers.",
-      "maps_a": "mapping-row-8"
+      "maps_a": "mapping-row-8",
+      "maps_label_a": "Layer-7 load balancer"
     },
     {
       "a": "networking",
@@ -440,7 +450,8 @@
       "b": "api-gateway",
       "note_a": "Managed application programming interface (API) gateways front your services with auth, quotas and routing already built.",
       "note_b": "Available as a managed product on every cloud.",
-      "maps_a": "mapping-row-10"
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed API gateway"
     },
     {
       "a": "networking",
@@ -448,7 +459,8 @@
       "b": "cdn",
       "note_a": "The global edge network is this pattern, priced per gigabyte served.",
       "note_b": "A managed edge network is this pattern rented.",
-      "maps_a": "mapping-row-9"
+      "maps_a": "mapping-row-9",
+      "maps_label_a": "Global edge and CDN"
     },
     {
       "a": "networking",
@@ -456,7 +468,8 @@
       "b": "reverse-proxy",
       "note_a": "The managed layer-7 balancer is a reverse proxy you configure rather than run.",
       "note_b": "Managed load balancers are reverse proxies with the operations removed.",
-      "maps_a": "mapping-row-8"
+      "maps_a": "mapping-row-8",
+      "maps_label_a": "Layer-7 load balancer"
     },
     {
       "a": "networking",
@@ -464,7 +477,8 @@
       "b": "rate-limiter",
       "note_a": "Gateway quotas and web application firewall (WAF) rate rules apply this at the edge, before your code runs.",
       "note_b": "Enforceable at the managed gateway rather than in the service.",
-      "maps_a": "mapping-row-17"
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Request rate limiting at the edge"
     },
     {
       "a": "networking",
@@ -472,7 +486,8 @@
       "b": "sticky-session",
       "note_a": "Balancer affinity pins a caller to one backend without your code holding the mapping.",
       "note_b": "Balancer affinity pins a caller to one backend without your code holding the mapping.",
-      "maps_a": "mapping-row-11"
+      "maps_a": "mapping-row-11",
+      "maps_label_a": "Session affinity to one backend"
     },
     {
       "a": "networking",
@@ -480,7 +495,8 @@
       "b": "intercepting-validator",
       "note_a": "A web application firewall is the choke point for request shape, sitting ahead of your code.",
       "note_b": "A managed web application firewall (WAF) applies rule sets to every request before it reaches the application, so the checks exist even on the endpoint whose handler forgot them.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Web application firewall"
     },
     {
       "a": "networking",
@@ -488,7 +504,8 @@
       "b": "api-routing",
       "note_a": "A managed gateway matches host and path and forwards to the backing service, as configuration rather than code.",
       "note_b": "Managed application programming interface (API) gateways express the route table declaratively — map wildcard prefixes rather than every path, or the gateway changes on every API change.",
-      "maps_a": "mapping-row-10"
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed API gateway"
     },
     {
       "a": "networking",
@@ -496,7 +513,8 @@
       "b": "token-bucket",
       "note_a": "Edge throttling is a token bucket: a steady refill rate plus a burst capacity, and nothing else to tune.",
       "note_b": "Application programming interface (API) Gateway throttling and Envoy's local rate-limit filter expose the bucket directly, so rate and burst are the two knobs you actually set.",
-      "maps_a": "mapping-row-17"
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Request rate limiting at the edge"
     },
     {
       "a": "networking",
@@ -504,7 +522,8 @@
       "b": "service-mesh",
       "note_a": "A managed mesh runs the sidecar proxies and control plane for you.",
       "note_b": "Managed meshes run the proxies and control plane, so you configure policy instead of operating them.",
-      "maps_a": "mapping-row-20"
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Service mesh"
     },
     {
       "a": "networking",
@@ -512,7 +531,8 @@
       "b": "circuit-breaker",
       "note_a": "Mesh outlier detection ejects failing backends without a library in your code.",
       "note_b": "A mesh applies the breaker in the proxy, so every service gets it without code changes.",
-      "maps_a": "mapping-row-20"
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Service mesh"
     },
     {
       "a": "networking",
@@ -520,7 +540,8 @@
       "b": "retry-backoff",
       "note_a": "Mesh retry policies re-send failed calls from the proxy.",
       "note_b": "A mesh sets retries per route in configuration, so no service carries its own retry loop.",
-      "maps_a": "mapping-row-20"
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Service mesh"
     },
     {
       "a": "networking",
@@ -528,7 +549,8 @@
       "b": "timeout-deadline",
       "note_a": "Mesh route timeouts cap each call at the proxy.",
       "note_b": "A mesh sets per-route timeouts in configuration, so a slow call is cut off outside your code.",
-      "maps_a": "mapping-row-20"
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Service mesh"
     },
     {
       "a": "networking",
@@ -536,7 +558,8 @@
       "b": "shadow-traffic",
       "note_a": "Mesh traffic mirroring copies live requests to a second version.",
       "note_b": "A mesh can mirror live requests to a candidate version without the caller seeing its answer.",
-      "maps_a": "mapping-row-20"
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Service mesh"
     },
     {
       "a": "networking",
@@ -544,7 +567,8 @@
       "b": "service-discovery",
       "note_a": "A managed registry lets services find each other by name instead of address.",
       "note_b": "Managed registries hold service names and healthy addresses, so you do not run the registry yourself.",
-      "maps_a": "mapping-row-21"
+      "maps_a": "mapping-row-21",
+      "maps_label_a": "Service discovery"
     },
     {
       "a": "networking",
@@ -552,7 +576,8 @@
       "b": "websocket",
       "note_a": "A managed service holds the long-lived client connections for you.",
       "note_b": "Managed connection services hold the open sockets, so your backend handles messages rather than connections.",
-      "maps_a": "mapping-row-22"
+      "maps_a": "mapping-row-22",
+      "maps_label_a": "Managed WebSocket connections"
     },
     {
       "a": "networking",
@@ -560,7 +585,8 @@
       "b": "single-access-point",
       "note_a": "A managed API gateway is the one front door to your services.",
       "note_b": "A managed API gateway gives all clients one entry point with auth and routing already built.",
-      "maps_a": "mapping-row-10"
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed API gateway"
     },
     {
       "a": "networking",
@@ -568,7 +594,8 @@
       "b": "leaky-bucket",
       "note_a": "The open-source edge proxy limits requests at a fixed drain rate.",
       "note_b": "NGINX limit_req smooths bursts into a steady rate, which is this pattern as configuration.",
-      "maps_a": "mapping-row-17"
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Request rate limiting at the edge"
     },
     {
       "a": "observability-platform",
@@ -576,7 +603,8 @@
       "b": "distributed-tracing",
       "note_a": "Managed trace collection is this pattern rented: the collector, the store and the waterfall view",
       "note_b": "Available as a managed service rather than a system you assemble",
-      "maps_a": "mapping-row-3"
+      "maps_a": "mapping-row-3",
+      "maps_label_a": "Distributed trace collection"
     },
     {
       "a": "observability-platform",
@@ -588,18 +616,11 @@
     {
       "a": "observability-platform",
       "verb": "implements",
-      "b": "sidecar",
-      "note_a": "The telemetry agent is a helper process beside the application, so no service links a vendor software development kit (SDK).",
-      "note_b": "Collector agents run as a sidecar or a node-level daemon; the app writes to stdout or a local port and knows nothing about the backend.",
-      "maps_a": "mapping-row-6"
-    },
-    {
-      "a": "observability-platform",
-      "verb": "implements",
       "b": "fault-injection",
       "note_a": "Managed chaos services run the experiment and halt it when your alarm fires.",
       "note_b": "Two clouds sell this as a service, and open-source tools run the same experiments on Kubernetes.",
-      "maps_a": "mapping-row-10"
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Fault injection experiments"
     },
     {
       "a": "regions",
@@ -614,7 +635,8 @@
       "b": "failover",
       "note_a": "Multi-zone managed services promote a standby in another zone without a person in the loop.",
       "note_b": "Managed databases ship the monitor, the promotion and the endpoint repoint as one setting.",
-      "maps_a": "mapping-row-3"
+      "maps_a": "mapping-row-11",
+      "maps_label_a": "DNS-based failover between regions"
     },
     {
       "a": "infrastructure-as-code",
@@ -629,7 +651,8 @@
       "b": "authorization-enforcer",
       "note_a": "Resource policy is evaluated centrally and denies by default, so a non-compliant resource is never created.",
       "note_b": "Service control policies, Azure Policy and Organization Policy are decision points above the account, consulted on every control-plane call.",
-      "maps_a": "mapping-row-5"
+      "maps_a": "mapping-row-5",
+      "maps_label_a": "Policy enforcement"
     },
     {
       "a": "object-stores",
@@ -644,7 +667,8 @@
       "b": "object-storage",
       "note_a": "Every cloud's object store is this pattern sold as a service — buckets, keys and a reference in your database.",
       "note_b": "Bought rather than built: object storage is the one capability every cloud ships in the same shape.",
-      "maps_a": "mapping-row-1"
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Object storage"
     },
     {
       "a": "storage",
@@ -652,15 +676,8 @@
       "b": "valet-key",
       "note_a": "Signed, time-limited URLs are the built-in valet key — the client reads or writes the object directly.",
       "note_b": "Pre-signed URLs, shared access signatures and signed URLs are this pattern, already implemented.",
-      "maps_a": "mapping-row-11"
-    },
-    {
-      "a": "identity",
-      "verb": "implements",
-      "b": "valet-key",
-      "note_a": "Short-lived scoped credentials are the general form of the delegated-access token.",
-      "note_b": "Issued by the cloud's token service rather than by you.",
-      "maps_a": "mapping-row-4"
+      "maps_a": "mapping-row-11",
+      "maps_label_a": "Delegated access URL"
     },
     {
       "a": "identity",
@@ -668,7 +685,8 @@
       "b": "secure-logger",
       "note_a": "The control-plane audit trail is append-only, so a caller inside the account cannot edit what it already recorded.",
       "note_b": "CloudTrail, the Azure activity log and Cloud Audit Logs record every control-plane call, with integrity validation that makes a later deletion detectable.",
-      "maps_a": "mapping-row-15"
+      "maps_a": "mapping-row-15",
+      "maps_label_a": "Control-plane audit trail"
     },
     {
       "a": "identity",
@@ -676,7 +694,8 @@
       "b": "secure-session-manager",
       "note_a": "Customer identity services issue, expire and revoke sign-in sessions for you.",
       "note_b": "Hosted identity services keep the session and hand your app a token, so you do not build the store.",
-      "maps_a": "mapping-row-7"
+      "maps_a": "mapping-row-7",
+      "maps_label_a": "Customer and consumer identity"
     },
     {
       "a": "storage",
@@ -684,7 +703,8 @@
       "b": "replication",
       "note_a": "Redundancy scope is replication as a setting: one building, one metro, or a second region.",
       "note_b": "Cloud storage exposes this as a redundancy tier rather than something you operate.",
-      "maps_a": "mapping-row-12"
+      "maps_a": "mapping-row-12",
+      "maps_label_a": "Cross-region object copies"
     },
     {
       "a": "databases",
@@ -692,7 +712,8 @@
       "b": "replication",
       "note_a": "Read replicas and automatic failover are the managed form of this.",
       "note_b": "Managed database services run this for you; you choose the topology, not the mechanism.",
-      "maps_a": "mapping-row-7"
+      "maps_a": "mapping-row-7",
+      "maps_label_a": "Read replicas"
     },
     {
       "a": "databases",
@@ -700,7 +721,8 @@
       "b": "leader-election",
       "note_a": "Automatic failover is leader election you never see run.",
       "note_b": "Managed engines do this internally on failover.",
-      "maps_a": "mapping-row-12"
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Distributed lock and lease"
     },
     {
       "a": "databases",
@@ -708,7 +730,8 @@
       "b": "distributed-cache",
       "note_a": "Managed Redis and Memcached are this pattern rented by the hour.",
       "note_b": "Available as a managed service on every cloud.",
-      "maps_a": "mapping-row-6"
+      "maps_a": "mapping-row-6",
+      "maps_label_a": "Managed in-memory cache"
     },
     {
       "a": "databases",
@@ -716,7 +739,8 @@
       "b": "change-data-capture",
       "note_a": "Change streams and change feeds emit the row-level log as an event source.",
       "note_b": "Managed stores expose the log directly rather than making you tail it.",
-      "maps_a": "mapping-row-11"
+      "maps_a": "mapping-row-11",
+      "maps_label_a": "Change stream off the primary"
     },
     {
       "a": "databases",
@@ -724,15 +748,8 @@
       "b": "materialized-view",
       "note_a": "Warehouses and document stores maintain these on your behalf.",
       "note_b": "Several managed engines refresh these for you.",
-      "maps_a": "mapping-row-13"
-    },
-    {
-      "a": "databases",
-      "verb": "implements",
-      "b": "write-ahead-log",
-      "note_a": "Point-in-time recovery is the write-ahead log kept and replayed for you.",
-      "note_b": "Managed engines expose the log as point-in-time restore, so you choose the retention window rather than the fsync policy.",
-      "maps_a": "mapping-row-8"
+      "maps_a": "mapping-row-13",
+      "maps_label_a": "Materialized view maintained by the engine"
     },
     {
       "a": "databases",
@@ -740,7 +757,8 @@
       "b": "lsm-tree",
       "note_a": "Wide-column stores are log-structured merge (LSM) engines you rent, with compaction running without you scheduling it.",
       "note_b": "Keyspaces, managed Cassandra and Bigtable are log-structured merge (LSM) stores: you size the cluster and the engine owns memtables and compaction.",
-      "maps_a": "mapping-row-10"
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Wide-column store"
     },
     {
       "a": "databases",
@@ -748,7 +766,8 @@
       "b": "quorum-consensus",
       "note_a": "A globally consistent relational service commits through a replica majority, and the latency is the bill.",
       "note_b": "Spanner, CockroachDB and YugabyteDB sell the majority commit outright — you place the replicas, you cannot tune it away.",
-      "maps_a": "mapping-row-14"
+      "maps_a": "mapping-row-14",
+      "maps_label_a": "Globally distributed strongly consistent relational"
     },
     {
       "a": "databases",
@@ -756,7 +775,8 @@
       "b": "cache-aside",
       "note_a": "The managed in-memory cache is the store your application code reads aside and fills on a miss.",
       "note_b": "Managed in-memory caches give you the store; you still write the load-on-miss logic.",
-      "maps_a": "mapping-row-6"
+      "maps_a": "mapping-row-6",
+      "maps_label_a": "Managed in-memory cache"
     },
     {
       "a": "databases",
@@ -764,7 +784,8 @@
       "b": "read-through",
       "note_a": "A cache that loads missing entries from the database for you is this pattern sold ready-made.",
       "note_b": "Some caches load from the database on a miss so your code never does.",
-      "maps_a": "mapping-row-17"
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Cache that reads and writes through to the database"
     },
     {
       "a": "databases",
@@ -772,7 +793,8 @@
       "b": "write-through",
       "note_a": "A cache that writes each update to the database before it acknowledges is this pattern sold ready-made.",
       "note_b": "Some caches write every update through to the database before returning.",
-      "maps_a": "mapping-row-17"
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Cache that reads and writes through to the database"
     },
     {
       "a": "databases",
@@ -780,7 +802,8 @@
       "b": "conditional-write",
       "note_a": "The store rejects a write when your stated condition no longer holds.",
       "note_b": "Each cloud database exposes a check-and-write primitive you can use directly.",
-      "maps_a": "mapping-row-19"
+      "maps_a": "mapping-row-19",
+      "maps_label_a": "Conditional write"
     },
     {
       "a": "databases",
@@ -788,7 +811,8 @@
       "b": "optimistic-concurrency-control",
       "note_a": "Conditional writes and version tags give you optimistic concurrency without a lock.",
       "note_b": "Version tags and condition checks in managed stores implement the compare step for you.",
-      "maps_a": "mapping-row-19"
+      "maps_a": "mapping-row-19",
+      "maps_label_a": "Conditional write"
     },
     {
       "a": "databases",
@@ -796,7 +820,8 @@
       "b": "distributed-lock",
       "note_a": "Lease-backed locks are available as a library, a blob lease or a coordination service.",
       "note_b": "Locks are sold as leases on a blob, a conditional row or a coordination service.",
-      "maps_a": "mapping-row-20"
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Distributed lock and lease"
     },
     {
       "a": "databases",
@@ -804,7 +829,8 @@
       "b": "lease",
       "note_a": "Blob leases and coordination-service leases hand out time-limited ownership.",
       "note_b": "Time-limited ownership is available ready-made as a blob lease or a coordination-service lease.",
-      "maps_a": "mapping-row-20"
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Distributed lock and lease"
     },
     {
       "a": "databases",
@@ -812,7 +838,8 @@
       "b": "hyperloglog",
       "note_a": "Warehouses and in-memory stores count distinct values approximately in small, fixed memory.",
       "note_b": "Managed warehouses and Redis-compatible stores ship this as a built-in function or command.",
-      "maps_a": "mapping-row-21"
+      "maps_a": "mapping-row-21",
+      "maps_label_a": "Approximate distinct count"
     },
     {
       "a": "application-platforms",
@@ -820,7 +847,8 @@
       "b": "autoscaling",
       "note_a": "Scaling on request rate or concurrency is the platform's job, configured rather than built",
       "note_b": "Managed platforms ship this as a setting rather than a control loop you write",
-      "maps_a": "matrix-row-6"
+      "maps_a": "matrix-row-6",
+      "maps_label_a": "Scale to zero"
     },
     {
       "a": "identity-providers",
@@ -828,7 +856,8 @@
       "b": "federated-identity",
       "note_a": "Keycloak, Authentik, Ory and ZITADEL are this pattern self-hosted; Cognito, Entra and Auth0 are it rented.",
       "note_b": "Which identity provider to run or rent — the issuer every service delegates login to.",
-      "maps_a": "matrix-row-4"
+      "maps_a": "matrix-row-4",
+      "maps_label_a": "Protocol surface"
     },
     {
       "a": "identity-providers",
@@ -836,7 +865,8 @@
       "b": "authentication-enforcer",
       "note_a": "The issuer these products give you is what every service's token check points at.",
       "note_b": "The provider products whose tokens this pattern verifies.",
-      "maps_a": "matrix-row-4"
+      "maps_a": "matrix-row-4",
+      "maps_label_a": "Protocol surface"
     },
     {
       "a": "infrastructure-as-code",
@@ -851,7 +881,8 @@
       "b": "distributed-cache",
       "note_a": "Redis, Valkey and Memcached are what a distributed cache is usually made of; the license and the operator differ more than the mechanism does.",
       "note_b": "Which cache store to run — Redis, Valkey, Memcached and Dragonfly, licenses included.",
-      "maps_a": "matrix-row-6"
+      "maps_a": "matrix-row-6",
+      "maps_label_a": "Typical role"
     },
     {
       "a": "key-value-stores",
@@ -859,7 +890,8 @@
       "b": "consistent-hashing",
       "note_a": "Where the product places a key decides what adding a node costs: a ring reshuffles one node's share, a client-side scheme reshuffles whatever its hash says.",
       "note_b": "Cassandra's token ring and the Ketama scheme in memcached clients are this pattern as shipped; DynamoDB repartitions for you and never exposes the ring.",
-      "maps_a": "matrix-row-3"
+      "maps_a": "matrix-row-3",
+      "maps_label_a": "Scaling shape"
     },
     {
       "a": "load-balancers-and-gateways",
@@ -867,7 +899,8 @@
       "b": "load-balancer",
       "note_a": "Every product here is a load balancer first — the comparison is who runs it and at which layer.",
       "note_b": "Which balancer answers on port 443 — the cloud's own against NGINX, HAProxy, Envoy and Traefik.",
-      "maps_a": "matrix-row-1"
+      "maps_a": "matrix-row-1",
+      "maps_label_a": "Layer"
     },
     {
       "a": "load-balancers-and-gateways",
@@ -875,7 +908,8 @@
       "b": "api-gateway",
       "note_a": "Kong and the managed application programming interface (API) gateways are this pattern sold as a product; a plain proxy is not.",
       "note_b": "The gateway products that sell this pattern, compared on policy surface and license.",
-      "maps_a": "matrix-row-4"
+      "maps_a": "matrix-row-4",
+      "maps_label_a": "Gateway policy out of the box"
     },
     {
       "a": "load-balancers-and-gateways",
@@ -883,7 +917,8 @@
       "b": "reverse-proxy",
       "note_a": "NGINX, HAProxy, Traefik and Envoy are the reverse proxies you would actually deploy.",
       "note_b": "Which proxy to actually deploy, and who operates it.",
-      "maps_a": "matrix-row-1"
+      "maps_a": "matrix-row-1",
+      "maps_label_a": "Layer"
     },
     {
       "a": "load-balancers-and-gateways",
@@ -891,7 +926,8 @@
       "b": "rate-limiter",
       "note_a": "Gateways enforce quotas at the edge, so the services behind stop shipping their own limiter.",
       "note_b": "The edge products that enforce this pattern before traffic reaches your services.",
-      "maps_a": "matrix-row-4"
+      "maps_a": "matrix-row-4",
+      "maps_label_a": "Gateway policy out of the box"
     },
     {
       "a": "message-brokers",
@@ -899,7 +935,8 @@
       "b": "message-queue",
       "note_a": "Every product compared here sells this pattern; the page is about which one to run.",
       "note_b": "Which broker to actually run — managed queues against Kafka, RabbitMQ, NATS, Pulsar and Redpanda.",
-      "maps_a": "matrix-row-1"
+      "maps_a": "matrix-row-1",
+      "maps_label_a": "After a consumer reads it"
     },
     {
       "a": "message-brokers",
@@ -907,7 +944,8 @@
       "b": "pubsub",
       "note_a": "Fan-out is table stakes in all of them — the comparison is where the filtering happens.",
       "note_b": "The brokers that give you fan-out, compared on filtering, replay and ops burden.",
-      "maps_a": "matrix-row-6"
+      "maps_a": "matrix-row-6",
+      "maps_label_a": "Routing done by the broker"
     },
     {
       "a": "message-brokers",
@@ -915,14 +953,17 @@
       "b": "competing-consumers",
       "note_a": "Queue-shaped contenders scale this way; log-shaped ones cap it at the partition count.",
       "note_b": "How each broker product shapes the consumer-scaling story.",
-      "maps_a": "matrix-row-2"
+      "maps_a": "matrix-row-2",
+      "maps_label_a": "Adding throughput"
     },
     {
       "a": "message-brokers",
       "verb": "implements",
       "b": "load-leveling",
       "note_a": "The buffer between producer and consumer is what you are choosing a product for.",
-      "note_b": "Which buffer product to put between producer and consumer."
+      "note_b": "Which buffer product to put between producer and consumer.",
+      "maps_a": "matrix-row-1",
+      "maps_label_a": "After a consumer reads it"
     },
     {
       "a": "object-stores",
@@ -930,7 +971,8 @@
       "b": "object-storage",
       "note_a": "Six products that provide this pattern off the shelf — three rented from a cloud, three you run yourself",
       "note_b": "Which blob store to rent or run — S3 and its self-hosted alternatives, compared.",
-      "maps_a": "matrix-row-1"
+      "maps_a": "matrix-row-1",
+      "maps_label_a": "Speaks the S3 API"
     },
     {
       "a": "data-analytics",
@@ -938,7 +980,8 @@
       "b": "object-storage",
       "note_a": "A data lake is object storage with a catalogue over it — the blobs never move into the warehouse.",
       "note_b": "The lake tier of every analytics stack is the same object store, so table formats and query engines read straight out of it.",
-      "maps_a": "mapping-row-1"
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Data lake storage"
     },
     {
       "a": "data-analytics",
@@ -946,7 +989,8 @@
       "b": "embeddings",
       "note_a": "Managed search and vector services store and query embeddings for you.",
       "note_b": "Every cloud sells the vector index, so you do not run the similarity search yourself.",
-      "maps_a": "mapping-row-10"
+      "maps_a": "mapping-row-12",
+      "maps_label_a": "Foundation-model platform"
     },
     {
       "a": "data-analytics",
@@ -954,7 +998,8 @@
       "b": "rag",
       "note_a": "Managed knowledge-base services chunk, index and retrieve your documents for a model.",
       "note_b": "Each cloud sells the retrieval half ready-made, so you configure sources instead of building the pipeline.",
-      "maps_a": "mapping-row-13"
+      "maps_a": "mapping-row-13",
+      "maps_label_a": "Managed retrieval for model grounding"
     },
     {
       "a": "data-analytics",
@@ -962,7 +1007,8 @@
       "b": "feature-engineering",
       "note_a": "Feature stores serve one set of computed features to both training and inference.",
       "note_b": "Managed feature stores keep training and serving features consistent, so you do not hand-build that sync.",
-      "maps_a": "mapping-row-14"
+      "maps_a": "mapping-row-14",
+      "maps_label_a": "Feature store"
     },
     {
       "a": "data-analytics",
@@ -970,7 +1016,8 @@
       "b": "evaluation",
       "note_a": "Evaluation services score model output against a test set and report the result.",
       "note_b": "Each cloud sells hosted scoring runs, so you supply the test set and the metrics.",
-      "maps_a": "mapping-row-15"
+      "maps_a": "mapping-row-15",
+      "maps_label_a": "Model and prompt evaluation"
     },
     {
       "a": "data-analytics",
@@ -978,7 +1025,8 @@
       "b": "ai-agent",
       "note_a": "Managed agent runtimes host the model, tool calls and session state for you.",
       "note_b": "Each cloud sells the hosting loop, so you write the tools and the instructions.",
-      "maps_a": "mapping-row-16"
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Managed agent runtime"
     },
     {
       "a": "relational-databases",
@@ -986,7 +1034,8 @@
       "b": "quorum-consensus",
       "note_a": "A transaction spanning regions costs a quorum round trip per commit, which is the line between one primary and many.",
       "note_b": "CockroachDB commits through a Raft majority, which is why any node accepts writes and why each commit pays for the network.",
-      "maps_a": "matrix-row-9"
+      "maps_a": "matrix-row-9",
+      "maps_label_a": "Transactions spanning regions"
     },
     {
       "a": "relational-databases",
@@ -996,19 +1045,13 @@
       "note_b": "PostgreSQL's write-ahead log (WAL), InnoDB's redo log and SQLite's WAL mode are three shapes of one mechanism, and each exposes its own durability-versus-latency knob."
     },
     {
-      "a": "search-engines",
-      "verb": "implements",
-      "b": "materialized-view",
-      "note_a": "Every engine here keeps a projection of records another store owns, and you own the sync",
-      "note_b": "Search engines are this pattern at product scale — an index you rebuild beside the store that owns the truth."
-    },
-    {
       "a": "workflow-orchestrators",
       "verb": "implements",
       "b": "saga",
       "note_a": "Temporal and the cloud state machines run the saga for you — the compensating steps become code or a definition the engine replays, not retry scaffolding in your service",
       "note_b": "Which engine runs your sagas — Temporal, Airflow, Argo, Prefect or the cloud state machines.",
-      "maps_a": "matrix-row-3"
+      "maps_a": "matrix-row-7",
+      "maps_label_a": "Compensating a half-done run"
     },
     {
       "a": "workflow-orchestrators",
@@ -1016,7 +1059,8 @@
       "b": "workflow-orchestration",
       "note_a": "The engines that make a long process durable, argued one against another.",
       "note_b": "The engines that make a long process durable, argued one against another.",
-      "maps_a": "matrix-row-3"
+      "maps_a": "matrix-row-3",
+      "maps_label_a": "A worker dies mid-step"
     },
     {
       "a": "ad-click-aggregator",
@@ -6329,13 +6373,6 @@
       "note_b": "More than one copy is how a lost copy stops mattering"
     },
     {
-      "a": "relational-databases",
-      "verb": "combines-with",
-      "b": "replication",
-      "note_a": "Read replicas are how the single-writer engines grow before you shard.",
-      "note_b": "The engine you replicate decides whether the standby is async lag or a consensus quorum."
-    },
-    {
       "a": "cdn",
       "verb": "combines-with",
       "b": "object-storage",
@@ -6600,13 +6637,6 @@
       "b": "health-endpoint",
       "note_a": "Eviction needs a readiness signal to act on, or the registry cannot tell alive from answering",
       "note_b": "What a registry consumes to decide which instances stay in rotation"
-    },
-    {
-      "a": "observability-platform",
-      "verb": "prerequisite",
-      "b": "health-endpoint",
-      "note_a": "Uptime checks and alerting need an endpoint that answers honestly; the platform polls, it does not provide",
-      "note_b": "What a synthetic check or an orchestrator polls, and the platform assumes you expose one"
     },
     {
       "a": "geode",
@@ -8205,13 +8235,6 @@
       "note_b": "Screen at the entrance, but never only at the entrance"
     },
     {
-      "a": "networking",
-      "verb": "combines-with",
-      "b": "gatekeeper",
-      "note_a": "The web application firewall (WAF) and the gateway are where this sits in a cloud network.",
-      "note_b": "In a cloud network this is the managed web application firewall (WAF) or application programming interface (API) gateway."
-    },
-    {
       "a": "least-privilege",
       "verb": "combines-with",
       "b": "identity-as-perimeter",
@@ -8569,13 +8592,6 @@
       "note_b": "A request queue and a reply queue need the id to route the answer back to the caller that is waiting"
     },
     {
-      "a": "observability-platform",
-      "verb": "combines-with",
-      "b": "correlation-identifier",
-      "note_a": "The propagated id is what turns per-service log lines into one story the platform can join",
-      "note_b": "The platform stores and indexes it, but the propagation is still your code's job"
-    },
-    {
       "a": "a2a",
       "verb": "combines-with",
       "b": "async-request-reply",
@@ -8588,13 +8604,6 @@
       "b": "message-encoding",
       "note_a": "The size at which a payload becomes a reference is part of the encoding decision",
       "note_b": "Past a size threshold the message encodes a reference and the payload goes to object storage"
-    },
-    {
-      "a": "storage",
-      "verb": "combines-with",
-      "b": "claim-check",
-      "note_a": "The claim a message carries is usually an object key — this is where the payload actually sits.",
-      "note_b": "Object storage is the store the claim points at."
     },
     {
       "a": "claim-check",
@@ -10002,13 +10011,6 @@
       "b": "geode",
       "note_a": "Applies per node, so a regional spike grows one footprint rather than the fleet",
       "note_b": "Each node scales out on its own inside the shared backplane's constraints"
-    },
-    {
-      "a": "databases",
-      "verb": "combines-with",
-      "b": "sharding",
-      "note_a": "Managed does not choose your partition key, and a bad one is a hot partition no service tier fixes.",
-      "note_b": "The one decision the managed database will not make for you."
     },
     {
       "a": "change-data-capture",
@@ -12599,6 +12601,265 @@
       "b": "lava-flow",
       "note_a": "Can fall into lava flow when stale keys and flags accumulate that no one dares remove",
       "note_b": "Stale keys and flags accumulate that no one dares remove"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "compensating-transaction",
+      "note_a": "A workflow engine records each step, so it can run the undo steps in reverse when a later one fails.",
+      "note_b": "Workflow engines run the compensations for you: each step declares its undo, and the engine replays them after a failure.",
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Stateful workflow orchestration"
+    },
+    {
+      "a": "storage",
+      "verb": "implements",
+      "b": "claim-check",
+      "note_a": "The store that holds the large payload while the message carries only its key.",
+      "note_b": "Object storage holds the payload; the message carries the key.",
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Object storage"
+    },
+    {
+      "a": "observability-platform",
+      "verb": "implements",
+      "b": "correlation-identifier",
+      "note_a": "Trace context is a correlation identifier the platform propagates and indexes for you.",
+      "note_b": "Distributed tracing propagates the identifier across every hop and lets you search by it.",
+      "maps_a": "mapping-row-3",
+      "maps_label_a": "Distributed trace collection"
+    },
+    {
+      "a": "networking",
+      "verb": "implements",
+      "b": "sidecar",
+      "note_a": "A mesh injects a proxy sidecar beside every workload.",
+      "note_b": "A service mesh is the sidecar sold ready-made: an injected proxy beside each instance.",
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Service mesh"
+    },
+    {
+      "a": "observability-platform",
+      "verb": "prerequisite",
+      "b": "health-endpoint",
+      "note_a": "Uptime checks and alerting need an endpoint that answers honestly; the platform polls, it does not provide",
+      "note_b": "What a synthetic check or an orchestrator polls, and the platform assumes you expose one"
+    },
+    {
+      "a": "observability-platform",
+      "verb": "implements",
+      "b": "health-endpoint",
+      "note_a": "Synthetic checks probe the endpoint your service exposes, from outside it.",
+      "note_b": "Synthetic checks are the monitor half: they call the endpoint on a schedule and alert on failure.",
+      "maps_a": "mapping-row-7",
+      "maps_label_a": "Synthetic checks"
+    },
+    {
+      "a": "databases",
+      "verb": "implements",
+      "b": "sharding",
+      "note_a": "These stores split data across partitions by key without you choosing the shard map.",
+      "note_b": "Automatically sharded databases do the split and the rebalancing for you.",
+      "maps_a": "mapping-row-18",
+      "maps_label_a": "Automatically sharded database"
+    },
+    {
+      "a": "networking",
+      "verb": "implements",
+      "b": "gatekeeper",
+      "note_a": "A web application firewall is a managed gatekeeper: it inspects requests before they reach the service.",
+      "note_b": "A web application firewall in front of the service is the managed form of the gatekeeper.",
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Web application firewall"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "saga",
+      "note_a": "Workflow engines run a saga as a durable sequence of steps, each with its compensation.",
+      "note_b": "A managed workflow engine runs the orchestrated saga and survives a crash mid-way.",
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Stateful workflow orchestration"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "async-request-reply",
+      "note_a": "Durable Functions answers 202 with a status URL; Step Functions and Workflows return an execution you poll.",
+      "note_b": "Workflow engines return a handle at once and let the caller poll for the result.",
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Stateful workflow orchestration"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "compute-resource-consolidation",
+      "note_a": "Kubernetes packs many small workloads onto shared nodes.",
+      "note_b": "Managed Kubernetes bin-packs many workloads onto one pool of nodes.",
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed Kubernetes"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "sweeper",
+      "note_a": "A scheduled trigger runs the sweep on a fixed cadence.",
+      "note_b": "A managed scheduler runs the sweep job on a cron schedule.",
+      "maps_a": "mapping-row-23",
+      "maps_label_a": "Scheduled job trigger"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "scheduling",
+      "note_a": "A managed scheduler starts jobs on a cron or rate schedule.",
+      "note_b": "A managed scheduler is the cron table sold as a service.",
+      "maps_a": "mapping-row-23",
+      "maps_label_a": "Scheduled job trigger"
+    },
+    {
+      "a": "networking",
+      "verb": "implements",
+      "b": "ambassador",
+      "note_a": "A mesh proxy does an ambassador's work: retries, TLS and routing on the client's behalf.",
+      "note_b": "A mesh proxy is the ambassador sold ready-made, though it sits beside every service rather than one client.",
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Service mesh"
+    },
+    {
+      "a": "networking",
+      "verb": "implements",
+      "b": "strangler-fig",
+      "note_a": "An API gateway is the routing facade that sends each path to the old system or the new one.",
+      "note_b": "An API gateway is the facade: route each path to the legacy system or its replacement.",
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed API gateway"
+    },
+    {
+      "a": "regions",
+      "verb": "implements",
+      "b": "geode",
+      "note_a": "A global anycast entry point sends each request to the nearest healthy region.",
+      "note_b": "A global anycast entry point steers each request to the nearest healthy deployment.",
+      "maps_a": "mapping-row-12",
+      "maps_label_a": "Single global anycast entry point"
+    },
+    {
+      "a": "resources",
+      "verb": "implements",
+      "b": "multi-tenancy",
+      "note_a": "One account, subscription or project per tenant is the strongest isolation tier a cloud sells.",
+      "note_b": "An account, subscription or project per tenant is the silo model's billing and permission boundary.",
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Billing and permission boundary"
+    },
+    {
+      "a": "storage",
+      "verb": "implements",
+      "b": "quarantine",
+      "note_a": "Malware scanning tags or moves an uploaded object before anything trusts it.",
+      "note_b": "Object malware scanning holds an upload apart until it is checked, then promotes or deletes it.",
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Malware scanning of uploaded objects"
+    },
+    {
+      "a": "messaging",
+      "verb": "implements",
+      "b": "message-encoding",
+      "note_a": "A schema registry holds the versioned schemas producers and consumers encode against.",
+      "note_b": "A schema registry stores each schema version and checks that a new one stays compatible.",
+      "maps_a": "mapping-row-19",
+      "maps_label_a": "Schema registry"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "agent-memory",
+      "note_a": "Managed memory stores and recalls what an agent learned across sessions.",
+      "note_b": "The agent platforms sell memory as a service: they extract, store and retrieve it per user.",
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Managed agent memory"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "agent-sandboxing",
+      "note_a": "An isolated session runs the code an agent writes, away from your hosts.",
+      "note_b": "The agent platforms sell the sandbox: an isolated session per run, discarded after.",
+      "maps_a": "mapping-row-18",
+      "maps_label_a": "Sandboxed code execution for agents"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "mcp",
+      "note_a": "A managed gateway exposes your APIs as MCP tools, with authentication in front.",
+      "note_b": "A managed gateway turns existing APIs into MCP tools without writing a server.",
+      "maps_a": "mapping-row-19",
+      "maps_label_a": "Managed MCP tool gateway"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "a2a",
+      "note_a": "The managed agent runtimes host and call agents over the A2A protocol.",
+      "note_b": "Each cloud's managed agent runtime speaks A2A, so a hosted agent can call another.",
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Managed agent runtime"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "inverted-index",
+      "note_a": "Every managed search engine keeps an inverted index; you rent it with the service.",
+      "note_b": "Managed search is an inverted index you rent rather than build.",
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed search and vector search"
+    },
+    {
+      "a": "message-brokers",
+      "verb": "implements",
+      "b": "sequential-convoy",
+      "note_a": "Each broker scopes ordering differently: per partition, per queue or per message group.",
+      "note_b": "How far each broker's ordering reaches decides how you key a convoy.",
+      "maps_a": "matrix-row-3",
+      "maps_label_a": "Ordering"
+    },
+    {
+      "a": "workflow-orchestrators",
+      "verb": "implements",
+      "b": "compensating-transaction",
+      "note_a": "How each engine runs the undo steps when a run fails half-way.",
+      "note_b": "How much of the compensation each orchestrator writes for you.",
+      "maps_a": "matrix-row-7",
+      "maps_label_a": "Compensating a half-done run"
+    },
+    {
+      "a": "key-value-stores",
+      "verb": "implements",
+      "b": "cache-aside",
+      "note_a": "Most of these stores are used as the cache in cache-aside.",
+      "note_b": "Which store suits the cache role, and which does more than cache.",
+      "maps_a": "matrix-row-6",
+      "maps_label_a": "Typical role"
+    },
+    {
+      "a": "relational-databases",
+      "verb": "implements",
+      "b": "replication",
+      "note_a": "How each engine serves reads from replicas, lag included.",
+      "note_b": "How each relational engine replicates for read scale.",
+      "maps_a": "matrix-row-8",
+      "maps_label_a": "Reads at scale"
+    },
+    {
+      "a": "search-engines",
+      "verb": "implements",
+      "b": "embeddings",
+      "note_a": "Which engines store and search embedding vectors beside text.",
+      "note_b": "Which search engine can hold and query your embeddings.",
+      "maps_a": "matrix-row-8",
+      "maps_label_a": "Vector and hybrid search"
     }
   ],
   "group_order": {

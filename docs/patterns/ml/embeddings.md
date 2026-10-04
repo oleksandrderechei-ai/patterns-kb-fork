@@ -199,5 +199,6 @@ catalog
 **Implemented by**
 
 - [Data & Analytics](../../capabilities/data-analytics.md) — Every cloud sells the vector index, so you do not run the similarity search yourself.
+- [Search engines](../../comparisons/search-engines.md) — Which search engine can hold and query your embeddings.
 
 <!-- relationships:end -->

@@ -229,4 +229,8 @@ if (refusals.length > REFUSAL_ALERT) await flagForReview(sessionId, refusals);
 
 - [Least Privilege](./least-privilege.md) — The principle applied to a non-human actor that composes its own commands
 
+**Implemented by**
+
+- [Data & Analytics](../../capabilities/data-analytics.md) — The agent platforms sell the sandbox: an isolated session per run, discarded after.
+
 <!-- relationships:end -->

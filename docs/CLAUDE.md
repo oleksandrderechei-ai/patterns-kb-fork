@@ -8,7 +8,7 @@ blocks inside a page (relationships, tour, fluency, from `data/relations.json` a
 stamp (`reference/gates.md`, `glossary.md`, `tags.md`, `prerequisites.md`,
 `search-synonyms.md`) and the generated blocks in [triage.md](reference/triage.md) and the
 [docs map](README.md). `make gen` rebuilds all of them. Also hand-written: the other pages in `reference/`, the pages the root layer
-routes to in `concepts/`, the [records](records/) and the [trap inbox](inbox.md).
+routes to in `concepts/` and the [trap inbox](inbox.md).
 
 ## Conventions
 
@@ -23,9 +23,8 @@ routes to in `concepts/`, the [records](records/) and the [trap inbox](inbox.md)
   `tags`, `status`, in the [dialect](../tools/src/lib/dialect.md) the rules cite; a page
   has its row in `data/site-structure.json`, which `kb.mjs new` writes.
 - **An inbox entry follows [inbox.md](inbox.md)**, which states its shape.
-- **A dated record is `records/YYYY-MM-DD-<subject>.md`**, opens with its H1 and no
-  frontmatter, and gets its map row in the same change; it keeps what was true that day, so
-  the claim gate skips it.
+- **No dated records.** A check's findings go to the chat, or to the issue its skill opens,
+  never to a file under `docs/`; the frontmatter gate fails anything under `docs/records/`.
 
 ## Don't
 

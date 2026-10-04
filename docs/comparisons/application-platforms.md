@@ -50,7 +50,7 @@ An application platform takes your source code and gives back a running service 
 | Scale to zero | no | yes on the request-driven products | varies by product | only with a platform that supports it |
 | Where databases come from | the add-on marketplace | the provider's managed databases | the platform's own managed offerings | you run them, or rent them elsewhere |
 | Compliance and residency control | limited to the vendor's regions | full, via the provider's controls | limited to the vendor's regions | full — it is your hardware or account |
-| What the premium buys | the most operating removed | integration with what you already run | operating removed without lock-in | nothing — you traded money for time |
+| What the premium buys | the most operating removed, from a platform in sustaining engineering since February 2026 | integration with what you already run | operating removed without lock-in | nothing — you traded money for time |
 
 ## Choosing
 <!--meta block=choosing-->

@@ -52,8 +52,8 @@ Compute is machine time you rent at one of several levels: a virtual machine you
 | Capability | AWS | Azure | Google Cloud | Open source |
 | --- | --- | --- | --- | --- |
 | Virtual machine | Amazon EC2 | Azure Virtual Machines | Compute Engine | KVM, OpenStack |
-| Instance sizing vocabulary | instance type | VM size | machine type | no direct open-source equivalent |
-| Autoscaling group of identical VMs | EC2 Auto Scaling group | Virtual Machine Scale Sets | Managed instance groups | no direct open-source equivalent |
+| Instance sizing vocabulary | instance type | VM size | machine type | OpenStack flavors |
+| Autoscaling group of identical VMs | EC2 Auto Scaling group | Virtual Machine Scale Sets | Managed instance groups | OpenStack Heat autoscaling groups |
 | Interruptible discounted capacity | EC2 Spot Instances | Azure Spot Virtual Machines | Spot VMs | no direct open-source equivalent |
 | Custom machine image | Amazon Machine Image (AMI) | VM image in Azure Compute Gallery | Compute Engine custom image | HashiCorp Packer (BUSL) |
 | Dedicated single-tenant hardware | EC2 Dedicated Hosts | Azure Dedicated Host | Sole-tenant nodes | no direct open-source equivalent |
@@ -73,6 +73,7 @@ Compute is machine time you rent at one of several levels: a virtual machine you
 | Container image build | AWS CodeBuild | Azure Container Registry Tasks | Cloud Build | Docker BuildKit, Cloud Native Buildpacks |
 | Virtual actors with per-instance state | no first-party equivalent | Azure Durable Functions entities | no first-party equivalent | Microsoft Orleans, Dapr actors, Akka |
 | Runtime configuration and feature flags | AWS AppConfig, Systems Manager Parameter Store | Azure App Configuration | Parameter Manager, Firebase Remote Config | etcd, Consul, OpenFeature with flagd |
+| Scheduled job trigger | Amazon EventBridge Scheduler | Azure Functions timer trigger, Logic Apps Recurrence trigger | Cloud Scheduler | Kubernetes CronJob |
 
 ## Choosing between them
 <!--meta block=choosing-->
@@ -135,5 +136,11 @@ Two constraints settle the shape before price gets a vote. Regional quota comes 
 - [Actor Model](../patterns/concurrency/actor-model.md) — Durable entities and the open-source actor runtimes give each actor its own state and a single-threaded mailbox.
 - [External Configuration Store](../patterns/distributed/coordination/external-configuration-store.md) — A managed configuration store holds settings outside the deployment, so changing one is an API call rather than a redeploy.
 - [Feature Flag](../patterns/distributed/routing/feature-flag.md) — Managed flag services evaluate and roll out flags for you, with targeting and gradual percentages built in.
+- [Compensating Transaction](../patterns/distributed/resilience/compensating-transaction.md) — A workflow engine records each step, so it can run the undo steps in reverse when a later one fails.
+- [Saga](../patterns/distributed/coordination/saga.md) — Workflow engines run a saga as a durable sequence of steps, each with its compensation.
+- [Asynchronous Request-Reply](../patterns/distributed/routing/async-request-reply.md) — Durable Functions answers 202 with a status URL; Step Functions and Workflows return an execution you poll.
+- [Compute Resource Consolidation](../patterns/distributed/routing/compute-resource-consolidation.md) — Kubernetes packs many small workloads onto shared nodes.
+- [Sweeper](../patterns/distributed/coordination/sweeper.md) — A scheduled trigger runs the sweep on a fixed cadence.
+- [Scheduling](../patterns/concurrency/scheduling.md) — A managed scheduler starts jobs on a cron or rate schedule.
 
 <!-- relationships:end -->

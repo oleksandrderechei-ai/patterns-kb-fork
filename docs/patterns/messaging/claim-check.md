@@ -234,7 +234,6 @@ async function runVerify(
 - [Outbox](../distributed/coordination/outbox.md) — The store write and the publish are not atomic; the outbox is what makes the pair hold
 - [Asynchronous Request-Reply](../distributed/routing/async-request-reply.md) — The terminal state of a long-running operation is a natural place to hand back a reference instead of a payload
 - [Message Encoding](./message-encoding.md) — The size at which a payload becomes a reference is part of the encoding decision
-- [Storage](../../capabilities/storage.md) — Object storage is the store the claim points at.
 - [Context Engineering](../ml/context-engineering.md) — The window is another place where the payload should live elsewhere and travel as a handle
 - [Content Enricher](./content-enricher.md) — Moves a large payload out of the message into storage, which an enricher can fetch back where a step needs it
 
@@ -252,6 +251,6 @@ async function runVerify(
 
 **Implemented by**
 
-- [Messaging & Eventing](../../capabilities/messaging.md) — Integration platforms and the Camel library ship the step that stores the payload aside and passes a reference as a ready-made building block.
+- [Storage](../../capabilities/storage.md) — Object storage holds the payload; the message carries the key.
 
 <!-- relationships:end -->

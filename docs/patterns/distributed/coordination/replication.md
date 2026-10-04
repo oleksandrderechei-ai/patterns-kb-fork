@@ -207,7 +207,6 @@ class Replica {
 - [Read-Through](../../caching/read-through.md) — Read replicas serve cached-style reads
 - [Gossip Protocol](./gossip-protocol.md) — Leaderless stores gossip membership and repair replicas in the background
 - [Make Everything Redundant](../../../principles/redundancy.md) — Replication is this principle applied to data
-- [Relational databases](../../../comparisons/relational-databases.md) — The engine you replicate decides whether the standby is async lag or a consensus quorum.
 
 **Enables**
 
@@ -246,5 +245,6 @@ class Replica {
 
 - [Storage](../../../capabilities/storage.md) — Cloud storage exposes this as a redundancy tier rather than something you operate.
 - [Databases](../../../capabilities/databases.md) — Managed database services run this for you; you choose the topology, not the mechanism.
+- [Relational databases](../../../comparisons/relational-databases.md) — How each relational engine replicates for read scale.
 
 <!-- relationships:end -->

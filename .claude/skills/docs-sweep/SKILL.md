@@ -16,8 +16,7 @@ schedule `.github/workflows/docs-sweep.yml` keeps.
    a generated reference page such as `docs/reference/gates.md`, whose freshness gate owns it.
    A generated marked block inside a page is skipped the same way; the rest of the page is
    swept.
-2. **Fan out.** Group the pages by area, plus one group for `docs/records/` and one for the
-   top-level files. Hand each group to the [claim-audit](../../agents/claim-audit.md) agent in
+2. **Fan out.** Group the pages by area, plus one group for the top-level files. Hand each group to the [claim-audit](../../agents/claim-audit.md) agent in
    one call and ask for its fixed reply, nothing else. Do not read the pages yourself: that
    reading belongs in the agent's context, not yours.
 3. **Believe nothing.** For each finding, re-read both cited lines, the page's and the tree's,
@@ -26,8 +25,7 @@ schedule `.github/workflows/docs-sweep.yml` keeps.
    afternoon? If yes, fix it on the sweep's one branch; a red gate met on the way is the
    [gate-red](../gate-red/SKILL.md) skill. If not, or when the pile is large, list it on one
    GitHub issue grouped by page, each finding in the agent's line shape, with the sweep date and
-   every drop with its reason. A taste call goes to a dated record in `docs/records/`; a trap
-   goes to the [inbox](../../../docs/inbox.md).
+   every drop with its reason. A taste call goes on the same issue; a trap goes to the [inbox](../../../docs/inbox.md).
 5. **Gate the branch.** Run the whole set on the sweep's branch before it merges:
 
    ```bash
@@ -43,5 +41,4 @@ schedule `.github/workflows/docs-sweep.yml` keeps.
 - Every believed finding is merged from the one branch, green on `make validate`, or listed on
   exactly one issue.
 - No claim was fixed by deleting it.
-- A dated record written in the sweep is named `YYYY-MM-DD-<subject>.md` and has its map row.
 - The due issue, when there was one, carries the trace and is closed.

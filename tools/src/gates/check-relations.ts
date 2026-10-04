@@ -5,7 +5,7 @@
  * The file holds one record per EDGE, not per side: a verb written on one page
  * and its inverse on the other are one record,
  *
- *   { a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b? }
+ *   { a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b?, maps_label_a?, maps_label_b? }
  *
  * so the two-sided rule the HTML build enforced — every edge declared on both
  * pages, the same way round — is structural here: a record cannot say one side
@@ -33,6 +33,11 @@
  *   maps        a `maps_*` sits only on a side that reads `implements`, and
  *               names a table row of that side's own page — its `mapping`
  *               (capability) or `matrix` (comparison) block
+ *   pinned      a `maps_*` carries its `maps_label_*`, the plain text of the
+ *               row's first cell, and that row still reads it: row ids are
+ *               positional, so a row inserted above a pin moves it onto
+ *               another row, and the label is what notices. The finding names
+ *               the row the label sits on now. A label with no map is a finding.
  *
  * The verbs and the pages come from the two other data files, so a missing or
  * unreadable one is a finding against it, never a crash or a silent pass.
@@ -45,7 +50,9 @@ import path from 'node:path';
 
 import { jsonLines, pointer, readDataJson } from '../lib/data-json.js';
 import { main, type GateContext, type GateSpec } from '../lib/gate.js';
-import { deriveElements, parseKb } from '../lib/kb-attrs.js';
+import { mapRows } from '../lib/map-rows.js';
+
+export { MAPS_BLOCKS, mapRows } from '../lib/map-rows.js';
 
 export const RELATIONS = 'docs/data/relations.json';
 export const CONTENT_MODEL = 'docs/data/content-model.json';
@@ -53,11 +60,9 @@ export const STRUCTURE = 'docs/data/site-structure.json';
 
 /** The keys of the file itself, and of one record. */
 export const FILE_KEYS = ['version', 'updated', 'note', 'relations', 'group_order'];
-export const RECORD_KEYS = ['a', 'verb', 'b', 'note_a', 'note_b', 'group_a', 'group_b', 'maps_a', 'maps_b'];
+export const RECORD_KEYS = ['a', 'verb', 'b', 'note_a', 'note_b', 'group_a', 'group_b', 'maps_a', 'maps_b', 'maps_label_a', 'maps_label_b'];
 /** The verb a side must read for it to map to a table row. */
 export const MAPS_VERB = 'implements';
-/** The blocks whose table rows an edge may map to: a capability's mapping, a comparison's matrix. */
-export const MAPS_BLOCKS: ReadonlySet<string | null> = new Set(['mapping', 'matrix']);
 
 /** The verb that says a page is exposed to a hazard, and the folders of the pages it may join. */
 export const EXPOSED_VERB = 'exposed-to';
@@ -121,17 +126,6 @@ export function publishedPages(structure: unknown): Map<string, string> | null {
   return out;
 }
 
-/** The ids of the body table rows in a page's mapping or matrix block. */
-export function mapRows(markdown: string): Set<string> {
-  const body = markdown.replace(/^---\r?\n(?:[^]*?\r?\n)?---[ \t]*(?:\r?\n|$)/, '');
-  const ids = new Set<string>();
-  for (const e of deriveElements(parseKb(body).tree)) {
-    // A header row, and a row outside every block, carries no id: neither can be the row an edge maps to.
-    if (e.kind === 'row' && e.id !== undefined && MAPS_BLOCKS.has(e.block)) ids.add(e.id);
-  }
-  return ids;
-}
-
 /** Load a data file the gate cannot do without; a missing one is a finding against it. */
 function needed(ctx: GateContext, rel: string, why: string): { value: unknown; text: string } | null {
   const read = readDataJson(ctx, rel);
@@ -177,7 +171,7 @@ export const spec: GateSpec = {
     const seen = new Map<string, Edge>();
     /** The group labels each page's sides sit under, for group_order. */
     const labels = new Map<string, Set<string>>();
-    const maps: { slug: string; id: string; key: string; name: string; line: number | undefined }[] = [];
+    const maps: { slug: string; id: string; key: string; label: unknown; name: string; line: number | undefined }[] = [];
     let sides = 0;
 
     (records as unknown[]).forEach((r, n) => {
@@ -258,28 +252,43 @@ export const spec: GateSpec = {
         labels.set(slug, set);
 
         const id = r[`maps_${s}`];
-        if (id === undefined) continue;
+        if (id === undefined) {
+          if (r[`maps_label_${s}`] !== undefined) fail(`maps_label_${s} sits on a side that maps to no row — drop it, or write maps_${s}`);
+          continue;
+        }
         if (!isText(id)) fail(`maps_${s} is not an element id`);
         else if (v.id !== MAPS_VERB) {
           fail(`maps_${s} sits on ${slug}'s side, which reads "${v.id}" — only a side that reads "${MAPS_VERB}" maps to a table row`);
-        } else maps.push({ slug, id, key: `maps_${s}`, name, line });
+        } else maps.push({ slug, id, key: `maps_${s}`, label: r[`maps_label_${s}`], name, line });
       }
     });
 
     // Each mapped page is parsed once, whatever number of edges map into it.
-    const rowsOf = new Map<string, Set<string>>();
+    const rowsOf = new Map<string, Map<string, string>>();
     for (const m of maps) {
       const source = pages.get(m.slug) ?? '';
       let rows = rowsOf.get(m.slug);
       if (rows === undefined) {
         const abs = path.join(ctx.root, source);
-        rows = source !== '' && fs.existsSync(abs) ? mapRows(fs.readFileSync(abs, 'utf8')) : new Set<string>();
+        rows = source !== '' && fs.existsSync(abs) ? mapRows(fs.readFileSync(abs, 'utf8')) : new Map<string, string>();
         rowsOf.set(m.slug, rows);
       }
-      if (!rows.has(m.id)) {
+      const row = rows.get(m.id);
+      const labelKey = m.key.replace('maps_', 'maps_label_');
+      if (row === undefined) {
         ctx.fail(
           RELATIONS,
           `${m.name}: ${m.key} "${m.id}" names no row of ${m.slug}'s mapping or matrix table${source === '' ? '' : ` (${source})`}`,
+          m.line,
+        );
+      } else if (m.label === undefined) {
+        ctx.fail(RELATIONS, `${m.name}: ${m.key} "${m.id}" has no ${labelKey} — write the row's label, "${row}"`, m.line);
+      } else if (m.label !== row) {
+        const now = [...rows].find(([, l]) => l === m.label)?.[0];
+        ctx.fail(
+          RELATIONS,
+          `${m.name}: ${m.key} "${m.id}" reads "${row}", not its ${labelKey} "${String(m.label)}" — ` +
+            (now === undefined ? 'that row is gone from the table; re-pin the edge or drop it' : `that row is ${now} now; re-pin ${m.key} to it`),
           m.line,
         );
       }

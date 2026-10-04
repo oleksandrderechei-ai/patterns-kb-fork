@@ -237,6 +237,5 @@ async function rebuild(
 **Implemented by**
 
 - [Databases](../../../capabilities/databases.md) — Several managed engines refresh these for you.
-- [Search engines](../../../comparisons/search-engines.md) — Search engines are this pattern at product scale — an index you rebuild beside the store that owns the truth.
 
 <!-- relationships:end -->
