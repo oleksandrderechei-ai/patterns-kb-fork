@@ -78,11 +78,11 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Lambda: two engines, one answer** — A batch layer holds the immutable master data and recomputes exact views slowly; a speed layer computes approximate views over recent data; a serving layer merges them at query time. You get freshness and correctness together, and you maintain the same logic in two places forever.
+- **Lambda: two engines, one answer** — A batch layer holds the immutable master data and recomputes exact views slowly; a speed layer computes approximate views over recent data; a serving layer merges them at query time. You get a fast answer now and an exact one after each batch run, at the cost of two implementations.
 - **Kappa: one path, replayed** — Delete the batch layer and treat everything as a stream. Reprocessing means replaying the retained log from the start with new code, so there is one implementation to keep correct — provided the log is long enough and the engine catches up fast enough.
 - **Refinement tiers in the lake** — Keep the raw arrivals, a cleaned and conformed copy, and a business-ready copy as three zones rather than transforming in one leap. Each tier is reproducible from the one before it, so a logic bug costs a rerun rather than a re-ingestion.
 - **Load first, transform in place** — Land the files untouched and project a schema when someone reads them, rather than validating and reshaping on the way in. Ingestion stops being the bottleneck and stops rejecting data whose shape changed, at the cost of every reader having to cope with what is actually there.
-- **Move the work to the data** — Split the dataset into partitions and run the same computation on each node against the partition it already holds, then combine — [MapReduce](../distributed/coordination/mapreduce.md) and every engine descended from it. It is what makes a full-history recompute finish at all, and it only works if the files are splittable.
+- **Move the work to the data** — Split the dataset into partitions and run the same computation on each node against the partition it is assigned, held locally or read from shared storage, then combine — [MapReduce](../distributed/coordination/mapreduce.md) and every engine descended from it. It is what makes a full-history recompute finish at all, and it only works if the files are splittable.
 - **Precomputed serving views** — Publish the answers rather than the data by writing a [Materialized View](../distributed/coordination/materialized-view.md) per question the dashboard asks. Query cost drops to a lookup, and every new question needs a new pipeline.
 - **Device telemetry as a specialization** — Connected-device systems are this style with the streaming half enlarged. A gateway at the boundary accepts device events over a low-latency protocol; a field gateway near the devices can filter, aggregate or translate before forwarding, which cuts the volume that ever leaves the site. Add a registry of provisioned devices, a provisioning interface, and a path for command messages back to the device.
 - **Ingestion through one pipeline** — Give the recurring movement its own owner: a scheduled workflow that reads the sources, transforms, loads the analytical store and refreshes what the dashboard reads — see [Workflow Orchestration](../distributed/coordination/workflow-orchestration.md). The alternative is every application writing into the lake on its own schedule, which costs you the ability to say what landed, when, or whether it landed at all.
@@ -110,6 +110,7 @@ sequenceDiagram
 - **Schema-on-read moves the cost** rather than removing it: every reader now handles missing fields, changed types and mixed vintages of the same file.
 - **Cost is driven by choices** with no obvious feedback. Partition on the wrong column or land millions of small files, and queries read orders of magnitude more than they need while nothing reports an error.
 - **Nothing in the style forces** ingestion through one path, so applications write into the lake directly until no one can say where a dataset came from or when it last changed. The pipeline that fixes it is another system to schedule, monitor and back-fill.
+- **Fields scrubbed before landing** cannot be recovered from the raw zone, so choose which to tokenise and which to keep.
 
 ## When to use it
 <!--meta block=usage-->
@@ -127,10 +128,10 @@ sequenceDiagram
 
 - **The data fits comfortably in one database** and the reports finish in time. A read replica or a nightly summary table costs a fraction of this.
 - **Nobody on the team** has run a distributed processing engine before and there is no time to learn one.
-- **Every question needs the exact current value**. Eventual answers are the whole premise here.
+- **Every question needs the exact current value**. Answers that arrive late are the whole premise here.
 - **The problem is compute-bound rather than data-bound** — thousands of cores against a small input is [Big Compute](./big-compute.md), and it is a different shape.
 
-Answers the smell of an operational database quietly turned into a warehouse, where an analyst's query is one [Busy Database](../../hazards/busy-database.md) away from taking checkout down with it.
+Answers the [Busy Database](../../hazards/busy-database.md) smell: an operational database turned into a warehouse, where one analyst query can take checkout down.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -168,13 +169,13 @@ WHERE dt BETWEEN '2026-07-01' AND '2026-07-31'   -- partition column: 31 folders
 
 -- Filter on anything that is NOT the partition column and the engine has to
 -- open every file in the lake to find out. The predicate looks identical in
--- the query plan and costs a thousand times more.
+-- the query plan and reads every folder of the 3 years instead of 31, about 35 times more.
 ```
 
 ## In the wild
 <!--meta block=wild-->
 
-- **Apache Spark** — A distributed processing engine where the same DataFrame code runs as a scheduled batch job over files in the lake and, through Structured Streaming, as a continuous job over arriving records — which is what makes it practical to keep the two paths in agreement. {#wild-spark}
+- **Apache Spark** — A distributed processing engine where the same DataFrame code runs as a scheduled batch job over files in the lake and, through Structured Streaming, as a continuous job over arriving records — so the same transformation code can be reused on both paths; results still need comparing (production-check-7). {#wild-spark}
 - **Apache Kafka** — A durable partitioned log used as the ingest buffer. Consumers hold their own offsets, so setting retention long enough turns reprocessing into replaying the log from an earlier offset with new code — the mechanism the one-path design depends on. {#wild-kafka}
 - **Apache Parquet** — The columnar file format most lakes land in. It is splittable, so nodes read separate chunks of one file in parallel, and its footer statistics let a reader skip whole row groups and columns the query never mentions. {#wild-parquet}
 - **Apache Iceberg** — A table format over files in object storage: it tracks which files make up a table, so writers get snapshot isolation, schemas evolve without rewriting data, and a query can be run against the table as it stood earlier. Delta Lake occupies the same layer. {#wild-iceberg}
@@ -186,17 +187,17 @@ WHERE dt BETWEEN '2026-07-01' AND '2026-07-31'   -- partition column: 31 folders
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Partition granularity** — The column and period the files are laid out by, usually a time period matching the processing schedule. It decides how much a query has to open before it can filter, so it is the single largest lever on both runtime and cost.
-- **Target output file size** — How large each written file is. Too small and readers spend their time opening files rather than reading them; too large and a partition stops splitting across nodes evenly.
-- **Cluster size against runtime** — More nodes finish sooner but rarely stay busy for the whole job. Halving the nodes often costs less than half the extra time, so the slower schedule can be the cheaper one — measure rather than assume.
-- **Stream window and allowed lateness** — The width of the aggregation window and how long after it closes a late event is still accepted. This is where you decide, explicitly, what the fast answer is permitted to miss.
+- **Partition granularity** — The column and period the files are laid out by, usually a time period matching the processing schedule. It decides how much a query has to open before it can filter, so it is usually the largest lever on both runtime and cost, and bytes scanned per query will show it.
+- **Target output file size** — How large each written file is. Too small and readers spend their time opening files rather than reading them; too large and a partition stops splitting across nodes evenly. Time one open against one read and pick the size where opening is a small share.
+- **Cluster size against runtime** — More nodes finish sooner but scaling is rarely linear, so halving the nodes usually less than doubles the runtime and can cut the bill. Measure runtime and cost at two sizes before choosing.
+- **Stream window and allowed lateness** — The width of the aggregation window and how long after it closes a late event is still accepted. This is where you decide, explicitly, what the fast answer is permitted to miss. Read the late-arrival rate (signal 5) to set it: allow the delay by which most events have arrived and leave the rest to the batch recompute.
 - **Raw-zone retention** — How far back the untransformed data is kept. It bounds what a reprocessing run can rebuild, so it is a correctness setting rather than only a storage bill.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Ingest lag** — The gap between an event happening and it being available to query. It is the number the stream path exists to keep small, and the first thing to move when a source spikes.
-- **Job runtime against its schedule interval** — A job that takes longer than the gap between its runs will eventually overlap itself. Track the ratio, not the raw duration.
+- **Job runtime against its schedule interval** — A job that takes longer than the gap between its runs will eventually overlap itself. Track the ratio, not the raw duration, and alert when your slowest recent run brings it near 1.
 - **Bytes scanned per query** — What the engine actually read to answer a question. A query whose scanned bytes barely fall when its date filter narrows is telling you the partitioning is not being used.
 - **File count per partition** — Rising file counts at a flat data volume mean the writers are fragmenting output, and read throughput falls long before anyone notices the cause.
 - **Late-arrival rate** — The share of events that reach the stream job after their window closed. It tells you how far the fast view and the recomputed view will disagree.
@@ -205,9 +206,9 @@ WHERE dt BETWEEN '2026-07-01' AND '2026-07-31'   -- partition column: 31 folders
 <!--meta polarity=failure-->
 
 - **Small-file explosion** — A frequently-running writer leaves thousands of tiny files per partition, and readers spend more time listing and opening them than processing. Throughput collapses with no error anywhere.
-- **Skewed partition** — One key holds a disproportionate share of the rows, so a single node does most of the work while the rest of the cluster idles and the job runs at one machine speed.
+- **Skewed partition** — One key holds a disproportionate share of the rows, so a single node does most of the work while the rest of the cluster idles and the job runs at one machine speed. Compare the slowest task to the median; a large gap means skew.
 - **Batch run overrunning its window** — A job that no longer fits between its runs starts while the previous one is still going, and the two contend for the same resources and sometimes the same output partition.
-- **Backlog older than retention** — An outage lasts longer than the ingest buffer keeps messages, so the unread data is deleted rather than delayed. Nothing fails loudly, and the gap shows up as a hole in a chart weeks later.
+- **Backlog older than retention** — An outage lasts longer than the ingest buffer keeps messages, so the unread data is deleted rather than delayed. Nothing fails loudly, and the gap shows up as a hole in a chart weeks later. Check that retention exceeds the longest outage you must survive plus the time to catch up.
 - **Schema drift** — A source adds, renames or retypes a field, ingestion accepts it because nothing validates on write, and the readers that project a schema start returning nulls or failing casts.
 
 ### Readiness checklist
@@ -250,6 +251,10 @@ WHERE dt BETWEEN '2026-07-01' AND '2026-07-31'   -- partition column: 31 folders
 **Often confused with**
 
 - [Big Compute](./big-compute.md) — Both fan work across many machines, but this one distributes a dataset and moves the work to where the data sits.
+
+**Prevents**
+
+- [Busy Database](../../hazards/busy-database.md) — Moves analytical reads to a separate store, so an analyst's query stops competing with checkout.
 
 **Implemented by**
 

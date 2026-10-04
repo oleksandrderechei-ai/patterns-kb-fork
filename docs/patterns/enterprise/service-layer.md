@@ -204,6 +204,7 @@ const dto = await orderService.placeOrder({ customerId: "c1", lines });
 - [Repository](./repository.md) — Services orchestrate repositories
 - [DTO](./dto.md) — Services accept and return data transfer objects (DTOs) at the boundary
 - [Front Controller](./front-controller.md) — A service layer is called by handlers that a front controller chose
+- [Layered / N-Tier](../architecture/layered.md) — Layered is the tier stack whose business tier a service layer fronts.
 
 **Alternative to**
 

@@ -54,10 +54,11 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Ports & Adapters** — Alistair Cockburn's later name for the same pattern. He published it as hexagonal architecture and renamed it in 2005 to name the parts rather than the drawing — the hexagon was only ever the customary picture, chosen to avoid implying a top or bottom to the architecture.
+- **Ports & Adapters** — Alistair Cockburn's later name for the same pattern, naming the parts rather than the drawing. The hexagon was only the customary picture, chosen so the diagram implies no top or bottom.
 - **Onion Architecture** — Draws the same idea as concentric rings — domain model at the center, then domain services, then application services — and states the dependency rule explicitly: nothing points outward.
 - **Clean Architecture** — Adds an explicit use-case (interactor) ring between the domain and its ports, and generalizes the dependency rule across any number of layers.
-- **[Anti-Corruption Layer](../ddd/acl.md)** — A stricter adapter that translates and validates at a bounded-context boundary, so a foreign or legacy model can't leak its shape into the core.
+- **[Anti-Corruption Layer](../ddd/acl.md)** — A neighbour rather than a variant. An adapter that translates and validates at a bounded-context boundary is one way to fill a port, so a foreign or legacy model can't leak its shape into the core.
+- **Driving and driven sides** — Driving (primary) adapters such as web, CLI or a job call the core through inbound ports; driven (secondary) adapters such as a database or queue implement outbound ports the core calls.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -66,17 +67,18 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Core business logic has zero** dependency on frameworks, drivers, or transport — it's plain code you can unit-test with in-memory fakes.
-- **Infrastructure is swappable**: replace Postgres with DynamoDB, or REST with gRPC, by writing a new adapter, not touching the core.
+- **Infrastructure is swappable**: replace Postgres with DynamoDB, or REST with gRPC, by writing a new adapter and not touching the core, provided no port carries an adapter's types.
 - **Ports make every integration point an explicit**, named contract instead of an implicit coupling.
 - **Many front doors, one core** — a web API, a CLI and a scheduled job can all drive the same core at once without duplicating rules.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **More upfront ceremony**: an interface, at least one adapter, and wiring for every single dependency, even trivial ones.
+- **More upfront ceremony**: an interface, at least one adapter and wiring for each port, and one port per collaborator is the costly end.
 - **Drawing the port boundary** is a real design judgment — too fine and it's noise, too coarse and infrastructure leaks back in.
 - **Small, short-lived apps rarely earn back the indirection**; it adds files and interfaces for a project that will never change database.
 - **Nothing stops a hurried adapter** from smuggling infrastructure types back across the port if the team isn't disciplined.
+- **Fakes can drift**: each port needs an in-memory fake that can diverge from the real adapter, so run one contract suite against both.
 
 ## When to use it
 <!--meta block=usage-->
@@ -117,16 +119,24 @@ class PlaceOrder {
   }
 }
 
-// Adapter: implements the port, owns the persistence detail
+// Adapter: implements the port and owns the mapping between domain Order and the stored row (toRow, toOrder), items included
 class PostgresOrderRepository implements OrderRepository {
   constructor(private readonly db: Pool) {}
   async save(order: Order): Promise<void> {
-    await this.db.query("insert into orders values ($1)", [order.id]);
+    const { id, ...row } = toRow(order);
+    await this.db.query("insert into orders (id, body) values ($1, $2)", [id, row]);
   }
   async findById(id: string): Promise<Order | null> {
-    const row = await this.db.query("select * from orders where id = $1", [id]);
-    return row ? toOrder(row) : null;
+    const { rows } = await this.db.query("select * from orders where id = $1", [id]);
+    return rows[0] ? toOrder(rows[0]) : null;
   }
+}
+
+// Fake: same port, in memory; run one contract test suite against both
+class InMemoryOrderRepository implements OrderRepository {
+  private readonly byId = new Map<string, Order>();
+  async save(order: Order) { this.byId.set(order.id, order); }
+  async findById(id: string) { return this.byId.get(id) ?? null; }
 }
 
 // Composition root wires the adapter into the core's port
@@ -198,7 +208,8 @@ const placeOrder = new PlaceOrder(new PostgresOrderRepository(pool));
 
 **Alternative to**
 
-- [Layered / N-Tier](./layered.md) — Dependencies point inward vs. straight down the tiers
+- [Layered / N-Tier](./layered.md) — Pick this when the rules must be testable apart from framework and database; layered is enough for thin CRUD.
+- [Microkernel / Plugin](./microkernel.md) — Adapters are wired by the owning team; a microkernel loads plug-ins at run time
 
 **Composed of**
 

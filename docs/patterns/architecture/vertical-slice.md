@@ -21,13 +21,13 @@ Change requests name features, not tiers, yet filing code by tier spreads a one-
 ## Explained
 <!--meta block=explain-->
 
-A vertical slice keeps everything one request needs in one place: its input shape, validation, the work itself, the query or write, and the shape of its answer. You file code by feature instead of by tier, so a change to one feature is a change in one folder. Choose it over a [layered](layered.md) design when change requests name features, not tiers, and each tier has grown a shared class that every feature edits. The coupling rule inverts: keep coupling inside a slice high and across slices low, even if two slices each carry a nearly identical query. The pattern's author warns off a team that cannot tell chosen duplication from neglect, since the layering rule no longer does that thinking for you.
+You file code by feature instead of by tier, so a change to one feature is a change in one folder. A vertical slice keeps its input shape, validation, the work itself, the query or write, and the shape of its answer together. Choose it over a [layered](layered.md) design when change requests name features, not tiers, and each tier has grown a shared class that every feature edits. The coupling rule inverts: keep coupling inside a slice high and across slices low, even if two slices each carry a nearly identical query. Proponents of the pattern warn against it for a team that cannot tell chosen duplication from neglect, since the layering rule no longer does that thinking for you.
 
 - **Chosen duplication.** When a third slice needs the same logic, or it is a business rule, move it into a shared domain model.
 - **No rule spans all slices.** Write such rules as a test that scans every slice.
 - **Unwired handlers.** A misnamed handler may never be wired, so test each route once.
 
-**Example.** Adding a gift note to an order touches five folders in a tiered codebase: controller, service, repository, transfer object and validator. In a slice layout it is one folder, PlaceOrder, with the request, the check that the note has at most 140 characters, the handler and the insert. Two slices, ListOrders and OrderDetails, each carry the same query that hides deleted orders. A bug fix to the query lands in one slice and not the other, so the team adds a test that every slice query excludes deleted orders. The cost is that test, and a closer look when a query appears a third time.
+**Example.** Adding a gift note to an order touches five folders in a tiered codebase: controller, service, repository, transfer object and validator. In a slice layout it is one folder, PlaceOrder, with the request, the check that the note has at most 140 characters, the handler and the insert. Two slices, ListOrders and OrderDetails, each carry the same query that selects the order columns for a customer. A fix to the column list lands in one slice and not the other, so the team adds a test that both queries return the same columns. The cost is that test, and a closer look when the query appears a third time.
 
 ## How it works
 <!--meta block=structure-->
@@ -58,7 +58,7 @@ flowchart LR
 - **Feature folders** — The safest first step: keep the layered project intact but move each feature's files into one folder per feature. Navigation improves immediately, the shared tiers stay, and no dependency rule changes yet.
 - **Slice per request, with a dispatcher** — The full form. Each request is a type, each type has exactly one handler, and the transport layer only translates HTTP into a request object and hands it over — so the same handler serves a queue consumer or a scheduled job unchanged.
 - **Slices over a shared domain core** — Slices own their own read and write path, but invariants stay in a domain model both sides call. The usual landing place on a system with real business rules: the slice decides how to fulfil a request, the domain still decides what is legal.
-- **Asymmetric slices** — Write slices carry the full machinery — validation, domain model, transaction — and read slices carry one query and a projection. This is [command query responsibility segregation (CQRS)](./cqrs.md) arriving as a consequence of the filing rather than as a decision, which is the cheapest way to get it.
+- **Asymmetric slices** — Write slices carry the full machinery — validation, domain model, transaction — and read slices carry one query and a projection. This is [command query responsibility segregation (CQRS)](./cqrs.md) arriving as a consequence of the filing rather than as a decision, which is a low-cost way to get it, since no separate read model or sync is built; separate read stores are a further, separate step.
 - **Slice per feature area** — The coarser grain, where a slice is a whole feature area with its own internal structure and a published interface. At this size the slice is a module boundary, and the next step along the same axis is giving it its own deployment — which is [Microservices](./microservices.md).
 
 ## Trade-offs
@@ -79,7 +79,7 @@ flowchart LR
 - **Duplication is accepted on purpose**, and telling deliberate duplication from neglect is a judgement no rule makes for you.
 - **No single place enforces a cross-cutting rule**, so a policy change can mean touching many slices.
 - **A newcomer gets no tier-shaped** map of the system, so orientation depends entirely on naming and folder layout.
-- **It demands refactoring maturity** the pattern's own author names as a precondition — without it, slices drift into copies, and a bug gets fixed in only some of them.
+- **It demands refactoring maturity**, which proponents of the pattern name as a precondition. Without it, slices drift into copies.
 - **Nothing structural stops a slice** reaching into storage in a way the domain forbids, so that invariant is defended by review or by a domain model rather than by the layout.
 - **Convention-driven dispatch is quieter than a routing table**: a mis-named handler simply never gets wired, and nothing fails at compile time.
 
@@ -99,25 +99,47 @@ flowchart LR
 
 - **The team has no refactoring habit** — the accepted duplication needs someone to notice when it has stopped being deliberate.
 - **Most requests genuinely do the same thing** to the same data, so the shared layer is earning its keep.
-- **One place must enforce an invariant** — a cross-cutting invariant must be enforced in exactly one place by construction rather than by convention.
-- **The codebase is small enough** that navigation was never the problem — the reorganization buys nothing and costs a rewrite.
+- **One place must enforce an invariant** — a cross-cutting invariant is enforced in one place by construction, not by convention.
+- **The codebase is small enough** that navigation was never the problem. A full slice-per-request move costs a rewrite; [feature folders](vertical-slice.md#variations-item-1) cost a file move and buy little here.
 
 ## Code sketch
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — one slice, and the dispatcher that finds it"
 // ---- the whole seam: a request type, and a handler for exactly that type ----
-interface Handler<Req, Res> { handle(req: Req): Promise<Res>; }
+interface Handler<Req, Res> {
+  rules(req: Req): string | null;   // the slice's own input rules; null means valid
+  handle(req: Req): Promise<Res>;
+}
+type Step = (req: unknown, next: () => Promise<unknown>) => Promise<unknown>;
+declare const db: any, app: any;
+declare const authorize: Step, inTransaction: Step, log: Step;
 const handlers = new Map<string, Handler<never, unknown>>();
 
 function slice<Req, Res>(name: string, h: Handler<Req, Res>): void {
   handlers.set(name, h as unknown as Handler<never, unknown>);
 }
 
+// ---- the dispatch pipeline: cross-cutting policy, written once for every slice ----
+async function dispatch(name: string, req: unknown): Promise<unknown> {
+  const h = handlers.get(name) as Handler<any, unknown> | undefined;
+  if (!h) throw new Error(`no handler for ${name}`);
+  const validate: Step = async (r, next) => {
+    const err = h.rules(r);
+    if (err) throw new Error(err);
+    return next();
+  };
+  const steps = [log, authorize, validate, inTransaction];
+  return steps.reduceRight<() => Promise<unknown>>(
+    (next, step) => () => step(req, next),
+    () => h.handle(req),
+  )();
+}
+
 // ---- slices/place-order.ts — input, rules, work and output, all in one file ----
 slice<{ sku: string; qty: number }, { orderId: string }>("place-order", {
+  rules: (req) => (req.qty > 0 ? null : "qty must be positive"), // its own input rule
   async handle(req) {
-    if (req.qty <= 0) throw new Error("qty must be positive"); // its own validation
     const row = await db.one(                                  // its own data access
       "insert into orders (sku, qty) values ($1, $2) returning id",
       [req.sku, req.qty],
@@ -128,13 +150,18 @@ slice<{ sku: string; qty: number }, { orderId: string }>("place-order", {
 
 // ---- slices/order-history.ts — a read, and none of what the write side needed ----
 slice<{ customerId: string }, unknown[]>("order-history", {
+  rules: () => null,
   handle: (req) => // one projection query: no repository, no domain model, no mapper
     db.many("select id, sku, placed_at from orders where customer_id = $1", [req.customerId]),
 });
 
 // ---- the transport edge stays thin: translate, dispatch, serialize ----
-app.post("/orders", async (httpReq, httpRes) => {
-  httpRes.status(201).json(await handlers.get("place-order")!.handle(httpReq.body));
+const routes = [{ path: "/orders", request: "place-order" }];
+for (const r of routes) {            // boot-time check: a route with no handler fails here, not on a request
+  if (!handlers.has(r.request)) throw new Error(`route ${r.path} has no handler`);
+}
+app.post("/orders", async (httpReq: any, httpRes: any) => {
+  httpRes.status(201).json(await dispatch("place-order", httpReq.body));
 });
 ```
 
@@ -151,23 +178,23 @@ app.post("/orders", async (httpReq, httpRes) => {
 <!--meta polarity=knob-->
 
 - **Slice granularity** — Whether a slice is one request or one feature area. Per-request slices navigate best and duplicate most; per-area slices duplicate less and grow their own internal structure.
-- **Shared-code promotion threshold** — How many copies of a shape you tolerate before extracting it. Set it explicitly — an unstated threshold defaults to whatever the last reviewer felt like.
-- **Dispatch pipeline stages** — The behaviours wrapped around every handler — validation, authorization, transaction scope, logging. This is where cross-cutting policy lives once the layers are gone.
+- **Shared-code promotion threshold** — How many copies of a shape you tolerate before extracting it. Set it explicitly — an unstated threshold defaults to whatever the last reviewer felt like. Count a copy as one more slice issuing the same query or logic, and write the number down; the third slice is the starting point this page uses.
+- **Dispatch pipeline stages** — The behaviours wrapped around every handler — validation, authorization, transaction scope, logging. This is where cross-cutting policy lives once the layers are gone. Order matters: authorize before validating, so a caller who may not act learns nothing about the request shape, and open the transaction only around the handler.
 - **Handler registration mode** — Explicit registration versus a convention scan over the slice folders. A scan is less code and fails silently on a mis-named handler.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Files touched per change** — How many files a typical feature change edits. The number the reorganization is supposed to move, and the one that tells you whether it worked.
+- **Files touched per change** — How many files a typical feature change edits. The number the reorganization is supposed to move, and the one that tells you whether it worked. Count it from version-control history per merged change, and record the pre-migration baseline first.
 - **Merge conflict rate per file** — Which files keep colliding. A shared file still topping this list means the layers came back under another name.
-- **Near-duplicate query count** — How many slices issue substantially the same query. Rising steadily is the accepted duplication turning into neglect.
+- **Near-duplicate query count** — How many slices issue substantially the same query. Rising steadily is the accepted duplication turning into neglect. Count it by searching the slice folders for the same query text.
 - **Handlers not reached by any route** — Registered handlers with no traffic, and routes with no handler. The direct symptom of convention-based dispatch going wrong.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Bug fixed in one copy only** — The same logic exists in several slices, gets corrected in the one that was reported, and stays wrong in the others — the characteristic failure of accepted duplication.
-- **Policy change misses a slice** — A new authorization or audit rule is added to the slices someone remembered, and the forgotten one keeps serving. What a dispatch pipeline exists to prevent.
+- **Bug fixed in one copy only** — The same logic exists in several slices, gets corrected in the one that was reported, and stays wrong in the others. Find the other copies by searching for the same query or handler text across slices, fix them together, and promote the shape under the written rule.
+- **Policy change misses a slice** — A new authorization or audit rule is added to the slices someone remembered, and the forgotten one keeps serving.
 - **A slice bypasses the domain rules** — A slice writes storage directly in a way the domain model forbids, so an invariant holds on most paths and not on one.
 - **Silent dispatch gap** — A renamed or mis-named handler stops being discovered by the convention scan, and the route returns not-found rather than failing at build time.
 
@@ -204,6 +231,7 @@ app.post("/orders", async (httpReq, httpRes) => {
 - [Don't Repeat Yourself (DRY)](../../principles/dry.md) — Deliberately relaxed between slices: duplication is accepted to keep them independent
 - [REPR](./repr.md) — Request-endpoint-response (REPR) is what the slice's transport edge looks like when the endpoint is its own class
 - [Rule of Three](../../principles/rule-of-three.md) — A slice layout accepts duplication between slices, and the rule says when to pull it out
+- [Microservices](./microservices.md) — A coarse slice is a module boundary; giving it its own deployment is the next step.
 
 **Alternative to**
 

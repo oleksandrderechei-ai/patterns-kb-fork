@@ -206,6 +206,7 @@ mapReduce(["the cat sat", "the dog sat"]); // { the: 2, sat: 2, cat: 1, dog: 1 }
 **Often confused with**
 
 - [Scatter-Gather](../../messaging/scatter-gather.md) — Both split then combine, but map-reduce is data-parallel batch, not request/reply
+- [Big Compute](../../architecture/big-compute.md) — Both split work across many machines; this one splits a dataset and moves work to the data, big compute splits one computation over cores.
 
 **Demonstrated by**
 

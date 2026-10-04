@@ -28,7 +28,7 @@ Microservices split an application into services that each own one business capa
 - **Logs scatter.** One user action spans many logs, so set up tracing before the first outage.
 - **Open choices.** Agree platform rules for logging, metrics and deployment.
 
-**Example.** A shop splits into orders, payments and inventory. Placing an order calls payments, which charges 60.00, then inventory, which finds no stock. There is no shared transaction to roll back, so orders runs a refund of 60.00 as the undo step. If each call has a 1 s timeout, a chain of three can take 3 s to fail, so the team caps chains at two calls. A support agent tracing one order finds it in 3 services' logs by one order ID. The cost is that this refund path and the tracing setup had to exist before launch.
+**Example.** A shop splits into orders, payments and inventory. Placing an order calls payments, which charges 60.00, then inventory, which finds no stock. There is no shared transaction to roll back, so orders runs a refund of 60.00 as the undo step. If a request also chained through pricing and then tax, three calls deep with a 1 s timeout each, it can take 3 s to fail, so the team caps chains at two calls. A support agent tracing one order finds it in 3 services' logs by one order ID. The cost is that this refund path and the tracing setup had to exist before launch.
 
 ## How it works
 <!--meta block=structure-->
@@ -83,10 +83,11 @@ sequenceDiagram
 - **[API Gateway](../distributed/routing/api-gateway.md) at the edge** — One entry point routes external traffic to the owning service and carries the cross-cutting work — authentication, rate limits, request logging. Keep domain knowledge out of it: a gateway that understands orders becomes a second place every order change has to be made.
 - **[Backend-for-Frontend](../distributed/routing/bff.md) per client** — Give each client type its own aggregating façade instead of one gateway serving all of them. A mobile screen that needs four services gets one call shaped for it, and the web team stops blocking the mobile team's payload changes.
 - **[Service Mesh](../distributed/routing/service-mesh.md) for internal traffic** — Move retries, timeouts, mutual Transport Layer Security (TLS) and traffic splitting into a proxy beside each service rather than into every service's code. Policy then changes without a redeploy, at the cost of one more layer in the request path and in the on-call rotation.
-- **Choreography or orchestration** — In choreography each service reacts to events on its own and no component knows the whole flow. In orchestration a coordinator drives the steps and compensates the failed ones, which is the [Saga](../distributed/coordination/saga.md) shape. Choreography keeps services ignorant of each other; orchestration gives you one place to answer "where did this order stop".
-- **Extraction by [Strangler Fig](../distributed/coordination/strangler-fig.md)** — Most microservice systems are carved out of a monolith rather than designed from nothing. Route one capability at a time through a façade to a new service, keep the old path running until traffic has moved, then delete it. The alternative — a rewrite that lands all at once — has to reproduce every behaviour of the old system in one release.
-- **Modular monolith first** — Enforce the module boundaries and the private data inside one deployable, and split only once the boundaries have survived a year of change. Moving a boundary is a refactor while it is in-process and a migration once it is a network call, so this ordering buys the option to be wrong cheaply. The word doing the work is **enforce**: a boundary that is only a folder name is not a boundary, so it needs a mechanism — a compile-time module system, an architecture test that fails the build on a forbidden import, or separate schemas with no cross-schema joins. Cross-module reads then go through a published interface or a copy kept current by an internal event, which is the same discipline the split would demand and the reason the eventual split is mechanical rather than exploratory.
+- **Choreography or orchestration** — In choreography each service reacts to events on its own and no component knows the whole flow. In orchestration a coordinator drives the steps and compensates the failed ones, which is the [Saga](../distributed/coordination/saga.md) shape. Choreography keeps services from calling each other, but they still share event contracts and the flow is only visible by tracing; orchestration gives you one place to answer "where did this order stop".
+- **Extraction by [Strangler Fig](../distributed/coordination/strangler-fig.md)** — Many systems are carved out of a monolith rather than designed from nothing. Route one capability at a time through a façade to a new service, keep the old path running until traffic has moved, then delete it. The alternative, a rewrite that lands all at once, has to reproduce every behaviour of the old system in one release.
+- **Modular monolith first** — Enforce the module boundaries and the private data inside one deployable, and split only once the boundaries have survived repeated changes without cross-module edits. Moving a boundary is a refactor while it is in-process and a migration once it is a network call, so this ordering buys the option to be wrong cheaply. A boundary that is only a folder name is not a boundary, so enforce it with a compile-time module system, an architecture test that fails the build on a forbidden import, or separate schemas with no cross-schema joins. Cross-module reads go through a published interface or an event-fed copy, which makes the later split far less exploratory.
 - **Service-oriented architecture, minus the bus** — Service-oriented architecture argued for autonomous services a decade earlier and mostly delivered them through a shared enterprise service bus that carried routing, transformation and orchestration for everyone. This style rejects that central bus: intelligence moves into the services and the pipes stay dumb, which is why data is private to its owner rather than a shared canonical schema. A distributed monolith is what you get when the bus is deleted but the coupling it carried is not.
+- **Transactional outbox for events** — Write the state change and the event row in one local transaction, and let a relay publish the row. Delivery is then at least once, so consumers dedupe by event ID.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -94,9 +95,9 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Independent deploys and rollbacks** — a team deploys and rolls back one service without a release train, so shipping speed stops depending on the slowest team.
+- **Independent deploys and rollbacks** — a team deploys and rolls back one service without a release train, so shipping speed stops depending on the slowest team, provided contracts stay compatible and deployment is automated.
 - **Scale the subsystem under pressure** instead of the whole application — one busy capability no longer sets the replica count for everything.
-- **A schema change touches the one service** that owns the data, so migrations stop being cross-team events.
+- **A schema change touches the one service** that owns the data, so migrations stop being cross-team events, provided no other service reads that store.
 - **Failures stay local when callers handle them** — a down service degrades one capability rather than the application, provided callers use timeouts and a [Circuit Breaker](../distributed/resilience/circuit-breaker.md).
 - **Each service can pick the language** and the store that fit its work, which pays off where one capability's needs genuinely differ from the rest.
 
@@ -145,8 +146,12 @@ const shipments = new ShipmentStore();   // its own schema; no other service has
 // Inbound: react to a fact another service published, keeping a local copy of
 // only the fields shipping needs. Duplicating the address buys autonomy.
 broker.subscribe("OrderPlaced", async (e: OrderPlaced) => {
-  if (await shipments.exists(e.orderId)) return;   // redelivery must not create a second parcel
-  await shipments.create({ orderId: e.orderId, address: e.address, state: "pending" });
+  // A unique key on orderId makes redelivery safe: a concurrent duplicate hits the constraint.
+  try {
+    await shipments.create({ orderId: e.orderId, address: e.address, state: "pending" });
+  } catch (err) {
+    if (!isDuplicateKey(err)) throw err;   // a duplicate means the parcel exists; redelivery must not create a second one
+  }
 });
 
 // Outbound: a contract shaped like the domain, not like the table behind it.
@@ -172,6 +177,7 @@ const label = await carrier.buyLabel(price);
 // The event-driven version keeps the read local and the chain flat: shipping
 // already holds what it needs, and publishes rather than waits.
 const local = await shipments.find(orderId);
+// In production, publish through an outbox so the state change and the event commit together.
 await broker.publish("ShipmentReady", { orderId, weight: local.weight });
 ```
 
@@ -189,28 +195,28 @@ await broker.publish("ShipmentReady", { orderId, weight: local.weight });
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Service granularity** — How much capability one service owns, and whether one team owns it end to end. Cut too fine and every feature becomes a cross-team negotiation; cut too coarse and you are back to a shared release.
-- **Replica count and autoscaling target per service** — Each service scales on its own signal — CPU, in-flight requests, or queue depth — instead of the whole application scaling on the busiest path.
-- **Per-dependency timeout and retry budget** — The deadline and the attempt count on each outbound edge. Set them per edge and check the product across the chain: three hops retrying three times each turns one client request into 27 calls at the bottom.
+- **Service granularity** — How much capability one service owns, and whether one team owns it end to end. Cut too fine and every feature becomes a cross-team negotiation; cut too coarse and you are back to a shared release. Too fine when span count rises (signal 2) or most changes need two teams; too coarse when services deploy together (signal 3).
+- **Replica count and autoscaling target per service** — Each service scales on its own signal: CPU, in-flight requests or queue depth, instead of the whole application scaling on the busiest path. Load-test one replica for the rate where p99 breaks, and set the target at a fixed fraction of it.
+- **Per-dependency timeout and retry budget** — The deadline and the attempt count on each outbound edge. Set them per edge and check the product across the chain: three hops making three attempts each turn one client request into 27 calls at the bottom. Fit each timeout inside the caller's remaining deadline, and retry at one layer only.
 - **Compatibility policy for APIs and event schemas** — How long a deprecated field survives and whether consumers must ignore fields they do not recognise. This is what decides whether two services can deploy in either order.
-- **Connection pool size and max in-flight requests per upstream** — Bounds how much of a caller's capacity one slow dependency can hold, which is the difference between a degraded feature and a degraded service.
+- **Connection pool size and max in-flight requests per upstream** — Bounds how much of a caller's capacity one slow dependency can hold, which is the difference between a degraded feature and a degraded service. A starting point is request rate times p99 latency (signal 1), the in-flight count that rate needs; cap slightly above it.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Per-service request rate, error rate and p99 latency** — The three numbers that tell you which service is unhealthy without reading anyone else's dashboard.
 - **End-to-end latency and span count per traced request** — How long a user action takes across every hop, and how many hops it took. A rising span count is a chain growing longer than anyone designed.
-- **Deployment frequency per service** — The autonomy the style was bought for, measured directly. If every service deploys on the same day, they are not deploying independently and the split is not paying.
-- **Consumer lag on the asynchronous edges** — The backlog between a published event and the consumer that has processed it — the size of the window in which two services disagree.
+- **Deployment frequency per service** — The autonomy the style was bought for, measured directly. If services only ever deploy together, they are not deploying independently and the split is not paying.
+- **Consumer lag on the asynchronous edges** — The backlog between a published event and the consumer that has processed it, which is the size of the window in which two services disagree. Alert when lag exceeds the staleness the feature tolerates, and watch its rate of change.
 - **Share of a service's errors attributable to a downstream** — Separates a service that is broken from a service that is merely downstream of something broken, which is the difference between two very different pages.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Cascade along a synchronous chain** — C slows down, so B's threads fill waiting on C, so A's fill waiting on B — and a request path nobody thought was related is down.
-- **Retry amplification** — Each hop retries on its own, so a failure at the bottom of a three-deep chain arrives as an order of magnitude more load than the clients actually sent.
+- **Cascade along a synchronous chain** — C slows down, so B's threads fill waiting on C, so A's fill waiting on B, and a request path nobody thought was related is down.
+- **Retry amplification** — Each hop makes its own attempts, so three hops of three attempts turn one client request into 27 calls at the bottom and a small outage arrives as a flood.
 - **Chatty request patterns** — A screen assembled from six services makes six round trips per view, and latency becomes network time rather than work time. It usually means the boundaries are in the wrong place.
-- **Version skew** — A producer ships a required new field while consumers still run the previous build, so requests or events are rejected until both sides land — and the deploy order that was supposed to be free is not.
+- **Version skew** — A producer ships a required new field while consumers still run the previous build, so requests or events are rejected until both sides land, and the deploy order that was supposed to be free is not.
 - **Shared-store creep** — Two services start reading one store for a report, and from then on they have to deploy together. The coupling is invisible until a migration exposes it.
 
 ### Readiness checklist
@@ -253,6 +259,8 @@ await broker.publish("ShipmentReady", { orderId, weight: local.weight });
 - [Container Orchestration](../distributed/coordination/container-orchestration.md) — Many small services need something to place, scale and restart them, or the operational cost swamps the benefit.
 - [Saga](../distributed/coordination/saga.md) — Private data per service rules out a distributed transaction, so a business step spanning services needs compensations.
 - [External Configuration Store](../distributed/coordination/external-configuration-store.md) — Configuration from outside the service is what lets one build run in every environment
+- [Vertical Slice](./vertical-slice.md) — Slices at feature-area grain are the seam to cut along when a service is split out.
+- [Strangler Fig](../distributed/coordination/strangler-fig.md) — Replacing a legacy system one capability at a time is how most services are first cut out.
 
 **Alternative to**
 

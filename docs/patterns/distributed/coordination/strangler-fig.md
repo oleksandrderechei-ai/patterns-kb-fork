@@ -200,6 +200,7 @@ migrated.add("/api/invoices");
 - [Blue-Green Deployment](../routing/blue-green-deployment.md) — Each migrated slice can be cut over with a reversible switch
 - [Feature Flag](../routing/feature-flag.md) — Each intercepted call can be routed by a flag rather than a deploy
 - [Messaging Bridge](../../messaging/messaging-bridge.md) — The messaging half of an incremental migration, so both sides work during it
+- [Microservices](../../architecture/microservices.md) — The replacement targets are services, each owning one capability.
 
 **Requires**
 
