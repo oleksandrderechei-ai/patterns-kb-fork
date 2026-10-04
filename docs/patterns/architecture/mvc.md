@@ -21,7 +21,7 @@ Three unrelated reasons to change, a rule, a layout and an input gesture, land o
 ## Explained
 <!--meta block=explain-->
 
-MVC splits an interactive screen into three parts. The model holds the data and the rules for changing it. The view shows the model on screen and passes raw user input along. The controller reads that input, decides what it means and updates the model, and the view then refreshes. Trygve Reenskaug devised it at Xerox PARC in the late 1970s, and web frameworks later bent it into one request and response per controller. Each part has one reason to change, so a designer can rework a layout without opening code that decides prices. Choose it over putting everything in one screen class when rules, layout and input handling are already tangled, or when more than one screen must show the same state. For a static page it is three files for nothing.
+MVC splits an interactive screen into three parts. The model holds the data and the rules for changing it. The view shows the model on screen and passes raw user input along. The controller reads that input, decides what it means and updates the model, and the view then refreshes. Trygve Reenskaug devised it at Xerox PARC in the late 1970s, and web frameworks later adapted it so each request passes through a controller once. Each part should have one reason to change while the rules stay in the model, so a designer can rework a layout without opening code that decides prices. Choose it over putting everything in one screen class when rules, layout and input handling are already tangled, or when more than one screen must show the same state. For a static page it is three files for nothing.
 
 - **The controller swells.** It is the easiest place to drop logic, so keep rules in the model and display details in the view.
 - **A fuzzy view and controller line.** Web frameworks bend the names, so write down what each part may do in your project.
@@ -31,7 +31,7 @@ MVC splits an interactive screen into three parts. The model holds the data and 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="How does the screen learn that the cart changed? Only through the model — the click reaches it via the controller at steps 1 and 2, and the model then announces the change without knowing who is listening, so a second view can subscribe at step 4 and nothing inside the box changes."
+```mermaid caption="How does the screen learn that the cart changed? Only through the model — the click reaches it via the controller at steps 1 and 2, and in the classic push form the model then announces the change without knowing who is listening, so a second view can subscribe at step 4 and nothing inside the box changes. In request/response MVC the next request re-renders instead."
 flowchart LR
     User["User"]:::ext
     Controller["Controller"]
@@ -64,16 +64,16 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Domain logic in the model** is testable without touching any UI.
+- **Domain logic kept in the model** is testable without any UI.
 - **The same model can back multiple views** — a page, a widget, an export.
-- **Designers and front-end code** can change the view without risking business rules.
+- **Designers and front-end code** can change the view without touching business rules, provided no rules sit in the view or controller.
 - **A well-understood vocabulary** — most teams and frameworks already speak it.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **The controller easily absorbs logic** that belongs in the model or the view, and swells.
-- **The boundary between view** and controller is genuinely fuzzy and gets drawn differently by every team.
+- **The boundary between view** and controller is fuzzy and gets drawn differently by every team.
 - **Live model-to-view notification needs its own wiring** — usually another pattern (Observer) underneath.
 - **Web frameworks bend the names to fit request/response**, so "MVC" means something different in each one.
 
@@ -90,9 +90,9 @@ flowchart LR
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The UI is trivial** — a static page or a single form doesn't need three layers.
+- **The UI is trivial** — a static page or a single form doesn't need three parts.
 - **Your framework's binding story fits** [MVVM](./mvvm.md) far better than a hand-rolled controller.
-- **You need the view fully passive** and unit-testable in isolation — that's [MVP](./mvp.md)'s job.
+- **You need the view fully passive** and unit-testable in isolation. [MVP](./mvp.md) fits better: its presenter drives a passive view.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -106,7 +106,11 @@ class Model {
   private listeners = new Set<(s: State) => void>();
 
   get(): State { return this.state; }
-  set(next: State) {
+  // Rules live here, not in the controller.
+  increment() { this.set({ count: this.state.count + 1 }); }
+  reset() { this.set({ count: 0 }); }
+  private set(next: State) {
+    if (next.count === this.state.count) return; // no notify when nothing changed: stops update loops
     this.state = next;
     for (const fn of this.listeners) fn(next);
   }
@@ -116,9 +120,8 @@ class Model {
 class Controller {
   constructor(private model: Model) {}
   handle(action: Action) {
-    const s = this.model.get();
-    if (action === "increment") this.model.set({ count: s.count + 1 });
-    if (action === "reset") this.model.set({ count: 0 });
+    if (action === "increment") this.model.increment();
+    if (action === "reset") this.model.reset();
   }
 }
 
@@ -144,13 +147,13 @@ new Controller(model).handle("increment"); // view logs "count: 1"
 
 - **Where state lives** — Model, controller or view. State held in the view or controller cannot be tested or shared without the screen.
 - **Controller thickness** — Whether a controller action calls one model or service operation or contains the steps itself. Thick controllers duplicate rules across actions.
-- **How the view learns of changes** — Model pushes updates to views through observers, or the view re-reads on each request. Push gives live screens and brings update cycles.
+- **How the view learns of changes** — Model pushes updates to views through observers, or the view re-reads on each request. Push gives live screens in classic and desktop MVC and brings update cycles; request/response MVC re-renders per request.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Branches and lines per controller action** — A steady climb shows rules moving into the controller.
-- **Queries issued while rendering a view** — A template that triggers lazy loads causes N+1 queries, so count queries per page.
+- **Queries issued while rendering a view** — A template that loops over a lazily loaded association can cause N+1 queries, so count queries per page.
 - **Model tests that run without a view or controller** — Share of rules testable with plain objects. A low share means the model is entangled with presentation.
 
 ### Failure modes under load
@@ -158,7 +161,7 @@ new Controller(model).handle("increment"); // view logs "count: 1"
 
 - **Fat controller** — Business rules pile up in controller actions. You see the same check copied into three actions and a bug fixed in only one of them.
 - **View reaches into the model** — Templates call model methods that hit the database, so rendering cost hides in markup.
-- **Update storm** — In push-style MVC, one model change notifies several views that each change the model again. You see redraw loops or stale screens.
+- **Update storm** — In push-style MVC, one model change notifies several views that each change the model again. You see redraw loops or stale screens. Skip the notification when the new state equals the current one, as the sketch does.
 
 ### Readiness checklist
 <!--meta polarity=check-->

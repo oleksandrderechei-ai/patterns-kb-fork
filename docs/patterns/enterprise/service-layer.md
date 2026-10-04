@@ -208,6 +208,7 @@ const dto = await orderService.placeOrder({ customerId: "c1", lines });
 - [DTO](./dto.md) — Services accept and return data transfer objects (DTOs) at the boundary
 - [Front Controller](./front-controller.md) — A service layer is called by handlers that a front controller chose
 - [Unit of Work](./unit-of-work.md) — The service defines the use-case transaction boundary the unit of work opens and commits
+- [Layered / N-Tier](../architecture/layered.md) — Layered is the tier stack whose business tier a service layer fronts.
 
 **Alternative to**
 

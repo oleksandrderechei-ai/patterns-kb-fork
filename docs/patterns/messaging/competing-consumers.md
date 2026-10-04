@@ -222,11 +222,11 @@ for (let i = 0; i < workerCount; i++) runConsumer(taskQueue, runKycStep);
 - [Fan-Out](./fan-out.md) — A queue per fan-out branch, each drained by a pool.
 - [Dead Letter Channel](./dead-letter-channel.md) — A message that fails every attempt burns a pool slot on every pass until an attempt cap diverts it
 - [Design to Scale Out](../../principles/scale-out.md) — Competing consumers is horizontal scale on the asynchronous path
-- [Web-Queue-Worker](../architecture/web-queue-worker.md) — The worker tier is the usual home for this: one queue, many identical consumers.
 - [Priority Queue](./priority-queue.md) — Split the pool per class when some work must clear before the rest
 - [Sequential Convoy](./sequential-convoy.md) — Partition by category key when scaling out breaks the order a handler depends on
 - [Resequencer](./resequencer.md) — Competing consumers give up message order, which a resequencer can rebuild afterwards
 - [Polling Consumer](./polling-consumer.md) — Competing consumers often poll, so each worker takes work only when it has capacity
+- [Web-Queue-Worker](../architecture/web-queue-worker.md) — The worker tier is the usual home for this: one queue, many identical consumers.
 
 **Requires**
 

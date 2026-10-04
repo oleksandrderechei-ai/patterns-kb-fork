@@ -21,10 +21,10 @@ A service that calls its collaborators directly must know their addresses and wa
 ## Explained
 <!--meta block=explain-->
 
-In an event-driven design, a component announces that something happened, such as an order was placed, and carries on. Other components subscribe to the kinds of event they care about and react on their own time. The producer never calls a consumer, so you can add a reaction without editing the producer, and a slow or dead consumer cannot stall it. Choose it over direct calls at the boundaries between services owned by different teams that react to the same facts. Inside one team's synchronous flow it only trades a readable call stack for distributed debugging.
+A producer announces a fact and carries on; consumers react on their own time. Choose it over direct calls at the boundaries between services owned by different teams that react to the same facts: you add a reaction without editing the producer, and a slow or dead consumer cannot stall it. Inside one team's synchronous flow it mostly trades a readable call stack for distributed debugging, because the decoupling buys little when one team owns both sides.
 
 - **Write and publish can split.** Write the event in the same transaction and publish from there, as in an \[outbox\](../distributed/coordination/outbox.md).
-- **Redelivery.** Have the consumer record each event ID in the same commit as its own change.
+- **Redelivery.** Record each event ID in the same commit as the change; for an outside call like email, pass it as the idempotency key.
 - **No call stack.** Stamp one correlation ID on every event and trace on it.
 - **Open payload.** Every subscriber can read it, so decide what goes in as a disclosure choice.
 
@@ -58,12 +58,12 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Choreography vs. orchestration** — In choreography every service reacts to events on its own, with no central controller. In orchestration a coordinator — often a saga — tells each participant what to do next. Pure EDA favors choreography; orchestration returns when a business process needs an explicit, auditable sequence.
-- **Who owns a multi-step flow** — Choosing between those two decides more than who picks the next step: it decides who holds the flow's state. Under choreography nobody does, so there is nothing to ask where an order stopped and nothing to restart — a broken sequence is found by reconciliation rather than by an alert, which is why this arrangement is the usual source of quiet inconsistency. A coordinator holds that state and can retry or compensate from it, and in exchange becomes a component whose own outage stops every flow passing through it.
+- **Who owns a multi-step flow** — Choosing between choreography and orchestration also decides who holds the flow's state. Under choreography nobody does, so there is nothing to restart and a broken sequence is found by reconciliation rather than by an alert, which makes it a common source of quiet inconsistency unless a correlation ID and a timeout watcher make stuck flows visible. A coordinator holds that state and can retry or compensate from it, but its own outage stops every flow passing through it.
 - **Event notification vs. event-carried state transfer** — A thin event says only "this changed, go fetch details," forcing consumers to call back for the rest. A fat event carries the full new state so consumers never need to. Fatter events cut coupling further but risk staleness and duplicated data across services.
 - **[Domain Event](../ddd/domain-event.md) vocabulary** — The events themselves are named and shaped as business facts, not technical deltas — `OrderPlaced`, not `RowUpdated`. This is the vocabulary EDA is built out of.
 - **[Publish-Subscribe](../messaging/pubsub.md) transport** — The wiring mechanism underneath: producers publish to a topic, consumers subscribe to it, and a broker handles [fan-out](../messaging/fan-out.md), buffering, and delivery — Kafka, SNS (Simple Notification Service)/SQS, RabbitMQ, EventBridge.
 - **[Event Sourcing](./event-sourcing.md) persistence** — Instead of just reacting to events in flight, the event stream itself becomes the system of record — current state is rebuilt by replaying it. A natural, but optional, pairing with EDA.
-- **Push subscription vs. durable log** — A push broker tracks subscriptions and delivers each event to each subscriber, then forgets it — a consumer that was not subscribed when the event fired never sees it. A durable log instead appends events in order and keeps them; consumers hold their own read position and can rewind. Replay is the whole difference, and it decides what a consumer outage costs you: with a push broker, events missed during the outage are gone, while a log lets the consumer resume where it stopped, and lets a new consumer read history it was never present for. Replay is also how you reprocess after fixing a bug in a consumer.
+- **Push subscription vs. durable log** — A push broker tracks subscriptions and delivers each event to each subscriber. Whether a missed event survives depends on the queue behind the subscriber: a topic with no queue drops it, a durable per-consumer queue keeps it until acknowledged, and a durable log appends events in order and keeps them after reading. Log consumers hold their own read position and can rewind, so a log lets a consumer resume after an outage, read history as a new consumer, or reprocess after fixing a bug.
 - **How much the consumer has to remember** — Consumers sit on a ladder of increasing state. The simplest reacts to one event and acts. The next correlates a few events by identifier and keeps what it learned from the earlier ones. Above that, a consumer looks for patterns across a series — a moving average over a time window crossing a threshold. At the top, a stream processor transforms the whole flow for a downstream subsystem. Each rung costs more state to hold and more care when an instance dies mid-window.
 
 ## Trade-offs
@@ -73,8 +73,8 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Producers and consumers** are decoupled in time, space, and identity — add a reaction without touching the source.
-- **Consumers scale, deploy**, and fail independently of the producer and of each other.
-- **Naturally resilient to partial outages**: a down consumer doesn't block the producer, and queued events catch it up later.
+- **Consumers scale, deploy** independently of the producer and of each other, and fail independently as long as each has its own subscription or group and a dead-letter queue.
+- **Survives partial outages**: a down consumer doesn't block the producer, and queued events catch it up later, provided the outage is shorter than broker retention.
 - **Models the domain** as a stream of things that happened, which often matches how the business actually thinks.
 
 ### Cons
@@ -85,6 +85,7 @@ flowchart LR
 - **Debugging and testing require standing** up or simulating a broker; "where did this event come from" often means grepping logs across services.
 - **Needs real operational discipline**: schema versioning, idempotent consumers, dead-letter queues, and a plan for duplicate or out-of-order delivery.
 - **Open subscription cuts both ways**: whatever a producer publishes is readable by everything attached to the channel, including handlers it was never written for, so what goes into the payload is a disclosure decision and not only a schema one.
+- **Ordering holds only per partition or key**, so an event can overtake its predecessor on another. Consumers that need A before B must share a key or tolerate B arriving first.
 - **Event granularity has a cost** in both directions and no default. Too fine, and the volume saturates the system and makes the overall flow impossible to follow — worst when a change has to be rolled back. Too coarse, and every consumer wakes up for events it does not care about. Calibrate by asking whether a consumer must open the payload to decide how to respond: if a compliance check publishes only `Compliant` and `NonCompliant`, subscribers filter by event type instead of by inspection.
 
 ## When to use it
@@ -148,25 +149,25 @@ bus.emit("OrderPlaced", { orderId: "o-42", total: 4999 });
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Partition / consumer-group parallelism** — Per-topic throughput is capped by partition count; add partitions and consumers to scale out, at the cost of losing per-key ordering across partitions.
+- **Partition / consumer-group parallelism** — Per-topic throughput is capped by partition count; add partitions and consumers to scale out. Ordering holds only within a partition, so key-to-partition mapping must stay stable. Raising the count later remaps keys, so size it up front from target throughput divided by per-consumer rate, with headroom.
 - **Delivery semantics and ack mode** — At-least-once vs at-most-once, manual vs automatic acknowledgement. Chooses which side of the duplicate-versus-loss tradeoff the system lives on.
-- **Retry policy and dead-letter queue** — Max attempts, backoff schedule, and the destination where a message that keeps failing is parked instead of blocking the stream.
+- **Retry policy and dead-letter queue** — Max attempts, backoff schedule, and the destination where a message that keeps failing is parked instead of blocking the stream. Size the retry window from the longest transient outage you accept, then park the message with its error and original headers kept for replay.
 - **Event retention** — How long the broker keeps events (log retention or queue time to live (TTL)), which bounds how far a new or lagging consumer can rewind and replay.
 - **Consumer prefetch / max in-flight** — Number of unacknowledged messages a consumer buffers at once — the dial between throughput and memory pressure per consumer.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Consumer lag** — Offset gap between the latest produced event and the last one a consumer group has committed. The single best indicator that consumers are falling behind.
+- **Consumer lag** — Offset gap between the latest produced event and the last one a consumer group has committed. Shows directly that consumers are falling behind; pair it with end-to-end latency, because a stuck poison message can hide behind a flat lag.
 - **Dead-letter queue depth** — Count of messages that exhausted their retries. A non-zero and rising DLQ is a stuck workflow, not noise.
-- **End-to-end latency** — Time from an event being produced to it being processed — the number users actually feel through an event-driven flow.
+- **End-to-end latency** — Time from an event being produced to it being processed — what users feel through an event-driven flow.
 - **Redelivery / duplicate rate** — How often the same message is delivered more than once, which tells you how hard your idempotency layer is working.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
 - **Consumer lag grows unbounded** — Producers outpace consumers; the backlog climbs, latency stretches, and if it crosses the retention window unread events are silently dropped.
-- **Poison message** — A message that always fails cycles through retries, either blocking its partition or flooding the dead-letter queue.
+- **Poison message** — A message that always fails cycles through retries, either blocking its partition or flooding the dead-letter queue. Park it in the dead-letter queue after the retry limit with its error attached, then replay it once the consumer is fixed.
 - **Duplicate processing** — At-least-once redelivery double-applies side effects — a second charge, a second email — whenever a consumer is not idempotent.
 - **Out-of-order delivery** — Retries and cross-partition fan-out mean events arrive in a different order than they happened, breaking handlers that assumed sequence.
 
@@ -203,9 +204,17 @@ bus.emit("OrderPlaced", { orderId: "o-42", total: 4999 });
 - [Event Sourcing](./event-sourcing.md) — Sourced events can also drive reactions
 - [Design for Evolution](../../principles/design-for-evolution.md) — Events let new behaviour attach without editing what emits them
 
+**Alternative to**
+
+- [Web-Queue-Worker](./web-queue-worker.md) — A continuous stream handled as it arrives fits here; discrete slow jobs behind one queue are Web-Queue-Worker.
+
 **Composed of**
 
 - [Publish-Subscribe](../messaging/pubsub.md) — Event-driven systems are wired with pub/sub
+
+**Exposed to**
+
+- [Dual-Write Inconsistency](../../hazards/dual-write-inconsistency.md) — Publishing the event and writing the state are two calls, and one can fail
 
 **Demonstrated by**
 

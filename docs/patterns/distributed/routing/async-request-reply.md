@@ -230,6 +230,7 @@ app.get("/operations/:id", async (req, res) => {
 - [Claim Check](../../messaging/claim-check.md) — A large result leaves the status body and becomes a short-lived link the caller fetches
 - [Correlation Identifier](../../messaging/correlation-identifier.md) — Over a broker the reply is matched by an echoed id, because there is no open connection to answer on
 - [Agent2Agent](../coordination/a2a.md) — A delegated agent task is this pattern with a published state machine
+- [Web-Queue-Worker](../../architecture/web-queue-worker.md) — A queued job needs a way to report back; the 202 and status link is that way.
 
 **Alternative to**
 

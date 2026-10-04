@@ -20,14 +20,14 @@ A request that renders a video or calls three slow services holds a web thread f
 ## Explained
 <!--meta block=explain-->
 
-Web-queue-worker splits an application by speed. A web front end answers requests quickly. When a request needs slow work, it writes a job onto a queue and returns at once, and a separate worker takes jobs off the queue when it has room. Both halves are stateless, with session state in a shared cache, so any instance can serve any request and a restart costs nothing. The queue is the one new moving part, so choose it over one process doing everything when some requests take seconds or minutes while most take milliseconds, and over [microservices](microservices.md) when one team owns a simple domain. The worker is optional, and adding it later is not a rewrite.
+Web-queue-worker splits an application by speed. A web front end answers requests quickly. When a request needs slow work, it writes a job onto a queue and returns at once, and a separate worker takes jobs off the queue when it has room. Both halves are stateless, with session state in a shared cache, so any instance can serve any request and a restart loses no session state. The queue is the one new moving part, so choose it over one process doing everything when some requests take seconds or minutes while most take milliseconds, and over [microservices](microservices.md) when one team owns a simple domain. The worker is optional, and when the slow work already sits behind a function boundary, adding it later is a move, not a rewrite.
 
 - **Answers are no longer immediate.** Give every job a status the client can poll.
 - **Job row and message can split.** A crash between them loses the job, so commit both with an \[outbox\](../distributed/coordination/outbox.md).
 - **At-least-once delivery.** A worker that charges a card must recognise a job it already ran, for instance by job ID.
 - **Backlog can outlive retention.** Watch the backlog against the queue's retention window.
 
-**Example.** A web front end has 100 threads and serves 20 ms requests. Report exports take 90 s, and at peak 2 a second arrive for 60 s. Done inside requests, 2 exports a second hold 180 threads, more than the 100 there are, so every request fails. With a queue, the front end returns a job ID in 20 ms. The 120 jobs go to 20 worker slots, which finish them in 120 divided by 20, times 90 s, so 540 s, or 9 minutes. The cost is that a customer waits up to 9 minutes and polls the status, and a worker that crashes mid-job runs it again.
+**Example.** A web front end has 100 threads and serves 20 ms requests. Report exports take 90 s, and at peak 2 a second arrive for 60 s. Done inside requests, 2 a second for 90 s each is 180 threads of demand against 100, so the pool is full from about 50 s in and later requests fail. With a queue, the front end returns a job ID in 20 ms. The 120 jobs go to 20 worker slots, which finish them in 120 divided by 20, times 90 s, so 540 s, or 9 minutes. The cost is that a customer waits up to 9 minutes and polls the status, and a worker that crashes mid-job runs it again.
 
 ## How it works
 <!--meta block=structure-->
@@ -97,7 +97,7 @@ sequenceDiagram
 - **Front end and worker scale on separate signals**, so request rate and job backlog stop competing for the same machines.
 - **A slow or failing job** no longer holds a web thread, so page latency stays flat while the backlog drains.
 - **The queue absorbs spikes**: arrivals above what the worker pool can process become a longer wait rather than a wall of errors.
-- **A worker crash loses no work** when the message returns to the queue, which is a retry you get without writing one.
+- **A worker crash returns the message to the queue** after the lease expires, so the job is retried without custom code, provided the handler is idempotent.
 
 ### Cons
 <!--meta polarity=con-->
@@ -138,7 +138,7 @@ Answers the [Busy Front End](../../hazards/busy-front-end.md) smell — backgrou
 app.post("/reports", async (req, res) => {
   const jobId = crypto.randomUUID();
   await db.insert("reports", { id: jobId, state: "queued", spec: req.body });
-  await queue.send({ jobId });                 // the only slow-ish call on this path
+  await queue.send({ jobId });                 // crash between insert and send orphans the row: see the outbox
   res.status(202)
      .location(`/reports/${jobId}`)            // where the client checks back
      .json({ jobId, state: "queued" });
@@ -153,9 +153,10 @@ app.get("/reports/:id", async (req, res) => {
 // WORKER — a separate process on separate machines, scaled on backlog.
 for await (const msg of queue.receive({ concurrency: 4 })) {
   const row = await db.find("reports", msg.jobId);
-  if (row.state === "done") { await msg.ack(); continue; }  // redelivery is a no-op
+  if (row.state === "done") { await msg.ack(); continue; }  // no-op once done; concurrent duplicates need a claim step
 
   try {
+    // renew the message lease while this runs, or a slow job is redelivered to a second worker
     const url = await renderReport(row.spec);   // minutes, and nobody is holding a socket
     await db.update("reports", row.id, { state: "done", resultUrl: url });
     await msg.ack();
@@ -179,10 +180,10 @@ for await (const msg of queue.receive({ concurrency: 4 })) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Worker concurrency** — How many jobs one worker instance runs at once. Raise it until the machine's bottleneck resource — CPU, memory, or a connection pool — is the thing saturating rather than the slot count.
-- **Message lease (visibility timeout)** — How long a message stays invisible after a worker takes it. Shorter than the job's p99 duration and a second worker starts the same job while the first is still running.
+- **Worker concurrency** — How many jobs one worker instance runs at once. Raise it until CPU, memory or a connection pool saturates before the slots do. Total slots needed is about arrival rate times mean job duration.
+- **Message lease (visibility timeout)** — How long a message stays invisible after a worker takes it. Set it above the job p99 duration plus the worst pause, or renew it by heartbeat. Shorter, and a second worker starts the same job while the first is still running.
 - **Autoscaling target on backlog** — Scale workers on queue depth or backlog per worker, not on CPU. A worker blocked on a slow third party shows almost no CPU while the backlog is growing.
-- **Max delivery attempts and dead-letter destination** — How many times a failing message is retried and where it goes afterwards. Without a terminus, one bad message recirculates forever and consumes a slot each time.
+- **Max delivery attempts and dead-letter destination** — How many times a failing message is retried and where it goes afterwards. Delay each retry, and keep attempts times (lease plus backoff) inside the retention window. Without a terminus, one bad message recirculates forever and consumes a slot each time.
 - **Prefetch or batch size** — How many messages a worker holds at once. A large prefetch smooths throughput and makes a crash return a larger clump of work for redelivery.
 
 ### Signals to watch
@@ -197,7 +198,7 @@ for await (const msg of queue.receive({ concurrency: 4 })) {
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Backlog outgrows the drain rate** — Arrivals exceed processing for long enough that the wait crosses what users tolerate — and if it crosses the retention window, messages are dropped with no error anywhere.
+- **Backlog outgrows the drain rate** — Arrivals exceed processing long enough that the wait crosses what users tolerate. If it crosses the retention window, messages are dropped with no error anywhere.
 - **Duplicate execution after a lease expiry** — A job runs longer than its lease, the message becomes visible again, and a second worker starts it while the first is still going. The user sees two emails or two charges.
 - **Poison message** — One message fails on every attempt and cycles through retries, occupying a slot each pass until something sends it to the dead-letter queue.
 - **Starvation by a heavy job class** — A long batch export fills every worker slot, and the two-second jobs sharing that queue wait behind it. The symptom looks like an outage in the small jobs.
@@ -213,7 +214,8 @@ for await (const msg of queue.receive({ concurrency: 4 })) {
 - Session state and job state live outside the process, so any instance can be replaced mid-flight
 - Jobs longer than the lease are checkpointed or split, so a restart does not repeat an hour of work
 - The front end and the worker share no code module and no schema they both write
-- The table the worker writes hottest is partitioned on a key that spreads its writes, so one job class cannot serialize behind a single hot row range.
+- Hot write tables partition on a key that spreads writes, so one job class cannot serialize behind a hot row range.
+- A sweeper re-enqueues rows still queued past an age set from the slowest normal queue wait (oldest-message age).
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -238,13 +240,15 @@ for await (const msg of queue.receive({ concurrency: 4 })) {
 
 - [Queue-Based Load Leveling](../distributed/resilience/load-leveling.md) — The queue is not just a hand-off; it absorbs bursts so the worker keeps a steady rate under a spiky front end.
 - [Outbox](../distributed/coordination/outbox.md) — Closes the gap where the front end commits to the database and then fails before enqueuing, leaving work nobody will do.
-- [Competing Consumers](../messaging/competing-consumers.md) — Scaling the worker means several instances pulling from one queue, each message handled once.
 - [Stateless Service](../distributed/routing/stateless-service.md) — Both halves keep no per-client state, so either can be scaled or replaced without draining anything first.
-- [Blue-Green Deployment](../distributed/routing/blue-green-deployment.md) — Front end and worker ship as one unit, so validate the new pair beside the running one and switch once
+- [Asynchronous Request-Reply](../distributed/routing/async-request-reply.md) — The front end answers 202 with a status link, so the caller can still learn when the queued job finished.
+- [Blue-Green Deployment](../distributed/routing/blue-green-deployment.md) — Front end and worker ship as one unit, so validate the new pair beside the running one and switch once it passes.
+- [Competing Consumers](../messaging/competing-consumers.md) — Scaling the worker means several instances pulling from one queue; each message goes to one worker at a time and may be redelivered.
 
 **Alternative to**
 
 - [Microservices](./microservices.md) — When the domain outgrows two components and teams need to ship on their own schedule, this is the next step.
+- [Event-Driven Architecture](./eda.md) — Discrete jobs behind one queue fit here; a continuous stream handled as it arrives is Event-Driven Architecture.
 
 **Prevents**
 

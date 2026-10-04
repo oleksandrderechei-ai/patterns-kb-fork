@@ -23,11 +23,11 @@ Some arithmetic will not fit inside a deadline or inside one machine, such as a 
 
 Big compute cuts one heavy calculation into many independent tasks. A scheduler hands them to a pool of machines, collects the results, and releases the pool when the job ends, so you pay for the burst and not for a cluster that idles between runs. Choose it over [big data](big-data.md) when the bottleneck is arithmetic and the input is small. When the input is huge and the arithmetic light, moving the data costs more than the calculation, so take the work to the data instead.
 
-- **Slow start.** A pool that needs forty minutes has spent much of the time you wanted to save, so prebuild small machine images.
+- **Slow start.** A pool that needs forty minutes adds 7% to a 10-hour job and 67% to a one-hour one, so prebuild small machine images.
 - **The slowest task sets the end.** Make tasks small so each node runs many, and rerun the slowest early.
 - **Chatty tasks stop scaling.** Measure the best core count per workload, and checkpoint so a lost node does not cost the run.
 
-**Example.** A risk model has 100,000 scenarios, and each takes 6 minutes on one core. That is 600,000 core-minutes, or 10,000 core-hours, which is about 417 days on one core. On 1,000 cores each node runs 100 tasks, so the work takes 600 minutes, or 10 hours, plus a 40-minute wait for the pool: 10 hours 40 minutes. When a node dies at hour 5, you lose only the 6-minute task it was running, because each task reruns from its input alone. The cost is that every 6-minute task still pays scheduling overhead, so tasks of a few seconds would spend most of the run starting up.
+**Example.** A risk model has 100,000 scenarios, and each takes 6 minutes on one core. That is 600,000 core-minutes, or 10,000 core-hours, which is about 417 days on one core. On 1,000 cores each node runs 100 tasks, so the work takes 600 minutes, or 10 hours, plus a 40-minute wait for the pool: 10 hours 40 minutes. When a node dies at hour 5, you lose only the 6-minute task it was running, because each task reruns from its input alone. The cost is start-up overhead on every task: at an assumed 10 seconds, a 6-minute task loses under 3% of its time, while a 5-second task loses two thirds.
 
 ## How it works
 <!--meta block=structure-->
@@ -80,11 +80,11 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Embarrassingly parallel** — Tasks never talk to each other: 40 000 frames, a million trials, one file per task. Throughput scales close to linearly with cores, ordinary networking is enough, and a lost node costs one task. This is the case worth designing for whenever the problem allows it.
+- **Embarrassingly parallel** — Tasks never talk to each other: 40 000 frames, a million trials, one file per task. Throughput scales close to linearly with cores until the output store or input read becomes the limit (production-failure-5), ordinary networking is enough, and a lost node costs one task. This is the case worth designing for whenever the problem allows it.
 - **Tightly coupled** — Every step ends with the nodes exchanging intermediate results, so the whole pool moves at the speed of the slowest participant. It needs a low-latency, high-bandwidth interconnect, and adding cores stops helping once the exchanges cost more than the compute they coordinate.
 - **Task queue with [Competing Consumers](../messaging/competing-consumers.md)** — Put the tasks on a queue and let each free node take the next one instead of assigning work up front. Fast nodes take more tasks, slow ones take fewer, and nothing has to predict how long any task will run.
 - **Interruptible capacity** — Rent cores that can be reclaimed at short notice, which cost a fraction of guaranteed ones. It works precisely because tasks are repeatable: losing a node is a requeue. Keep the coordinator on guaranteed capacity, and expect the job to run longer when reclamation is heavy.
-- **Accelerators instead of more cores** — Some workloads — dense linear algebra, ray tracing, model training — run an order of magnitude faster per device on a GPU or another accelerator than on general-purpose cores. Fewer, denser nodes also shorten the ramp and cut the number of exchanges a coupled job has to make.
+- **Accelerators instead of more cores** — Some workloads — dense linear algebra, ray tracing, model training — can run many times faster per device on a GPU or another accelerator than on general-purpose cores, so measure before buying. Fewer, denser nodes also shorten the ramp and can cut the number of exchanges a coupled job has to make.
 - **All-or-nothing placement** — A tightly coupled job cannot start until every rank has a node, so the scheduler holds the whole allocation back rather than starting half of it. That is why a large coupled job waits in a queue while small independent jobs stream past it, and why oversubscribing a shared cluster with coupled work wastes more than it gains.
 - **Data-parallel cousin** — When the input is large rather than the arithmetic, invert the movement: partition the dataset, run the computation on the node that already holds each partition, and combine — [MapReduce](../distributed/coordination/mapreduce.md). Distributing a terabyte to a thousand nodes costs more than the calculation you were trying to speed up.
 
@@ -95,9 +95,9 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - **Independent tasks finish in close** to the time one task takes divided by the cores you can get, which turns a fortnight into an afternoon.
-- **You pay for the burst**, not for a cluster that idles between runs — capacity exists only while the job does.
-- **A lost node costs one task**, because every task can be rerun from its input alone.
-- **Problems too large** for one machine's memory become tractable by splitting the state across nodes rather than buying a bigger machine.
+- **You pay for the burst**, not for a cluster that idles between runs, though the images, quotas and scheduler stay yours to run (con-3).
+- **A lost node costs one task**, because every task can be rerun from its input alone, provided each task writes its result under its task id so a rerun overwrites rather than duplicates.
+- **Problems too large** for one machine's memory become tractable by splitting the state across nodes rather than buying a bigger machine. This is the coupled case, so the exchange and checkpoint costs in con-2 and con-5 apply.
 - **Specialised hardware** — accelerators, high-speed interconnects — is available for the hours you need it rather than as a capital purchase.
 
 ### Cons
@@ -191,7 +191,7 @@ def wall_clock(cores, serial=0.05, work=1.0, per_exchange=0.002):
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Task granularity** — How much work goes in one task. Too small and scheduling and start-up dominate; too large and the tail of long tasks decides the finish time. Aim for several hundred tasks per node so the queue can balance itself.
+- **Task granularity** — How much work goes in one task. Too small and scheduling and start-up dominate; too large and the tail of long tasks decides the finish time. Aim for enough tasks per node that one straggler is a small share of a node's work (the example runs 100), and for tasks far longer than their start-up cost.
 - **Pool size** — How many nodes the job asks for. It is a curve rather than a maximum: independent work scales close to linearly, coupled work has an optimum past which more nodes make the job slower.
 - **Node type and interconnect** — General-purpose cores, or accelerators, and whether the nodes are placed close enough for low-latency exchanges. Independent tasks do not care; coupled ones are decided by this choice more than by core count.
 - **Retries per task** — How many times a failed task is dispatched again before the job gives up. It is what converts an unreliable pool into a reliable job, and it is also how a genuinely broken task burns a node repeatedly.
@@ -252,6 +252,11 @@ def wall_clock(cores, serial=0.05, work=1.0, per_exchange=0.002):
 **Often confused with**
 
 - [Big Data](./big-data.md) — This one distributes a single computation across cores; the data is small next to the work.
+- [MapReduce](../distributed/coordination/mapreduce.md) — Both split work across many machines; map-reduce splits a dataset and moves work to the data, this splits one computation over cores.
+
+**Exposed to**
+
+- [Resource Leak](../../hazards/resource-leak.md) — A pool nobody released keeps billing in machine-hours; release is part of the job's end.
 
 **Implemented by**
 
