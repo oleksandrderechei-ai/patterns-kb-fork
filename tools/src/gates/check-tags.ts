@@ -59,9 +59,9 @@ export const NAME = 'tags';
 export const ALLOWLIST = 'docs/data/allow/tags.json';
 
 /**
- * Trees whose files carry no frontmatter by design (spec: kb.content.frontmatter,
- * frontmatter-C11). The frontmatter gate declares them; this gate skips them
- * rather than report a missing `tags` key on a file meant to carry none.
+ * Trees no page may sit in (docs/records/: dated records are not kept). The
+ * frontmatter gate fails any file there; this gate skips them rather than
+ * report the same file twice.
  */
 export const FRONTMATTER_FREE = ['docs/records/'] as const;
 
@@ -239,7 +239,7 @@ export function tagFindings(value: FmValue | undefined, cls: PageClass, lookup: 
 
 // ---------------------------------------------------------------------------
 // 3. The scan set, worked out from the tree: every markdown file under docs/
-//    but the context layers and the frontmatter-free trees.
+//    but the context layers and the refused trees.
 // ---------------------------------------------------------------------------
 export function scanSet(root: string): string[] {
   return gitFiles(root, ['docs/*.md', 'docs/**/*.md']).filter(
@@ -324,7 +324,7 @@ export const spec: GateSpec = {
 
     // Named pages narrow the run. `make validate-changed` hands over every
     // changed file the row's scans match, so the files this gate skips by
-    // design — a context layer, a frontmatter-free file, a page deleted in the
+    // design — a context layer, a refused file, a page deleted in the
     // change — are taken and dropped. A named data file is different: a changed
     // tag list, tuple or allowlist can strand a page nobody named (a term
     // retired while a page still carries it, an entry deleted while its pages

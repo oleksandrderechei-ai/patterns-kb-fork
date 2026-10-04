@@ -79,7 +79,7 @@ describe('a clean tree', () => {
     expect(r.err).toBe('');
   });
 
-  it('skips the context layers and the frontmatter-free trees', async () => {
+  it('skips the context layers and the refused trees', async () => {
     sb.write('docs/CLAUDE.md', '# Working in docs/\n');
     sb.write(`${FRONTMATTER_FREE[0]}2026-09-24-sweep.md`, '# A record\n');
     expect(scanSet(sb.dir)).toEqual(['docs/exercises/drills/three.md', 'docs/patterns/one.md', 'docs/patterns/two.md']);

@@ -391,8 +391,8 @@ Fix the page where it is, through `node scripts/kb.mjs set` where it has a flag.
 - **`description is N characters`** or **`description is a block scalar`** — on every page and
   exercise, published or not, `description:` is one plain line of 160 characters or fewer. A
   published page also gets `PAGE-005` from the docs-style gate for the same line.
-- **`files under docs/records/ carry no frontmatter`** — a dated record is not a page. Delete
-  the block.
+- **`dated records are not kept`** — a file sits under `docs/records/`. Delete it, and report
+  the check's findings in the chat or in the issue its skill opens.
 - **An exercise's findings** (`key "x" is not in the exercise block`, `type`, `area … must equal
   the folder`, `level is not an inline list`, `tags on an index`) — files under
   `docs/exercises/` carry only the exercise keys; the site computes the rest.
@@ -487,7 +487,7 @@ table are written by hand.
 
 - **`<page>: no link from docs/README.md …`** — nothing on the map reaches the page. A page
   in the structure file gets its row from `make map` (its row there comes first, and
-  `kb.mjs new` writes it for a new KB page); give any other page — a dated record, a nested layer, a
+  `kb.mjs new` writes it for a new KB page); give any other page — a nested layer, a
   working file — a row by hand, in the change that adds it.
 - **`docs/README.md: links <path>, which does not exist — fix the row or delete it`** — the page
   moved or went, or the row's case differs from the file's (the CI runner reads case exactly).
@@ -559,8 +559,7 @@ link in another.
 ## Vocabulary bans
 
 The ban gate. It reads `docs/data/glossary.json` first, then every markdown file git lists —
-committed or not, minus ignored files, the fixture trees, changelogs and dated records under
-`docs/records/` — and fails each prose line that uses a phrasing a term bans. Code spans, fences
+committed or not, minus ignored files, the fixture trees and changelogs — and fails each prose line that uses a phrasing a term bans. Code spans, fences
 (inside a blockquote or a list item too), raw HTML `<code>` and `<pre>`, frontmatter keys, the
 `solves` and `aliases` values (a searcher's words and a thing's other names, which search must
 still match), link targets, HTML tags and comments, and a trailing `{#id}` suffix are not prose;

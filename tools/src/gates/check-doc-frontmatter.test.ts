@@ -87,7 +87,7 @@ describe('a clean tree', () => {
   it('passes, counting the pages and leaving the layer alone', async () => {
     const r = await sb.run(spec);
     expectPass(r);
-    expect(r.out).toBe('[frontmatter] OK — 3 pages, 0 exercises, 0 frontmatter-free');
+    expect(r.out).toBe('[frontmatter] OK — 3 pages, 0 exercises');
     expect(r.err).toBe('');
   });
 
@@ -238,13 +238,11 @@ describe('the title in two places', () => {
 });
 
 describe('the other regimes', () => {
-  it('holds a dated record to no block, and counts it', async () => {
+  it('refuses a dated record, with or without a block', async () => {
     sb.write('docs/records/2026-09-24-sweep.md', '# Sweep\n\nWhat changed.\n');
-    const clean = await sb.run(spec);
-    expectPass(clean);
-    expect(clean.out).toContain('1 frontmatter-free');
+    expectFail(await sb.run(spec), 'docs/records/2026-09-24-sweep.md: dated records are not kept');
     sb.write('docs/records/2026-09-24-sweep.md', pageText({ area: 'reference' }));
-    expectFail(await sb.run(spec), 'docs/records/2026-09-24-sweep.md: files under docs/records/ carry no frontmatter');
+    expectFail(await sb.run(spec), 'docs/records/2026-09-24-sweep.md: dated records are not kept');
   });
 
   it('passes an exercise and an index in the exercise regime', async () => {
@@ -318,7 +316,7 @@ describe('arguments', () => {
     sb.rm(PAGE_GUIDE);
     const clean = await sb.run(spec, ['./docs/data/site-structure.json']);
     expectPass(clean);
-    expect(clean.out).toBe('[frontmatter] OK — 2 pages, 0 exercises, 0 frontmatter-free');
+    expect(clean.out).toBe('[frontmatter] OK — 2 pages, 0 exercises');
   });
 
   it('is misuse for an unknown flag, a file outside docs/ or a missing one, and writes nothing', async () => {
@@ -339,7 +337,7 @@ describe('arguments', () => {
     sb.rm(PAGE_GUIDE);
     let r = await sb.run(spec);
     expectPass(r);
-    expect(r.out).toBe('[frontmatter] OK — 2 pages, 0 exercises, 0 frontmatter-free');
+    expect(r.out).toBe('[frontmatter] OK — 2 pages, 0 exercises');
     sb.write(PAGE_ALPHA, pageText({ status: null }));
     r = await sb.run(spec);
     expectFail(r);
@@ -368,7 +366,7 @@ describe('--fix', () => {
     sb.write(PAGE_GUIDE, pageText({ title: 'Guide', area: 'reference', owner: null }));
     const r = await sb.run(spec, ['--fix']);
     expectPass(r);
-    expect(r.out).toBe('[frontmatter] OK — 3 pages, 0 exercises, 0 frontmatter-free, 1 key(s) added');
+    expect(r.out).toBe('[frontmatter] OK — 3 pages, 0 exercises, 1 key(s) added');
     expect(sb.read(PAGE_GUIDE)).toContain('area: reference\nowner: kb tests\ntags:');
   });
 
@@ -427,7 +425,7 @@ describe('the helpers', () => {
   it('sorts a file into its regime', () => {
     expect(regimeOf('docs/CLAUDE.md')).toBe('layer');
     expect(regimeOf('docs/reference/CLAUDE.md')).toBe('layer');
-    expect(regimeOf('docs/records/2026-09-24-x.md')).toBe('free');
+    expect(regimeOf('docs/records/2026-09-24-x.md')).toBe('refused');
     expect(regimeOf('docs/exercises/a/b.md')).toBe('exercise');
     expect(regimeOf('docs/inbox.md')).toBe('page');
   });

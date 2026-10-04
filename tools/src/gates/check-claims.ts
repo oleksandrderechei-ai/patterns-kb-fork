@@ -23,7 +23,7 @@
  *             tools/src/gates or tools/src/gen; a program path, run by node,
  *             tsx, bash, sh, zsh or python or written as the command itself:
  *             on disk.
- *   skipped   a stamped file, a dated record, a marked block, an unlabelled
+ *   skipped   a stamped file, a marked block, an unlabelled
  *             fence, an inline code span, a heredoc body, a line inside a quote
  *             left open by an earlier line, a word holding a placeholder
  *             (`<name>`, `…`, `*`, `$VAR`), everything after a `cd` on the same
@@ -55,8 +55,6 @@ import { isStamped } from '../lib/generated.js';
 export const SHELL_LABELS = new Set(['bash', 'sh', 'shell', 'zsh', 'console', 'shell-session']);
 /** Labels whose fences mix commands and output: only a `$ ` line is a command. */
 const PROMPTED = new Set(['console', 'shell-session']);
-/** Dated records keep what was true on their date; their claims are history by design. */
-export const RECORD = /^docs\/records\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/;
 /** The comment that silences one line. */
 export const OPT_OUT = 'claim-ok';
 /** Where `make gate G=<stem>` looks, in the Makefile's own order. */
@@ -64,7 +62,7 @@ export const GATE_DIRS = ['tools/src/gates', 'tools/src/gen'];
 
 /** Is this repo-relative file one whose command claims this gate reads? */
 export function isClaimFile(file: string): boolean {
-  if (!file.endsWith('.md') || RECORD.test(file)) return false;
+  if (!file.endsWith('.md')) return false;
   return (
     !file.includes('/') ||
     file.startsWith('docs/') ||

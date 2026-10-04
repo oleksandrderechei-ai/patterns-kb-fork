@@ -32,9 +32,6 @@ reports on. The caller runs anything worth running when it re-checks you.
   `docs/data/site-structure.json`; a skill or agent → `.claude/skills/` and `.claude/agents/`.
 - **A cadence.** "monthly, on the 1st" → the workflow's `cron:` line.
 - **A diagram branch.** A mermaid edge or label → the branch in the code it draws.
-- **A dated record** under `docs/records/`. Its figures are the measurement of its day and
-  stay as measured; test what it says holds now — the commands in its command block and the
-  gate it names as holding the fix.
 - **Untestable, and said so.** An external address, a judgment, the future tense, anything
   inside a marked block (between a start and an end marker such as `<!-- gate-count:start -->`
   and `<!-- gate-count:end -->`), and a file whose stamp says it is generated. Skip a marked block whole: its generator and its freshness gate own it.

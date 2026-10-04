@@ -142,7 +142,7 @@ describe('the page contract (kb.content)', () => {
 
     const fm = await sb.run(frontmatterGate);
     expectPass(fm);
-    expect(fm.out).toBe('[frontmatter] OK — 5 pages, 1 exercises, 0 frontmatter-free');
+    expect(fm.out).toBe('[frontmatter] OK — 5 pages, 1 exercises');
     expect(fm.err).toBe('');
 
     const shape = await sb.run(shapeGate);
@@ -193,14 +193,14 @@ describe('the map gate', () => {
     ]);
   });
 
-  it('a nested layer and a dated record are pages: each needs its link', async () => {
+  it('a nested layer and a loose working file are pages: each needs its link', async () => {
     sb.write(MAP, mapText('[A](reference/a.md)'));
     sb.write(PAGE_A, '# A\n');
     sb.write('docs/reference/CLAUDE.md', '# Reference layer\n');
-    sb.write('docs/records/2026-09-24-sweep.md', '# Sweep\n');
+    sb.write('docs/notes/sweep.md', '# Sweep\n');
     const r = await sb.run(spec);
-    expect(findings(r.err).map((l) => l.split(':')[0])).toEqual(['[docs-map] FAIL docs/records/2026-09-24-sweep.md', '[docs-map] FAIL docs/reference/CLAUDE.md']);
-    sb.write(MAP, mapText('[A](reference/a.md) · [layer](reference/CLAUDE.md) · [sweep](records/2026-09-24-sweep.md)'));
+    expect(findings(r.err).map((l) => l.split(':')[0])).toEqual(['[docs-map] FAIL docs/notes/sweep.md', '[docs-map] FAIL docs/reference/CLAUDE.md']);
+    sb.write(MAP, mapText('[A](reference/a.md) · [layer](reference/CLAUDE.md) · [sweep](notes/sweep.md)'));
     expectPass(await sb.run(spec));
   });
 

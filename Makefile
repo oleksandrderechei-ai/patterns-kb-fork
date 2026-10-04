@@ -184,7 +184,7 @@ verify: ## Build the site, run the reader's flows, then every gate: site-build, 
 
 # Photographs of the built site for a visual audit (tools/src/site-shots.ts): seven pages,
 # four widths, both themes, into a folder you name outside the repository. No gate: a
-# person looks, and a record under docs/records/ cites the file names.
+# person looks, and reports what they saw.
 site-shots: $(CHROMIUM_STAMP) ## Photograph the built site: 7 pages x 4 widths x 2 themes; OUT=/tmp/kb-shots
 	@[ -n "$$OUT" ] || { echo "usage: make site-shots OUT=/tmp/kb-shots" >&2; exit 2; }
 	@$(TSX) tools/src/site-shots.ts --out "$$OUT"

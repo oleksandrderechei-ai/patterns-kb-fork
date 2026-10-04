@@ -19,7 +19,6 @@ import {
   hitsIn,
   isChangelog,
   openItems,
-  isDatedRecord,
   MARKER,
   message,
   proseOf,
@@ -318,19 +317,16 @@ describe('the prose (glossary-C4..C7)', () => {
     expect(message({ phrase: 'derivable', term: 'can be worked out', aliases: [] })).toBe('use "can be worked out" not "derivable"');
   });
 
-  it('reports nothing in code, an ignored file, a fixture tree, a changelog or a dated record', async () => {
+  it('reports nothing in code, an ignored file, a fixture tree or a changelog', async () => {
     tree();
     sb.write('.gitignore', 'out/\n');
     sb.write('out/built.md', 'gizmo\n');
     sb.write('scripts/test/fixture/page.md', 'gizmo\n');
     sb.write('tests/fixtures/page.md', 'gizmo\n');
     sb.write('plugins/x/CHANGELOG.md', 'gizmo\n');
-    sb.write('docs/records/2026-09-24-sweep.md', 'gizmo\n');
     sb.write('docs/page.md', 'Say `gizmo` in code only.\n');
     expectPass(await sb.run(spec));
     expect(isChangelog('CHANGELOG.md')).toBe(true);
-    expect(isDatedRecord('docs/records/notes.md')).toBe(false);
-    expect(isDatedRecord('docs/records/2026-09-24-x/y.md')).toBe(false);
   });
 
   it('turns an untouched file red when a new phrasing is banned', async () => {

@@ -3,8 +3,7 @@
 Every page under `docs/` is written in this dialect, and every rule is numbered `D-nn` (or
 `X-nn`) so a gate, a test or a commit can cite it. The pages were converted once from the
 HTML pages the site used to be built from, by a converter and a round-trip proof that have
-since retired with that HTML (the [migration record](../../../docs/records/2026-09-30-migration-round-trip.md); git history holds
-both). Rules that say what the converter did with an HTML construct record where a page's
+since retired with that HTML (git history holds both). Rules that say what the converter did with an HTML construct record where a page's
 shape came from; the rule for the markdown itself holds for every page written since.
 
 The executable half of this specification is `tools/src/lib/kb-attrs.ts` (suffix grammar,
@@ -740,7 +739,7 @@ describe is written to the report (`tmp/convert-report.json`) with its page and 
 and the element is converted as generic prose where it can be, or skipped where it cannot.
 
 **D-74 · Decided losses.** What the round-trip still finds after all of the above is listed,
-with its exact count and reason, in the retired round trip's ledger (`known-losses.json`; see the [migration record](../../../docs/records/2026-09-30-migration-round-trip.md)) — never normalised
+with its exact count and reason, in the retired round trip's ledger (`known-losses.json`, in git history) — never normalised
 away inside the comparison. Today twelve: the 137 hand-drawn neighbour diagrams and the two
 non-edge neighbours two of them draw (D-58); the 3,443 block-heading aria ids and the 17
 `div.prose` wrapper ids (D-72); the stale link text "Timeout &

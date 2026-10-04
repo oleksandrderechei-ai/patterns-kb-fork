@@ -217,7 +217,7 @@
     {
       "id": "frontmatter",
       "name": "Page frontmatter",
-      "protects": "Every markdown file under docs/ opens with the block its regime asks for: a page declares title, description, area, owner, tags and status, each once and no key outside the page block, each value inside its closed list, its title equal to its H1 and its tags an inline list; status has no default, so a draft never passes for a finished page; a dated record carries no block; an exercise only the exercise keys.",
+      "protects": "Every markdown file under docs/ opens with the block its regime asks for: a page declares title, description, area, owner, tags and status, each once and no key outside the page block, each value inside its closed list, its title equal to its H1 and its tags an inline list; status has no default, so a draft never passes for a finished page; an exercise only the exercise keys; and no file sits under docs/records/, because dated records are not kept.",
       "command": "make gate G=check-doc-frontmatter",
       "wired": "node_modules/.bin/tsx tools/src/gates/check-doc-frontmatter.ts",
       "local_command": "node_modules/.bin/tsx tools/src/gates/check-doc-frontmatter.ts",
@@ -335,7 +335,7 @@
     {
       "id": "vocabulary",
       "name": "Vocabulary bans",
-      "protects": "The glossary is sound — every term holds its eight fields, a declared scope and related terms listed on both sides, and each banned phrasing has one owner — and no markdown prose line git lists uses a banned phrasing, outside code, fences, the searcher's words in `solves` and `aliases`, dated records and the lines that opt out with `<!-- vocab-ok -->`.",
+      "protects": "The glossary is sound — every term holds its eight fields, a declared scope and related terms listed on both sides, and each banned phrasing has one owner — and no markdown prose line git lists uses a banned phrasing, outside code, fences, the searcher's words in `solves` and `aliases`, and the lines that opt out with `<!-- vocab-ok -->`.",
       "command": "make gate G=check-vocabulary",
       "wired": "node_modules/.bin/tsx tools/src/gates/check-vocabulary.ts",
       "local_command": "node_modules/.bin/tsx tools/src/gates/check-vocabulary.ts",

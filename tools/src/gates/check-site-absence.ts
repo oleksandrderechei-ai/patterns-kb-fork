@@ -45,7 +45,7 @@
  * names its block, and the block's heading carries the same name as its id,
  * so `#tradeoffs` links from before the migration still land (dialect D-72).
  * That is the one place a data block restates a heading's id, a recorded
- * exception to two-layers-C6 (decided in the migration, docs/records/2026-09-30-migration-round-trip.md): authors
+ * exception to two-layers-C6 (decided in the migration): authors
  * write only the fact, and the markdown plugin gives the heading its id from
  * it (tools/src/lib/site-markdown.ts). No other fact restates a heading.
  *
