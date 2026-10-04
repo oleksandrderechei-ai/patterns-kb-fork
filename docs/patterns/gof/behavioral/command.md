@@ -43,7 +43,7 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Macro command** — A composite command that holds a list of commands and executes them as one unit — grouping several operations behind a single trigger.
+- **Macro command** — A composite command that holds a list of commands and runs them in order behind a single trigger. Its undo runs them in reverse, and a failure part-way leaves the earlier steps applied unless you roll them back.
 - **Undoable command** — Each command carries an `undo()` that reverses `execute()`; a [Memento](./memento.md) can capture the pre-state when reversal isn't a simple inverse.
 - **Queued / deferred command** — Commands are pushed onto a queue and run later — enabling scheduling, [throttling](../../distributed/resilience/rate-limiter.md), retries, or handing work to a background worker.
 - **Routed command** — A command is dispatched to whichever handler can process it, often along a [Chain of Responsibility](./chain-of-responsibility.md) — the backbone of command-bus and CQRS (Command Query Responsibility Segregation) designs.
@@ -56,7 +56,7 @@ flowchart LR
 
 - **The thing that triggers an action** and the thing that performs it never know about each other.
 - **Each request becomes an object**, so you can queue it, log it, schedule it, or send it over a network.
-- **Undo and redo come almost for free** — just keep a history of the commands you ran.
+- **Undo and redo** need a history of executed commands and an `undo()` in each one, so the cost moves to saved state and a bounded history.
 - **Add a new operation as a new class**; the code that triggers it stays untouched.
 
 ### Cons
@@ -64,7 +64,7 @@ flowchart LR
 
 - **One class per action** means many small types for what a single call could say.
 - **Hides the real control flow** — the extra layer can hide it when you're debugging.
-- **Supporting undo** forces each command to save or rebuild state, which isn't always cheap.
+- **Supporting undo** forces each command to save or rebuild state, which isn't always cheap, and an effect that leaves the process (a sent email, a captured payment) cannot be undone by restoring state, so give it a compensating action or do not offer undo.
 - **When your language has first-class functions**, a full command class is often overkill.
 
 ## When to use it
@@ -75,14 +75,14 @@ flowchart LR
 
 - **You want to hand an object** the action it should run — a menu item, button, or toolbar entry.
 - **You need to queue, schedule, log, or run** operations on a remote machine.
-- **You need undo/redo**, or to replay a sequence of operations as one transaction.
+- **You need undo/redo**, or to replay a recorded sequence of operations in order.
 
 ### Avoid when
 <!--meta polarity=avoid-->
 
 - **The action is a single call** you never store, defer, or reverse.
 - **Your language has first-class functions** and you need none of the queuing, logging, or undo.
-- **The extra layer adds only ceremony** over a plain method call.
+- **Choosing between algorithms** — You are picking one of several interchangeable algorithms for a job, and nothing needs the pick recorded or reversed. Use [Strategy](./strategy.md) instead.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -92,7 +92,7 @@ interface Command { execute(): void; undo(): void }
 class TextDocument {
   private text = "";
   append(chunk: string): void { this.text += chunk; }
-  removeLast(count: number): void { this.text = this.text.slice(0, -count); }
+  removeLast(count: number): void { this.text = this.text.slice(0, this.text.length - count); }
   toString(): string { return this.text; }
 }
 class TypeText implements Command {
@@ -119,9 +119,9 @@ editor.undoLast();                      // doc is back to "hello "
 ## In the wild
 <!--meta block=wild-->
 
-- **java.util.concurrent Runnable/Callable** — Runnable.run() and Callable.call() reify a unit of work; an ExecutorService accepts them through execute() or submit(), queues them in its work queue, and runs them on a pooled thread. Callable returns a value and may throw, both surfaced through the Future the executor hands back. {#wild-java-concurrent}
+- **java.lang.Runnable and java.util.concurrent.Callable** — Runnable.run() and Callable.call() turn a unit of work into an object. An ExecutorService takes a Runnable through execute() or submit() and a Callable through submit() only, queues it in its work queue and runs it on a pooled thread. Callable returns a value and may throw, both surfaced through the Future the executor hands back. {#wild-java-concurrent}
 - **javax.swing.Action** — An Action extends ActionListener with bound state: an enabled flag, name, icon, and accelerator key. One instance shared by a toolbar button, a menu item, and a key binding keeps them all enabled or disabled together when setEnabled() is called. {#wild-swing-action}
-- **Redux** — Each dispatched action is a plain serializable object with a type field; a pure reducer maps (state, action) to the next state. Because actions are data, the DevTools can log, replay, and time-travel through the sequence. {#wild-redux}
+- **Redux** — Each dispatched action is a plain serializable object with a type field; a pure reducer maps (state, action) to the next state. Because actions are data, the DevTools can log, replay, and time-travel through the sequence. An action holds no receiver and has no execute(); the reducer applies it, so Redux shows the call-as-data half of Command. {#wild-redux}
 
 ## In production
 <!--meta block=production-->
@@ -129,18 +129,21 @@ editor.undoLast();                      // doc is back to "hello "
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **History depth** — For undo/redo, how many executed commands the invoker keeps. An unbounded history grows memory for the length of the session; a capped stack drops the oldest reversible steps.
-- **Serialization boundary** — When commands are queued, persisted, or shipped over a wire they must serialize to data. A command that captures a live receiver reference or a closure will not marshal, so what the command carries is a real design dial.
+- **History depth** — For undo/redo, how many executed commands the invoker keeps. An unbounded history grows memory for the length of the session; a capped stack drops the oldest reversible steps. Size the cap from the longest undo run a user expects times the bytes one command retains.
+- **Serialization boundary** — When commands are queued, persisted, or shipped over a wire they must serialize to data. A command that captures a live receiver reference or a closure will not marshal, so carry plain data such as ids and look the receiver up when the command runs. Add a version field so commands queued before a deploy still load after it.
+- **Retry limit and backoff** — How many attempts a failed queued command gets, and the delay between them, before it is parked. Without a cap a command that always fails loops forever.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Command queue depth** — For deferred or queued commands, the number waiting to run. A rising backlog means the invoker is producing faster than the worker drains.
+- **Command queue depth** — For deferred or queued commands, the number waiting to run. A rising backlog means arrivals exceed the drain rate, because producers sped up or workers slowed or stalled on one failing command; check both rates.
+- **Redelivery count** — How many times the same command id has run. Above one means a retry or redelivery; on a non-idempotent command that is a double effect.
+- **Retained history size** — Commands and bytes the invoker keeps for undo. A count that climbs with no plateau means nothing trims it.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Unbounded undo history** — The invoker never trims executed commands, and retained state (including pre-images captured for undo) grows without limit.
+- **Unbounded undo history** — The invoker never trims executed commands, and retained state (including the pre-state saved for undo) grows without limit.
 - **Non-idempotent replay** — A queued or retried command that is not idempotent applies its effect twice when the queue redelivers or a retry fires after a partial success.
 
 ### Readiness checklist
