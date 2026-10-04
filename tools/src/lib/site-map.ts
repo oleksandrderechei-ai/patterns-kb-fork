@@ -7,9 +7,12 @@
  *               scripts/build-stack-page.mjs, read from docs/ instead of site/.
  *               A pattern a capability `implements` with a pinned mapping row
  *               shows that row's four service cells, copied; one with no pin
- *               links the capability's whole table; the rest are dashes, which
- *               record a gap in the index, never a verdict on the market. A
- *               comparison that implements the pattern rides along as a chip.
+ *               links the capability's whole table; the rest are dashes. A dash
+ *               is a verdict only where docs/data/stack.json gives one: a band
+ *               note, or a pattern's own reason, says no cloud sells it by
+ *               nature (state `none`); every other dash records a gap in the
+ *               index, never a verdict on the market. A comparison that
+ *               implements the pattern rides along as a chip.
  *
  * It reads `root` and writes nothing: the site component that draws it
  * (site/src/components/StackIndex) calls it at build time.
@@ -29,6 +32,8 @@ import { areaChain, fromPageTree, placedPages, type PlacedPage, type Structure, 
 
 export const STRUCTURE = 'docs/data/site-structure.json';
 export const RELATIONS = 'docs/data/relations.json';
+/** Which dashes are verdicts: the bands, and the single patterns, no cloud sells by nature. */
+export const STACK = 'docs/data/stack.json';
 /** The product registry: provider → the name a mapping cell says → its documentation URL. */
 export const PRODUCTS = 'docs/data/products.json';
 
@@ -69,19 +74,18 @@ export const SERVICE_COLUMNS: readonly { readonly provider: string; readonly lab
 export const DASH = '—';
 
 /**
- * Bands where a dash is the right answer for every row, not an unwritten
- * mapping: these patterns live inside one process, so there is nothing to
- * rent. Today's words (scripts/build-stack-page.mjs). A band leaves this list
- * the moment a capability implements one of its patterns: `stackData` refuses
- * the claim rather than print it wrong.
+ * The dashes that are verdicts (docs/data/stack.json): `bands` maps a band's
+ * area id to the note that says why no row in it is for sale, and `patterns`
+ * maps one pattern's slug to the reason no cloud sells it. A claim leaves the
+ * file the moment a capability implements the pattern: `buildStack` refuses
+ * it rather than print it wrong.
  */
-export const UNBUYABLE: Readonly<Record<string, string>> = {
-  gof: 'None of these is a service. They live inside one process, so every dash below is the right answer rather than a missing mapping.',
-  ddd: 'These are modelling decisions in your own code. Nothing in this section is purchasable, and nothing should be.',
-  functional: 'These are language and composition techniques. There is no product column to fill.',
-  testing: 'Test doubles live in your test suite. A managed service cannot stand in for one, so every row is dashed by nature.',
-  frontend: 'These structure code that runs in the browser. Hosting is buyable; the structure is not.',
-};
+export interface StackNotes {
+  readonly bands: Readonly<Record<string, string>>;
+  readonly patterns: Readonly<Record<string, string>>;
+}
+
+export const NO_NOTES: StackNotes = { bands: {}, patterns: {} };
 
 /** A link to a page: its title and route (a fragment kept). */
 export interface StackLink {
@@ -96,9 +100,12 @@ export interface StackRow {
   /**
    * `mapped`: a pinned mapping row's cells. `linked`: a capability implements
    * the pattern with no row pinned, so every cell links its whole table.
-   * `gap`: no capability does.
+   * `none`: no capability does, and stack.json says none sells it by nature.
+   * `gap`: no capability does, and nothing says why.
    */
-  readonly state: 'mapped' | 'linked' | 'gap';
+  readonly state: 'mapped' | 'linked' | 'none' | 'gap';
+  /** Why no cloud sells the pattern, on a `none` row whose band carries no note of its own. */
+  readonly reason?: string;
   /** Where the cells come from: the mapping row's own label, or the capability's name. */
   readonly source?: StackLink & { readonly html: string };
   /** Four cells of inner HTML, one per service column. */
@@ -126,6 +133,10 @@ export interface StackData {
   /** Patterns listed, and how many of them a capability or a comparison implements. */
   readonly patterns: number;
   readonly covered: number;
+  /** Patterns a capability sells, those no cloud sells by nature, and the rest: not mapped yet. */
+  readonly sold: number;
+  readonly byNature: number;
+  readonly open: number;
   readonly rows: number;
 }
 
@@ -185,10 +196,17 @@ export const escapeHtml = (s: string): string => s.replace(/&/g, '&amp;').replac
 
 /**
  * The stack index. `read` answers a page source's markdown; `linkify` links the
- * products in one cell for its column. Throws when a band this file calls
- * unbuyable has a pattern some capability sells: the note would be a lie.
+ * products in one cell for its column; `notes` says which dashes are verdicts.
+ * Throws when a note claims no cloud sells a pattern some capability sells (the
+ * note would be a lie), or names a band or pattern the index does not hold.
  */
-export function buildStack(structure: Structure, relations: readonly Relation[], read: (source: string) => string, linkify: Linkify): StackData {
+export function buildStack(
+  structure: Structure,
+  relations: readonly Relation[],
+  read: (source: string) => string,
+  linkify: Linkify,
+  notes: StackNotes = NO_NOTES,
+): StackData {
   const pages = treePages(structure);
   const bySlug = new Map(pages.map((p) => [p.slug, p]));
   const routes = new Map(pages.map((p) => [p.source, p.route]));
@@ -215,9 +233,11 @@ export function buildStack(structure: Structure, relations: readonly Relation[],
 
   const link = (p: (typeof pages)[number], fragment = ''): StackLink => ({ title: p.label, href: `${p.route}${fragment}` });
   let covered = 0;
+  let sold = 0;
+  let byNature = 0;
   let rowCount = 0;
 
-  const rowsFor = (p: (typeof pages)[number]): StackRow[] => {
+  const rowsFor = (p: (typeof pages)[number], bandNote: boolean): StackRow[] => {
     const list = sources.get(p.slug) ?? [];
     const compare = list
       .filter((s) => s.page.kind.id === COMPARISONS)
@@ -229,9 +249,27 @@ export function buildStack(structure: Structure, relations: readonly Relation[],
     const caps = list.filter((s) => s.page.kind.id === CAPABILITIES);
     if (list.length > 0) covered += 1;
     const id = (i: number): string => `stack-${p.slug}${i === 0 ? '' : `-${i + 1}`}`;
+    const reason = notes.patterns[p.slug];
     if (caps.length === 0) {
       rowCount += 1;
-      return [{ id: id(0), pattern: link(p), state: 'gap', cells: SERVICE_COLUMNS.map(() => DASH), compare }];
+      const none = bandNote || reason !== undefined;
+      if (none) byNature += 1;
+      return [
+        {
+          id: id(0),
+          pattern: link(p),
+          state: none ? 'none' : 'gap',
+          ...(reason === undefined ? {} : { reason }),
+          cells: SERVICE_COLUMNS.map(() => DASH),
+          compare,
+        },
+      ];
+    }
+    sold += 1;
+    if (reason !== undefined) {
+      throw new Error(
+        `${STACK} says no cloud sells ${p.slug}, but ${caps.map((c) => c.page.slug).join(', ')} implements it — drop it from patterns there or retype that relation`,
+      );
     }
     return caps.map((s, i) => {
       rowCount += 1;
@@ -262,7 +300,11 @@ export function buildStack(structure: Structure, relations: readonly Relation[],
 
   const bands: StackBand[] = [];
   let patterns = 0;
+  const listed = new Set<string>();
+  const bandIds = new Set<string>();
   for (const band of patternBands(structure)) {
+    bandIds.add(band.id);
+    const note = notes.bands[band.id];
     const groupAreas = [band, ...childAreas(structure, band.id)];
     const subdivided = groupAreas.length > 1;
     const groups: StackGroup[] = [];
@@ -270,22 +312,33 @@ export function buildStack(structure: Structure, relations: readonly Relation[],
       const members = pages.filter((p) => p.area === g.id);
       if (members.length === 0) continue;
       patterns += members.length;
-      const groupRows = members.flatMap(rowsFor);
-      const sold = members.filter((m) => (sources.get(m.slug) ?? []).some((s) => s.page.kind.id === CAPABILITIES)).map((m) => m.slug);
-      if (UNBUYABLE[band.id] !== undefined && sold.length > 0) {
-        throw new Error(`the stack index calls band "${band.id}" unbuyable, but a capability implements ${sold.join(', ')} — drop it from UNBUYABLE in tools/src/lib/site-map.ts or retype that relation`);
+      for (const m of members) {
+        listed.add(m.slug);
+        if (note !== undefined && notes.patterns[m.slug] !== undefined) {
+          throw new Error(`${STACK} gives ${m.slug} a reason of its own, but its band "${band.id}" already says none of its patterns is for sale — drop the pattern's entry`);
+        }
       }
+      const forSale = members.filter((m) => (sources.get(m.slug) ?? []).some((s) => s.page.kind.id === CAPABILITIES)).map((m) => m.slug);
+      if (note !== undefined && forSale.length > 0) {
+        throw new Error(`the stack index calls band "${band.id}" unbuyable, but a capability implements ${forSale.join(', ')} — drop the band from ${STACK} or retype that relation`);
+      }
+      const groupRows = members.flatMap((m) => rowsFor(m, note !== undefined));
       groups.push({ ...(subdivided && g !== band ? { label: g.label } : {}), rows: groupRows });
     }
     bands.push({
       id: band.id,
       label: band.label,
       description: band.hub.description,
-      ...(UNBUYABLE[band.id] === undefined ? {} : { unbuyable: UNBUYABLE[band.id] as string }),
+      ...(note === undefined ? {} : { unbuyable: note }),
       groups,
     });
   }
-  return { bands, patterns, covered, rows: rowCount };
+  const strays = [
+    ...Object.keys(notes.bands).filter((b) => !bandIds.has(b)).map((b) => `band "${b}"`),
+    ...Object.keys(notes.patterns).filter((p) => !listed.has(p)).map((p) => `pattern "${p}"`),
+  ];
+  if (strays.length > 0) throw new Error(`${STACK} names ${strays.join(', ')}, which the stack index does not hold`);
+  return { bands, patterns, covered, sold, byNature, open: patterns - sold - byNature, rows: rowCount };
 }
 
 /**
@@ -337,6 +390,14 @@ export async function productLinker(root: string): Promise<Linkify> {
   return linkerOf(data.products ?? {});
 }
 
+/** The stack notes, read from `root`'s stack.json; a tree without one has no verdicts. */
+export function readStackNotes(root: string): StackNotes {
+  const file = path.join(root, STACK);
+  if (!fs.existsSync(file)) return NO_NOTES;
+  const data = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<StackNotes>;
+  return { bands: data.bands ?? {}, patterns: data.patterns ?? {} };
+}
+
 /** The stack index, read from `root`. */
 export async function stackData(root: string): Promise<StackData> {
   return buildStack(
@@ -344,5 +405,6 @@ export async function stackData(root: string): Promise<StackData> {
     readJson<{ relations: Relation[] }>(root, RELATIONS).relations,
     (source) => fs.readFileSync(path.join(root, source), 'utf8'),
     await productLinker(root),
+    readStackNotes(root),
   );
 }

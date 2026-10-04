@@ -950,7 +950,7 @@ export const RELATION_RECORDS: readonly RelationRecord[] = [
   { a: 'alpha', verb: 'combines-with', b: 'beta', note_a: 'Alpha uses beta.', note_b: 'Beta uses alpha.' },
   { a: 'gamma', verb: 'variant-of', b: 'alpha', note_a: 'A narrower alpha.', note_b: '' },
   { a: 'alpha', verb: 'prevents-hazard', b: 'delta', note_a: 'Keeps delta away.', note_b: 'Alpha keeps it away.', group_a: 'Guards' },
-  { a: 'store', verb: 'implements', b: 'alpha', note_a: 'Sold ready-made.', note_b: 'Buy it.', maps_a: 'mapping-row-2' },
+  { a: 'store', verb: 'implements', b: 'alpha', note_a: 'Sold ready-made.', note_b: 'Buy it.', maps_a: 'mapping-row-2', maps_label_a: 'Queues' },
 ];
 
 export function relationsJson(records: readonly unknown[] = RELATION_RECORDS, extra: Readonly<Record<string, unknown>> = {}): string {

@@ -9,7 +9,7 @@
  *   relations.json holds one record per EDGE, not per side. A verb written on
  *   one page and its inverse on the other are one record:
  *
- *     { a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b? }
+ *     { a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b?, maps_label_a?, maps_label_b? }
  *
  *   `verb` is read from `a`'s side; `b` reads its inverse (the content
  *   model's verbs pair them; a symmetric verb is its own inverse).
@@ -54,6 +54,8 @@ export interface RelationRecord {
   readonly group_b?: string;
   readonly maps_a?: string;
   readonly maps_b?: string;
+  readonly maps_label_a?: string;
+  readonly maps_label_b?: string;
 }
 
 export interface RelationsFile {

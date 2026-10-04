@@ -29,8 +29,8 @@ if (Astro.props.band !== undefined && band === undefined) throw new Error(`Stack
 {
   band === undefined ? (
     <p class="kb-stack-summary">
-      All {data.patterns} patterns in one index, in {data.rows} rows. {data.covered} of them are sold ready-made by a cloud or
-      argued on a comparison page; the rest carry a dash.
+      All {data.patterns} patterns in one index, in {data.rows} rows: {data.sold} sold ready-made by a cloud, {data.byNature} that no
+      cloud sells by nature, and {data.open} not mapped yet.
     </p>
   ) : (
     <>
@@ -58,6 +58,7 @@ if (Astro.props.band !== undefined && band === undefined) throw new Error(`Stack
                   <tr id={row.id} class={`kb-stack-row kb-stack-row--${row.state}`}>
                     <th scope="row">
                       <a href={row.pattern.href}>{row.pattern.title}</a>
+                      {row.reason !== undefined && <span class="kb-stack-reason">No product: {row.reason}</span>}
                       {row.source !== undefined && (
                         <span class="kb-stack-source">
                           <a href={row.source.href} set:html={row.source.html} />

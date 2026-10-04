@@ -21,7 +21,7 @@ describe('StackIndex', () => {
   it('says how many patterns and rows the index holds, with no band', async () => {
     const html = await render();
     expect(html).toMatch(
-      /All \d+ patterns in one index, in \d+ rows\. \d+ of them are sold ready-made/,
+      /All \d+ patterns in one index, in \d+ rows: \d+ sold ready-made by a cloud, \d+ that no\s+cloud sells by nature, and \d+ not mapped yet\./,
     );
     expect(html).not.toContain('<table');
   });
@@ -32,7 +32,7 @@ describe('StackIndex', () => {
       '<th scope="col">Pattern</th><th scope="col">AWS</th><th scope="col">Azure</th><th scope="col">Google Cloud</th><th scope="col">Open source</th>',
     );
     expect(html).toMatch(
-      /<tr id="stack-circuit-breaker" class="kb-stack-row kb-stack-row--(mapped|linked|gap)"><th scope="row"><a href="\/patterns\/distributed\/resilience\/circuit-breaker\.html">Circuit Breaker<\/a>/,
+      /<tr id="stack-circuit-breaker" class="kb-stack-row kb-stack-row--(mapped|linked|none|gap)"><th scope="row"><a href="\/patterns\/distributed\/resilience\/circuit-breaker\.html">Circuit Breaker<\/a>/,
     );
     const row = /<tr id="stack-circuit-breaker"[\s\S]*?<\/tr>/.exec(html)?.[0] ?? '';
     expect(row.match(/<td/g)).toHaveLength(4);

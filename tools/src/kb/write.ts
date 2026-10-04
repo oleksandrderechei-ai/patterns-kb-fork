@@ -26,6 +26,7 @@ import path from 'node:path';
 
 import { frontmatter, printFrontmatter } from '../lib/frontmatter.js';
 import { markers, splice } from '../lib/generated.js';
+import { mapRows } from '../lib/map-rows.js';
 import { COSTS_KIND, explainProblems, wordCount } from '../lib/explain-shape.js';
 import { ID_PATTERN, parseKb, printFacts } from '../lib/kb-attrs.js';
 import { groupOrderToRecord, labelOf, relationGroups, renderRelations, sidesOf, type PageRef, type RelationRecord, type RelationsFile } from '../lib/render-relations.js';
@@ -314,7 +315,7 @@ function cmdLink(s: Session, io: Io, opts: WriteOptions): number {
   const [, fromId, verb, toId] = s.args.positional;
   const { verbs } = s.corpus.model;
   if (fromId === undefined || verb === undefined || toId === undefined || verbs[verb] === undefined) {
-    throw new KbError(`usage: kb.mjs link <from> <verb> <to> [--note "…"] [--note-back "…"] [--group "…"] [--group-back "…"]\nverbs: ${Object.keys(verbs).join(', ')}`);
+    throw new KbError(`usage: kb.mjs link <from> <verb> <to> [--note "…"] [--note-back "…"] [--group "…"] [--group-back "…"] [--maps <row-id>]\nverbs: ${Object.keys(verbs).join(', ')}`);
   }
   const from = s.corpus.need(fromId);
   const to = s.corpus.need(toId);
@@ -343,6 +344,18 @@ function cmdLink(s: Session, io: Io, opts: WriteOptions): number {
   const order = Object.keys(verbs);
   const forward = verbs[verb]?.symmetric === true ? from.route < to.route : order.indexOf(verb) <= order.indexOf(inverse);
   const [a, b, v, sa, sb] = forward ? [from, to, verb, fromSide, toSide] : [to, from, inverse, toSide, fromSide];
+  // A pin names a row of the implementing page's mapping or matrix table, and carries its label.
+  const maps = s.args.opt('maps');
+  let pin: { maps_a?: string; maps_label_a?: string } = {};
+  if (maps !== null) {
+    if (v !== 'implements') throw new KbError(`--maps: only an implements edge pins a table row, and this edge reads "${v}"`);
+    const rows = mapRows(a.slug === from.slug ? fromText : toText);
+    const label = rows.get(maps);
+    if (label === undefined) {
+      throw new KbError(`--maps: ${a.slug} has no row "${maps}" in its mapping or matrix table${rows.size === 0 ? '' : ` (rows: ${[...rows].map(([id, l]) => `${id} ${l}`).join('; ')})`}`);
+    }
+    pin = { maps_a: maps, maps_label_a: label };
+  }
   const record: RelationRecord = {
     a: a.slug,
     verb: v,
@@ -351,6 +364,7 @@ function cmdLink(s: Session, io: Io, opts: WriteOptions): number {
     note_b: sb.note,
     ...(sa.group === undefined ? {} : { group_a: sa.group }),
     ...(sb.group === undefined ? {} : { group_b: sb.group }),
+    ...pin,
   };
   const next: RelationsFile = { ...data.value, relations: [...data.value.relations, record] };
   const change = new Change(s.corpus.root);

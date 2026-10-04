@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { capture, expectFail, expectMisuse, expectPass, makeSandbox, REPO_ROOT, type Sandbox } from '../lib/sandbox.js';
 import {
   CONTENT_MODEL,
-  mapRows,
   publishedPages,
   RELATIONS,
   spec,
@@ -206,7 +205,7 @@ describe('one record', () => {
     const beta = recordLine('beta');
     expect(findings(r.err)).toEqual([
       `${FAIL}:${lineOf(text, '    "alpha",')}: relations[4] is not an object`,
-      `${FAIL}:${beta}: beta ? ?: unknown key "flavour" — a record holds a, verb, b, note_a, note_b, group_a, group_b, maps_a, maps_b`,
+      `${FAIL}:${beta}: beta ? ?: unknown key "flavour" — a record holds a, verb, b, note_a, note_b, group_a, group_b, maps_a, maps_b, maps_label_a, maps_label_b`,
       `${FAIL}:${beta}: beta ? ?: has no verb`,
       `${FAIL}:${beta}: beta ? ?: has no b`,
     ]);
@@ -295,7 +294,7 @@ describe('groups and mapped rows', () => {
       edge('store', 'implements', 'alpha', { maps_a: 3 }),
       edge('beta', 'combines-with', 'gamma', { maps_a: 'mapping-row-1' }),
       edge('store', 'implements', 'gamma', { maps_b: 'mapping-row-1', maps_a: 'mapping-row-9' }),
-      edge('store', 'implements', 'beta', { maps_a: 'mapping-row-1' }),
+      edge('store', 'implements', 'beta', { maps_a: 'mapping-row-1', maps_label_a: 'Blobs' }),
     ]);
     expectFail(r);
     const text = sb.read(RELATIONS);
@@ -306,6 +305,36 @@ describe('groups and mapped rows', () => {
       `${FAIL}:${recordLine('beta')}: beta combines-with gamma: maps_a sits on beta's side, which reads "combines-with" — only a side that reads "implements" maps to a table row`,
       `${FAIL}:${String(third)}: store implements gamma: maps_b sits on gamma's side, which reads "implemented-by" — only a side that reads "implements" maps to a table row`,
       `${FAIL}:${String(third)}: store implements gamma: maps_a "mapping-row-9" names no row of store's mapping or matrix table (docs/capabilities/store.md)`,
+    ]);
+  });
+
+  it('names a pin with no label, a label with no pin, and a row that moved or left', async () => {
+    const r = await withRecords([
+      edge('store', 'implements', 'alpha', { maps_a: 'mapping-row-1' }),
+      edge('beta', 'combines-with', 'gamma', { maps_label_a: 'Blobs' }),
+      edge('store', 'implements', 'gamma', { maps_a: 'mapping-row-1', maps_label_a: 'Queues' }),
+      edge('store', 'implements', 'beta', { maps_a: 'mapping-row-2', maps_label_a: 'Streams' }),
+    ]);
+    expectFail(r);
+    const [first, second, third] = sb
+      .read(RELATIONS)
+      .split('\n')
+      .flatMap((l, i) => (l.includes('"a": "store"') ? [i] : []));
+    expect(findings(r.err)).toEqual([
+      `${FAIL}:${recordLine('beta')}: beta combines-with gamma: maps_label_a sits on a side that maps to no row — drop it, or write maps_a`,
+      `${FAIL}:${String(first)}: store implements alpha: maps_a "mapping-row-1" has no maps_label_a — write the row's label, "Blobs"`,
+      `${FAIL}:${String(second)}: store implements gamma: maps_a "mapping-row-1" reads "Blobs", not its maps_label_a "Queues" — that row is mapping-row-2 now; re-pin maps_a to it`,
+      `${FAIL}:${String(third)}: store implements beta: maps_a "mapping-row-2" reads "Queues", not its maps_label_a "Streams" — that row is gone from the table; re-pin the edge or drop it`,
+    ]);
+  });
+
+  it('fails a pin when a row is inserted above it, and names where its row went', async () => {
+    relationsTree(sb);
+    sb.write('docs/capabilities/store.md', STORE_PAGE.replace('| Blobs | S3 |', '| Files | EFS |\n| Blobs | S3 |'));
+    const r = await sb.run(spec);
+    expectFail(r);
+    expect(findings(r.err)).toEqual([
+      `${FAIL}:${recordLine('store')}: store implements alpha: maps_a "mapping-row-2" reads "Blobs", not its maps_label_a "Queues" — that row is mapping-row-3 now; re-pin maps_a to it`,
     ]);
   });
 
@@ -361,15 +390,6 @@ describe('the helpers', () => {
     expect(
       publishedPages({ areas: [{ pages: [{ slug: 'a', source: 'docs/a.md' }, { slug: 'b' }, { source: 'docs/c.md' }, 7] }, { id: 'no-rows' }, 3] }),
     ).toEqual(new Map([['a', 'docs/a.md'], ['b', '']]));
-  });
-
-  it('mapRows keeps body rows of the mapping and matrix blocks only', () => {
-    const matrix = '## Side by side\n<!--meta block=matrix-->\n\n| Condition | A |\n| --- | --- |\n| Scale | yes |\n';
-    const choosing = '## Choosing\n<!--meta block=choosing-->\n\n| x | y |\n| --- | --- |\n| 1 | 2 |\n';
-    expect([...mapRows(STORE_PAGE)]).toEqual(['mapping-row-1', 'mapping-row-2']);
-    expect([...mapRows(matrix + choosing)]).toEqual(['matrix-row-1']);
-    // A table above the first block heading sits in no block at all.
-    expect([...mapRows('| a | b |\n| --- | --- |\n| 1 | 2 |\n')]).toEqual([]);
   });
 
   it('the fixture writer keeps notes as given', () => {

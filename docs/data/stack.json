@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "updated": "2026-10-04",
+  "note": "Which dashes on the pattern-to-product index (map/stack.html) are verdicts rather than gaps. The single source: tools/src/lib/site-map.ts (buildStack) reads it at site build. `bands` maps a pattern band's area id to the note printed under its heading, saying why no pattern in it is for sale; `patterns` maps one pattern's slug, outside those bands, to the one-line reason no cloud sells it, printed under the pattern's name. A pattern either is for sale — an implements edge from a capability in relations.json — or is listed here, or is a gap still to map: the build refuses an entry a capability contradicts, a pattern its band already covers, and a band or pattern the index does not hold.",
+  "bands": {
+    "gof": "None of these is a service. They live inside one process, so every dash below is the right answer rather than a missing mapping.",
+    "ddd": "These are modelling decisions in your own code. Nothing in this section is purchasable, and nothing should be.",
+    "functional": "These are language and composition techniques. There is no product column to fill.",
+    "testing": "Test doubles live in your test suite. A managed service cannot stand in for one, so every row is dashed by nature.",
+    "frontend": "These structure code that runs in the browser. Hosting is buyable; the structure is not."
+  },
+  "patterns": {}
+}
