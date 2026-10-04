@@ -85,5 +85,6 @@ A bounded queue also gives you **backpressure** for free: when the buffer is ful
 - [Message Queue](../patterns/messaging/message-queue.md) — A broker queue with no depth or age limit keeps accepting work no one will finish
 - [Thread Pool](../patterns/concurrency/thread-pool.md) — A work queue with no limit hides overload until the heap is exhausted
 - [Channels](../patterns/concurrency/channels.md) — A channel with an unlimited buffer removes the backpressure the channel would otherwise give
+- [Pipe-and-Filter](../patterns/architecture/pipe-filter.md) — Between pipeline stages it grows silently when one filter is slower than the one before.
 
 <!-- relationships:end -->

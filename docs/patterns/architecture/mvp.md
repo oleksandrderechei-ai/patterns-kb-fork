@@ -21,12 +21,13 @@ Logic inside a widget class can only be checked by running the app, because a li
 ## Explained
 <!--meta block=explain-->
 
-MVP splits a screen into a model that holds data, a view that only draws and reports clicks, and a presenter that decides everything the screen shows. The presenter talks to the view through a plain interface of calls such as showError and setLoading, so the view holds nothing to read back and the presenter owns the screen state. A test can swap in a fake view that records those calls, so you can check every display decision without starting any UI toolkit. It came out of Taligent in the early 1990s. Choose it over model-view-controller ([MVC](mvc.md)) when your toolkit is slow or awkward to start in tests, or when you may swap the view technology and keep the logic. If your platform has good two-way binding, which updates the screen from your data by itself, [MVVM](mvvm.md) removes most of this wiring.
+MVP splits a screen into a model that holds data, a view that only draws and forwards each click to the presenter it is given, and a presenter that decides everything the screen shows. The presenter talks to the view through a plain interface of calls such as showError and setLoading, so in its strict form the view holds nothing to read back and the presenter owns the screen state. A test can swap in a fake view that records those calls, so you can check every display decision without starting any UI toolkit. It is usually traced to Taligent in the 1990s. Choose it over model-view-controller ([MVC](mvc.md)) when your toolkit is slow or awkward to start in tests, or when you may swap the view technology and keep the logic. If your platform has good two-way binding, which updates the screen from your data by itself, [MVVM](mvvm.md) removes most of this wiring.
 
 - **One setter per field.** Group fields into one state object and give the view a single render call.
 - **Catch-all presenter.** Split a complex screen's presenter by area, and keep the wiring in one place so calls are not missed.
+- **Full redraw.** A single render call makes the view redraw everything on each call.
 
-**Example.** A login screen has an email and a password field. A test builds the presenter with a fake view and presses submit with an empty password. It asserts that the fake recorded one call, showError with the text Password required, and no network call. It runs in 1 ms with no window. The real screen has 12 fields, which would need 12 setters on the interface. The team instead defines one render call that takes a state object holding all 12 values. The cost is that the view redraws everything on each call.
+**Example.** A login screen has an email and a password field. A test builds the presenter with a fake view and presses submit with an empty password. It asserts that the fake recorded one call, showError with the text Password required, and no network call. It runs on a plain test runner with no window. The real screen has 12 fields, which would need 12 setters on the interface. The team instead defines one render call that takes a state object holding all 12 values. The cost is that the view redraws everything on each call.
 
 ## How it works
 <!--meta block=structure-->
@@ -79,9 +80,9 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Presenter logic is fully unit-testable** without booting a real UI toolkit — swap in a fake view.
+- **Presenter logic is unit-testable** without a real UI toolkit by swapping in a fake view, as long as no display logic stays in the view.
 - **The view stays framework-thin**, so swapping the UI layer means writing a new view against the same interface.
-- **Clear roles for each part** — [separation of concerns](../../principles/separation-of-concerns.md) stays clean: the view renders, the presenter decides, the model holds data.
+- **Clear roles for each part** — [separation of concerns](../../principles/separation-of-concerns.md) stays clean: the view renders, the presenter decides, the model holds data, provided the presenter is split by screen area.
 - **Well suited to toolkits** where the view layer is awkward or slow to instantiate directly in tests.
 
 ### Cons
@@ -91,6 +92,7 @@ sequenceDiagram
 - **Passive View pushes even trivial** formatting into the presenter, which can bloat it.
 - **Without further decomposition**, a presenter for a complex screen becomes an unstructured catch-all.
 - **Purely manual wiring** — no observable binding — so view and presenter can drift if calls are missed.
+- **The presenter holds a reference to the view**, so a destroyed or recreated view must be detached; an async result that arrives afterwards hits a dead view or leaks it.
 
 ## When to use it
 <!--meta block=usage-->
@@ -98,7 +100,7 @@ sequenceDiagram
 ### Reach for it when
 <!--meta polarity=when-->
 
-- **UI toolkit is slow in tests** — it is slow or awkward to instantiate there, and you want the screen's logic covered without one.
+- **UI toolkit is slow in tests**, or awkward to start there, and you want the screen's logic covered without it.
 - **You need to swap the view technology** while keeping the same presentation logic underneath.
 - **You want one explicit seam** where every display decision for a screen lives and can be unit tested.
 
@@ -119,23 +121,33 @@ interface TodoView {
 }
 
 class TodoPresenter {
-  constructor(
-    private readonly view: TodoView,
-    private readonly model: { load(): Promise<string[]>; add(t: string): Promise<void> },
-  ) {}
+  private view: TodoView | null;
+
+  constructor(view: TodoView, private readonly model: { load(): Promise<string[]>; add(t: string): Promise<void> }) {
+    this.view = view;
+  }
+
+  detach(): void { this.view = null; }   // on teardown; late results are dropped
 
   async onLoad(): Promise<void> {
     try {
-      this.view.setItems(await this.model.load());
+      const items = await this.model.load();
+      this.view?.setItems(items);
     } catch {
-      this.view.setError("couldn't load todos");
+      this.view?.setError("couldn't load todos");
     }
   }
 
   async onAddClicked(text: string): Promise<void> {
     if (!text.trim()) return;           // decision lives here, not the view
-    await this.model.add(text);
-    this.view.setItems(await this.model.load());
+    try {
+      await this.model.add(text);
+      const items = await this.model.load();
+      this.view?.setError(null);
+      this.view?.setItems(items);
+    } catch {
+      this.view?.setError("couldn't add todo");
+    }
   }
 }
 ```
@@ -159,7 +171,7 @@ class TodoPresenter {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Presenter tests that need no UI toolkit** — They should run on a plain test runner with a fake view. Needing a device or emulator means logic stayed in the view.
+- **Presenter tests that need no UI toolkit** — They should run on a plain test runner with a fake view. Needing a device or emulator usually means logic stayed in the view or toolkit types leaked into the interface.
 - **Methods on the view interface** — Steady growth shows the interface mirrors the widgets instead of intent.
 - **Logic lines in view classes** — Conditionals in the view that the presenter tests cannot reach.
 
@@ -199,6 +211,7 @@ class TodoPresenter {
 **Combines with**
 
 - [Test Spy](../testing/test-spy.md) — A recording stand-in for the view proves the presenter without a user interface (UI)
+- [Separation of Concerns](../../principles/separation-of-concerns.md) — The view renders, the presenter decides and the model holds data, one reason to change each
 
 **Variant of**
 
@@ -206,6 +219,6 @@ class TodoPresenter {
 
 **Often confused with**
 
-- [MVVM](./mvvm.md) — Presenter drives the view vs. view binds to a model
+- [MVVM](./mvvm.md) — Presenter drives the view vs. view binds to a view-model
 
 <!-- relationships:end -->

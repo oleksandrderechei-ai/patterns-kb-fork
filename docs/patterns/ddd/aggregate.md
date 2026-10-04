@@ -177,6 +177,7 @@ class LineItem {
 - [Specification](../enterprise/specification.md) — Specifications express rules that span or select aggregates.
 - [Context Map](./context-map.md) — An aggregate's visibility to other contexts is a decision made on the context map
 - [Domain Service](./domain-service.md) — Cross-aggregate rules that no root owns live in a domain service
+- [Event Sourcing](../architecture/event-sourcing.md) — An aggregate can persist as the events it emitted, not a row
 
 **Alternative to**
 

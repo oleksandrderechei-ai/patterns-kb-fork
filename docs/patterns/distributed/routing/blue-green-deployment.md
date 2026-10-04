@@ -242,9 +242,9 @@ await db.dropColumn("orders", "customer_id");
 - [Load Balancer](./load-balancer.md) — The switch is a change of target on the router in front
 - [Strangler Fig](../coordination/strangler-fig.md) — Route a slice to the replacement and keep the way back
 - [External Configuration Store](../coordination/external-configuration-store.md) — Configuration deserves the same staged rollout and rollback path as code
-- [Web-Queue-Worker](../../architecture/web-queue-worker.md) — Both halves swap together, so size for two versions running during the switch
 - [Containerization](../coordination/containerization.md) — The two sides differ only by which image digest they run
 - [Deployment Stamp](./deployment-stamp.md) — Ephemeral green is a freshly provisioned stamp
+- [Web-Queue-Worker](../../architecture/web-queue-worker.md) — Both halves swap together, so size for two versions running during the switch
 
 **Alternative to**
 

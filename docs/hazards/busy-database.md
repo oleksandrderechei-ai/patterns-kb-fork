@@ -72,5 +72,6 @@ For work that must stay close to the data and is still expensive, stop paying fo
 
 - [Service Layer](../patterns/enterprise/service-layer.md) — Give business rules a home in the application, so they stop landing in the store by default
 - [Stateless Service](../patterns/distributed/routing/stateless-service.md) — Relieving the store only pays because this tier grows by adding instances rather than by migration
+- [Big Data](../patterns/architecture/big-data.md) — Analytical reads on the operational store are what a separate analytics path takes off it.
 
 <!-- relationships:end -->

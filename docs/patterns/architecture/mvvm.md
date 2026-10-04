@@ -16,17 +16,17 @@ The view binds declaratively to a view-model's observable properties and command
 ## What it is
 <!--meta block=description-->
 
-UI logic buried in a window or form class can only be tested by building a real widget tree. MVVM moves it into a view-model, a plain object that exposes values as watchable properties and actions as commands. The view is a thin template bound to them, and the framework carries changes both ways. A test just creates the view-model and checks its properties.
+UI logic buried in a window or form class can only be tested by building a real widget tree, and code keeps pushing values into widgets by hand. MVVM moves it into a view-model, a plain object that exposes values as watchable properties and actions as commands. The view is a thin template bound to them, and the framework's binding engine, not hand-written setters, carries changes both ways. A test creates the view-model and checks its properties.
 
 ## Explained
 <!--meta block=explain-->
 
-MVVM puts a screen's logic in a view-model, a plain object that exposes the values the screen shows as watchable properties and the actions it offers as commands. Martin Fowler wrote up the same design as Presentation Model. The view is a thin template tied to those properties, and the framework carries every change in both directions, so typed text lands in a property with no listener of your own. XAML, Angular and SwiftUI each supply that machinery. Because the view-model knows nothing about any window, a test creates it, sets values and checks properties with no UI running. Choose it over [MVP](mvp.md) when your framework has real two-way binding. Without a binding engine you would write the wiring by hand, and that is MVP with extra steps.
+MVVM puts a screen's logic in a view-model, a plain object that exposes the values the screen shows as watchable properties and the actions it offers as commands. Martin Fowler wrote up the same design as Presentation Model. The view is a thin template tied to those properties, and the framework carries changes between view and view-model, so with two-way binding typed text lands in a property with no listener of your own. XAML, Angular and SwiftUI each supply that machinery. Because the view-model knows nothing about any window, a test creates it, sets values and checks properties with no UI running. Choose it over [MVP](mvp.md) (model-view-presenter) when your framework has a binding engine, one-way or two-way. Without one you would write the wiring by hand, and that is MVP with extra steps.
 
-- **Bindings fail quietly.** A change can pass through several bindings before the widget updates, so turn on binding error logging.
+- **Bindings fail quietly.** A misspelled property name throws nothing, so turn on binding error logging.
 - **The view-model grows huge.** Logic that belongs in the model or a service creeps in, so move rules out as they appear.
 
-**Example.** A signup form has two fields. The view-model has email, password and canSubmit, which is true when the email contains an @ and the password has at least 8 characters. A test sets password to 1234567, 7 characters, and checks canSubmit is false. It sets 12345678, and checks it is true. No window opens. In the view, the button binds to a property misspelled as canSubmitt. Nothing fails: the button just stays disabled. The team turns on the framework's binding error log and adds a test that opens the real form. The cost is that bindings fail quietly unless you look.
+**Example.** A signup form has two fields. The view-model has email, password and canSubmit, which is true when the email contains an @ and the password has at least 8 characters. A test sets password to 1234567, 7 characters, and checks canSubmit is false. It sets 12345678, and checks it is true. No window opens. In the view, the button binds to a property misspelled as canSubmitt. Nothing fails: the button stays disabled. The team turns on the framework's binding error log and adds a test that opens the real form. The headless test covers logic only, so each screen still needs one real-form test for its binding paths.
 
 ## How it works
 <!--meta block=structure-->
@@ -79,9 +79,9 @@ flowchart LR
 <!--meta polarity=con-->
 
 - **Depends on a real binding engine**; without one, MVVM is just MVP (model-view-presenter) with extra indirection.
-- **Harder to debug** — a property change in the view-model can be several binding hops from the widget that visibly updates.
+- **Harder to debug**: a property change in the view-model can be several binding hops from the widget that visibly updates.
 - **"Massive View Model" reappears** when logic that belongs in the model or a service creeps into the view-model instead.
-- **Bindings can silently swallow** type mismatches or errors that a direct method call would surface immediately.
+- **Binding errors and type mismatches are swallowed** instead of thrown, in engines that resolve binding paths at runtime.
 
 ## When to use it
 <!--meta block=usage-->
@@ -96,7 +96,7 @@ flowchart LR
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The framework has no real binding layer** — you'd be faking MVVM by hand, which is just [MVP](./mvp.md) with extra ceremony.
+- **The framework has no real binding layer** — wiring it by hand is [MVP](./mvp.md) with extra steps, so pick MVP.
 - **The screen is simple enough** that binding infrastructure costs more than a direct, imperative update.
 - **Navigation and cross-screen state dominate the design** — layer a coordinator or router in front instead of overloading the view-model.
 
@@ -126,12 +126,19 @@ class LoginViewModel {
     if (!this.canSubmit) return;
     this._isBusy = true;
     this.notify();
-    await this.auth.login(this._username);
-    this._isBusy = false;
-    this.notify();
+    try {
+      await this.auth.login(this._username);
+    } finally {
+      this._isBusy = false;
+      this.notify();
+    }
   };
 
-  onChange(fn: () => void) { this.listeners.add(fn); }
+  // Returns an unsubscribe function; the view calls it on teardown.
+  onChange(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
   private notify() { for (const fn of this.listeners) fn(); }
 }
 ```
@@ -149,7 +156,7 @@ class LoginViewModel {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Notification coalescing / debounce** — How often a rapidly changing property fires change notifications before they reach bindings. Debouncing high-frequency input such as typing or scrolling collapses many updates into one render.
+- **Notification coalescing / debounce** — How often a rapidly changing property fires change notifications before they reach bindings. Debouncing high-frequency input such as typing or scrolling collapses many updates into one render, but delays dependent state such as canSubmit by the interval, so pick the delay per field.
 - **Binding direction** — Whether a property binds one-way (view-model to view) or two-way. Two-way adds write-back cost and can open update feedback loops, so restrict it to fields the user actually edits.
 
 ### Signals to watch
@@ -201,6 +208,6 @@ class LoginViewModel {
 
 **Often confused with**
 
-- [MVP](./mvp.md) — Presenter drives the view vs. view binds to a model
+- [MVP](./mvp.md) — Both pull logic out of the view; MVVM relies on a binding engine, MVP on the presenter calling a view interface; without bindings MVVM degrades to MVP
 
 <!-- relationships:end -->

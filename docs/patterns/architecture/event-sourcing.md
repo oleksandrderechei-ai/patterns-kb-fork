@@ -29,7 +29,7 @@ With event sourcing you never overwrite a value. You append each change to an or
 - **Reads can lag the log.** Read the record itself for the one screen that must show a user their own change.
 - **Replay repeats side effects.** Switch off outside calls while replaying.
 
-**Example.** An account has these events: deposited 100, withdrawn 30, deposited 50. Adding them up gives 120, and replaying only to the second event gives 70, the balance at that moment. With 10,000 events at 0.05 ms each, a full replay takes 500 ms for every read. A snapshot every 500 events cuts it to at most 500 events, 25 ms. The cost is that the snapshot is a second thing to write and keep in step with every future event version.
+**Example.** An account has these events: deposited 100, withdrawn 30, deposited 50. Adding them up gives 120, and replaying only to the second event gives 70, the balance at that moment. Assuming 0.05 ms to apply one event (measure your own), 10,000 events take 500 ms for a full replay on every read. A snapshot every 500 events cuts it to at most 500 events, 25 ms. The cost is that the snapshot is a second thing to write and keep in step with every future event version.
 
 ## How it works
 <!--meta block=structure-->
@@ -67,7 +67,7 @@ flowchart LR
 - **Per-aggregate stream vs. single log** — One ordered stream per aggregate instance (per order, per account) scales writes and reads; a single global stream simplifies cross-aggregate ordering but becomes a bottleneck.
 - **Event versioning / upcasting** — Old event shapes are transformed to the current schema when read — upcast, not rewritten — since events must stay immutable forever.
 - **[Materialized View](../distributed/coordination/materialized-view.md) projections** — Fold the event stream into one or more read-optimized views instead of querying the log directly for every read.
-- **Replay-safe side effects** — Handlers are written so that re-running them touches nothing outside the system: outbound calls sit behind a flag the replay turns off, and the response of any time-sensitive inbound call is stored in the event itself, so a replay folds the value that was true then rather than the one that is true now.
+- **Replay-safe side effects** — Handlers touch nothing outside the system on replay. Outbound calls sit behind a flag the replay turns off. A time-sensitive inbound response is stored in the event, so replay folds the value that was true then, not now.
 - **Archival tier** — Move cold events off the hot store onto cheap [object storage](../distributed/routing/object-storage.md) on a schedule, keeping the recent tail where reads are fast. It bounds the cost of a log that only ever grows, at the price of a replay that reaches back far enough having to read from the slow tier.
 
 ## Trade-offs
@@ -76,10 +76,10 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Complete, tamper-evident audit trail** — every change is recorded, not inferred after the fact.
+- **Complete audit trail**: every change is recorded, not inferred after the fact. It is tamper-evident only with extra controls, such as chained entry hashes or write-once storage.
 - **State at any past point in time** can be reconstructed by replaying up to that moment.
 - **Multiple read models** can be built from the same log without touching the write side.
-- **Append-only writes are simple** and free of update-in-place races and lost updates.
+- **Append-only writes never overwrite a value**, so a lost update surfaces as a failed expected-version append rather than silent loss.
 
 ### Cons
 <!--meta polarity=con-->
@@ -87,7 +87,7 @@ flowchart LR
 - **Replaying a long stream from scratch** is slow without snapshotting.
 - **Schema evolution is harder** — events are immutable, so shapes must be versioned or upcast forever. Put a version field on every event from the first one, because retrofitting it onto an unversioned log means guessing.
 - **Querying "current state" isn't a single row read**; it needs a projection or a fold.
-- **Read models built from the log** are eventually consistent with the write side — for the one screen that must show a user their own change immediately, read the aggregate itself rather than the projection, and accept that it is a deliberate exception.
+- **Read models built from the log** lag the write side. For the one screen that must show a user their own change at once, read the aggregate itself.
 - **Replay re-runs whatever the handlers did**, so every call to an outside system has to be gated behind a flag the replay turns off, and every time-sensitive value read from outside has to be stored in the event that used it.
 
 ## When to use it
@@ -111,7 +111,7 @@ flowchart LR
 ## Code sketch
 <!--meta block=sketch-->
 
-```typescript summary="TypeScript — rebuilding state by folding events"
+```typescript summary="TypeScript — rebuilding state, deciding and appending with an expected version"
 type AccountEvent =
   | { type: "AccountOpened"; id: string; openingBalance: number }
   | { type: "MoneyDeposited"; id: string; amount: number }
@@ -137,8 +137,15 @@ const log: AccountEvent[] = [
   { type: "MoneyWithdrawn", id: "acc-1", amount: 30 },
 ];
 
-const state = log.reduce(apply, {} as AccountState);
-// { id: "acc-1", balance: 70 }
+const state = log.reduce(apply, {} as AccountState); // balance 70
+
+// Decide, then append with the version you last read.
+function withdraw(s: AccountState, amount: number): AccountEvent[] {
+  if (s.balance < amount) throw new Error("insufficient funds");
+  return [{ type: "MoneyWithdrawn", id: s.id, amount }];
+}
+// store.append("acc-1", withdraw(state, 30), log.length) rejects if another writer appended first.
+// Resume from a snapshot: events.slice(snap.version).reduce(apply, snap.state)
 ```
 
 ## In the wild
@@ -175,7 +182,7 @@ const state = log.reduce(apply, {} as AccountState);
 - **unbounded stream growth** — an aggregate that lives forever — a ledger, a device — accumulates events until load time breaks; for those, snapshotting is survival, not optimization
 - **replay reaches the outside world** — a replay re-runs the handlers, and an ungated one re-sends the email, re-charges the card, or re-notifies the partner. The system under replay looks fine; the damage lands entirely outside it
 - **replay reads today instead of then** — a handler that called an external service for a rate, a price or a score gets the current answer during replay, so the reconstructed state silently differs from the state that actually existed
-- **projection rebuild measured in days** — fixing a projection bug means replaying the whole log; at billions of events that is a multi-day outage of the read model unless rebuild speed was designed for
+- **projection rebuild measured in days** — fixing a projection bug means replaying the whole log; at 0.05 ms an event, a billion events is about 14 hours single-threaded, so rebuild speed has to be designed for
 - **schema regret** — a badly shaped event is permanent — every future reader carries its upcast chain, and one missed upcaster folds wrong state without an error
 - **personal data in an immutable log** — a deletion request meets a log that never deletes; crypto-shredding or storing personally identifiable information (PII) outside the events must be designed in before the first event is written
 
@@ -236,6 +243,7 @@ const state = log.reduce(apply, {} as AccountState);
 - [Flux](../frontend/flux.md) — Flux/Redux is event-sourcing applied to client-side user interface (UI) state
 - [Memento](../gof/behavioral/memento.md) — Snapshot the aggregate so replay need not start from event one
 - [Minimize Coordination](../../principles/minimize-coordination.md) — An append-only log removes the contention a mutable record creates
+- [Aggregate](../ddd/aggregate.md) — One aggregate is one event stream; a version check on append guards its rules
 
 **Alternative to**
 
