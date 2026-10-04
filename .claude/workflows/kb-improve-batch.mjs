@@ -14,6 +14,7 @@ export const meta = {
  *   label:     "distributed-resilience"                  the area, kind or name for the branch and the pull request
  *   personas:  ["practitioner", …]                       optional, default all six
  *   maxEdits:  8                                         optional cap per page
+ *   model:     "claude-sonnet-5-5"                     optional, the model every reviewer, synthesizer and writer runs on; default inherits the session's
  * }
  * Returns { label, pages: [{ id, reviews, kept, dropped, applied, skipped, validate, filesTouched }] } —
  * the orchestrator runs make gen and make validate once, stages the files named, and opens the pull request. */
@@ -26,6 +27,8 @@ if (!Array.isArray(a.ids) || a.ids.length === 0) {
 const ALL_PERSONAS = ['practitioner', 'sceptic', 'senior-expert', 'architect', 'agent-consumer', 'plain-language']
 const personas = Array.isArray(a.personas) && a.personas.length ? a.personas.filter((p) => ALL_PERSONAS.includes(p)) : ALL_PERSONAS
 const maxEdits = Number.isInteger(a.maxEdits) && a.maxEdits > 0 ? a.maxEdits : 8
+const model = typeof a.model === 'string' && a.model.trim() ? a.model.trim() : undefined
+const withModel = (opts) => (model ? { ...opts, model } : opts)
 
 const PREAMBLE = `Work from the repo root. Read the page only through \`node scripts/kb.mjs\` (\`get <id> --block <b>\`, \`related\`, \`backlinks\`, \`refs\`). Never open a docs/**.md file or a site/*.html file to read. Your role brief is one section of .claude/skills/kb-improve/references/personas.md; read that section first and follow only it. Return the contract shape with no preamble and no narration — your output is consumed by an orchestrator, not read by a human.`
 
@@ -117,7 +120,7 @@ Role: ${p}
 Owning block skills: the kind's block skill (kb-pattern-blocks, kb-hazard-blocks, kb-theme-blocks, kb-principle-blocks, the kb-design-* skills, kb-capability-blocks or kb-comparison-blocks), kb-explain for the explain block, kb-sketch for a code sketch. Find the kind with \`kb.mjs get ${id} --block description\`, whose header prints it.
 
 Return at most 8 findings, most severe first, each anchored to an element or block id as kb.mjs prints it, with the fix in at most 40 words and the rule it cites. Propose no reorder, no deletion except of a claim you can show is false, and no new product, metric or number below high confidence with a source. An empty findings list with the blocks that hold is a valid answer.`,
-    { label: `${id}:${p}`, phase: 'Review', agentType: 'kb-persona-reviewer', schema: FINDINGS_SCHEMA })
+    withModel({ label: `${id}:${p}`, phase: 'Review', agentType: 'kb-persona-reviewer', schema: FINDINGS_SCHEMA }))
 ))
 
 const synthesize = (id, reviews) => agent(`${PREAMBLE}
@@ -131,7 +134,7 @@ Reviews:
 ${JSON.stringify(reviews, null, 1)}
 
 Hard rules, which no severity overrides: never reorder, renumber or delete an existing list item (fix in place or append; delete only a claim shown false, and name it as a citation break); no fabrication (every added name or number appears in noFabricationCheck with its source, or the edit is dropped); generated blocks (relationships, tour, fluency) and hubs are never edited, an edge changes through link or unlink only; the gate limits hold (frontmatter description ≤160 chars, description block ≤80 words, explain 60–180 words with 2–4 costs of ≤25 words and an example ≤120 words, solves 3–5 phrases of ≤20 words, 2–5 closed-set tags, exactly three selfcheck questions, bold never italic, no glossary avoid-list word). Each edit's instruction must be something kb-author can run as written: the kb.mjs writer command with its arguments, or the exact prose to put in place of the anchored text.`,
-  { label: `${id}:synthesize`, phase: 'Synthesize', agentType: 'kb-persona-reviewer', schema: PLAN_SCHEMA })
+  withModel({ label: `${id}:synthesize`, phase: 'Synthesize', agentType: 'kb-persona-reviewer', schema: PLAN_SCHEMA }))
 
 const apply = (id, plan) => agent(`Apply this edit plan to one patterns-kb page, ${id}, and nothing else. Read .claude/rules/markdown-authoring.md first. Read the page only through \`node scripts/kb.mjs get ${id} --block <b>\`; open the file only to edit block prose.
 
@@ -139,7 +142,7 @@ Edits, in order:
 ${JSON.stringify(plan.edits, null, 1)}
 
 Rules: frontmatter, wild, production, explain and edges go through the kb.mjs writers (set, wild, production, explain, link, unlink); wild and production replace their whole block, so dump the current one with \`kb.mjs get ${id} --block wild --json\` or \`--block production --json\` first and re-supply every item. Other block prose is edited in the file under the owning skill's rules. Never touch a generated block (relationships, tour, fluency) or a hub. Never move, renumber or delete an existing list item; a replaced item keeps its position, a new item is appended. Add no name or number the plan does not carry. Run link and unlink last, then re-read \`kb.mjs related ${id}\`. Skip an edit you cannot apply as written and say why. Do not run make gen. Finish with \`node scripts/kb.mjs validate ${id}\` and report its output verbatim, and list every file you changed.`,
-  { label: `${id}:apply`, phase: 'Apply', agentType: 'kb-author', schema: APPLY_SCHEMA })
+  withModel({ label: `${id}:apply`, phase: 'Apply', agentType: 'kb-author', schema: APPLY_SCHEMA }))
 
 const pages = await pipeline(
   a.ids,
