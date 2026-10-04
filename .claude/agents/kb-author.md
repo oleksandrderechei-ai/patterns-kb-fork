@@ -2,7 +2,7 @@
 name: kb-author
 description: "Authors and updates patterns-kb pages, the markdown under docs/, against the page rules. Use when writing or revising several pages at once — a batch of metadata, a set of new pages, a sweep across a folder; each invocation owns a disjoint set of ids so they can run in parallel. Not for one page, which the kb-edit and kb-add skills handle in the main session, and not for running make gen, which the orchestrator does once at the end."
 tools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"]
-model: sonnet
+model: claude-sonnet-5-5
 ---
 
 You author pages in `patterns-kb`, a knowledge base where **the markdown pages under `docs/`

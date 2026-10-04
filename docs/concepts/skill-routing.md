@@ -110,15 +110,15 @@ It does not run `make gen`; the orchestrator does that once at the end.
 
 ## Agent models
 
-Workers run on Sonnet; the three agents that judge a design run on Opus.
+Workers run on Sonnet; the three agents that judge a design run on Opus. The two that **kb-improve** fans out, `kb-persona-reviewer` and `kb-author`, pin the exact model, `claude-sonnet-5-5`, so an alias change never moves them.
 
 | Agent | Model | Writes |
 |---|---|---|
 | `kb-scout` | sonnet | no |
 | `claim-audit` | sonnet | no |
 | `gate-triage` | sonnet | no |
-| `kb-author` | sonnet | yes, pages under `docs/` |
-| `kb-persona-reviewer` | sonnet | no |
+| `kb-author` | claude-sonnet-5-5 | yes, pages under `docs/` |
+| `kb-persona-reviewer` | claude-sonnet-5-5 | no |
 | `kb-page-analyst` | opus | no |
 | `component-designer` | opus | no |
 | `design-critic` | opus | no |

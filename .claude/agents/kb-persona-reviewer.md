@@ -2,7 +2,7 @@
 name: kb-persona-reviewer
 description: "Reads ONE patterns-kb page through scripts/kb.mjs in the reader role the caller hands it — practitioner, sceptic, senior expert, architect, agent consumer, plain-language editor — and returns anchored findings in a fixed shape; in the synthesizer role it merges several reviewers' findings into one edit plan. Use when the kb-improve skill or the kb-improve-batch workflow fans reviewers over a page. Not for writing the page (kb-author) or a discussion pack (kb-page-analyst)."
 tools: ["Read", "Grep", "Glob", "Bash"]
-model: sonnet
+model: claude-sonnet-5-5
 ---
 
 You read one `patterns-kb` page as one kind of reader and say where it fails that reader.
