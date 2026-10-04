@@ -3044,13 +3044,6 @@
     {
       "a": "design-rate-limiter",
       "verb": "demonstrates",
-      "b": "factory-method",
-      "note_a": "LimiterFactory reads the algorithm discriminator from heterogeneous config and constructs the matching Limiter subtype",
-      "note_b": "creation of the right limiter from runtime config is concentrated in one factory, exactly the problem factories solve"
-    },
-    {
-      "a": "design-rate-limiter",
-      "verb": "demonstrates",
       "b": "token-bucket",
       "note_a": "the flagship algorithm — a per-client bucket that refills at a steady rate and permits bursts up to capacity",
       "note_b": "Rate Limiter implements Token Bucket end to end, including on-demand refill and retry-time math"
@@ -12895,6 +12888,34 @@
       "b": "hot-key",
       "note_a": "One viral code draws hundreds of thousands of requests a second onto a single row.",
       "note_b": "A design where one link carries most of the read load."
+    },
+    {
+      "a": "design-rate-limiter",
+      "verb": "demonstrates",
+      "b": "factory-method",
+      "note_a": "LimiterFactory reads the algorithm discriminator from heterogeneous config and constructs the matching Limiter subtype",
+      "note_b": "LimiterFactory.create switches on a config string to pick the limiter class: the parameterized variation, with no creator subclass"
+    },
+    {
+      "a": "abstract-factory",
+      "verb": "combines-with",
+      "b": "dependency-injection",
+      "note_a": "A container or the composition root hands the client the one factory it uses",
+      "note_b": "A whole factory family is a collaborator worth handing in, so the client never picks a family itself"
+    },
+    {
+      "a": "builder",
+      "verb": "combines-with",
+      "b": "make-illegal-states-unrepresentable",
+      "note_a": "A staged builder makes the compiler reject build() until required fields are set",
+      "note_b": "A staged builder applies this to construction, so a half-set object cannot be built"
+    },
+    {
+      "a": "immutability",
+      "verb": "combines-with",
+      "b": "builder",
+      "note_a": "A builder assembles a many-field immutable object before it is frozen",
+      "note_b": "The steps mutate the builder; build() hands back one immutable product"
     }
   ],
   "group_order": {

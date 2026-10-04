@@ -25,7 +25,7 @@
       "definition": "Families of related objects behind one interface",
       "route": "/patterns/gof/creational/abstract-factory.html",
       "requires": [],
-      "related": ["prototype", "builder", "singleton", "bridge"]
+      "related": ["prototype", "builder", "singleton", "bridge", "dependency-injection"]
     },
     {
       "id": "builder",
@@ -33,7 +33,7 @@
       "definition": "Construct a complex object step by step",
       "route": "/patterns/gof/creational/builder.html",
       "requires": [],
-      "related": ["abstract-factory", "factory-method", "prototype", "least-astonishment"]
+      "related": ["abstract-factory", "factory-method", "prototype", "least-astonishment", "make-illegal-states-unrepresentable", "immutability"]
     },
     {
       "id": "prototype",
@@ -193,7 +193,7 @@
       "definition": "Dependencies are handed in, never built inside",
       "route": "/patterns/gof/extra/dependency-injection.html",
       "requires": [],
-      "related": ["hexagonal", "singleton", "service-locator", "monostate", "currying", "dependency-inversion", "convention-over-configuration"]
+      "related": ["hexagonal", "singleton", "service-locator", "monostate", "currying", "dependency-inversion", "convention-over-configuration", "abstract-factory"]
     },
     {
       "id": "null-object",
@@ -1769,7 +1769,7 @@
       "definition": "Never mutate — always return new data",
       "route": "/patterns/functional/immutability.html",
       "requires": [],
-      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable"]
+      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "builder"]
     },
     {
       "id": "lens-optics",
@@ -2457,7 +2457,7 @@
       "definition": "Shape types so an invalid combination of values cannot be written, and the compiler rejects it",
       "route": "/principles/make-illegal-states-unrepresentable.html",
       "requires": [],
-      "related": ["value-object", "immutability", "fail-fast", "state", "encapsulation", "kiss"]
+      "related": ["value-object", "immutability", "fail-fast", "state", "encapsulation", "kiss", "builder"]
     },
     {
       "id": "rule-of-three",

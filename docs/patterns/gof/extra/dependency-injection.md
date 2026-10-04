@@ -189,6 +189,7 @@ const underTest = new ReminderService(frozenClock, captureMailer);
 - [Hexagonal](../../architecture/hexagonal.md) — Adapters are injected into the core's ports
 - [Dependency Inversion Principle](../../../principles/dependency-inversion.md) — The wiring-time mechanism that realises dependency inversion.
 - [Convention over Configuration](../../../principles/convention-over-configuration.md) — Autowiring is dependency injection steered by convention
+- [Abstract Factory](../creational/abstract-factory.md) — A whole factory family is a collaborator worth handing in, so the client never picks a family itself
 
 **Alternative to**
 
