@@ -83,5 +83,6 @@ Expect the old class to survive as a facade that forwards to the new ones. That 
 
 - [Service Layer](../patterns/enterprise/service-layer.md) — A service layer tends to collect every use case into one manager class
 - [Facade](../patterns/gof/structural/facade.md) — A facade that starts holding state or logic becomes the same class
+- [Active Record](../patterns/enterprise/active-record.md) — A row-owning class that also holds business logic grows into one
 
 <!-- relationships:end -->

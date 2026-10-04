@@ -12923,6 +12923,13 @@
       "b": "chatty-io",
       "note_a": "Batches the writes of one business action into one transaction instead of one round trip per object",
       "note_b": "Write-side case: per-object saves are fixed by one tracked flush"
+    },
+    {
+      "a": "active-record",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Can fall into god object when business logic and persistence share one row class",
+      "note_b": "A row-owning class that also holds business logic grows into one"
     }
   ],
   "group_order": {
