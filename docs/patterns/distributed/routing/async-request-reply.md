@@ -243,4 +243,8 @@ app.get("/operations/:id", async (req, res) => {
 
 - [Busy Front End](../../../hazards/busy-front-end.md) — The front end accepts the work and hands back a handle, so no request thread is held while the job runs
 
+**Implemented by**
+
+- [Compute](../../../capabilities/compute.md) — Workflow engines return a handle at once and let the caller poll for the result.
+
 <!-- relationships:end -->

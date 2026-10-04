@@ -264,5 +264,6 @@ async function updateUser(id: string, patch: Partial<User>): Promise<void> {
 **Implemented by**
 
 - [Databases](../../capabilities/databases.md) — Managed in-memory caches give you the store; you still write the load-on-miss logic.
+- [Key-value & cache stores](../../comparisons/key-value-stores.md) — Which store suits the cache role, and which does more than cache.
 
 <!-- relationships:end -->

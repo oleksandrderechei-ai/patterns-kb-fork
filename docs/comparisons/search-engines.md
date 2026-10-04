@@ -79,7 +79,7 @@ Take Solr when you already run it. It is mature, permissively licensed and good 
 
 **Implements**
 
-- [Materialized View](../patterns/distributed/coordination/materialized-view.md) — Every engine here keeps a projection of records another store owns, and you own the sync
 - [Inverted Index](../patterns/distributed/coordination/inverted-index.md) — Lucene-based engines and the index inside a database such as PostgreSQL (GIN, the Generalized Inverted Index) are ready-made inverted indexes
+- [Embeddings](../patterns/ml/embeddings.md) — Which engines store and search embedding vectors beside text.
 
 <!-- relationships:end -->

@@ -48,12 +48,12 @@ Cloud storage comes in four shapes. Object storage holds whole blobs addressed b
 
 | Capability | AWS | Azure | Google Cloud | Open source |
 | --- | --- | --- | --- | --- |
-| Object storage | Amazon S3 | Azure Blob Storage | Cloud Storage | Ceph, [MinIO](../comparisons/object-stores.md) (community edition in maintenance mode since December 2025) |
+| Object storage | Amazon S3 | Azure Blob Storage | Cloud Storage | Ceph, [MinIO](../comparisons/object-stores.md) (community repository archived in 2026, no longer maintained) |
 | Block storage, one virtual machine (VM) | Amazon EBS | Azure managed disks | Persistent Disk, Hyperdisk | Ceph RBD |
 | Ephemeral local disk | EC2 instance store | VM temporary disk | Local SSD | no direct open-source equivalent |
 | Shared file storage, Network File System (NFS) | Amazon EFS | Azure Files | Filestore | Linux NFS server |
-| Shared file storage, SMB | FSx for Windows File Server | Azure Files | no first-party equivalent | Samba |
-| Parallel file system | FSx for Lustre | Azure Managed Lustre | Parallelstore | Lustre |
+| Shared file storage, SMB | FSx for Windows File Server | Azure Files | Google Cloud NetApp Volumes | Samba |
+| Parallel file system | FSx for Lustre | Azure Managed Lustre | Google Cloud Managed Lustre | Lustre |
 | Infrequent-access tier | S3 Standard-IA | Blob cool tier | Nearline | no direct open-source equivalent |
 | Cold tier | S3 Glacier Instant Retrieval | Blob cold tier | Coldline | no direct open-source equivalent |
 | Archive tier | S3 Glacier Deep Archive | Blob archive tier | Archive | no direct open-source equivalent |
@@ -63,6 +63,7 @@ Cloud storage comes in four shapes. Object storage holds whole blobs addressed b
 | Offline transfer appliance | AWS Snowball | Azure Data Box | Transfer Appliance | no direct open-source equivalent |
 | Online bulk transfer | AWS DataSync | Azure Storage Mover | Storage Transfer Service | rclone |
 | Managed backup | AWS Backup | Azure Backup | Backup and DR Service | Restic, BorgBackup |
+| Malware scanning of uploaded objects | Amazon GuardDuty Malware Protection for S3 | Microsoft Defender for Storage malware scanning | no first-party equivalent | ClamAV |
 
 ## Choosing between them
 <!--meta block=choosing-->
@@ -104,7 +105,6 @@ The bill for storage is rarely storage. Request charges dominate small-object wo
 **Combines with**
 
 - [CDN](../patterns/distributed/routing/cdn.md) — Object storage holds the origin copy; the content delivery network (CDN) is what stops you paying origin egress for every read.
-- [Claim Check](../patterns/messaging/claim-check.md) — The claim a message carries is usually an object key — this is where the payload actually sits.
 
 **Generalizes**
 
@@ -115,5 +115,7 @@ The bill for storage is rarely storage. Request charges dominate small-object wo
 - [Object Storage](../patterns/distributed/routing/object-storage.md) — Every cloud's object store is this pattern sold as a service — buckets, keys and a reference in your database.
 - [Valet Key](../patterns/distributed/routing/valet-key.md) — Signed, time-limited URLs are the built-in valet key — the client reads or writes the object directly.
 - [Replication](../patterns/distributed/coordination/replication.md) — Redundancy scope is replication as a setting: one building, one metro, or a second region.
+- [Claim Check](../patterns/messaging/claim-check.md) — The store that holds the large payload while the message carries only its key.
+- [Quarantine](../patterns/security/quarantine.md) — Malware scanning tags or moves an uploaded object before anything trusts it.
 
 <!-- relationships:end -->

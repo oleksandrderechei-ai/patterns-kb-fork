@@ -224,4 +224,8 @@ function groupIntoUnits(profiles: Profile[]): Profile[][] {
 
 - [Bulkhead](../resilience/bulkhead.md) — The opposite trade: consolidation spends the isolation a bulkhead buys, for utilisation
 
+**Implemented by**
+
+- [Compute](../../../capabilities/compute.md) — Managed Kubernetes bin-packs many workloads onto one pool of nodes.
+
 <!-- relationships:end -->

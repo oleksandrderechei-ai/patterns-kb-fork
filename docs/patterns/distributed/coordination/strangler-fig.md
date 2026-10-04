@@ -219,4 +219,8 @@ migrated.add("/api/invoices");
 
 - [Lava Flow](../../../hazards/lava-flow.md) — Can fall into lava flow when the old system lingers unowned when the cutover is never finished
 
+**Implemented by**
+
+- [Networking](../../../capabilities/networking.md) — An API gateway is the facade: route each path to the legacy system or its replacement.
+
 <!-- relationships:end -->

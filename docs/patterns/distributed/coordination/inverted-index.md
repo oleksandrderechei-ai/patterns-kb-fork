@@ -185,5 +185,6 @@ search("waterproof jacket");                                 // [1]
 **Implemented by**
 
 - [Search engines](../../../comparisons/search-engines.md) — Runnable products that provide this index
+- [Data & Analytics](../../../capabilities/data-analytics.md) — Managed search is an inverted index you rent rather than build.
 
 <!-- relationships:end -->

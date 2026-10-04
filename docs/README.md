@@ -25,6 +25,7 @@ records rather than knowledge.
 | [Migration round trip](records/2026-09-30-migration-round-trip.md) | you want the proof the markdown migration lost nothing: RT-1 and RT-2's last numbers, the losses decided on purpose, the P7 measurements, and the test behind each oracle scenario |
 | [One reading depth](records/2026-10-01-one-reading-depth.md) | you want what the owner's dev-testing feedback changed: one reading depth, the search ranking, the counts, the relevance rates, the per-gate timings and four sizing doubts left open |
 | [Site evaluation and fix pass](records/2026-10-01-site-evaluation.md) | you want the seven-dimension evaluation of the KB and its site and what the same pass fixed: the scores, the before and after counts, the page-weight measurements and the decisions left for the owner |
+| [Stack mapping audit](records/2026-10-04-stack-mapping-audit.md) | you want what the 2026-10-04 audit of the pattern-to-product index found against vendor docs: the cells corrected, the rows and pins added or moved, the by-nature verdicts and the three gaps left open |
 
 ## Pages by area
 

@@ -214,4 +214,8 @@ type Run = (dsn: string, stmts: [string, unknown[]][]) => Promise<unknown>;
 
 - [Noisy Neighbour](../../../hazards/noisy-neighbour.md) — Per-tenant limits and stronger isolation keep one tenant from draining shared resources.
 
+**Implemented by**
+
+- [Resource Organisation](../../../capabilities/resources.md) — An account, subscription or project per tenant is the silo model's billing and permission boundary.
+
 <!-- relationships:end -->

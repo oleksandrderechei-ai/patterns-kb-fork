@@ -77,5 +77,6 @@ Do less first. If one node's memory holds the working set and each node may keep
 
 - [Distributed Cache](../patterns/caching/distributed-cache.md) — Redis, Valkey and Memcached are what a distributed cache is usually made of; the license and the operator differ more than the mechanism does.
 - [Consistent Hashing](../patterns/distributed/routing/consistent-hashing.md) — Where the product places a key decides what adding a node costs: a ring reshuffles one node's share, a client-side scheme reshuffles whatever its hash says.
+- [Cache-Aside](../patterns/caching/cache-aside.md) — Most of these stores are used as the cache in cache-aside.
 
 <!-- relationships:end -->

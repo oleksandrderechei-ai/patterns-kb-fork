@@ -249,5 +249,6 @@ async function runOneGroup(broker: SessionBroker, handle: (m: Message) => Promis
 **Implemented by**
 
 - [Messaging & Eventing](../../capabilities/messaging.md) — First in, first out (FIFO) message groups and broker sessions keep one related run in order while others proceed in parallel.
+- [Message brokers & streams](../../comparisons/message-brokers.md) — How far each broker's ordering reaches decides how you key a convoy.
 
 <!-- relationships:end -->

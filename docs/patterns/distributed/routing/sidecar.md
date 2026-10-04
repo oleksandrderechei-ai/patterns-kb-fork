@@ -200,6 +200,6 @@ sidecar.listen(SIDECAR_PORT); // clients talk to the sidecar, not the app direct
 
 **Implemented by**
 
-- [Observability Platform](../../../capabilities/observability-platform.md) — Collector agents run as a sidecar or a node-level daemon; the app writes to stdout or a local port and knows nothing about the backend.
+- [Networking](../../../capabilities/networking.md) — A service mesh is the sidecar sold ready-made: an injected proxy beside each instance.
 
 <!-- relationships:end -->

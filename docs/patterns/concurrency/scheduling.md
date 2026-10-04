@@ -218,5 +218,6 @@ class DelayScheduler {
 **Implemented by**
 
 - [Messaging & Eventing](../../capabilities/messaging.md) — A managed broker holds the message until its scheduled time, so no scheduler process of yours has to stay alive to fire it.
+- [Compute](../../capabilities/compute.md) — A managed scheduler is the cron table sold as a service.
 
 <!-- relationships:end -->

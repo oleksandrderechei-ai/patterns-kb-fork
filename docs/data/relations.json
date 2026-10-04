@@ -251,15 +251,6 @@
     {
       "a": "messaging",
       "verb": "implements",
-      "b": "workflow-orchestration",
-      "note_a": "The same state machines sold as an integration service, driving the steps between your queues.",
-      "note_b": "The same state machines sold as an integration service, driving the steps between your queues.",
-      "maps_a": "mapping-row-12",
-      "maps_label_a": "Stateful workflow orchestration"
-    },
-    {
-      "a": "messaging",
-      "verb": "implements",
       "b": "fan-out",
       "note_a": "A topic delivers one publish to every subscriber, which is this pattern as a hosted primitive.",
       "note_b": "A topic delivers one publish to every subscriber, which is this pattern as a hosted primitive.",
@@ -310,15 +301,6 @@
       "note_b": "A managed queue replaces the in-process buffer when producers and consumers run as separate services.",
       "maps_a": "mapping-row-1",
       "maps_label_a": "Point-to-point queue"
-    },
-    {
-      "a": "messaging",
-      "verb": "implements",
-      "b": "compensating-transaction",
-      "note_a": "Workflow definitions run the undo steps for a failed run.",
-      "note_b": "A managed state machine can hold the undo steps and run them in reverse when a later step fails.",
-      "maps_a": "mapping-row-12",
-      "maps_label_a": "Stateful workflow orchestration"
     },
     {
       "a": "messaging",
@@ -416,8 +398,8 @@
       "b": "polling-consumer",
       "note_a": "Integration flows and the Apache Camel library cover the step that pulls messages on a schedule.",
       "note_b": "Integration platforms and the Camel library ship the step that pulls messages on a schedule as a ready-made building block.",
-      "maps_a": "mapping-row-16",
-      "maps_label_a": "Message routing and transformation flows"
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Point-to-point queue"
     },
     {
       "a": "messaging",
@@ -425,24 +407,6 @@
       "b": "messaging-bridge",
       "note_a": "Integration flows and the Apache Camel library cover the step that connects two messaging systems.",
       "note_b": "Integration platforms and the Camel library ship the step that connects two messaging systems as a ready-made building block.",
-      "maps_a": "mapping-row-16",
-      "maps_label_a": "Message routing and transformation flows"
-    },
-    {
-      "a": "messaging",
-      "verb": "implements",
-      "b": "correlation-identifier",
-      "note_a": "Integration flows and the Apache Camel library cover the step that matches replies to their requests.",
-      "note_b": "Integration platforms and the Camel library ship the step that matches replies to their requests as a ready-made building block.",
-      "maps_a": "mapping-row-16",
-      "maps_label_a": "Message routing and transformation flows"
-    },
-    {
-      "a": "messaging",
-      "verb": "implements",
-      "b": "claim-check",
-      "note_a": "Integration flows and the Apache Camel library cover the step that stores the payload aside and passes a reference.",
-      "note_b": "Integration platforms and the Camel library ship the step that stores the payload aside and passes a reference as a ready-made building block.",
       "maps_a": "mapping-row-16",
       "maps_label_a": "Message routing and transformation flows"
     },
@@ -652,15 +616,6 @@
     {
       "a": "observability-platform",
       "verb": "implements",
-      "b": "sidecar",
-      "note_a": "The telemetry agent is a helper process beside the application, so no service links a vendor software development kit (SDK).",
-      "note_b": "Collector agents run as a sidecar or a node-level daemon; the app writes to stdout or a local port and knows nothing about the backend.",
-      "maps_a": "mapping-row-6",
-      "maps_label_a": "Telemetry collection agent"
-    },
-    {
-      "a": "observability-platform",
-      "verb": "implements",
       "b": "fault-injection",
       "note_a": "Managed chaos services run the experiment and halt it when your alarm fires.",
       "note_b": "Two clouds sell this as a service, and open-source tools run the same experiments on Kubernetes.",
@@ -680,8 +635,8 @@
       "b": "failover",
       "note_a": "Multi-zone managed services promote a standby in another zone without a person in the loop.",
       "note_b": "Managed databases ship the monitor, the promotion and the endpoint repoint as one setting.",
-      "maps_a": "mapping-row-3",
-      "maps_label_a": "Zone-spanning deployment of a managed service"
+      "maps_a": "mapping-row-11",
+      "maps_label_a": "DNS-based failover between regions"
     },
     {
       "a": "infrastructure-as-code",
@@ -727,15 +682,6 @@
     {
       "a": "identity",
       "verb": "implements",
-      "b": "valet-key",
-      "note_a": "Short-lived scoped credentials are the general form of the delegated-access token.",
-      "note_b": "Issued by the cloud's token service rather than by you.",
-      "maps_a": "mapping-row-4",
-      "maps_label_a": "Short-lived credential issuance"
-    },
-    {
-      "a": "identity",
-      "verb": "implements",
       "b": "secure-logger",
       "note_a": "The control-plane audit trail is append-only, so a caller inside the account cannot edit what it already recorded.",
       "note_b": "CloudTrail, the Azure activity log and Cloud Audit Logs record every control-plane call, with integrity validation that makes a later deletion detectable.",
@@ -775,8 +721,8 @@
       "b": "leader-election",
       "note_a": "Automatic failover is leader election you never see run.",
       "note_b": "Managed engines do this internally on failover.",
-      "maps_a": "mapping-row-12",
-      "maps_label_a": "Automatic failover to a new primary"
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Distributed lock and lease"
     },
     {
       "a": "databases",
@@ -804,15 +750,6 @@
       "note_b": "Several managed engines refresh these for you.",
       "maps_a": "mapping-row-13",
       "maps_label_a": "Materialized view maintained by the engine"
-    },
-    {
-      "a": "databases",
-      "verb": "implements",
-      "b": "write-ahead-log",
-      "note_a": "Point-in-time recovery is the write-ahead log kept and replayed for you.",
-      "note_b": "Managed engines expose the log as point-in-time restore, so you choose the retention window rather than the fsync policy.",
-      "maps_a": "mapping-row-8",
-      "maps_label_a": "Point-in-time restore"
     },
     {
       "a": "databases",
@@ -1024,7 +961,9 @@
       "verb": "implements",
       "b": "load-leveling",
       "note_a": "The buffer between producer and consumer is what you are choosing a product for.",
-      "note_b": "Which buffer product to put between producer and consumer."
+      "note_b": "Which buffer product to put between producer and consumer.",
+      "maps_a": "matrix-row-1",
+      "maps_label_a": "After a consumer reads it"
     },
     {
       "a": "object-stores",
@@ -1050,8 +989,8 @@
       "b": "embeddings",
       "note_a": "Managed search and vector services store and query embeddings for you.",
       "note_b": "Every cloud sells the vector index, so you do not run the similarity search yourself.",
-      "maps_a": "mapping-row-10",
-      "maps_label_a": "Managed search and vector search"
+      "maps_a": "mapping-row-12",
+      "maps_label_a": "Foundation-model platform"
     },
     {
       "a": "data-analytics",
@@ -1106,20 +1045,13 @@
       "note_b": "PostgreSQL's write-ahead log (WAL), InnoDB's redo log and SQLite's WAL mode are three shapes of one mechanism, and each exposes its own durability-versus-latency knob."
     },
     {
-      "a": "search-engines",
-      "verb": "implements",
-      "b": "materialized-view",
-      "note_a": "Every engine here keeps a projection of records another store owns, and you own the sync",
-      "note_b": "Search engines are this pattern at product scale — an index you rebuild beside the store that owns the truth."
-    },
-    {
       "a": "workflow-orchestrators",
       "verb": "implements",
       "b": "saga",
       "note_a": "Temporal and the cloud state machines run the saga for you — the compensating steps become code or a definition the engine replays, not retry scaffolding in your service",
       "note_b": "Which engine runs your sagas — Temporal, Airflow, Argo, Prefect or the cloud state machines.",
-      "maps_a": "matrix-row-3",
-      "maps_label_a": "A worker dies mid-step"
+      "maps_a": "matrix-row-7",
+      "maps_label_a": "Compensating a half-done run"
     },
     {
       "a": "workflow-orchestrators",
@@ -6441,13 +6373,6 @@
       "note_b": "More than one copy is how a lost copy stops mattering"
     },
     {
-      "a": "relational-databases",
-      "verb": "combines-with",
-      "b": "replication",
-      "note_a": "Read replicas are how the single-writer engines grow before you shard.",
-      "note_b": "The engine you replicate decides whether the standby is async lag or a consensus quorum."
-    },
-    {
       "a": "cdn",
       "verb": "combines-with",
       "b": "object-storage",
@@ -6712,13 +6637,6 @@
       "b": "health-endpoint",
       "note_a": "Eviction needs a readiness signal to act on, or the registry cannot tell alive from answering",
       "note_b": "What a registry consumes to decide which instances stay in rotation"
-    },
-    {
-      "a": "observability-platform",
-      "verb": "prerequisite",
-      "b": "health-endpoint",
-      "note_a": "Uptime checks and alerting need an endpoint that answers honestly; the platform polls, it does not provide",
-      "note_b": "What a synthetic check or an orchestrator polls, and the platform assumes you expose one"
     },
     {
       "a": "geode",
@@ -8317,13 +8235,6 @@
       "note_b": "Screen at the entrance, but never only at the entrance"
     },
     {
-      "a": "networking",
-      "verb": "combines-with",
-      "b": "gatekeeper",
-      "note_a": "The web application firewall (WAF) and the gateway are where this sits in a cloud network.",
-      "note_b": "In a cloud network this is the managed web application firewall (WAF) or application programming interface (API) gateway."
-    },
-    {
       "a": "least-privilege",
       "verb": "combines-with",
       "b": "identity-as-perimeter",
@@ -8681,13 +8592,6 @@
       "note_b": "A request queue and a reply queue need the id to route the answer back to the caller that is waiting"
     },
     {
-      "a": "observability-platform",
-      "verb": "combines-with",
-      "b": "correlation-identifier",
-      "note_a": "The propagated id is what turns per-service log lines into one story the platform can join",
-      "note_b": "The platform stores and indexes it, but the propagation is still your code's job"
-    },
-    {
       "a": "a2a",
       "verb": "combines-with",
       "b": "async-request-reply",
@@ -8700,13 +8604,6 @@
       "b": "message-encoding",
       "note_a": "The size at which a payload becomes a reference is part of the encoding decision",
       "note_b": "Past a size threshold the message encodes a reference and the payload goes to object storage"
-    },
-    {
-      "a": "storage",
-      "verb": "combines-with",
-      "b": "claim-check",
-      "note_a": "The claim a message carries is usually an object key — this is where the payload actually sits.",
-      "note_b": "Object storage is the store the claim points at."
     },
     {
       "a": "claim-check",
@@ -10114,13 +10011,6 @@
       "b": "geode",
       "note_a": "Applies per node, so a regional spike grows one footprint rather than the fleet",
       "note_b": "Each node scales out on its own inside the shared backplane's constraints"
-    },
-    {
-      "a": "databases",
-      "verb": "combines-with",
-      "b": "sharding",
-      "note_a": "Managed does not choose your partition key, and a bad one is a hot partition no service tier fixes.",
-      "note_b": "The one decision the managed database will not make for you."
     },
     {
       "a": "change-data-capture",
@@ -12711,6 +12601,265 @@
       "b": "lava-flow",
       "note_a": "Can fall into lava flow when stale keys and flags accumulate that no one dares remove",
       "note_b": "Stale keys and flags accumulate that no one dares remove"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "compensating-transaction",
+      "note_a": "A workflow engine records each step, so it can run the undo steps in reverse when a later one fails.",
+      "note_b": "Workflow engines run the compensations for you: each step declares its undo, and the engine replays them after a failure.",
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Stateful workflow orchestration"
+    },
+    {
+      "a": "storage",
+      "verb": "implements",
+      "b": "claim-check",
+      "note_a": "The store that holds the large payload while the message carries only its key.",
+      "note_b": "Object storage holds the payload; the message carries the key.",
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Object storage"
+    },
+    {
+      "a": "observability-platform",
+      "verb": "implements",
+      "b": "correlation-identifier",
+      "note_a": "Trace context is a correlation identifier the platform propagates and indexes for you.",
+      "note_b": "Distributed tracing propagates the identifier across every hop and lets you search by it.",
+      "maps_a": "mapping-row-3",
+      "maps_label_a": "Distributed trace collection"
+    },
+    {
+      "a": "networking",
+      "verb": "implements",
+      "b": "sidecar",
+      "note_a": "A mesh injects a proxy sidecar beside every workload.",
+      "note_b": "A service mesh is the sidecar sold ready-made: an injected proxy beside each instance.",
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Service mesh"
+    },
+    {
+      "a": "observability-platform",
+      "verb": "prerequisite",
+      "b": "health-endpoint",
+      "note_a": "Uptime checks and alerting need an endpoint that answers honestly; the platform polls, it does not provide",
+      "note_b": "What a synthetic check or an orchestrator polls, and the platform assumes you expose one"
+    },
+    {
+      "a": "observability-platform",
+      "verb": "implements",
+      "b": "health-endpoint",
+      "note_a": "Synthetic checks probe the endpoint your service exposes, from outside it.",
+      "note_b": "Synthetic checks are the monitor half: they call the endpoint on a schedule and alert on failure.",
+      "maps_a": "mapping-row-7",
+      "maps_label_a": "Synthetic checks"
+    },
+    {
+      "a": "databases",
+      "verb": "implements",
+      "b": "sharding",
+      "note_a": "These stores split data across partitions by key without you choosing the shard map.",
+      "note_b": "Automatically sharded databases do the split and the rebalancing for you.",
+      "maps_a": "mapping-row-18",
+      "maps_label_a": "Automatically sharded database"
+    },
+    {
+      "a": "networking",
+      "verb": "implements",
+      "b": "gatekeeper",
+      "note_a": "A web application firewall is a managed gatekeeper: it inspects requests before they reach the service.",
+      "note_b": "A web application firewall in front of the service is the managed form of the gatekeeper.",
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Web application firewall"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "saga",
+      "note_a": "Workflow engines run a saga as a durable sequence of steps, each with its compensation.",
+      "note_b": "A managed workflow engine runs the orchestrated saga and survives a crash mid-way.",
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Stateful workflow orchestration"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "async-request-reply",
+      "note_a": "Durable Functions answers 202 with a status URL; Step Functions and Workflows return an execution you poll.",
+      "note_b": "Workflow engines return a handle at once and let the caller poll for the result.",
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Stateful workflow orchestration"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "compute-resource-consolidation",
+      "note_a": "Kubernetes packs many small workloads onto shared nodes.",
+      "note_b": "Managed Kubernetes bin-packs many workloads onto one pool of nodes.",
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed Kubernetes"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "sweeper",
+      "note_a": "A scheduled trigger runs the sweep on a fixed cadence.",
+      "note_b": "A managed scheduler runs the sweep job on a cron schedule.",
+      "maps_a": "mapping-row-23",
+      "maps_label_a": "Scheduled job trigger"
+    },
+    {
+      "a": "compute",
+      "verb": "implements",
+      "b": "scheduling",
+      "note_a": "A managed scheduler starts jobs on a cron or rate schedule.",
+      "note_b": "A managed scheduler is the cron table sold as a service.",
+      "maps_a": "mapping-row-23",
+      "maps_label_a": "Scheduled job trigger"
+    },
+    {
+      "a": "networking",
+      "verb": "implements",
+      "b": "ambassador",
+      "note_a": "A mesh proxy does an ambassador's work: retries, TLS and routing on the client's behalf.",
+      "note_b": "A mesh proxy is the ambassador sold ready-made, though it sits beside every service rather than one client.",
+      "maps_a": "mapping-row-20",
+      "maps_label_a": "Service mesh"
+    },
+    {
+      "a": "networking",
+      "verb": "implements",
+      "b": "strangler-fig",
+      "note_a": "An API gateway is the routing facade that sends each path to the old system or the new one.",
+      "note_b": "An API gateway is the facade: route each path to the legacy system or its replacement.",
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed API gateway"
+    },
+    {
+      "a": "regions",
+      "verb": "implements",
+      "b": "geode",
+      "note_a": "A global anycast entry point sends each request to the nearest healthy region.",
+      "note_b": "A global anycast entry point steers each request to the nearest healthy deployment.",
+      "maps_a": "mapping-row-12",
+      "maps_label_a": "Single global anycast entry point"
+    },
+    {
+      "a": "resources",
+      "verb": "implements",
+      "b": "multi-tenancy",
+      "note_a": "One account, subscription or project per tenant is the strongest isolation tier a cloud sells.",
+      "note_b": "An account, subscription or project per tenant is the silo model's billing and permission boundary.",
+      "maps_a": "mapping-row-1",
+      "maps_label_a": "Billing and permission boundary"
+    },
+    {
+      "a": "storage",
+      "verb": "implements",
+      "b": "quarantine",
+      "note_a": "Malware scanning tags or moves an uploaded object before anything trusts it.",
+      "note_b": "Object malware scanning holds an upload apart until it is checked, then promotes or deletes it.",
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Malware scanning of uploaded objects"
+    },
+    {
+      "a": "messaging",
+      "verb": "implements",
+      "b": "message-encoding",
+      "note_a": "A schema registry holds the versioned schemas producers and consumers encode against.",
+      "note_b": "A schema registry stores each schema version and checks that a new one stays compatible.",
+      "maps_a": "mapping-row-19",
+      "maps_label_a": "Schema registry"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "agent-memory",
+      "note_a": "Managed memory stores and recalls what an agent learned across sessions.",
+      "note_b": "The agent platforms sell memory as a service: they extract, store and retrieve it per user.",
+      "maps_a": "mapping-row-17",
+      "maps_label_a": "Managed agent memory"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "agent-sandboxing",
+      "note_a": "An isolated session runs the code an agent writes, away from your hosts.",
+      "note_b": "The agent platforms sell the sandbox: an isolated session per run, discarded after.",
+      "maps_a": "mapping-row-18",
+      "maps_label_a": "Sandboxed code execution for agents"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "mcp",
+      "note_a": "A managed gateway exposes your APIs as MCP tools, with authentication in front.",
+      "note_b": "A managed gateway turns existing APIs into MCP tools without writing a server.",
+      "maps_a": "mapping-row-19",
+      "maps_label_a": "Managed MCP tool gateway"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "a2a",
+      "note_a": "The managed agent runtimes host and call agents over the A2A protocol.",
+      "note_b": "Each cloud's managed agent runtime speaks A2A, so a hosted agent can call another.",
+      "maps_a": "mapping-row-16",
+      "maps_label_a": "Managed agent runtime"
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "inverted-index",
+      "note_a": "Every managed search engine keeps an inverted index; you rent it with the service.",
+      "note_b": "Managed search is an inverted index you rent rather than build.",
+      "maps_a": "mapping-row-10",
+      "maps_label_a": "Managed search and vector search"
+    },
+    {
+      "a": "message-brokers",
+      "verb": "implements",
+      "b": "sequential-convoy",
+      "note_a": "Each broker scopes ordering differently: per partition, per queue or per message group.",
+      "note_b": "How far each broker's ordering reaches decides how you key a convoy.",
+      "maps_a": "matrix-row-3",
+      "maps_label_a": "Ordering"
+    },
+    {
+      "a": "workflow-orchestrators",
+      "verb": "implements",
+      "b": "compensating-transaction",
+      "note_a": "How each engine runs the undo steps when a run fails half-way.",
+      "note_b": "How much of the compensation each orchestrator writes for you.",
+      "maps_a": "matrix-row-7",
+      "maps_label_a": "Compensating a half-done run"
+    },
+    {
+      "a": "key-value-stores",
+      "verb": "implements",
+      "b": "cache-aside",
+      "note_a": "Most of these stores are used as the cache in cache-aside.",
+      "note_b": "Which store suits the cache role, and which does more than cache.",
+      "maps_a": "matrix-row-6",
+      "maps_label_a": "Typical role"
+    },
+    {
+      "a": "relational-databases",
+      "verb": "implements",
+      "b": "replication",
+      "note_a": "How each engine serves reads from replicas, lag included.",
+      "note_b": "How each relational engine replicates for read scale.",
+      "maps_a": "matrix-row-8",
+      "maps_label_a": "Reads at scale"
+    },
+    {
+      "a": "search-engines",
+      "verb": "implements",
+      "b": "embeddings",
+      "note_a": "Which engines store and search embedding vectors beside text.",
+      "note_b": "Which search engine can hold and query your embeddings.",
+      "maps_a": "matrix-row-8",
+      "maps_label_a": "Vector and hybrid search"
     }
   ],
   "group_order": {

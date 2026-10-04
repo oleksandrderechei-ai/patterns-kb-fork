@@ -58,7 +58,7 @@ A resource container is the account, subscription or project that every cloud re
 | Native infrastructure as code | AWS CloudFormation, AWS CDK | ARM templates, Bicep | Infrastructure Manager (managed Terraform), successor to Deployment Manager | OpenTofu |
 | Cost analysis | AWS Cost Explorer | Microsoft Cost Management | Cloud Billing reports | OpenCost |
 | Third-party infrastructure as code | Terraform | Terraform | Terraform | OpenTofu, Pulumi |
-| Landing zone tooling | AWS Control Tower | Azure landing zones | no first-party equivalent | no direct open-source equivalent |
+| Landing zone tooling | AWS Control Tower | Azure landing zones | enterprise foundations blueprint, a reference rather than a managed service | no direct open-source equivalent |
 | Resource identifier | Amazon Resource Name (ARN) | resource ID path under the subscription | relative resource name under the project | no direct open-source equivalent |
 | Enabling a service before first use | no per-service step | register the resource provider | enable the API in the project | no direct open-source equivalent |
 | Lock against deletion | no generic lock — per-service protection or a deny policy | resource lock | project lien | no direct open-source equivalent |
@@ -119,5 +119,6 @@ Choose the boundary you will want in two years, because a resource rarely crosse
 **Implements**
 
 - [Authorization Enforcer (RBAC)](../patterns/security/authorization-enforcer.md) — Resource policy is evaluated centrally and denies by default, so a non-compliant resource is never created.
+- [Multi-Tenancy](../patterns/distributed/routing/multi-tenancy.md) — One account, subscription or project per tenant is the strongest isolation tier a cloud sells.
 
 <!-- relationships:end -->

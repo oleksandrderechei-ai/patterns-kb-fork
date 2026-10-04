@@ -52,7 +52,7 @@ Data analytics is a pipeline you rent in stages: raw events land in cheap durabl
 
 | Capability | AWS | Azure | Google Cloud | Open source |
 | --- | --- | --- | --- | --- |
-| Data lake storage | Amazon S3 | Azure Data Lake Storage | Cloud Storage | [MinIO](../comparisons/object-stores.md), Ceph |
+| Data lake storage | Amazon S3 | Azure Data Lake Storage | Cloud Storage | Ceph; [MinIO](../comparisons/object-stores.md)'s community repository is archived |
 | Metadata catalog | AWS Glue Data Catalog | Microsoft Purview | Dataplex | Hive Metastore |
 | Batch ETL pipelines | AWS Glue | Azure Data Factory | Cloud Data Fusion | [Apache Airflow](../comparisons/workflow-orchestrators.md) |
 | Managed Spark | Amazon EMR | Azure Databricks | Dataproc | Apache Spark |
@@ -68,6 +68,9 @@ Data analytics is a pipeline you rent in stages: raw events land in cheap durabl
 | Feature store | Amazon SageMaker Feature Store | Azure Machine Learning managed feature store | Feature Store (Gemini Enterprise Agent Platform) | Feast |
 | Model and prompt evaluation | Amazon Bedrock Evaluations | Microsoft Foundry evaluation | Gen AI evaluation service (Gemini Enterprise Agent Platform) | MLflow |
 | Managed agent runtime | Amazon Bedrock AgentCore | Microsoft Foundry Agent Service | Agent Runtime (Gemini Enterprise Agent Platform) | LangGraph |
+| Managed agent memory | Amazon Bedrock AgentCore Memory | Microsoft Foundry Agent Service memory | Memory Bank (Gemini Enterprise Agent Platform) | Mem0, Letta |
+| Sandboxed code execution for agents | Amazon Bedrock AgentCore Code Interpreter | Azure Container Apps dynamic sessions | Code Execution (Gemini Enterprise Agent Platform) | E2B |
+| Managed MCP tool gateway | Amazon Bedrock AgentCore Gateway | Azure API Management MCP servers | Apigee MCP support | no direct open-source equivalent |
 
 ## Choosing between them
 <!--meta block=choosing-->
@@ -126,5 +129,10 @@ Do not buy the model layer as a separate thing. Training features come out of th
 - [Feature Engineering](../patterns/ml/feature-engineering.md) — Feature stores serve one set of computed features to both training and inference.
 - [Evaluation](../patterns/ml/evaluation.md) — Evaluation services score model output against a test set and report the result.
 - [AI Agent](../patterns/architecture/ai-agent.md) — Managed agent runtimes host the model, tool calls and session state for you.
+- [Agent Memory](../patterns/ml/agent-memory.md) — Managed memory stores and recalls what an agent learned across sessions.
+- [Agent Sandboxing](../patterns/security/agent-sandboxing.md) — An isolated session runs the code an agent writes, away from your hosts.
+- [Model Context Protocol](../patterns/distributed/routing/mcp.md) — A managed gateway exposes your APIs as MCP tools, with authentication in front.
+- [Agent2Agent](../patterns/distributed/coordination/a2a.md) — The managed agent runtimes host and call agents over the A2A protocol.
+- [Inverted Index](../patterns/distributed/coordination/inverted-index.md) — Every managed search engine keeps an inverted index; you rent it with the service.
 
 <!-- relationships:end -->

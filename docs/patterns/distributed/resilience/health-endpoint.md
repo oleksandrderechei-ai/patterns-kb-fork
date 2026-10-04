@@ -245,4 +245,8 @@ app.get("/readyz", async (_req, res) => {
 
 - [Persona Identification & Sanction Check (V2)](../../../designs/persona-identification-v2.md) — readiness as an input to a scaler that moves on queue age rather than load
 
+**Implemented by**
+
+- [Observability Platform](../../../capabilities/observability-platform.md) — Synthetic checks are the monitor half: they call the endpoint on a schedule and alert on failure.
+
 <!-- relationships:end -->

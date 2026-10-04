@@ -207,7 +207,6 @@ async function ordersFor(userId: string) {
 - [Relational databases](../../../comparisons/relational-databases.md) — Distributed SQL is this done for you, billed as commit latency and a license.
 - [Unique ID Generation](../coordination/unique-id-generation.md) — The partition key is often carved out of the identifier itself
 - [Consistent Hashing](./consistent-hashing.md) — Consistent hashing is how shards are placed
-- [Databases](../../../capabilities/databases.md) — The one decision the managed database will not make for you.
 - [Multi-Tenancy](./multi-tenancy.md) — The tenant id is a natural shard key.
 
 **Alternative to**
@@ -245,5 +244,9 @@ async function ordersFor(userId: string) {
 - [Payment System](../../../designs/payment-system.md) — the 10k-transactions per second (TPS) write pressure is exactly the condition that forces horizontal partitioning of the store
 - [Job Scheduler](../../../designs/job-scheduler.md) — the hot-partition bottleneck is dissolved by spreading writes across a suffixed key space
 - [YouTube](../../../designs/youtube.md) — A video catalogue's metadata is sharded while its bytes live in object storage
+
+**Implemented by**
+
+- [Databases](../../../capabilities/databases.md) — Automatically sharded databases do the split and the rebalancing for you.
 
 <!-- relationships:end -->

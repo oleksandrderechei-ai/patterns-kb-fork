@@ -270,4 +270,8 @@ setInterval(() => withLeaderLock('sweeper', () => sweepOnce(db, notify)), 30_000
 - [Robinhood](../../../designs/robinhood.md) — a submission that succeeded while its follow-up write did not announces nothing — only a scan finds it
 - [Persona Identification & Sanction Check (V2)](../../../designs/persona-identification-v2.md) — the component that makes silence actionable: it turns a passed deadline into a terminal, an escalation or a caveat rather than a wait
 
+**Implemented by**
+
+- [Compute](../../../capabilities/compute.md) — A managed scheduler runs the sweep job on a cron schedule.
+
 <!-- relationships:end -->

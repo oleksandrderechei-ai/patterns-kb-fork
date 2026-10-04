@@ -201,4 +201,8 @@ http.createServer(async (req, res) => {
 
 - [API Gateway](./api-gateway.md) — Client-side networking proxy vs. server-side entry point
 
+**Implemented by**
+
+- [Networking](../../../capabilities/networking.md) — A mesh proxy is the ambassador sold ready-made, though it sits beside every service rather than one client.
+
 <!-- relationships:end -->

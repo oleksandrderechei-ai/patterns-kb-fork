@@ -239,7 +239,6 @@ for (const entry of wal.replay()) store.set(entry.key, entry.value);
 
 **Implemented by**
 
-- [Databases](../../../capabilities/databases.md) — Managed engines expose the log as point-in-time restore, so you choose the retention window rather than the fsync policy.
 - [Relational databases](../../../comparisons/relational-databases.md) — PostgreSQL's write-ahead log (WAL), InnoDB's redo log and SQLite's WAL mode are three shapes of one mechanism, and each exposes its own durability-versus-latency knob.
 
 <!-- relationships:end -->

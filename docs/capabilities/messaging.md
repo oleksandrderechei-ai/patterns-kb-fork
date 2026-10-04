@@ -51,14 +51,14 @@ A managed messaging service is a durable place to put a message, so the sender a
 
 | Capability | AWS | Azure | Google Cloud | Open source |
 | --- | --- | --- | --- | --- |
-| Point-to-point queue | Amazon SQS | Azure Queue Storage | Cloud Tasks | [RabbitMQ](../comparisons/message-brokers.md) |
+| Point-to-point queue | Amazon SQS | Azure Queue Storage | Pub/Sub with one pull subscription; Cloud Tasks for HTTP task dispatch | [RabbitMQ](../comparisons/message-brokers.md) |
 | Publish-subscribe fan-out | Amazon SNS | Azure Service Bus topics | Pub/Sub | RabbitMQ, NATS |
 | Event bus with content routing | Amazon EventBridge | Azure Event Grid | Eventarc | RabbitMQ topic exchanges |
 | Append-only stream with replay | Amazon Kinesis Data Streams | Azure Event Hubs | Pub/Sub | Apache Kafka |
 | Dead-letter destination | SQS and SNS dead-letter queues | Service Bus dead-letter queue | Pub/Sub dead-letter topic | RabbitMQ dead-letter exchanges |
 | Ordered delivery | SQS FIFO queues | Service Bus sessions | Pub/Sub ordering keys | Kafka partitions |
 | Filtering on the subscription | SNS filter policies | Service Bus subscription rules | Pub/Sub subscription filters | RabbitMQ bindings |
-| Delayed and scheduled delivery | SQS delay queues and message timers | Service Bus scheduled messages | Cloud Tasks schedule time | no direct open-source equivalent |
+| Delayed and scheduled delivery | SQS delay queues and message timers | Service Bus scheduled messages | Cloud Tasks schedule time | Apache ActiveMQ Artemis scheduled messages |
 | Delivery to an HTTP endpoint you own | EventBridge API destinations | Event Grid webhook subscriptions | Pub/Sub push subscriptions | no direct open-source equivalent |
 | Enterprise broker: sessions, transactions, Java Message Service (JMS) | Amazon MQ | Azure Service Bus | no first-party equivalent | Apache ActiveMQ Artemis |
 | Managed Kafka | Amazon MSK | Event Hubs Kafka endpoint | Managed Service for Apache Kafka | Apache Kafka |
@@ -68,7 +68,8 @@ A managed messaging service is a durable place to put a message, so the sender a
 | Transactional email | Amazon SES | Azure Communication Services | no first-party equivalent | Postfix |
 | Message routing and transformation flows | AWS Step Functions, Amazon EventBridge Pipes | Azure Logic Apps | Application Integration | Apache Camel, Spring Integration |
 | Change data capture | DynamoDB Streams | Azure Cosmos DB change feed | Datastream | Debezium |
-| Event store database | no first-party equivalent | no first-party equivalent | no first-party equivalent | KurrentDB |
+| Event store database | no first-party equivalent | no first-party equivalent | no first-party equivalent | KurrentDB (source-available) |
+| Schema registry | AWS Glue Schema Registry | Azure Schema Registry in Event Hubs | Pub/Sub schemas | Apicurio Registry |
 
 ## Choosing between them
 <!--meta block=choosing-->
@@ -126,14 +127,12 @@ Then watch the depth. A managed queue will accept far more than your consumers c
 - [Dead Letter Channel](../patterns/messaging/dead-letter-channel.md) — A dead-letter queue or topic is configuration, not code, on managed brokers.
 - [Competing Consumers](../patterns/messaging/competing-consumers.md) — Consumer groups and visibility timeouts implement the competition for you.
 - [Queue-Based Load Leveling](../patterns/distributed/resilience/load-leveling.md) — A queue between producer and consumer is what the managed service is for.
-- [Workflow Orchestration](../patterns/distributed/coordination/workflow-orchestration.md) — The same state machines sold as an integration service, driving the steps between your queues.
 - [Fan-Out](../patterns/messaging/fan-out.md) — A topic delivers one publish to every subscriber, which is this pattern as a hosted primitive.
 - [Content-Based Router](../patterns/messaging/content-based-router.md) — An event bus matches the message body against rules and picks the destination for you.
 - [Sequential Convoy](../patterns/messaging/sequential-convoy.md) — First in, first out (FIFO) message groups and broker sessions keep one related run in order while others proceed in parallel.
 - [Scheduling](../patterns/concurrency/scheduling.md) — Delay and schedule fields on a message move the timer into the broker.
 - [Event-Driven Architecture](../patterns/architecture/eda.md) — An event bus carries the events and routes them to consumers for you.
 - [Producer-Consumer](../patterns/concurrency/producer-consumer.md) — A managed queue is the buffer between the producers and the consumers.
-- [Compensating Transaction](../patterns/distributed/resilience/compensating-transaction.md) — Workflow definitions run the undo steps for a failed run.
 - [Message Router](../patterns/messaging/message-router.md) — A subscription filter makes the broker deliver only the messages that match.
 - [Splitter](../patterns/messaging/splitter.md) — Integration flows and the Apache Camel library cover the step that splits one message into many.
 - [Aggregator](../patterns/messaging/aggregator.md) — Integration flows and the Apache Camel library cover the step that combines related messages into one.
@@ -146,9 +145,8 @@ Then watch the depth. A managed queue will accept far more than your consumers c
 - [Resequencer](../patterns/messaging/resequencer.md) — Integration flows and the Apache Camel library cover the step that restores the order of out-of-order messages.
 - [Polling Consumer](../patterns/messaging/polling-consumer.md) — Integration flows and the Apache Camel library cover the step that pulls messages on a schedule.
 - [Messaging Bridge](../patterns/messaging/messaging-bridge.md) — Integration flows and the Apache Camel library cover the step that connects two messaging systems.
-- [Correlation Identifier](../patterns/messaging/correlation-identifier.md) — Integration flows and the Apache Camel library cover the step that matches replies to their requests.
-- [Claim Check](../patterns/messaging/claim-check.md) — Integration flows and the Apache Camel library cover the step that stores the payload aside and passes a reference.
 - [Outbox](../patterns/distributed/coordination/outbox.md) — Change feeds and Debezium read committed rows and publish them, which is the relay half of this pattern.
 - [Event Sourcing](../patterns/architecture/event-sourcing.md) — An event store database keeps the append-only log of events per entity.
+- [Message Encoding](../patterns/messaging/message-encoding.md) — A schema registry holds the versioned schemas producers and consumers encode against.
 
 <!-- relationships:end -->
