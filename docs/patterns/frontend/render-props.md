@@ -16,7 +16,7 @@ A component owns some state or behavior and calls a function you hand it to prod
 ## What it is
 <!--meta block=description-->
 
-The same stateful behaviour, such as tracking the mouse or fetching data, sometimes has to power components that look nothing alike, and inheriting it from a base class ties unrelated views together. With render props, one component owns the behaviour and calls a function you pass as a prop with the current state, leaving the markup to you.
+The same stateful behavior, such as tracking the mouse or fetching data, sometimes has to power components that look nothing alike, and inheriting it from a base class ties unrelated views together. With render props, one component owns the behavior and calls a function you pass as a prop with the current state, leaving the markup to you.
 
 ## Explained
 <!--meta block=explain-->
@@ -25,14 +25,14 @@ A render prop is a function passed to a component as a prop. The component does 
 
 - **Nesting.** Combining several behaviors nests functions inside functions, so move them into hooks.
 - **Unclear origin.** Where a value comes from is harder to see, so name the function's parameters clearly.
-- **Inline redraws.** An inline function is new on every render, so a memoized component redraws anyway. Define the function once and pass that reference.
+- **Inline redraws.** An inline function is new each render, so a memoized component redraws. Hoist it, or use useCallback if it reads props.
 
-**Example.** A Fetch component loads a URL and calls your function with the data. One screen draws a list and another a count badge, with no copied loading code. Adding mouse tracking and window size makes three nested callbacks, which reads as three levels of indentation; as hooks it is three lines in a row. The inline function costs you too. A parent that updates 10 times a second creates 10 new functions a second, so a memoized Fetch redraws 10 times a second instead of once. Defining the function outside the parent keeps one reference, and Fetch redraws only when its data changes.
+**Example.** A Fetch component loads a URL and calls your function with the data. One screen draws a list, another a count badge. Adding mouse tracking and window size makes three nested callbacks; as hooks it is three lines in a row. The inline function costs you too. Say a parent updates 10 times a second (an illustrative rate). Each update creates a new function, so a memoized Fetch re-renders 10 times a second instead of only when its own props or state change. If the function needs nothing from the parent, define it outside the parent to keep one reference. If it reads parent state or props, wrap it in useCallback with those values as dependencies.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="The behavior component computes state and hands it to a caller-supplied render function, which returns the UI — so behavior and view stay decoupled."
+```mermaid caption="The behavior component computes state and passes it to a caller-supplied function, which returns the UI."
 flowchart LR
     B["Behavior component<br/>owns & computes state"] -->|"calls render(state)"| F["render function<br/>(supplied by caller)"]
     F -->|"returns UI"| U["Rendered output"]
@@ -44,7 +44,7 @@ flowchart LR
 
 - **Render prop / function-as-child** — A prop whose value is a function that receives the state and returns markup. When that prop is `children`, the call site reads as nested JSX — the "function as a child" idiom — but it is the same mechanism.
 - **Higher-Order Component (HOC)** — Instead of calling a function you pass in, a function wraps your component and injects the behavior as extra props. The logic reuse is the same; the wiring happens at composition time rather than at render time.
-- **Hooks** — The modern replacement. A custom hook extracts the same stateful logic into a plain function call inside the component, with no wrapper component and no nesting. Preferred for most new code.
+- **Hooks** — A custom hook extracts the same stateful logic into a plain function call inside the component, with no wrapper component and no nesting.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -60,10 +60,10 @@ flowchart LR
 ### Cons
 <!--meta polarity=con-->
 
-- **Wrapper hell** — combining several render props nests callbacks until the JSX is hard to read. Past two levels, move the logic into hooks.
+- **Wrapper hell** — combining several render props nests callbacks until the JSX is hard to read. As a rule of thumb, move the logic into hooks past two levels; each team sets its own limit.
 - **Obscured value origins** — a value named in a callback parameter is hard to trace back to the component that produced it. Name the parameters after what they carry.
 - **Hooks now supersede it** — they express the same reuse without nesting, so new code rarely needs the pattern. Keep it where a hook cannot reach, such as a class component.
-- **Inline function is a new value on every render** — a shallow prop comparison never matches and memoization on the behavior component stops paying. Hoist the function to a stable reference if that memoization matters.
+- **Inline function is a new value on every render** — a shallow prop comparison never matches and memoization on the behavior component stops paying. Hoist the function to a stable reference if it reads nothing from the parent; otherwise wrap it in useCallback.
 
 ## When to use it
 <!--meta block=usage-->
@@ -80,7 +80,7 @@ flowchart LR
 
 - **A hook expresses the same reuse more simply** — the case for most new code.
 - **Several render props would nest deeply** — into unreadable wrapper hell.
-- **The render function needs a performance budget** — a memoized child below a render prop cannot skip work when the function changes on every render.
+- **The render function needs a performance budget** — a memoized behavior component receives an inline function, a new prop on every render, so the memo never skips work.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -129,30 +129,30 @@ function Settings() {
 
 - **Prop name** — A named prop such as render, or children as a function. A named prop reads clearer when a component takes more than one.
 - **What the function receives** — One object of state and callbacks, or separate arguments. One object lets you add fields without breaking callers.
-- **Reference stability of the function** — Inline at the call site or hoisted. Hoisting keeps memoization on the behavior component working.
-- **Nesting depth you allow** — The level of render-prop nesting at which the team moves logic into hooks.
+- **Reference stability of the function** — Inline at the call site or hoisted. Hoisting keeps memoization on the behavior component working; use useCallback when the function reads props or state.
+- **Nesting depth you allow** — The level of render-prop nesting at which the team moves logic into hooks. Start at two levels, as in the checklist, and raise it only if the team accepts the readability cost.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Re-renders of the behavior component** — Count of renders per parent update in a render profiler, shown against what changed.
+- **Re-renders of the behavior component** — Count of renders per parent update in a render profiler. A memoized component that renders with unchanged props points to a changing function reference.
 - **Nesting depth in JSX** — Levels of function children in one tree. Past two, readability falls.
 - **Hook-replaceable uses** — Render-prop uses in function components that a hook could replace with no nesting.
-- **Bundle of wrapper components** — Number of render-prop wrapper components in the React tree, visible in dev tools.
+- **Wrapper components in the tree** — Number of render-prop wrapper components in the React tree, visible in dev tools.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **New function every render** — The inline function breaks shallow comparison, so memoized children re-render. Hoist it.
+- **New function every render** — The inline function breaks shallow comparison, so a memoized behavior component re-renders. Hoist it if it reads nothing from the parent, otherwise wrap it in useCallback.
 - **Wrapper hell** — Several render props nest into a pyramid of callbacks that hides where each value came from.
-- **Lost typing** — The callback parameter has no type and a misuse is not caught until run time. Type the render function.
-- **Hidden coupling** — The render function relies on fields in the state object, so a change to those fields breaks callers silently.
+- **Lost typing** — In untyped code the callback parameter has no type and a misuse is not caught until run time. Type the render function.
+- **Hidden coupling** — The render function relies on fields in the state object, so a change to those fields breaks callers silently. Share one type for the state object so a change fails the type check.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - The function's parameter is typed and named for what it carries
-- Call sites with memoized children use a stable function reference
+- Call sites with a memoized behavior component use a stable function reference
 - No render-prop nest goes deeper than two levels
 - Function components that can use a hook do so instead
 
