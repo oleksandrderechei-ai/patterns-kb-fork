@@ -280,6 +280,7 @@ async function relayOnce(db: Db, webhooks: WebhookSender) {
 **Prevents**
 
 - [Dual-Write Inconsistency](../../../hazards/dual-write-inconsistency.md) — Removes the second write, so nothing is lost in the gap
+- [Distributed Monolith](../../../hazards/distributed-monolith.md) — Publishing atomically with the state change lets a caller send an event instead of waiting on a synchronous call, so the chain can go.
 
 **Exposed to**
 

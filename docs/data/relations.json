@@ -12867,6 +12867,13 @@
       "b": "load-shedding",
       "note_a": "The breaker guards a caller against a sick callee; shedding guards a server against its own saturation.",
       "note_b": "Shedding refuses by measured saturation; a breaker stops calling what already failed."
+    },
+    {
+      "a": "outbox",
+      "verb": "prevents-hazard",
+      "b": "distributed-monolith",
+      "note_a": "Publishing atomically with the state change lets a caller send an event instead of waiting on a synchronous call, so the chain can go.",
+      "note_b": "Writing the event and the state change in one local transaction is what lets a service publish instead of call, so the synchronous chain can go."
     }
   ],
   "group_order": {
