@@ -12951,6 +12951,13 @@
       "b": "immutability",
       "note_a": "A record DTO with readonly fields set once at construction cannot drift after it is built",
       "note_b": "A DTO is the everyday carrier that is built once and never changed"
+    },
+    {
+      "a": "front-controller",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Special cases accrue in the one dispatcher until it is the class that does everything",
+      "note_b": "A front controller that takes every route's special case becomes the same class"
     }
   ],
   "group_order": {
