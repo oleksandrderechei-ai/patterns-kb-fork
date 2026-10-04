@@ -16,7 +16,7 @@ Wraps an object in another that shares its interface — layering new behavior o
 ## What it is
 <!--meta block=description-->
 
-A decorator wraps an object of the same interface, forwards calls to it and adds behaviour before or after, so callers cannot tell the wrapper from the original. It adds responsibilities to single objects at run time, such as logging, buffering, compression or access checks, without a subclass for every combination of features. Choose it when each layer wraps the call; use a chain of responsibility when only one handler should act.
+Optional features such as logging, buffering, compression or encryption combine many ways, and a subclass for each combination multiplies classes. A decorator wraps one object of the same interface at run time, forwards each call and adds behaviour before or after, so callers using the interface cannot tell the wrapper from the original. Choose it when each layer wraps the call; use a [chain of responsibility](../behavioral/chain-of-responsibility.md) when only one handler should act, and a [proxy](./proxy.md) to control access.
 
 ## Explained
 <!--meta block=explain-->
@@ -49,8 +49,9 @@ classDiagram
 
 - **Transparent (interface-preserving)** — The classic form: the wrapper exposes exactly the wrapped interface, so it stays [substitutable](../../../principles/liskov-substitution.md) and stackable and callers never change.
 - **Function / higher-order decorator** — Wrap a function in another function instead of an object — memoize, throttle, retry, or time a call. Same idea, no class hierarchy needed.
-- **Language-level decorators** — Python `@decorator` syntax and TypeScript/Java annotations augment a declaration at definition time. Related in spirit, but they rewrite the target rather than wrap a live instance.
+- **Language-level decorators** — Python `@decorator` syntax and TypeScript decorators apply a function to a declaration once, at definition time, and often return a wrapper. A Java annotation only marks a declaration for a framework or tool to act on. Related in spirit, but they act on a declaration, not on a live instance.
 - **Stackable, order-sensitive** — Several wrappers compose into a pipeline where order is significant — compress-then-encrypt behaves differently from encrypt-then-compress.
+- **Extending decorator** — The wrapper adds methods beyond the wrapped interface, as `DataInputStream` adds typed reads and `lru_cache` adds `cache_info()`. Callers that use the extras hold the decorator type, so the wrapper is no longer a drop-in substitute.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -67,10 +68,10 @@ classDiagram
 <!--meta polarity=con-->
 
 - **A deep stack of thin wrappers** is hard to trace — one call passes through many layers.
-- **The order you stack the wrappers in matters**, and it's easy to get wrong.
+- **The order you stack wrappers in** changes the result, and a wrong order raises no error. Build the stack in one named function and test its output.
 - **Identity breaks**: a wrapped object is no longer the original, so `===` and type checks fail.
 - **Lots of tiny classes**, and the base wrapper has to forward every method faithfully.
-- **A wrapper can't be pulled out** of the middle of a stack once it's built — dropping one means reassembling the chain from the bottom, wherever the wiring lives.
+- **A wrapper cannot be removed** from the middle of a built stack. Removing one means rebuilding every wrapper outside it.
 
 ## When to use it
 <!--meta block=usage-->
@@ -114,10 +115,10 @@ abstract class SourceDecorator implements DataSource {
 // A concrete wrapper: transform on the way in, undo it on the way out.
 class Base64Source extends SourceDecorator {
   read(): string { return atob(this.inner.read()); }         // decode when reading
-  write(data: string): void { this.inner.write(btoa(data)); } // encode when writing
+  write(data: string): void { this.inner.write(btoa(data)); } // encode when writing (btoa takes Latin-1 text only)
 }
 
-// Stack wrappers freely; the caller still sees a plain DataSource.
+// Wrappers stack, and their order changes the result; the caller still sees a plain DataSource.
 const source: DataSource = new Base64Source(new InMemorySource());
 source.write("secret");   // stored encoded
 source.read();            // "secret" — the encoding is invisible to the caller
@@ -136,7 +137,7 @@ source.read();            // "secret" — the encoding is invisible to the calle
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Wrapping order** — The order of decorators changes the result, such as compress then encrypt versus the reverse.
+- **Wrapping order** — Which wrapper acts first on a write. Put compress before encrypt, because encrypted data does not shrink.
 - **Where the stack is built** — In one factory or at the composition root, so callers receive a ready stack.
 - **Interface width** — A wide interface forces every decorator to forward many methods.
 - **Which decorators are optional** — Those switched on by config or by feature flag.
@@ -156,6 +157,7 @@ source.read();            // "secret" — the encoding is invisible to the calle
 - **Forgotten forward** — A new method on the interface is added and one decorator does not forward it, so behavior is silently lost.
 - **Identity loss** — Equality and type checks fail on a wrapped object.
 - **Resource ownership** — Closing the outer wrapper does not close the inner one, or closes it twice.
+- **Shared state** — A buffering or caching wrapper reused across threads races on its own buffer or cache, and loses unflushed data if the stack is dropped without close. Flush on close, and guard it or build one stack per request.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -193,8 +195,8 @@ source.read();            // "secret" — the encoding is invisible to the calle
 **Often confused with**
 
 - [Proxy](./proxy.md) — Add behavior vs. control access — same shape
-- [Composite](./composite.md) — Both wrap recursively; intent differs
 - [Adapter](./adapter.md) — Same wrapping shape, different intent
-- [Chain of Responsibility](../behavioral/chain-of-responsibility.md) — Always augment and forward vs. maybe handle and halt
+- [Composite](./composite.md) — Both wrap recursively; a decorator adds behaviour to one wrapped object, a composite combines many children
+- [Chain of Responsibility](../behavioral/chain-of-responsibility.md) — Layers behaviour on a call and normally forwards it, vs. a handler that may deal with the request and stop
 
 <!-- relationships:end -->

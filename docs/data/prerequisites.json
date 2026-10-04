@@ -65,7 +65,7 @@
       "definition": "Tree structures — treat parts and wholes alike",
       "route": "/patterns/gof/structural/composite.html",
       "requires": [],
-      "related": ["iterator", "visitor", "atomic-design", "flyweight", "interpreter", "chain-of-responsibility", "decorator", "specification"]
+      "related": ["iterator", "visitor", "atomic-design", "flyweight", "interpreter", "chain-of-responsibility", "specification", "decorator"]
     },
     {
       "id": "decorator",
@@ -73,7 +73,7 @@
       "definition": "Attaches behavior without changing the class",
       "route": "/patterns/gof/structural/decorator.html",
       "requires": [],
-      "related": ["proxy", "composite", "adapter", "chain-of-responsibility", "open-closed", "composition-over-inheritance", "render-props", "liskov-substitution"]
+      "related": ["proxy", "adapter", "open-closed", "composition-over-inheritance", "render-props", "liskov-substitution", "composite", "chain-of-responsibility"]
     },
     {
       "id": "facade",
@@ -89,7 +89,7 @@
       "definition": "Shares state to support huge numbers of objects",
       "route": "/patterns/gof/structural/flyweight.html",
       "requires": [],
-      "related": ["factory-method", "object-pool", "composite", "interpreter", "state"]
+      "related": ["factory-method", "object-pool", "composite", "interpreter", "state", "immutability"]
     },
     {
       "id": "proxy",
@@ -105,7 +105,7 @@
       "definition": "Passes a request along a chain of handlers",
       "route": "/patterns/gof/behavioral/chain-of-responsibility.html",
       "requires": [],
-      "related": ["command", "composite", "decorator", "intercepting-validator", "front-controller"]
+      "related": ["command", "composite", "intercepting-validator", "front-controller", "decorator"]
     },
     {
       "id": "command",
@@ -1769,7 +1769,7 @@
       "definition": "Never mutate — always return new data",
       "route": "/patterns/functional/immutability.html",
       "requires": [],
-      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "builder"]
+      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "builder", "flyweight"]
     },
     {
       "id": "lens-optics",

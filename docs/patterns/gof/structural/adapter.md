@@ -16,7 +16,7 @@ Wraps a class you can't change in the interface a client already speaks — so t
 ## What it is
 <!--meta block=description-->
 
-An adapter is a class that implements the interface a client expects and forwards each call to an object with an incompatible interface, such as a vendor SDK or legacy module. It translates names, argument shapes and return values behind the interface, so you reconcile two sides that neither of you can change.
+Calling a vendor SDK or legacy module directly spreads its method names, argument shapes and return values through every caller, and neither side can change to fit the other. An adapter is a class that implements the interface your client expects and forwards each call to the object whose interface is incompatible, translating names, argument shapes and return values. The mismatch then stops in one class, so a vendor change touches the adapter and not every caller.
 
 ## Explained
 <!--meta block=explain-->
@@ -27,7 +27,7 @@ An adapter is a small class that offers the interface your code expects and tran
 - **Sprawl.** One adapter per vendor is a boundary, one per class is a second codebase, so keep each thin.
 - **Fat adapters.** An adapter collects business rules, which belong in your own code.
 
-**Example.** Your app calls pay(amountCents). A vendor SDK wants charge(dollars, currency) and throws an exception on a decline, while your code expects a result with a failure flag. The adapter converts 4,250 cents to 42.50 dollars, adds a currency, and catches the exception into a failed result. A first version divides by 100 using integer division, so 4,250 cents becomes 42 dollars and 50 cents go missing. A test with 4,250 cents catches it. The cost shows later: when the vendor adds a timeout error, the adapter must map it too, or callers see an exception they have never handled.
+**Example.** Your app calls pay(amountCents). A vendor SDK wants charge(dollars, currency) and returns a status of ok or declined, while your code expects a call that either returns a reference or raises one payment error. The adapter converts 4,250 cents to 42.50 dollars, adds a currency, and turns a declined status into that error. A first version divides by 100 using integer division, so 4,250 cents becomes 42 dollars and 50 cents go missing. A test with 4,250 cents catches it. The cost shows later: when the vendor adds a timeout error, the adapter must map it too, or callers see an exception they have never handled.
 
 ## How it works
 <!--meta block=structure-->
@@ -43,7 +43,7 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Object adapter** — Holds the adaptee by reference and delegates through composition — flexible, and the same adapter works for any subtype of the adaptee.
-- **Class adapter** — Inherits from both the target and the adaptee at once. Needs multiple inheritance and binds tightly to one concrete adaptee, so it's rarer in practice.
+- **Class adapter** — Inherits from the target and the adaptee at once, which needs multiple inheritance only when the target is a class rather than an interface. It binds tightly to one concrete adaptee, so it's rarer in practice.
 - **Two-way adapter** — Implements both interfaces, so the object is usable as either type — handy when two subsystems each expect the other's shape.
 - **Default (interface) adapter** — Supplies empty implementations of a wide interface so subclasses override only the few methods they care about — the shape behind Java's `MouseAdapter`.
 
@@ -54,7 +54,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Makes two classes with mismatched interfaces work together** — without editing either one's code.
-- **Keeps all the conversion logic in one place**, so your own code never has to deal with vendor quirks.
+- **Keeps all the conversion logic in one place**, so vendor quirks stop at the adapter as long as its mapping covers them.
 - **Lets you reuse legacy or third-party code** behind an interface your team already knows.
 - **Easy to swap**: a different backend just needs a new adapter, and calling code stays untouched.
 
@@ -62,7 +62,7 @@ flowchart LR
 <!--meta polarity=con-->
 
 - **Adds an extra class in the middle** that has to stay in step with both interfaces.
-- **When the two sides differ deeply**, the translation turns awkward and lossy behind a tidy-looking method.
+- **When the two sides differ in errors, timeouts or missing values**, the translation loses meaning behind a clean-looking method, so write down each mapping and test it.
 - **Leaning on it too much** hides real design mismatches that should be fixed at the source.
 - **A fat adapter tends to collect business logic** that has no place in a translator.
 
@@ -122,7 +122,7 @@ const { reference } = await processor.pay(2500);
 
 - **java.io.InputStreamReader** — Implements the character-oriented Reader over a byte-oriented InputStream; the constructor takes a Charset or charset name and an internal CharsetDecoder translates bytes to chars as they are pulled through. {#wild-java-inputstreamreader}
 - **java.util.Arrays.asList** — Returns a fixed-size List view backed by the original array — set() writes through to the array, but add() and remove() throw UnsupportedOperationException because the backing store cannot resize. {#wild-arrays-aslist}
-- **SLF4J** — Application code calls the SLF4J API; a binding on the classpath (logback-classic, slf4j-log4j12, slf4j-jdk14) adapts it to the underlying logger, while bridge modules (log4j-over-slf4j, jcl-over-slf4j) adapt legacy logging APIs back onto SLF4J. {#wild-slf4j}
+- **SLF4J** — Application code calls the SLF4J API; a binding on the classpath such as slf4j-jdk14 adapts it to the underlying logger, while bridge modules (log4j-over-slf4j, jcl-over-slf4j) adapt legacy logging APIs back onto SLF4J. {#wild-slf4j}
 
 ## In production
 <!--meta block=production-->
@@ -141,7 +141,7 @@ const { reference } = await processor.pay(2500);
 - **Adaptee types outside the adapter** — Imports of the adapted library in code that should see only the target interface.
 - **Adapter latency** — Time spent in conversion, from a trace.
 - **Mapping gaps** — Adaptee features the adapter drops or cannot express.
-- **Adapter test count** — Contract tests that run against the adapter and against a fake.
+- **Adaptee version drift** — The adapted library's version has changed since the contract tests last passed.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -192,7 +192,7 @@ const { reference } = await processor.pay(2500);
 - [Decorator](./decorator.md) — Same wrapping shape, different intent
 - [Gateway](../../enterprise/gateway.md) — Wrap an external system vs. convert an interface
 - [Message Translator](../../messaging/message-translator.md) — Reshape a message vs. convert an interface
-- [Proxy](./proxy.md) — Changes one interface into the one the client expects
+- [Proxy](./proxy.md) — Convert an interface vs. keep the same interface and control access
 
 **Prevents**
 

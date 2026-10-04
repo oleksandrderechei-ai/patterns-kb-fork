@@ -7325,13 +7325,6 @@
       "note_b": "Add behavior vs. control access — same shape"
     },
     {
-      "a": "composite",
-      "verb": "often-confused-with",
-      "b": "decorator",
-      "note_a": "Both wrap recursively; intent differs",
-      "note_b": "Both wrap recursively; intent differs"
-    },
-    {
       "a": "adapter",
       "verb": "often-confused-with",
       "b": "decorator",
@@ -7344,13 +7337,6 @@
       "b": "adapter",
       "note_a": "Wrap an external system vs. convert an interface",
       "note_b": "Wrap an external system vs. convert an interface"
-    },
-    {
-      "a": "chain-of-responsibility",
-      "verb": "often-confused-with",
-      "b": "decorator",
-      "note_a": "One handler may stop the request; a decorator always passes it on",
-      "note_b": "Always augment and forward vs. maybe handle and halt"
     },
     {
       "a": "adapter",
@@ -9943,13 +9929,6 @@
       "note_b": "Fan-out is the send half of scatter-gather, which then adds a collect and merge step"
     },
     {
-      "a": "adapter",
-      "verb": "often-confused-with",
-      "b": "proxy",
-      "note_a": "Changes one interface into the one the client expects",
-      "note_b": "Keeps the same interface as the real object and controls access to it"
-    },
-    {
       "a": "event-sourcing",
       "verb": "often-confused-with",
       "b": "change-data-capture",
@@ -12134,13 +12113,6 @@
       "note_b": "A service layer tends to collect every use case into one manager class"
     },
     {
-      "a": "facade",
-      "verb": "exposed-to",
-      "b": "god-object",
-      "note_a": "Can fall into god object when a facade that starts holding state or logic becomes the same class",
-      "note_b": "A facade that starts holding state or logic becomes the same class"
-    },
-    {
       "a": "microservices",
       "verb": "exposed-to",
       "b": "golden-hammer",
@@ -12916,6 +12888,41 @@
       "b": "builder",
       "note_a": "A builder assembles a many-field immutable object before it is frozen",
       "note_b": "The steps mutate the builder; build() hands back one immutable product"
+    },
+    {
+      "a": "adapter",
+      "verb": "often-confused-with",
+      "b": "proxy",
+      "note_a": "Convert an interface vs. keep the same interface and control access",
+      "note_b": "Keeps the same interface as the real object and controls access to it"
+    },
+    {
+      "a": "composite",
+      "verb": "often-confused-with",
+      "b": "decorator",
+      "note_a": "Both wrap recursively; a composite combines many children, a decorator adds behaviour to one wrapped object",
+      "note_b": "Both wrap recursively; a decorator adds behaviour to one wrapped object, a composite combines many children"
+    },
+    {
+      "a": "chain-of-responsibility",
+      "verb": "often-confused-with",
+      "b": "decorator",
+      "note_a": "One handler may stop the request; a decorator normally passes it on, though a cache or check can stop it too",
+      "note_b": "Layers behaviour on a call and normally forwards it, vs. a handler that may deal with the request and stop"
+    },
+    {
+      "a": "immutability",
+      "verb": "combines-with",
+      "b": "flyweight",
+      "note_a": "Flyweight puts one never-changed copy behind many objects",
+      "note_b": "The shared part is read-only, so one copy can serve every object"
+    },
+    {
+      "a": "facade",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "Can fall into god object when a facade starts holding state or logic and grows into one class that everything leans on",
+      "note_b": "A facade that starts holding state or logic grows into one class that everything leans on"
     }
   ],
   "group_order": {

@@ -188,6 +188,7 @@ Object.freeze(v1);
 - [Functor](./functor.md) — Every map yields a fresh container instead of mutating
 - [Make Illegal States Unrepresentable](../../principles/make-illegal-states-unrepresentable.md) — An immutable value stays as valid as it was when built
 - [Builder](../gof/creational/builder.md) — A builder assembles a many-field immutable object before it is frozen
+- [Flyweight](../gof/structural/flyweight.md) — Flyweight puts one never-changed copy behind many objects
 
 **Alternative to**
 

@@ -185,6 +185,6 @@ chain.review({ employee: "Mara", amountUsd: 4_200 });
 
 **Often confused with**
 
-- [Decorator](../structural/decorator.md) — One handler may stop the request; a decorator always passes it on
+- [Decorator](../structural/decorator.md) — One handler may stop the request; a decorator normally passes it on, though a cache or check can stop it too
 
 <!-- relationships:end -->

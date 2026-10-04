@@ -82,6 +82,6 @@ Expect the old class to survive as a facade that forwards to the new ones. That 
 **Threatens**
 
 - [Service Layer](../patterns/enterprise/service-layer.md) — A service layer tends to collect every use case into one manager class
-- [Facade](../patterns/gof/structural/facade.md) — A facade that starts holding state or logic becomes the same class
+- [Facade](../patterns/gof/structural/facade.md) — A facade that starts holding state or logic grows into one class that everything leans on
 
 <!-- relationships:end -->
