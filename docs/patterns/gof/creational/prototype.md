@@ -15,7 +15,7 @@ Builds a new object by copying a fully-formed example — cloning a configured i
 ## What it is
 <!--meta block=description-->
 
-The prototype pattern creates a new object by copying an existing one. The client asks an example for a clone and gets the right concrete type without naming its class. It fits objects that are costly to build, such as after a database read or a parse, and cases where the class is known only at run time. It replaces a factory subclass per variant.
+Building every object from scratch repeats a costly database read or parse, and a [factory subclass](factory-method.md) per variant adds a class for each one. A prototype creates a new object by copying an existing example, so the client asks it for a clone and gets the right concrete type without naming its class. Variants become examples you register at run time, which suits a class chosen only then.
 
 ## Explained
 <!--meta block=explain-->
@@ -49,8 +49,8 @@ classDiagram
 
 - **Shallow vs. deep clone** — A shallow copy shares nested references; a deep copy duplicates the whole object graph. The right choice depends on which state must be independent.
 - **Prototype registry** — A named manager holds ready-made prototypes so clients fetch and clone by key — variants become data you can register at runtime.
-- **Copy constructor** — Instead of a `clone()` method, a constructor that takes an instance of the same class and copies its fields — idiomatic in C++ and often in TypeScript.
-- **Serialize-and-rebuild** — Round-trip through a serialized form (JSON, binary) to produce a fully detached deep copy without hand-writing per-field logic.
+- **Copy constructor** — Instead of a `clone()` method, a constructor that takes an instance of the same class and copies its fields; it is idiomatic in C++. The caller must name the class, so a `clone()` method that calls the constructor is what lets a client copy without naming it.
+- **Serialize-and-rebuild** — Round-trip through a serialized form (JSON, binary) to produce a detached deep copy without hand-writing per-field logic. JSON drops methods and the class, turns dates into strings and throws on cycles, so rebuild the typed object after reading.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -66,10 +66,10 @@ classDiagram
 ### Cons
 <!--meta polarity=con-->
 
-- **Deep-copying object graphs with cycles or shared resources** is error-prone.
-- **Every type has to implement** its own clone correctly, or copies come out half-built.
-- **A clone can quietly duplicate references** you meant to share — or share ones you meant to duplicate.
-- **Mutable state carried into a clone** can tie it back to the original in subtle ways.
+- **Deep-copying object graphs with cycles or shared resources** is error-prone. Track visited objects while copying, or rule cycles out.
+- **Every type has to implement** its own clone correctly, or copies come out half-built. Test each clone against its original.
+- **A clone can duplicate references** you meant to share, or share ones you meant to duplicate. Decide per field which it is.
+- **Mutable state in the example**, such as an id, a timestamp or a cache, carries into the clone and ties it to the original. Reset those fields in the copy.
 
 ## When to use it
 <!--meta block=usage-->
@@ -84,7 +84,7 @@ classDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **Objects are cheap to build directly** and carry no heavy setup.
+- **Objects are cheap to build directly** and carry no heavy setup. Compare the time to build with the time to clone the same object; the pattern pays only when the clone is much cheaper, as with the goblin's 1 ms against 40 ms.
 - **Instances hold resources that can't be copied** — open sockets, file handles — so cloning is ambiguous.
 - **A plain factory or builder** says what you mean more clearly than "copy this one."
 
@@ -101,17 +101,17 @@ interface Style {
   readonly stroke: string;
 }
 
-// Configuring a styled shape is the expensive part; cloning skips it.
+// Setup is the expensive part. The registry entry below is built once; clone() copies the result.
 class Shape implements Cloneable<Shape> {
   constructor(
     public x: number,
     public y: number,
     public style: Style,
-    public points: readonly [number, number][] = [],
+    public points: readonly (readonly [number, number])[] = [],
   ) {}
 
   clone(): Shape {
-    // copy nested mutable state, not just its reference
+    // copy the mutable style and the points array; the readonly tuples are safe to share
     return new Shape(this.x, this.y, { ...this.style }, [...this.points]);
   }
 }
@@ -137,7 +137,7 @@ copy.x = 120;                  // the stored prototype is untouched
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Shallow or deep copy** — Which fields copy by reference and which by value. Deep copy is safe and costs more.
+- **Shallow or deep copy** — Which fields copy by reference and which by value. Copy what the clone will edit and share what is immutable. Deep copy isolates the clone but costs more time and memory, and duplicates resources meant to be shared.
 - **Copy method** — A copy constructor, a clone method, or a serialization round trip.
 - **Registry of prototypes** — Named prototypes held in one place, versus passing the instance to copy.
 - **Which fields reset on copy** — Identifiers, timestamps and caches that must not carry over.
