@@ -16,12 +16,12 @@ An object receives its collaborators from the outside instead of building or loo
 ## What it is
 <!--meta block=description-->
 
-Dependency injection passes an object its dependencies instead of letting it create them. A class declares what it needs, usually as an interface, and an outside party supplies the instance. Construction moves to one assembly point, the composition root, so you can swap a fake in a test or a vendor in production without editing the class.
+A class that builds its own database client or payment client cannot be tested without it and cannot swap vendors without an edit to working code. Dependency injection passes the object its dependencies instead: the class declares what it needs, usually as an interface, and an outside party supplies the instance. Construction moves to one assembly point, the composition root, so the class stays unaware of which implementation it gets.
 
 ## Explained
 <!--meta block=explain-->
 
-Dependency injection means a class receives the things it needs, such as a database client or a clock, from outside instead of creating them itself. One place, usually where the app starts and called the composition root, builds every object and wires them together. Choose it over building collaborators inside the class when they vary, such as real in production and fake in test, or one vendor against another, because a swap is then a wiring change and not an edit to working code. A missing piece also fails at startup, not in the middle of a request.
+Dependency injection means a class receives the things it needs, such as a database client or a clock, from outside instead of creating them itself. One place, usually where the app starts and called the composition root, builds every object and wires them together. Choose it over building collaborators inside the class when they vary, such as real in production and fake in test, or one vendor against another. A swap is then a wiring change, not an edit to working code. Prefer handing a dependency in over looking it up in a [service locator](service-locator.md), which hides what the class needs and fails only when the lookup runs. When you wire by hand or check bindings at build time, a missing piece fails at startup. A container that resolves bindings by reflection at run time may fail only on first use, so check its bindings at boot.
 
 - **Assembly layer.** A reflective container hides the concrete type and slows large startups, so wire by hand until the graph is big.
 - **Wide constructors.** A constructor with ten parameters means the class does too much, so split it.
@@ -61,16 +61,16 @@ flowchart LR
 
 - **A class no longer builds the things** it depends on, so you can swap in a different implementation without editing the class.
 - **Testing gets easy**: hand in fakes or mocks instead of the real services.
-- **All the wiring lives in one place** — the composition root — so the full object graph is easy to read and review.
+- **All the wiring lives in one place** with explicit registrations, the composition root, so the full object graph is easy to read and review; scanning or a container that hides bindings weakens that.
 - **Nudges each class to depend on interfaces** rather than concrete types, keeping it focused on its own behavior.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **Because objects are built elsewhere**, it takes more digging to see what a class actually runs against.
-- **Heavyweight DI containers add hidden "magic"**, wiring errors that only surface at runtime, and a learning curve.
+- **Reflection-based containers hide which type is bound**, take time to learn, and surface wiring errors only at runtime; compile-time generation such as Dagger, or a check at startup, moves those errors to the build or boot.
 - **Injecting too much** hides a design smell — a ten-parameter constructor means the class is doing too much.
-- **Hard to tell what is in use** — the extra indirection can make it hard to tell which concrete type is actually in use at any moment.
+- **Hard to tell what is in use** — The extra indirection hides which concrete type runs at a given moment, so wire at the entry-point composition root and trace the graph from the registrations alone.
 
 ## When to use it
 <!--meta block=usage-->
@@ -89,7 +89,7 @@ flowchart LR
 - **Wiring a tiny script through a container** costs more ceremony than it saves.
 - **The collaborator is a pure, predictable function** that never needs swapping out.
 
-Handing collaborators in keeps a class from quietly accumulating everything it touches — a guard against the [God Object](../../../hazards/god-object.md).
+Handing collaborators in makes a class that is accumulating everything it touches show up as a wide constructor, a prompt to split it before it becomes a [God Object](../../../hazards/god-object.md); it does not stop the growth.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -132,7 +132,7 @@ const underTest = new ReminderService(frozenClock, captureMailer);
 
 - **Spring Framework** — Its ApplicationContext is an IoC container that constructs and wires the entire Java bean graph. Bindings come from annotations (@Autowired, @Component) or explicit @Bean methods; bean scopes (singleton, prototype, request, session) are the primary lifetime knob, and constructor injection is the recommended style. {#wild-spring}
 - **Angular** — Ships a hierarchical injector: providers declared on the root, a module, or a component resolve services requested by constructor parameters. Child injectors inherit and can override parent providers, so scope follows the component tree. {#wild-angular}
-- **Dagger** — Generates the wiring code at compile time from @Inject and @Module annotations, so an unsatisfiable or cyclic dependency graph fails the build rather than the running app. Because there is no runtime reflection, resolution has effectively zero startup cost. {#wild-dagger}
+- **Dagger** — Generates the wiring code at compile time from @Inject and @Module annotations, so an unsatisfiable or cyclic dependency graph fails the build rather than the running app. Because there is no runtime reflection, resolution skips the reflection cost at startup; the objects are still built at run time. {#wild-dagger}
 
 ## In production
 <!--meta block=production-->
@@ -140,7 +140,7 @@ const underTest = new ReminderService(frozenClock, captureMailer);
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Binding lifetime / scope** — Each registration declares how long an instance lives — transient (new per resolution), scoped/per-request, or singleton. The wrong choice is the most common DI misconfiguration: a singleton holding a per-request dependency leaks state across requests.
+- **Binding lifetime / scope** — Each registration declares how long an instance lives — transient (new per resolution), scoped/per-request, or singleton. The wrong choice is a common DI misconfiguration: a singleton holding a per-request dependency leaks state across requests.
 - **Composition root placement** — The single point where the graph is wired. Keeping it at the application entry point (not scattered into libraries) determines whether wiring stays reviewable.
 - **Registration strategy** — Explicit per-type bindings versus assembly/classpath scanning that auto-registers by convention. Scanning cuts boilerplate but makes it harder to see what is actually bound.
 
@@ -149,12 +149,12 @@ const underTest = new ReminderService(frozenClock, captureMailer);
 
 - **Container startup / resolution time** — Time to build the graph at boot (or first resolution for lazy graphs). A large graph resolved eagerly shows up as slower cold start.
 - **Unsatisfied-dependency errors** — Count of runtime resolution failures — a binding is missing or ambiguous. Compile-time DI surfaces these at build instead.
-- **Captive-dependency / scope-mismatch reports** — A longer-lived object holding a shorter-lived one. Some containers can validate and report this; it manifests as stale or cross-request state.
+- **Captive-dependency / scope-mismatch reports** — A longer-lived object holding a shorter-lived one. Count the scope-validation errors the container reports at build or startup; any is a captive dependency, which otherwise shows as stale or cross-request state. If the container cannot validate, add a test that checks every singleton's constructor parameters against their registered lifetimes.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Captive dependency** — A singleton captures a scoped or transient dependency; the short-lived object never gets released or refreshed, leaking state or connections across requests.
+- **Captive dependency** — A singleton captures a scoped or transient dependency; the short-lived object never gets released or refreshed, leaking state or connections across requests. Give the holder the same or a shorter lifetime than what it holds, or inject a factory and resolve the short-lived object on each use.
 - **Runtime resolution error** — With reflection/runtime containers, a missing or ambiguous binding fails when the object is first resolved — often deep in a request path rather than at startup.
 - **Over-injection** — A constructor accumulates ten collaborators; the class is doing too much and the graph becomes slow and confusing to trace.
 
