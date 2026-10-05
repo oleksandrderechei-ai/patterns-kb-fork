@@ -20,14 +20,14 @@ No single replica can be trusted alone, and waiting for all of them stalls the s
 ## Explained
 <!--meta block=explain-->
 
-A quorum makes a read or write count only after enough copies of the data agree. With N copies, a write waits for W acknowledgements and a read asks R copies, and when W + R is greater than N, every read overlaps every write on at least one copy, so a read cannot miss the latest committed write. Choose it over trusting one copy or waiting for all copies when data must survive machine loss and one slow machine must not stop you. W and R become dials between fresh reads and fast writes.
+A quorum makes a read or write count only after enough copies of the data agree. With N copies, a write waits for W acknowledgements and a read asks R copies. When W + R is greater than N, every read overlaps every write on at least one copy, so a read cannot miss the latest committed write. Choose it over trusting one copy or waiting for all copies when data must survive machine loss and one slow machine must not stop you. W and R become dials between fresh reads and fast writes.
 
 - **Slowest copy sets latency.** Each operation waits on the slowest copy in its set. Pick W and R to fit your latency budget.
 - **Lost majority stops writes.** A partition leaving no side a majority halts writes. Spread copies across independent racks or zones.
-- **Silent stale reads.** W + R of N or less returns stale data without error. Alert on the setting.
+- **Silent stale reads.** W + R of N or less can return stale data without error. Alert on the setting.
 - **No ordering.** Overlap does not order concurrent writes. Add version numbers or a consensus protocol.
 
-**Example.** A key has N = 3 copies on A, B and C, with W = 2 and R = 2, so 2 + 2 is greater than 3. A write is acknowledged by A at 5 ms and B at 40 ms, so it commits at 40 ms. C is down and misses it. A later read asks B and C, gets version 5 from B and version 4 from C, and returns version 5. With W = 1 the same write commits at 5 ms, but R = 1 could read C and return version 4, since 1 + 1 is not greater than 3. W = 2 costs 35 ms more on every write.
+**Example.** A key has N = 3 copies on A, B and C, with W = 2 and R = 2, so 2 + 2 is greater than 3. A write is acknowledged by A at 5 ms and B at 40 ms, so it commits at 40 ms. C is down and misses it. A later read asks B and C, gets version 5 from B and version 4 from C, and returns version 5. With W = 1 the same write commits at 5 ms, but R = 1 could read C and return version 4, since 1 + 1 is not greater than 3. W = 2 costs 35 ms more than W = 1, varying per write.
 
 ## How it works
 <!--meta block=structure-->
@@ -84,7 +84,7 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Read/write quorum tuning (W + R > N)** — Pick W and R so they sum past N — e.g. N=3, W=2, R=2 — guaranteeing every read touches at least one replica that saw the latest write.
+- **Read/write quorum tuning (W + R > N)** — Pick W and R so they sum past N — e.g. N=3, W=2, R=2 — guaranteeing every read touches at least one replica that saw the latest write. Holds for strict quorums only; sloppy quorums and concurrent writes break it.
 - **Strict vs. sloppy quorum** — A strict quorum only counts the N designated replicas. A sloppy quorum accepts acks from any reachable node and hands the write off later (hinted handoff), trading strict consistency for availability during a partition.
 - **Majority vs. weighted quorum** — Classic majority gives every replica one vote. A weighted quorum assigns more votes to reliable or well-connected nodes, so the outcome doesn't hinge on a single flaky one.
 - **Flexible / asymmetric quorums** — Decouple the quorum used to elect a leader from the quorum used to replicate entries, as long as the two still intersect — shrink one and the other can grow, cutting latency on the hot path.
@@ -96,7 +96,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Tolerates minority failures without stopping** — up to floor((N-1)/2) nodes can be down or partitioned.
+- **Tolerates minority failures without stopping** — with majority quorums, up to floor((N-1)/2) nodes can be down or partitioned; larger W or R tolerates fewer.
 - **No single node** is a single point of truth; a stale or bad replica gets outvoted.
 - **Consistency and availability are tunable** via W and R, not baked in as an all-or-nothing choice.
 - **Correctness rests on simple**, well-understood intersection math, not on trusting any one participant.
@@ -108,6 +108,7 @@ sequenceDiagram
 - **Adds write latency**: the request isn't done until W replicas answer, not one.
 - **Overlap alone gives no ordering** — concurrent conflicting writes still need versioning or a real consensus protocol.
 - **Changing cluster membership mid-flight is delicate**; quorum math assumes a known, stable N.
+- **W + R > N alone is not linearizable**: a write that failed on fewer than W replicas can still surface later, and reads racing a write can disagree. Pair quorum with a consensus log for linearizable reads.
 
 ## When to use it
 <!--meta block=usage-->
@@ -131,6 +132,7 @@ sequenceDiagram
 
 ```typescript summary="TypeScript — a minimal quorum write and read"
 // Write: resolve once W replicas acknowledge, without waiting for the rest
+// A rejected write may still sit on some replicas: callers must treat failure as unknown and retry idempotently.
 async function quorumWrite(replicas: ReplicaClient[], value: Versioned, w: number): Promise<void> {
   const n = replicas.length;
   return new Promise((resolve, reject) => {
@@ -159,8 +161,8 @@ const latest = await quorumRead(replicas, "x", 2);
 ## In the wild
 <!--meta block=wild-->
 
-- **Apache Cassandra** — Per-query consistency levels (ONE, QUORUM, LOCAL_QUORUM, ALL) let callers dial W and R against a keyspace's replication_factor, making W + R > N a runtime choice; LOCAL_QUORUM keeps the quorum inside one datacenter, and hinted handoff implements sloppy quorum during a partition. {#wild-cassandra}
-- **Raft** — A leader-based consensus algorithm: a single elected leader appends to a replicated log, and an entry commits only once a majority of members has persisted it. Terms and randomized election timeouts prevent split votes. It backs etcd, Consul, and TiKV. {#wild-raft}
+- **Apache Cassandra** — Per-query consistency levels (ONE, QUORUM, LOCAL_QUORUM, ALL) let callers dial W and R against a keyspace's replication_factor, making W + R > N a runtime choice; LOCAL_QUORUM keeps the quorum inside one datacenter, and hinted handoff replays missed writes later during a partition. {#wild-cassandra}
+- **Raft** — A leader-based consensus algorithm: a single elected leader appends to a replicated log, and an entry commits only once a majority of members has persisted it. Terms and randomized election timeouts make split votes rare. It backs etcd, Consul, and TiKV. {#wild-raft}
 - **etcd** — Kubernetes stores all cluster state here. Built on Raft, every write is committed only after a majority of members has it, so clusters are run with an odd membership (typically 3 or 5) to keep a clear majority and survive one or two node losses. {#wild-etcd}
 
 ## In production
@@ -171,7 +173,7 @@ const latest = await quorumRead(replicas, "x", 2);
 
 - **Replication factor N** — How many replicas hold each key. Larger N tolerates more failures but makes every quorum wider and slower, and quorum math assumes N is known and stable.
 - **Write / read quorum sizes (W, R)** — Per-operation consistency levels. W + R > N buys read-your-writes; shrinking one shifts latency and staleness onto the other. Set them for the guarantee you actually need, not the strongest available.
-- **Election timeout vs. heartbeat interval** — In leader-based consensus (Raft), the follower election timeout must sit comfortably above the leader heartbeat interval and network round-trip time (RTT), or followers time out and trigger needless elections.
+- **Election timeout vs. heartbeat interval** — In leader-based consensus (Raft), the follower election timeout must sit comfortably above the leader heartbeat interval and network round-trip time (RTT), or followers time out and trigger needless elections. Keep broadcast time well below election timeout, and election timeout well below mean time between failures.
 - **Strict vs. sloppy quorum (hinted handoff)** — Whether writes may be accepted by any reachable node and handed off later. Sloppy quorum keeps writing during a partition at the cost of temporary inconsistency and a hint backlog to drain afterward.
 
 ### Signals to watch
@@ -194,7 +196,7 @@ const latest = await quorumRead(replicas, "x", 2);
 <!--meta polarity=check-->
 
 - W + R > N holds for every consistency level a client is allowed to request
-- N is odd, so a majority always exists and split-brain has no tie
+- N is odd, so a clean two-way split always leaves one side with a majority and no tie; a split into three or more parts can still leave none
 - Election timeout is set well above heartbeat interval and worst-case network RTT
 - Membership changes are applied one node at a time, never by editing N mid-flight
 - Leader-change rate and unreachable-replica count are monitored with alerts
