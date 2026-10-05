@@ -50,7 +50,7 @@ flowchart LR
     classDef ext stroke-dasharray:4 4
 ```
 
-```mermaid caption="The service receives a message and its effects commit together, in the same local transaction. Only after commit does the service acknowledge, on the delivery it is holding. A crash before the ack leaves the message unacknowledged at the broker — the broker redelivers it, the inbox row identifies the duplicate, and the service acknowledges without re-applying anything."
+```mermaid caption="Crash before the ack and the broker redelivers; the inbox row marks the duplicate, and the service acknowledges without re-applying anything."
 sequenceDiagram
     autonumber
     participant MB as Broker
@@ -75,7 +75,7 @@ sequenceDiagram
 
 - **Synchronous processing** — The handler processes the message immediately, inside the same request. The message and result commit together. Fast and simple, but if processing is slow it blocks the connection and handler timeouts become hazardous.
 - **Deferred processing** — The handler writes the message to the inbox and returns immediately, delegating processing to a background job. The inbox row tracks progress; the job polls for unprocessed rows and applies them. Decouples latency and reduces timeout risk.
-- **Per-aggregate inbox** — Each aggregate (domain object) gets its own inbox table instead of a shared one. Ordering guarantees stay scoped to one aggregate's queue, and hot tables don't block each other.
+- **Per-aggregate inbox** — Each aggregate (domain object) gets its own inbox table instead of a shared one. This partitions dedup and polling and keeps hot tables from blocking each other; it does not order messages, so ordering still comes from the broker.
 - **[CDC (Change Data Capture)](./change-data-capture.md)** — A tool like Debezium tails the database's [write-ahead log](./write-ahead-log.md) and turns each inbox insert into a message to a processing topic or trigger, eliminating the processing poll.
 - **Broker-side deduplication** — Some brokers drop the duplicate for you inside a window — SQS (Simple Queue Service) FIFO (first in, first out) queues deduplicate on a message deduplication id over a five-minute interval. That covers a publisher that retried its send, but not a redelivery hours later and not a crash between applying the effect and acknowledging, so it narrows the receiver's job without removing it.
 
@@ -86,8 +86,8 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - **Solves the dual-write problem** from the receiving side with a single local ACID transaction — no distributed transaction coordinator needed.
-- **Guarantees at-least-once reception**: a message is never lost because the service crashed between receipt and acknowledgement.
-- **A redelivered message is recognised** by its recorded id and skipped, so its effects land once even while the broker keeps retrying.
+- **Guarantees at-least-once reception**: acknowledging only after the commit means a crash between receipt and acknowledgement leads to redelivery, not loss, provided the broker retries unacknowledged messages.
+- **A redelivered message is recognised** inside the retention window by its recorded id and skipped, so effects committed in that transaction land once even while the broker keeps retrying; effects outside it, such as a call to another service, still need idempotent handling.
 - **Works with any relational database and any broker**; it's a pattern, not a product.
 
 ### Cons
@@ -106,7 +106,7 @@ sequenceDiagram
 <!--meta polarity=when-->
 
 - **A service must receive** and reliably process messages from a broker or event stream.
-- **You need to guarantee** that a message is never lost or silently duplicated — and you can afford idempotent processing.
+- **A lost message or a repeated effect** costs you, and your handlers can be made safe to repeat.
 - **The database and the message** broker are separate systems with no shared transaction between them.
 
 ### Avoid when
@@ -180,7 +180,7 @@ async function onDelivery(db: Db, d: Delivery<VendorCallback>) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Handler timeout** — For synchronous processing, how long the broker waits before timing out and redelivering. Longer reduces redelivery pressure but risks losing the connection; shorter is safer but may cause false timeouts on slow processing. Deferred processing sidesteps this entirely.
+- **Handler timeout** — For synchronous processing, how long the broker waits before timing out and redelivering. Set it from the slowest handler runs you measure plus headroom, then check the broker redelivery rate after each change. Too short causes false redeliveries; too long risks a dropped connection. Deferred processing sidesteps this entirely.
 - **Broker visibility window** — How long the broker hides a received message before auto-redelivering if not acknowledged. Must be longer than handler latency + ack latency. Shorter windows create thrashing; longer windows tolerate brief outages.
 - **Processor poll interval** — For deferred processing, how often the background job scans for unprocessed rows. Shorter cuts end-to-end latency but raises steady read load; CDC sidesteps polling entirely.
 - **Dedup retention window** — How long a processed row is kept before a job deletes or archives it, which is exactly how late a duplicate can arrive and still be caught. Set it from the broker's maximum redelivery age, not from a round number of days.
@@ -188,7 +188,7 @@ async function onDelivery(db: Db, d: Delivery<VendorCallback>) {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Inbox backlog depth** — Count of rows with processed = false. Steady growth means the processor is not keeping up or handlers are failing.
+- **Inbox backlog depth** — Count of rows with processed = false, which exist only in deferred processing; synchronous rows are written already processed. Alert on the age of the oldest unprocessed row against your processing-latency target, not on count alone. Steady growth means the processor is not keeping up or handlers are failing.
 - **Processing latency** — Time between message arrival and processed = true. The end-to-end latency; dominated by handler latency and the processor poll interval.
 - **Handler error rate** — Failed processing attempts per interval. Rising errors stall the inbox and leave messages unacknowledged.
 - **Broker redelivery rate** — Messages the broker redelivered due to unacknowledged or visibility window timeout. High redelivery creates duplicate-detection pressure on the inbox and its handlers.
@@ -198,7 +198,7 @@ async function onDelivery(db: Db, d: Delivery<VendorCallback>) {
 
 - **Handler timeout cascade** — Slow processing → visibility window expires → broker redelivers → duplicate processing pressure → handler slower → more timeouts. Deferred processing breaks this cycle.
 - **Inbox backlog starvation** — Handler failures or a rejecting downstream service stall processing: in synchronous mode messages stay unacknowledged and broker redelivery pressure mounts; in deferred mode unprocessed rows pile up in the table.
-- **Idempotency key collision** — Two different messages carry the same id, from a sender's key-generation flaw or clock skew, and the second is dropped in silence — the one failure mode of this pattern that raises no error anywhere.
+- **Idempotency key collision** — Two different messages carry the same id, from a flaw in the sender's key generation, and the second is dropped with no error. A duplicate arriving after its row was cleaned up re-applies its effect just as silently.
 - **Table bloat stalls polling** — Cleanup lags and the poll query scans millions of processed rows, driving its own latency up and worsening the backlog it was meant to drain.
 
 ### Readiness checklist
