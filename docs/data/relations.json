@@ -7129,13 +7129,6 @@
       "note_b": "Push dependencies in vs. pull them from a registry"
     },
     {
-      "a": "provider",
-      "verb": "alternative-to",
-      "b": "service-locator",
-      "note_a": "A provider is scoped and explicit where a service locator is a global lookup",
-      "note_b": "A service locator is the global-registry alternative to a scoped provider"
-    },
-    {
       "a": "dependency-injection",
       "verb": "alternative-to",
       "b": "monostate",
@@ -13154,6 +13147,48 @@
       "b": "race-condition",
       "note_a": "Two first callers both run the factory and build the value twice unless a once primitive guards it",
       "note_b": "Two first callers both run the factory, so the value is built twice"
+    },
+    {
+      "a": "container-presentational",
+      "verb": "combines-with",
+      "b": "separation-of-concerns",
+      "note_a": "Fetching and state live in the container, markup in the view: one reason to change each",
+      "note_b": "Container/presentational applies it to a component that fetches and draws"
+    },
+    {
+      "a": "mvp",
+      "verb": "often-confused-with",
+      "b": "container-presentational",
+      "note_a": "Presenter drives a passive view vs. a container feeding a pure-props view",
+      "note_b": "Both pull logic out of the view; this splits by who fetches, MVP by a presenter driving a view interface"
+    },
+    {
+      "a": "provider",
+      "verb": "alternative-to",
+      "b": "service-locator",
+      "note_a": "A provider is scoped to a subtree and swappable per subtree where a service locator is one global lookup",
+      "note_b": "A service locator is the global-registry alternative to a scoped provider"
+    },
+    {
+      "a": "flux",
+      "verb": "alternative-to",
+      "b": "provider",
+      "note_a": "A store with selectors suits fast-changing state; a provider suits values that change rarely",
+      "note_b": "Use a provider for rarely changing dependencies; fast-changing shared state belongs in a store"
+    },
+    {
+      "a": "atomic-design",
+      "verb": "combines-with",
+      "b": "dry",
+      "note_a": "Each tier applies don't repeat yourself (DRY) to user interface (UI) parts: a button or search field is written once",
+      "note_b": "Atomic design applies this to user interface (UI) parts, with a shared name for each tier"
+    },
+    {
+      "a": "atomic-design",
+      "verb": "prevents-hazard",
+      "b": "shotgun-surgery",
+      "note_a": "One shared atom turns a change that touched every screen into a single edit",
+      "note_b": "Shared atoms and molecules put a repeated UI part in one file, so one change lands once"
     }
   ],
   "group_order": {

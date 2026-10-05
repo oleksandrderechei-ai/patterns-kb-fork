@@ -21,14 +21,14 @@ One frontend codebase with one build makes every release the slowest team's rele
 ## Explained
 <!--meta block=explain-->
 
-Micro-frontends split one web interface into slices, each owned by one team, built on its own and released on its own, then put together in the browser or on the server. A slice is a whole vertical, with its own screens calling its own services, so cut by ownership, not by technology layer. The test is whether a slice can go out on a day nobody else releases; if not, it is a module, not a micro-frontend. Choose it over one shared front-end codebase when several teams block each other's releases and the slices follow real business areas, such as search, cart and account. With one or two teams the pipelines cost more than they save.
+Micro-frontends split one web interface into slices, each owned by one team, built on its own and released on its own, then put together in the browser or on the server. A slice (also called a fragment, or a remote in Module Federation) is a whole vertical, with its own screens calling its own services, so cut by ownership, not by technology layer. The test is whether a slice can go out on a day nobody else releases; if not, it is a module, not a micro-frontend. Choose it over one shared front-end codebase when several teams block each other's releases and the slices follow real business areas, such as search, cart and account. With one or two teams the pipelines cost more than they save.
 
 - **Duplicate libraries.** Each slice may ship its own copy of shared libraries, so load the framework once and pin its version.
 - **Version skew.** Slices built at different times must still work together, so version the events and URLs between them and test the set before release.
 - **Drifting look.** Slices diverge visually, so share a design system package.
 - **More to run.** Each slice adds a build and deploy, so share one pipeline template and agree a small standard.
 
-**Example.** A shop has 6 teams and one front-end build of 40 minutes, released every 2 weeks, because a broken change from any team blocks everyone. You split it into 6 slices. Each builds in 6 minutes and ships several times a day. If each slice bundles a 45 KB framework, a visitor downloads 6 x 45 = 270 KB of it instead of 45 KB. Loading the framework once as a shared module brings it back to 45 KB, but now all six teams must agree on one framework version, and upgrading it needs a joint plan.
+**Example.** A shop has 6 teams and one front-end build of 40 minutes, released every 2 weeks, because a broken change from any team blocks everyone. You split it into 6 slices, all shown on one page. Assume each builds in 6 minutes and ships several times a day. If each slice bundles its own 45 KB framework, a visitor downloads 6 x 45 = 270 KB of it instead of 45 KB. Loading the framework once as a shared module brings it back to 45 KB, but now all six teams must agree on one framework version, and upgrading it needs a joint plan.
 
 ## How it works
 <!--meta block=structure-->
@@ -44,11 +44,11 @@ flowchart TB
 ## Variations
 <!--meta block=variations-->
 
-- **Build-time integration** — Each slice is published as a versioned package and the shell pulls them in at build time. Simple and well-understood, but a slice update means rebuilding and redeploying the host — so you trade some independence for fewer moving parts at run time.
+- **Build-time integration** — Each slice is published as a versioned package and the shell pulls them in at build time. A slice update rebuilds and redeploys the host, so you trade independence for fewer moving parts at run time. By the test in the explain block, it counts as a micro-frontend only if the host redeploys automatically on each slice release; otherwise it is a module, so treat it as a first step.
 - **Run-time composition** — The shell loads slices at run time — most commonly via Module Federation, where one build imports code from another separately deployed build on demand. This preserves true independent deploys: a team ships its slice and the host picks it up without rebuilding.
-- **Isolation via iframes or web components** — Wrap each slice so its styles and scripts cannot leak into its neighbours. Iframes give the hardest boundary (separate document, separate globals) at the cost of communication friction; web components (custom elements with shadow DOM (Document Object Model)) give style/DOM isolation while staying in one page.
+- **Isolation via iframes or web components** — Wrap each slice so its styles cannot leak into its neighbours. Iframes give the hardest boundary, a separate document with separate globals, so scripts are isolated too, at the cost of slices talking only through messages. Web components (custom elements with shadow DOM (Document Object Model)) isolate styles and DOM only, so globals and script conflicts remain, but the slice stays in one page.
 - **Server-side / edge-side composition** — Assemble the fragments into one HTML response on the server or at the CDN (content delivery network) edge before it reaches the browser. Favours first-paint performance and search engine optimization (SEO), and keeps composition logic off the client.
-- **View-model composition** — Compose the data rather than the markup: each service contributes the part of a screen's view model it owns, and a composer merges the contributions at request time. The older, backend-driven form of the same instinct, and the one that fits when the screen is one page rather than a set of independently rendered regions. It keeps a single rendered document — so no style or bundle isolation problem — and moves the cost to the composer, which now needs a fan-out with a deadline and a decision about what to render when one contributor is slow.
+- **View-model composition** — Compose the data rather than the markup: each service contributes the part of a screen's view model it owns, and a composer merges the contributions at request time. This is the older, backend-driven form, and it fits when the screen is one page rather than a set of independently rendered regions. It keeps a single rendered document, so there is no style or bundle isolation problem. The cost moves to the composer, which needs a fan-out with a deadline and a decision about what to render when one contributor is slow.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -56,9 +56,9 @@ flowchart TB
 ### Pros
 <!--meta polarity=pro-->
 
-- **Independent deploys** — a team ships its slice on its own cadence without a coordinated release.
+- **Independent deploys** — with run-time composition, a team ships its slice on its own cadence without a coordinated release, within a tested version contract. Build-time integration still redeploys the host.
 - **Team autonomy**: clear ownership of a slice end to end, with its own pipeline and roadmap.
-- **Per-slice tech-stack freedom** — a slice can adopt or upgrade a framework without dragging the rest along.
+- **Per-slice tech-stack freedom** — a slice can adopt or upgrade a framework without dragging the rest along. Once a framework is shared at run time, its version is a joint decision.
 - **Supports incremental migration**: replace a legacy UI page by page instead of a big-bang rewrite.
 
 ### Cons
@@ -94,18 +94,19 @@ flowchart TB
 // webpack.config.ts — the shell/host consumes a remotely deployed slice
 import { container } from "webpack";
 const { ModuleFederationPlugin } = container;
-
+// One shared copy of each library, inside a pinned range; both builds use it.
+const dep = { singleton: true, requiredVersion: "^18.0.0" };
+const shared = { react: dep, "react-dom": dep };
 // Host: declare which remotes it pulls in at run time.
 export const hostConfig = {
   plugins: [
     new ModuleFederationPlugin({
       name: "shell",
       remotes: { cart: "cart@https://cart.example.com/remoteEntry.js" }, // the cart slice, its own deployment
-      shared: ["react", "react-dom"], // dedupe shared libs across slices
+      shared,
     }),
   ],
 };
-
 // Remote (the cart team's own build): expose a slice for hosts to import.
 export const cartConfig = {
   plugins: [
@@ -113,13 +114,12 @@ export const cartConfig = {
       name: "cart",
       filename: "remoteEntry.js",
       exposes: { "./Cart": "./src/Cart" },
-      shared: ["react", "react-dom"],
+      shared,
     }),
   ],
 };
-
-// In the shell, the remote is imported like any module — resolved at run time.
-const Cart = (await import("cart/Cart")).default;
+// In the shell, the remote is imported like any module; if it fails to load, render a fallback.
+const Cart = await import("cart/Cart").then((m) => m.default).catch(() => () => "Cart unavailable");
 ```
 
 ## In the wild
@@ -142,8 +142,8 @@ const Cart = (await import("cart/Cart")).default;
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Page weight and load time** — Total JavaScript sent per page and time to interactive, compared against the same screens before the split.
-- **Duplicate library copies** — How many copies of the framework a page loads. More than one means the shared setting is not working.
+- **Page weight and load time** — Total JavaScript sent per page and time to interactive, compared against the same screens before the split. Record both per screen before the split, set a regression budget from that baseline and alert when a page passes it.
+- **Duplicate library copies** — How many copies of the framework a page loads. More than one means either the sharing is misconfigured or a slice deliberately pins a different version; check which.
 - **Independent deploy rate** — How often each team ships without asking another team. If teams still release together, the boundary is wrong.
 - **Fragment failure rate** — How often a remote fails to load, counted per fragment in the shell.
 
@@ -152,14 +152,14 @@ const Cart = (await import("cart/Cart")).default;
 
 - **Version skew** — Fragments built against different versions of a shared library break each other at run time. Pin ranges and test the combinations.
 - **Visual drift** — Each team ships its own styles and the product looks stitched. Share a design system and tokens.
-- **Remote down** — A fragment fails to load and the page has a hole. The shell needs a fallback and a timeout per fragment.
+- **Remote down** — A fragment fails to load and the page has a hole. The shell needs a fallback and a timeout per fragment, set from that fragment's measured load time; alert when its failure rate passes an agreed budget.
 - **Split along the wrong seam** — A single user flow crosses three fragments, so every change needs three teams.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - Each fragment loads behind an error boundary with a fallback
-- The shell tests the actual combination of fragment versions it will ship
+- The shell tests the actual combination of fragment versions it will ship, including each remote version before it is promoted
 - Shared libraries and their version ranges are written down and checked in the build
 - One team owns the design tokens and the shell's cross-fragment events
 

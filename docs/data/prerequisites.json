@@ -217,7 +217,7 @@
       "definition": "A registry that hands back shared services on request",
       "route": "/patterns/gof/extra/service-locator.html",
       "requires": [],
-      "related": ["dependency-injection", "provider", "lazy-initialization", "singleton"]
+      "related": ["dependency-injection", "lazy-initialization", "singleton", "provider"]
     },
     {
       "id": "lazy-initialization",
@@ -361,7 +361,7 @@
       "definition": "A presenter mediates between passive view and model",
       "route": "/patterns/architecture/mvp.html",
       "requires": [],
-      "related": ["test-spy", "separation-of-concerns", "mvvm"]
+      "related": ["test-spy", "separation-of-concerns", "mvvm", "container-presentational"]
     },
     {
       "id": "mvvm",
@@ -1945,7 +1945,7 @@
       "definition": "Split the component that fetches from the one that renders",
       "route": "/patterns/frontend/container-presentational.html",
       "requires": [],
-      "related": ["provider", "mvvm", "render-props", "flux", "atomic-design"]
+      "related": ["provider", "mvvm", "render-props", "flux", "atomic-design", "separation-of-concerns", "mvp"]
     },
     {
       "id": "provider",
@@ -1953,7 +1953,7 @@
       "definition": "Push shared dependencies down the tree without prop-drilling",
       "route": "/patterns/frontend/provider.html",
       "requires": [],
-      "related": ["container-presentational", "service-locator"]
+      "related": ["container-presentational", "service-locator", "flux"]
     },
     {
       "id": "render-props",
@@ -1969,7 +1969,7 @@
       "definition": "Build the UI up from atoms through templates to whole pages",
       "route": "/patterns/frontend/atomic-design.html",
       "requires": [],
-      "related": ["composite", "composition-over-inheritance", "container-presentational", "micro-frontends"]
+      "related": ["composite", "composition-over-inheritance", "container-presentational", "micro-frontends", "dry"]
     },
     {
       "id": "flux",
@@ -1977,7 +1977,7 @@
       "definition": "Route all state changes through one unidirectional loop",
       "route": "/patterns/frontend/flux.html",
       "requires": [],
-      "related": ["observer", "command", "event-sourcing", "lens-optics", "container-presentational"]
+      "related": ["observer", "command", "event-sourcing", "lens-optics", "container-presentational", "provider"]
     },
     {
       "id": "micro-frontends",
@@ -2305,7 +2305,7 @@
       "definition": "Every piece of knowledge has one authoritative home in the system",
       "route": "/principles/dry.html",
       "requires": [],
-      "related": ["vertical-slice", "rule-of-three"]
+      "related": ["vertical-slice", "rule-of-three", "atomic-design"]
     },
     {
       "id": "kiss",
@@ -2401,7 +2401,7 @@
       "definition": "Divide a system so each part addresses one distinct concern, understood in isolation",
       "route": "/principles/separation-of-concerns.html",
       "requires": [],
-      "related": ["layered", "mvc", "kiss", "command-query-separation", "high-cohesion-low-coupling", "mvp"]
+      "related": ["layered", "mvc", "kiss", "command-query-separation", "high-cohesion-low-coupling", "mvp", "container-presentational"]
     },
     {
       "id": "encapsulation",

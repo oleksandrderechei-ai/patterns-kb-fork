@@ -88,6 +88,27 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   source-check: Hystrix and Ribbon status on `microservices`, VS Code Extension Host on
   `microkernel`. Wording first in line: `big-compute` production-failure-2 ("costs as much as
   the first half") and its filler words in structure, variations-item-4 and the description.
+- Left from the 2026-10-04 kb-improve run over `frontend` (edits a page groom may not make,
+  or that need a source): a hooks / custom-hook pattern page, so `render-props`,
+  `container-presentational` and the `frontend-architecture` decide row "Render props / hooks"
+  have a target for "use a hook instead"; edges the architects proposed with both notes
+  written but over the cap: `micro-frontends` combines-with `microservices`, exposed-to
+  `distributed-monolith`, combines-with `conways-law` and `vertical-slice`; `flux`
+  combines-with `immutability` (and memento as the snapshot route); `provider` prevents-hazard
+  `static-cling`; `atomic-design` combines-with `rule-of-three`; `container-presentational`
+  combines-with `decorator` for the HOC form; edge notes to reword by unlink+link:
+  `micro-frontends` / `api-gateway` (shell assembles, gateway fronts services), `flux` /
+  `lens-optics`, `atomic-design` / `composition-over-inheritance`, `container-presentational`
+  / `render-props` (name the hook), and the `render-props` / `strategy` verb (readers say
+  variant-of); `flux` prose link to `dry` is untyped. Needs a source before writing: a
+  Server Components variation on `container-presentational`; Vue `provide` of a plain value
+  not being reactive, and a store-backed provider variation, on `provider`; the React
+  Compiler clause and a hooks-inside-the-callback con on `render-props`, and its Downshift
+  `wild` entry to source-check; a scoped useReducer/Elm-style loop variation and a
+  selector/re-render con on `flux`; a link-based-navigation variation and the slow-fragment
+  cost on `micro-frontends` variations-item-4. Data edits: `atomic-design` fluency label in
+  `learning-paths.json` should carry the routing condition; its `solves` should catch
+  "rebrand means editing dozens of files", which routes to `shotgun-surgery` first today.
 
 ## Questions
 
