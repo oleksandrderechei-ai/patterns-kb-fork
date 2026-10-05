@@ -28,7 +28,7 @@ An outbox is a table in your own database where you write the message to be sent
 - **Growing table.** It sits on the write path. Delete sent rows and index the unsent ones.
 - **Order per key only.** Pick the key, such as the order id, on purpose.
 
-**Example.** A service takes 200 orders a second. For order 8812 it inserts the order row and an outbox row in one transaction. A relay polls every 500 ms for up to 100 unsent rows, publishes them and marks them sent. If it crashes after publishing but before marking, it publishes order 8812 again on restart, and the consumer sees message id 8812 already handled and skips it. The table gains 200 times 86,400, about 17.3 million rows a day, so a nightly job deletes sent rows older than a day, or the poll slows to a scan of dead rows.
+**Example.** A service takes 200 orders a second. For order 8812 it inserts the order row and an outbox row, with its own message id 55021, in one transaction. A relay polls every 500 ms for up to 100 unsent rows, publishes them and marks them sent. That ceiling is 200 rows a second, the write rate, so a burst grows the backlog; size batch or interval for peak load. If it crashes after publishing but before marking, it publishes message 55021 again on restart, and the consumer skips that id as already handled. The table gains 17.3 million rows a day, so a nightly job deletes sent rows older than a day, or the poll scans dead rows.
 
 ## How it works
 <!--meta block=structure-->
@@ -75,7 +75,7 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Polling relay** — A process periodically queries the outbox for unpublished rows and publishes them, marking or deleting each row once the broker has taken it. It sees only rows from committed transactions, so a rolled-back write publishes nothing, and ordering the scan by an on-row timestamp and sequence number delivers events in the order the service wrote them. Simple to build and reason about, at the cost of polling latency and steady read load on the table.
+- **Polling relay** — A process periodically queries the outbox for unpublished rows and publishes them, marking or deleting each row once the broker has taken it. It sees only committed rows, so a rolled-back write publishes nothing. Scanning in timestamp and sequence order gives write order only per aggregate key, and a transaction that commits late can still be passed over. Simple to build and reason about, at the cost of polling latency and steady read load on the table.
 - **Transaction log tailing ([change data capture (CDC)](./change-data-capture.md))** — A connector like Debezium tails the database's [write-ahead log](./write-ahead-log.md) or binlog directly and turns each outbox insert into a broker message with no polling and near-zero added latency.
 - **[Event Sourcing](../../architecture/event-sourcing.md)** — When every write is already an appended event, the event store doubles as the outbox — there's no separate table, because the write is the thing to publish.
 - **Shared vs. per-aggregate outbox table** — One outbox table serves the whole service, or each aggregate gets its own — the latter isolates hot tables and lets ordering guarantees stay scoped to one aggregate's stream.
@@ -87,7 +87,7 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - **Solves the dual-write problem** with a single local ACID transaction — no distributed transaction coordinator needed.
-- **Guarantees at-least-once delivery**: an event is never lost because the broker happened to be down at commit time.
+- **Gives at-least-once delivery** while the relay runs and unpublished rows are kept: a broker outage at commit time loses nothing, only delays it.
 - **Recovery is just retrying unpublished rows** — no special failure-handling logic in the request path.
 - **Works with any relational database and any broker**; it's a pattern, not a product.
 
@@ -99,6 +99,7 @@ sequenceDiagram
 - **Polling relays add publish latency** and steady read load — shorten the interval only as far as the table can carry it, or move to log tailing and accept operating the connector.
 - **The outbox table grows unbounded** without its own archiving or cleanup job.
 - **Ordering survives only as wide** as the key the relay scans and the broker groups by: one global stream serialises aggregates that have nothing to do with each other, and a per-row key drops the sequence you wanted — choose the aggregate key deliberately and pay for it in per-key throughput.
+- **A row the broker keeps rejecting stalls its key** in an ordered relay: cap retries, park the row as failed and alert, and decide whether later rows for that key wait.
 
 ## When to use it
 <!--meta block=usage-->
@@ -116,6 +117,7 @@ sequenceDiagram
 - **Nothing outside the service's own** transaction needs to know about the change.
 - **An occasional missed notification** is acceptable and the extra table and relay aren't worth running.
 - **Delivery volume and stakes** are low enough that a direct, synchronous call is simpler and fast enough.
+- **The log or event store** is already the source of truth: prefer [event sourcing](../../architecture/event-sourcing.md) when every write is an appended event, or [change data capture](./change-data-capture.md) alone when a connector can read the database log without a table.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -145,6 +147,7 @@ async function clearFlow(tx: Transaction, flowId: string, personaId: string) {
     "update flow set state = $1 where id = $2",
     ["cleared", flowId],
   );
+  // outbox also has a seq bigserial column the database assigns; the UUID id gives no write order.
   await tx.query(
     `insert into outbox (id, flow_id, topic, payload, published)
      values ($1, $2, $3, $4, false)`,
@@ -155,18 +158,23 @@ async function clearFlow(tx: Transaction, flowId: string, personaId: string) {
   // flow cleared while the client is never told.
 }
 
-// Relay: runs independently, drains unpublished rows
+// Relay: runs independently, drains unpublished rows.
+// One transaction, so the row claim (for update skip locked) holds until
+// the rows are marked; a second relay instance skips the claimed rows.
 async function relayOnce(db: Db, webhooks: WebhookSender) {
-  const rows = await db.query(
-    "select * from outbox where published = false order by id limit 100",
-  );
-  for (const row of rows) {
-    await webhooks.deliver(row.topic, row.payload);
-    await db.query(
-      "update outbox set published = true where id = $1",
-      [row.id],
+  await db.transaction(async (tx) => {
+    const rows = await tx.query(
+      `select * from outbox where published = false
+       order by seq limit 100 for update skip locked`,
     );
-  }
+    for (const row of rows) {
+      await webhooks.deliver(row.topic, row.payload);
+      await tx.query(
+        "update outbox set published = true where id = $1",
+        [row.id],
+      );
+    }
+  });
 }
 ```
 
@@ -186,7 +194,7 @@ async function relayOnce(db: Db, webhooks: WebhookSender) {
 
 - **Relay poll interval** — For a polling relay, how often it scans for unpublished rows. Shorter cuts publish latency but raises steady read load on the outbox table; log-tailing (CDC) sidesteps the tradeoff entirely.
 - **Fetch batch size** — Rows drained per relay iteration (the LIMIT in the poll query). Larger batches amortize round-trips but hold locks longer and enlarge the replay window on a mid-batch crash.
-- **Ordering and dedup keys on the published message** — The key the broker orders within (SQS first in, first out (FIFO) MessageGroupId, a Kafka partition key) and the key it dedupes on (SQS FIFO MessageDeduplicationId, deduplicated over a 5-minute interval). Scope the group too coarsely and unrelated aggregates serialize behind each other; too finely and the per-aggregate ordering you wanted is gone.
+- **Ordering and dedup keys on the published message** — The key the broker orders within (SQS first in, first out (FIFO) MessageGroupId, a Kafka partition key) and the key it dedupes on (SQS FIFO MessageDeduplicationId, deduplicated over a 5-minute interval). Scope the group too wide and unrelated aggregates queue behind each other; too narrow and per-aggregate order is lost. After the 5-minute window the broker dedupes nothing, so consumer-side dedupe still applies.
 - **Cleanup / retention cadence** — How aggressively a job deletes or archives already-published rows, which sets the steady-state size of the table the relay polls. Keep whatever window your replay and audit stories actually need, and no more.
 - **Delivery retry / backoff** — How the relay retries a row the broker rejected before moving on, and how long it backs off, so a broker blip does not spin the relay hot.
 
@@ -210,7 +218,7 @@ async function relayOnce(db: Db, webhooks: WebhookSender) {
 <!--meta polarity=check-->
 
 - A partial index on published = false keeps the poll query fast as the table grows
-- The relay scans in timestamp and sequence order, so events reach the broker in the order the service wrote them
+- The relay scans in sequence order and publishes with the aggregate key as the ordering key, so write order holds per key only; a transaction that commits late can still be passed over, so consumers tolerate a gap or a reorder
 - The cleanup job is itself monitored — a silently dead one looks exactly like a healthy one until the poll slows down
 - Consumers dedupe on message id — the pattern is at-least-once, never exactly-once
 - Only one relay can claim a given row (SKIP LOCKED, lease, or single instance)
