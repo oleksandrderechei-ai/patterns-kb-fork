@@ -497,7 +497,7 @@
       "definition": "Isolates resources so one failure can't sink all",
       "route": "/patterns/distributed/resilience/bulkhead.html",
       "requires": [],
-      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback"]
+      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline"]
     },
     {
       "id": "health-endpoint",
@@ -537,7 +537,7 @@
       "definition": "Caps how long a call may take before giving up",
       "route": "/patterns/distributed/resilience/timeout-deadline.html",
       "requires": [],
-      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request"]
+      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request", "bulkhead"]
     },
     {
       "id": "hedged-request",

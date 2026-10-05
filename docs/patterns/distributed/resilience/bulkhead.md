@@ -56,7 +56,7 @@ flowchart LR
 <!--meta block=variations-->
 
 - **[Thread Pool](../../concurrency/thread-pool.md) per dependency** — Dedicate a fixed-size thread pool to each downstream call. Classic and easy to reason about, at the cost of reserving threads that may sit idle most of the time.
-- **[Semaphore](../../concurrency/semaphore.md) isolation** — Guard each dependency with a counting semaphore instead of a dedicated pool — callers still run on a shared executor, but only a bounded number can be in-flight per dependency at once. Cheaper than extra threads.
+- **[Semaphore](../../concurrency/semaphore.md) isolation** — Guard each dependency with a counting semaphore instead of a dedicated pool. Callers still run on a shared executor, but only a bounded number can be in flight per dependency. It costs no extra threads, but a hung call still holds its caller's thread, so the timeout must come from the client library.
 - **Process or container isolation** — Run a workload in its own process, container, or node so a crash, memory leak, or CPU spike can't touch the rest of the fleet — the same idea enforced by the OS instead of application code.
 - **Per-tenant / per-priority partitioning** — Split pools by customer tier or request priority rather than by downstream service, so one abusive or high-volume tenant can't starve capacity meant for everyone else.
 
@@ -66,8 +66,8 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Contains resource exhaustion** to one compartment instead of letting it cascade system-wide.
-- **A saturated pool is a precise, attributable signal** — you know exactly which dependency is unhealthy.
+- **Contains resource exhaustion** to one compartment instead of letting it cascade system-wide, provided the compartments share no downstream resource (see con 5).
+- **A saturated pool is a precise, attributable signal** — it names the dependency whose calls are filling it; check hold time to tell a slowing dependency from an undersized pool.
 - **Works even against slow degradation**, not just outright failure, since it never depends on detecting an error.
 - **Compartments can be tuned** and paired with other resilience patterns independently, dependency by dependency.
 
@@ -78,7 +78,7 @@ flowchart LR
 - **Static sizing is a guess**; undersize a pool and you've recreated the starvation it was meant to prevent, so measure peak concurrency per dependency before fixing the number.
 - **Extra threads, connections, or processes** cost more overall than one generously-sized shared pool.
 - **Isolates the damage** but does nothing to fix the failing dependency — pair it with a [circuit breaker](./circuit-breaker.md) so the compartment stops dialling a dependency that is already down.
-- **Compartments that share an underlying resource** — one database, one egress path, one host's file descriptors — saturate together, so the isolation on the diagram is not the isolation at runtime. Partition the shared resource too, or write the correlation down where the next incident will find it.
+- **Compartments that share one database, egress path or file-descriptor table saturate together**, so isolation on the diagram is not isolation at runtime. Partition the shared resource, or document the correlation.
 
 ## When to use it
 <!--meta block=usage-->
@@ -95,7 +95,7 @@ flowchart LR
 
 - **There's genuinely only one downstream dependency** — there's nothing else to isolate it from.
 - **The resource is cheap and effectively unbounded**, so partitioning adds cost without a real benefit.
-- **You're reaching for a [Rate Limiter](./rate-limiter.md) instead** — but a limiter bounds arrivals per unit time, not calls held in flight; when a dependency hangs, any admitted rate piles up and only a bulkhead contains it. Skip the bulkhead only when nothing you call can stall long enough for in-flight work to accumulate.
+- **You are considering a [rate limiter](./rate-limiter.md) instead.** A limiter bounds arrivals per unit time, not calls held in flight, so when a dependency hangs any admitted rate piles up. Skip the bulkhead only when nothing you call can stall long enough for in-flight work to accumulate.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -120,8 +120,11 @@ const pools = {
   invite: new Bulkhead("invite", 10),
 };
 
+// Not shown: fn needs a per-call timeout so a hung vendor call frees its permit,
+// and run() should export rejection and in-flight counts per pool name.
 // A worker only claims a task type whose pool has room. Eight sanctions tasks
 // hung on a stalled vendor therefore cannot take the slots ID verification needs.
+// This holds while one loop owns each pool; with concurrent loops, reserve the permit before claimTask.
 for (const [type, pool] of Object.entries(pools)) {
   if (pool.free() === 0) continue;
   const task = await claimTask(type);          // FOR UPDATE SKIP LOCKED
@@ -222,6 +225,7 @@ for (const [type, pool] of Object.entries(pools)) {
 - [Deployment Stamp](../routing/deployment-stamp.md) — The compartment can be an entire deployment, not just a pool
 - [Fault Injection](./fault-injection.md) — The isolation claim is unverified until something is deliberately overwhelmed
 - [Fallback](./fallback.md) — A call turned away by the bulkhead can be answered from a fallback.
+- [Timeout / Deadline](./timeout-deadline.md) — A permit held by a hung call is only freed when a deadline expires
 
 **Alternative to**
 

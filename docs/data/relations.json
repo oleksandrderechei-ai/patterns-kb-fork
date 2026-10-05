@@ -13196,6 +13196,13 @@
       "b": "fail-fast",
       "note_a": "Fail fast returns the error where a fallback returns a lesser answer; choose fail fast when a wrong answer costs more than none.",
       "note_b": "A fallback returns a lesser answer where fail fast reports the error at once; choose a fallback when part of the answer is optional or an old answer is nearly as good."
+    },
+    {
+      "a": "bulkhead",
+      "verb": "combines-with",
+      "b": "timeout-deadline",
+      "note_a": "A permit held by a hung call is only freed when a deadline expires",
+      "note_b": "Bounds how long a call holds its compartment's permit"
     }
   ],
   "group_order": {
