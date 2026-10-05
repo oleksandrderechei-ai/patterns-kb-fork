@@ -193,6 +193,7 @@ class StickyBalancer {
 **Combines with**
 
 - [WebSocket](../../messaging/websocket.md) — A held socket is the main reason to pin a client to one instance.
+- [API Gateway](./api-gateway.md) — Long-lived streams through a gateway are the case that needs affinity
 
 **Alternative to**
 

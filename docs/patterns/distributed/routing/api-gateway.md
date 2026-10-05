@@ -57,11 +57,11 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Gateway Routing** — Pure request dispatch with no aggregation or reshaping — the thinnest form of the pattern. What the gateway reads to choose a service is a decision of its own, with its own trade-offs: a path prefix gives consumers one address and every team a shared configuration, a hostname gives each team its own name and each consumer another one to remember, and a header carries versions and variants on top of either. See [API Routing](./api-routing.md).
-- **Gateway Aggregation** — Fans a single client request out to several backend calls and composes the results into one response, cutting round trips for slow or mobile clients.
+- **Gateway Aggregation** — Fans a single client request out to several backend calls and composes the results into one response, cutting round trips for slow or mobile clients. Response time is that of the slowest fan-out call, so set a timeout and a partial-result rule per call.
 - **Gateway Offloading** — Moves shared infrastructure concerns — Transport Layer Security (TLS) termination, compression, caching, auth — out of every service and into the gateway itself.
 - **[Backend-for-Frontend](./bff.md)** — One gateway per client type — web, mobile, partner — instead of a single universal gateway trying to satisfy all of their conflicting needs at once.
 - **Streaming Gateway** — Carries a long-lived streaming response — server-sent events, chunked transfer, or a WebSocket upgrade — rather than buffering one payload and returning it. It shifts the gateway's job from request/response to holding an open flow, which forces different read timeouts, disables response buffering, and often needs connection affinity (see [Sticky Session](./sticky-session.md)) so the stream isn't cut mid-flight by a rebalance.
-- **Agent-Facing Gateway** — Exposes backing capabilities as discoverable, self-describing tools an autonomous AI agent can enumerate and invoke at runtime, instead of fixed endpoints a human wired up ahead of time. The agent is just another client class — a [Backend-for-Frontend](./bff.md) for software that decides its own calls. Anthropic's Model Context Protocol (MCP) is the current real-world example of this tool-server shape.
+- **Agent-Facing Gateway** — Exposes backing capabilities as discoverable, self-describing tools an autonomous AI agent can enumerate and invoke at runtime, instead of fixed endpoints a human wired up ahead of time. The agent is just another client class — a [Backend-for-Frontend](./bff.md) for software that decides its own calls. Anthropic's Model Context Protocol (MCP) is an example of this tool-server shape.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -69,10 +69,10 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **One place to enforce auth**, rate limiting, and logging instead of duplicating it in every service.
+- **One place to enforce auth**, rate limiting, and logging for edge traffic instead of duplicating it in every service; internal calls still need their own enforcement.
 - **Clients depend on a stable surface**, not the internal service topology, which is free to change behind it.
 - **Central point** for protocol translation and API versioning as backends evolve independently.
-- **Aggregation can cut chatty round trips** round trips for clients on slow or high-latency networks.
+- **Aggregation can cut chatty round trips** for clients on slow or high-latency networks.
 
 ### Cons
 <!--meta polarity=con-->
@@ -81,7 +81,7 @@ flowchart LR
 - **Prone to becoming a dumping** ground for business logic that belongs in the services behind it — anything a second client would have to duplicate is a service's job, not the edge's.
 - **Adds a network hop** and a layer of latency to every single request.
 - **Yet another highly-available deployable to build and operate**, and a shared release cadence every team routing through it now depends on — give each client class its own [backend for frontend](./bff.md) rather than negotiating one config between teams that want different things.
-- **Edge policy is only edge-deep**. Service-to-service calls, batch jobs and internal tools never cross the gateway, so anything it enforces has to be enforced inside the perimeter too — that is the work a [service mesh](./service-mesh.md) exists to do.
+- **Edge policy is only edge-deep**. Service-to-service calls, batch jobs and internal tools never cross the gateway, so enforce inside the perimeter too, which is the work a [service mesh](./service-mesh.md) exists to do. Backends must also refuse traffic that skipped the gateway, or it is bypassable.
 
 ## When to use it
 <!--meta block=usage-->
@@ -115,7 +115,8 @@ const routes: Route[] = [
 app.use(authenticate);              // once, at the edge
 app.use(rateLimit({ windowMs: 60_000, max: 100 }));
 
-app.use(async (req, res, next) => {
+app.use(async (req, res) => {
+  // no per-upstream connection pool here, see production knobs
   const route = routes.find((r) => req.path.startsWith(r.prefix));
   if (!route) return res.status(404).json({ error: "no route" });
 
@@ -124,10 +125,13 @@ app.use(async (req, res, next) => {
       method: req.method,
       headers: req.headers as HeadersInit,
       body: req.method === "GET" ? undefined : req.body,
+      signal: AbortSignal.timeout(5_000), // upstream timeout knob; no retry here
     });
     res.status(upstream.status).send(await upstream.text());
-  } catch {
-    next(new Error("upstream unavailable")); // let error middleware handle it
+  } catch (err) {
+    const status = (err as Error).name === "TimeoutError" ? 504 : 502;
+    // 504 on timeout, 502 on a refused connection
+    res.status(status).json({ error: "upstream unavailable" });
   }
 });
 ```
@@ -219,10 +223,15 @@ app.use(async (req, res, next) => {
 - [Model Context Protocol](./mcp.md) — The same aggregation and policy job, applied to capability servers
 - [Context Map](../../ddd/context-map.md) — A gateway can be the open host service a map shows at a context's edge
 - [Front Controller](../../enterprise/front-controller.md) — An application programming interface (API) gateway is a front controller across services
+- [Sticky Session](./sticky-session.md) — A streaming gateway needs connection affinity so a rebalance does not cut the flow
 
 **Generalizes**
 
 - [Backend-for-Frontend](./bff.md) — One backend per frontend, atop the gateway idea
+
+**Specializes**
+
+- [Single Access Point](../../security/single-access-point.md) — The gateway is this principle applied to client traffic across services
 
 **Often confused with**
 

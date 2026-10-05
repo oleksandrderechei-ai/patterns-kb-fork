@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-04",
+  "updated": "2026-10-05",
   "note": "Every typed edge between two pages, once: a verb on one page and its inverse on the other are one record. The single source: gen-relations (make gen) splices every page's relationships block (the marked block <!-- relationships:start --> … <!-- relationships:end -->) from it through tools/src/lib/render-relations.ts, the relations gate holds every edge closed and paired, and gen-prerequisites builds docs/data/prerequisites.json from it. node scripts/kb.mjs link and unlink write whole records; an edit by hand is fine too, then run make gen. A record is {a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b?, maps_label_a?, maps_label_b?}: `verb` is read from a's side and b reads its inverse (the verbs and their inverses are docs/data/content-model.json's; of a pair, the verb listed first there is the one written, and a symmetric verb is its own inverse). note_* is that side's note as markdown inline text, its links relative to that side's own page; group_* is a custom group heading, present only when it is not the verb's label; maps_* names the element on that side's page the edge maps to (a capability's mapping row, a comparison's matrix row), and maps_label_* is that row's first cell as plain text: row ids are positional, so the relations gate fails a pin whose row no longer reads its label (kb.mjs link --maps writes both). A page lists its sides in record order inside each group; group_order pins a page's group order where it is not the default (verb labels in the content model's order, then custom headings). Edit this file, never the rendered block; an edge whose other side is missing is a finding.",
   "relations": [
     {
@@ -13189,6 +13189,34 @@
       "b": "shotgun-surgery",
       "note_a": "One shared atom turns a change that touched every screen into a single edit",
       "note_b": "Shared atoms and molecules put a repeated UI part in one file, so one change lands once"
+    },
+    {
+      "a": "api-gateway",
+      "verb": "combines-with",
+      "b": "sticky-session",
+      "note_a": "A streaming gateway needs connection affinity so a rebalance does not cut the flow",
+      "note_b": "Long-lived streams through a gateway are the case that needs affinity"
+    },
+    {
+      "a": "api-gateway",
+      "verb": "specializes",
+      "b": "single-access-point",
+      "note_a": "The gateway is this principle applied to client traffic across services",
+      "note_b": "A gateway is the usual form of the one guarded entry"
+    },
+    {
+      "a": "bff",
+      "verb": "combines-with",
+      "b": "mcp",
+      "note_a": "An agent is its own client class; a BFF exposing coarse MCP tools serves it instead of the human-facing API",
+      "note_b": "A BFF can be the MCP server shaped for one agent"
+    },
+    {
+      "a": "ambassador",
+      "verb": "exposed-to",
+      "b": "retry-storm",
+      "note_a": "A blanket retry policy in the proxy multiplies load on a struggling upstream",
+      "note_b": "Retries added by a per-instance proxy multiply the offered load"
     }
   ],
   "group_order": {

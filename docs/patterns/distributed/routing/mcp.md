@@ -231,6 +231,7 @@ const result = await client.callTool("incident_search", { service: "checkout" })
 - [AI Agent](../../architecture/ai-agent.md) — The loop is the consumer: it reads the schemas and decides which to call
 - [Agent Client Protocol](./acp.md) — The host protocol reuses these representations rather than defining its own
 - [API Gateway](./api-gateway.md) — How a fleet of servers is fronted by one endpoint with one policy
+- [Backend-for-Frontend](./bff.md) — A BFF can be the MCP server shaped for one agent
 
 **Often confused with**
 
