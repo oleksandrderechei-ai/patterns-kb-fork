@@ -26,9 +26,9 @@ A compensating transaction is an undo step you write for each step of an operati
 - **Hand-written undos.** You write every undo yourself, so write it together with its step.
 - **Visible half-done state.** Customers can see it, so show it as pending.
 - **Steps with no undo.** A sent email cannot be taken back, so run such steps last.
-- **Undos can fail.** Make each one safe to repeat and retry it until it works.
+- **Undos can fail.** Make each one safe to repeat, retry it with backoff, and park it for a person if retries run out.
 
-**Example.** An order has three steps: reserve the last unit of stock, charge 40 dollars, book a courier. The courier service is down. The coordinator runs the undos in reverse: refund 40 dollars, then release the unit. The first refund call times out, so it is retried after 5 s with the same refund key, and the key stops a second 40 dollars being sent back. For those 5 s the customer sees a charge and another buyer sees zero stock. That window is the cost. A confirmation email sent before the courier step could not be taken back, so it belongs after it.
+**Example.** An order has three steps: reserve the last unit of stock, charge 40 dollars, book a courier. The courier service is down. The coordinator runs the undos in reverse: refund 40 dollars, then release the unit. The first refund call times out, so it is retried after 5 s with the same refund key, and the refund key lets the payment service ignore a duplicate request. For those 5 s the customer sees a charge and another buyer sees zero stock. That window is the cost. A confirmation email sent before the courier step could not be taken back, so it belongs after it.
 
 ## How it works
 <!--meta block=structure-->
@@ -79,9 +79,10 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Semantic vs. exact rollback** — A compensation undoes the business effect, not the storage. A refund is a new, visible transaction that offsets a charge — it doesn't erase the charge from history the way a database rollback would.
-- **Pivot transaction** — The step past which the saga commits to going forward no matter what — retry it until it succeeds instead of compensating it. Marks the boundary between "can still back out" and "must push through."
+- **Pivot transaction** — The step after which the saga, the chain of steps and undos, goes forward no matter what. Retry it until it succeeds instead of compensating it. Order steps as compensable first, then the pivot, then retriable steps, so a failure after the pivot never needs an undo.
 - **[Idempotency](../../messaging/idempotency.md)** — A compensation itself can fail and need retrying, so it must be safe to run twice — refunding the same charge only once even if the retry fires again.
-- **Best-effort vs. guaranteed compensation** — Fire-and-hope compensations can be lost if the process crashes mid-undo. Durable variants persist each compensation as a task in a queue and retry it until it's confirmed.
+- **Best-effort vs. guaranteed compensation** — Best-effort compensations run once from memory and are lost if the process crashes mid-undo. Durable ones persist each compensation as a queued task and retry it until confirmed.
+- **Unknown outcome** — A step that fails by timeout may have committed, so run its undo too and make the undo a safe no-op if the step never ran.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -91,7 +92,7 @@ sequenceDiagram
 
 - **Avoids holding locks or open transactions** across services for the life of a whole operation.
 - **Lets each service commit locally** and keep its own consistency boundary intact.
-- **Turns partial failure into an automatic**, well-defined recovery instead of a manual cleanup.
+- **Turns partial failure into an automatic recovery**, provided compensations are idempotent and durably retried.
 - **Composable** — a saga is just a list of steps, each carrying its own undo.
 
 ### Cons
@@ -101,7 +102,8 @@ sequenceDiagram
 - **The system passes through** a visibly inconsistent intermediate state; a customer may see a charge before the refund lands.
 - **Not everything is compensable** — a sent email or a shipped package has no clean undo.
 - **If a compensation itself fails**, the saga is stuck half-undone unless retries and idempotency are designed in from the start.
-- **The half-done state is not isolated** — anything else can read or overwrite it meanwhile, so an undo may find a different value than it wrote and cannot retract work others already started on what they saw.
+- **The half-done state is not isolated**; others can read or overwrite it, so an undo may find a different value than it wrote.
+- **An undo cannot retract work** others already started from the half-done state they saw.
 
 ## When to use it
 <!--meta block=usage-->
@@ -133,8 +135,8 @@ async function runSaga(steps: Step[]): Promise<void> {
   const completed: Step[] = [];
   try {
     for (const step of steps) {
-      await step.action();
-      completed.push(step); // only compensate what actually ran
+      completed.push(step); // before the action: a timed-out step may have committed
+      await step.action(); // compensate must be idempotent and a safe no-op if the step never ran
     }
   } catch (err) {
     for (const step of completed.reverse()) {
@@ -233,6 +235,10 @@ await runSaga([
 **Prevents**
 
 - [Dual-Write Inconsistency](../../../hazards/dual-write-inconsistency.md) — When the second write fails, an explicit undo of the first restores a consistent state
+
+**Exposed to**
+
+- [Retry Storm](../../../hazards/retry-storm.md) — Retrying a failed undo against a service that is already down adds load; cap compensation retries and back them off.
 
 **Implemented by**
 

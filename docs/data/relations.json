@@ -13203,6 +13203,13 @@
       "b": "timeout-deadline",
       "note_a": "A permit held by a hung call is only freed when a deadline expires",
       "note_b": "Bounds how long a call holds its compartment's permit"
+    },
+    {
+      "a": "compensating-transaction",
+      "verb": "exposed-to",
+      "b": "retry-storm",
+      "note_a": "Retrying a failed undo against a service that is already down adds load; cap compensation retries and back them off.",
+      "note_b": "Compensation retries against a service that is already down add to the retry load; this pattern's undos need a cap and backoff."
     }
   ],
   "group_order": {
