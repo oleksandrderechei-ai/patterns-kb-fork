@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-04",
+  "updated": "2026-10-05",
   "note": "Every typed edge between two pages, once: a verb on one page and its inverse on the other are one record. The single source: gen-relations (make gen) splices every page's relationships block (the marked block <!-- relationships:start --> … <!-- relationships:end -->) from it through tools/src/lib/render-relations.ts, the relations gate holds every edge closed and paired, and gen-prerequisites builds docs/data/prerequisites.json from it. node scripts/kb.mjs link and unlink write whole records; an edit by hand is fine too, then run make gen. A record is {a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b?, maps_label_a?, maps_label_b?}: `verb` is read from a's side and b reads its inverse (the verbs and their inverses are docs/data/content-model.json's; of a pair, the verb listed first there is the one written, and a symmetric verb is its own inverse). note_* is that side's note as markdown inline text, its links relative to that side's own page; group_* is a custom group heading, present only when it is not the verb's label; maps_* names the element on that side's page the edge maps to (a capability's mapping row, a comparison's matrix row), and maps_label_* is that row's first cell as plain text: row ids are positional, so the relations gate fails a pin whose row no longer reads its label (kb.mjs link --maps writes both). A page lists its sides in record order inside each group; group_order pins a page's group order where it is not the default (verb labels in the content model's order, then custom headings). Edit this file, never the rendered block; an edge whose other side is missing is a finding.",
   "relations": [
     {
@@ -13189,6 +13189,27 @@
       "b": "shotgun-surgery",
       "note_a": "One shared atom turns a change that touched every screen into a single edit",
       "note_b": "Shared atoms and molecules put a repeated UI part in one file, so one change lands once"
+    },
+    {
+      "a": "fallback",
+      "verb": "alternative-to",
+      "b": "fail-fast",
+      "note_a": "Fail fast returns the error where a fallback returns a lesser answer; choose fail fast when a wrong answer costs more than none.",
+      "note_b": "A fallback returns a lesser answer where fail fast reports the error at once; choose a fallback when part of the answer is optional or an old answer is nearly as good."
+    },
+    {
+      "a": "bulkhead",
+      "verb": "combines-with",
+      "b": "timeout-deadline",
+      "note_a": "A permit held by a hung call is only freed when a deadline expires",
+      "note_b": "Bounds how long a call holds its compartment's permit"
+    },
+    {
+      "a": "compensating-transaction",
+      "verb": "exposed-to",
+      "b": "retry-storm",
+      "note_a": "Retrying a failed undo against a service that is already down adds load; cap compensation retries and back them off.",
+      "note_b": "Compensation retries against a service that is already down add to the retry load; this pattern's undos need a cap and backoff."
     }
   ],
   "group_order": {

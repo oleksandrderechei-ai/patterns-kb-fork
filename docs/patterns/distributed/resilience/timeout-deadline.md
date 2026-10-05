@@ -224,6 +224,7 @@ await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
 - [Fallacies of Distributed Computing](../../../principles/fallacies-of-distributed-computing.md) — A deadline is the habit the fallacies of reliability and zero latency call for.
 - [Fallback](./fallback.md) — Without a fallback, a timeout turns a slow call into a plain error.
 - [Hedged Request](./hedged-request.md) — A hedge turns a slow call into a fast one before the timeout turns it into an error.
+- [Bulkhead](./bulkhead.md) — Bounds how long a call holds its compartment's permit
 
 **Enables**
 
