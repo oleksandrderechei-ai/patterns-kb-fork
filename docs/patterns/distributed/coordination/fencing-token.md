@@ -207,6 +207,7 @@ store.write("report", "from A", 33); // false: A woke up after its lock expired
 - [Lease](./lease.md) — A fencing token backs a lease, so a holder that lost it to expiry cannot still write.
 - [Optimistic Concurrency Control](./optimistic-concurrency-control.md) — Compares a number issued at grant time, where optimistic control compares a version read from the row.
 - [Conditional Write](./conditional-write.md) — The guard is usually a conditional write that checks the token and applies the value in one atomic step.
+- [Leader Election](./leader-election.md) — Leader election is where the rising token comes from: each new leader takes the next term.
 
 **Requires**
 

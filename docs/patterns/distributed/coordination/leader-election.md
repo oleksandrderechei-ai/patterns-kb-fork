@@ -20,13 +20,13 @@ Leader election lets a group of equal nodes agree on one of themselves to do a j
 ## Explained
 <!--meta block=explain-->
 
-Leader election has a group of equal nodes agree on one of themselves to do a job that is only correct when exactly one process does it, such as taking writes for a partition or running a scheduled task once. When the leader dies, the survivors notice and pick a replacement, so nobody is paged to promote one by hand. Choose it over naming a fixed owner when that owner must survive the loss of its machine. A paused leader can lose the role without knowing, and then two nodes both write, which is split brain, so give each leader a rising term number and make the resource reject older ones.
+Leader election has a group of equal nodes agree on one of themselves to do a job that is only correct when exactly one process does it, such as taking writes for a partition or running a scheduled task once. When the leader dies, the survivors notice and pick a replacement, so nobody is paged to promote one by hand. Choose it over naming a fixed owner when that owner must survive the loss of its machine. A paused leader can lose the role without knowing, and then two nodes both write, which is split brain, so give each leader a rising term number, and make the resource keep the highest term it has seen and reject older ones atomically with each write.
 
 - **One bottleneck.** Everything the leader owns funnels through one process. Shard the job across several leaders if it saturates.
-- **Wrong timeouts.** Too short and a long pause unseats a healthy leader. Set them above your worst pause.
+- **Wrong timeouts.** Too short and a long pause unseats a healthy leader. Size above typical pauses; the term check covers the rest.
 - **Hard to prove.** A hand-written protocol is yours to verify. Lean on a coordination service and own that dependency.
 
-**Example.** Five nodes compete for a lease (a lock that expires) that lasts 15 s and is renewed every 5 s. Node 1 leads with term 7 and then freezes for 20 s in a garbage-collection pause. At 15 s the lease expires, node 3 wins with term 8, and the job continues with no human involved. At 20 s node 1 wakes, still believes it leads, and writes with term 7. Storage has seen term 8 and rejects it. The cost is the gap: after a real crash there is up to 15 s with no leader. A 3 s lease would shorten that but would unseat a healthy leader after a 4 s pause.
+**Example.** Five nodes compete for a lease (a lock that expires) that lasts 15 s and is renewed every 5 s. Node 1 leads with term 7 and then freezes for 20 s in a garbage-collection pause. At 15 s the lease expires, node 3 wins with term 8, and the job continues with no human involved. At 20 s node 1 wakes, still believes it leads, and writes with term 7. Storage has seen term 8 and rejects it. The cost is the gap: after a real crash there is up to 15 s with no leader. A 3 s lease renewed every 1 s would shorten that gap, but a 4 s pause would unseat a healthy leader.
 
 ## How it works
 <!--meta block=structure-->
@@ -66,10 +66,10 @@ stateDiagram-v2
 ## Variations
 <!--meta block=variations-->
 
-- **Bully algorithm** — The node with the highest ID declares itself leader once it notices the current one is unreachable; lower-ID nodes yield. Simple, but chatty — a recovering high-ID node can trigger repeated re-elections.
+- **Bully algorithm** — The node with the highest ID declares itself leader once it notices the current one is unreachable; lower-ID nodes yield. Simple, but chatty: a recovering high-ID node can trigger repeated re-elections. It assumes a reliable failure detector, so a partition can give it two leaders.
 - **Ring algorithm (Chang-Roberts)** — An election message circulates a logical ring of nodes, each forwarding the higher of its own ID and whatever it received; the message returns to its originator carrying the winner.
-- **[Quorum & Consensus](./quorum-consensus.md)** — Term-based voting, as in Raft or Paxos: a candidate needs a majority quorum before it may act as leader, tying the election itself to the same safety guarantee that protects writes.
-- **[Gossip Protocol](./gossip-protocol.md)** — Liveness and leadership state propagate peer-to-peer instead of through direct heartbeats to every node — scales better across large, high-latency clusters at the cost of slower convergence.
+- **[Quorum & Consensus](./quorum-consensus.md)** — Term-based voting. Raft elects by randomized timeouts and a majority vote; Multi-Paxos uses ballot numbers to pick a distinguished proposer. A candidate needs a majority quorum before it may act as leader.
+- **[Gossip Protocol](./gossip-protocol.md)** — Liveness and leadership state spread peer-to-peer instead of through heartbeats to every node. This suits large, high-latency clusters but converges more slowly. Gossip only spreads membership; a separate rule or consensus step must still pick one leader and issue terms.
 - **Lease-based external election** — Delegate the decision to a coordination service (ZooKeeper, etcd, Consul): a node holds leadership only while it can renew a time-bound lease, so a crashed leader's slot expires on its own.
 
 ## Trade-offs
@@ -80,8 +80,8 @@ stateDiagram-v2
 
 - **Serializes coordination through one node**, so contending replicas never need to fight over the same write.
 - **Automatic failover** — the group detects a dead leader and elects a fresh one without an operator.
-- **Once elected**, the leader acts unilaterally, keeping consensus overhead off the hot path.
-- **Well-studied algorithms** (Raft, Paxos, ZAB, Bully) come with proofs, not just folklore.
+- **Once elected, the leader decides** without a per-request vote, but writes still carry a term and may wait on quorum replication.
+- **Well-studied algorithms** (Raft, Paxos, ZAB) come with published correctness proofs.
 
 ### Cons
 <!--meta polarity=con-->
@@ -113,12 +113,12 @@ stateDiagram-v2
 
 ```typescript summary="TypeScript — a lease-based elector"
 interface LeaseStore {
-  acquire(nodeId: string, ttlMs: number): Promise<boolean>;
-  renew(nodeId: string, ttlMs: number): Promise<boolean>;
+  acquire(nodeId: string, ttlMs: number): Promise<number | null>;
+  renew(nodeId: string, ttlMs: number): Promise<number | null>;
 }
 
 class LeaderElector {
-  private isLeader = false;
+  private term: number | null = null;
 
   constructor(
     private readonly store: LeaseStore,
@@ -127,18 +127,21 @@ class LeaderElector {
   ) {}
 
   async tryBecomeLeader(): Promise<boolean> {
-    this.isLeader = await this.store.acquire(this.nodeId, this.ttlMs);
-    return this.isLeader;
+    this.term = await this.store.acquire(this.nodeId, this.ttlMs);
+    return this.term !== null;
   }
 
-  // Call on an interval well under ttlMs.
+  // Call on an interval of about ttlMs / 3, so one missed renewal does not lose the lease.
   async renew(): Promise<void> {
-    if (!this.isLeader) return;
-    const stillHeld = await this.store.renew(this.nodeId, this.ttlMs);
-    if (!stillHeld) this.isLeader = false; // lease expired, step down
+    if (this.term === null) return;
+    this.term = await this.store.renew(this.nodeId, this.ttlMs); // null: lease lost, step down
   }
 
-  get leading(): boolean { return this.isLeader; }
+  // Stamp every write with currentTerm; the resource must reject older terms.
+  get currentTerm(): number | null { return this.term; }
+
+  // leading can be stale after a pause until renew() runs, so never trust it alone.
+  get leading(): boolean { return this.term !== null; }
 }
 ```
 
@@ -213,6 +216,7 @@ class LeaderElector {
 - [Make Everything Redundant](../../../principles/redundancy.md) — Election is redundancy applied to the coordinator itself
 - [Failover](./failover.md) — Failover is the act of moving the leader role to a standby once the old leader is gone.
 - [Lease](./lease.md) — Election commonly hands out the leader role as a lease that must be renewed.
+- [Fencing Token](./fencing-token.md) — Election grants the role; a rising fencing token makes a deposed leader's late writes fail.
 
 **Alternative to**
 

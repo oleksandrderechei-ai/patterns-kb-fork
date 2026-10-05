@@ -23,7 +23,7 @@ When a single database host dies, every request fails until a person finds a hea
 
 Failover keeps a standby copy of a single-writer system, such as a database, current through [replication](replication.md), and promotes it to take over when the primary fails. A monitor sends [heartbeat](heartbeat.md) probes, and when several in a row fail it declares the primary dead, cuts off the old primary so it cannot keep writing, promotes the standby, and points clients at it. The repaired old primary later rejoins as the standby. Choose it over restoring from backup when you cannot wait for a person or a rebuild, and over plain extra copies when the state has one writer.
 
-- **Wrong detection.** A slow primary looks dead and two nodes write. Fence the old primary before the promotion and let a majority decide.
+- **Wrong detection.** A slow primary looks dead and two nodes write. Fence the old primary first and let a majority of monitors decide.
 - **Replication lag.** An asynchronous standby is behind and loses recent writes. Use synchronous copies for data you cannot lose.
 - **False alarms.** A timeout shorter than your worst pause triggers needless switches. Set it above that pause.
 - **Untested standby.** It fails when needed. Rehearse the switch and size the standby for the full load.
@@ -87,16 +87,16 @@ The old primary must not come back as primary. Resync it from the new primary as
 ### Pros
 <!--meta polarity=pro-->
 
-- **Outage shrinks from hours to seconds** — no person has to wake, decide and repoint, so recovery time is the detection timeout plus the promotion.
+- **Outage shrinks from hours to seconds with a hot standby** — no person has to wake, decide and repoint, so recovery time is detection, fencing, promotion and client redirect, up to the DNS TTL if clients use DNS.
 - **One machine failure stops being an incident** — a dead host or a lost zone costs a switch, which an alert can report without a page.
-- **Planned maintenance has no downtime** — you fail over on purpose, patch the old primary and fail back, which also proves the path works.
+- **Planned maintenance needs no maintenance window** — you fail over on purpose, with a brief switch outage and no lag loss if you wait for the standby to catch up, patch the old primary and fail back, which also proves the path works.
 - **A single-writer store gains availability** — databases and brokers that cannot run as many equal copies can still survive a node loss.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **Split-brain if detection is wrong** — a slow primary looks dead and two nodes accept writes, so fence the old primary before the promotion and use a majority to decide.
-- **Acknowledged writes can be lost** — with asynchronous replication the standby lags, so a failover drops the lag window; use synchronous or semi-synchronous copies for data you cannot lose.
+- **Acknowledged writes can be lost** — with asynchronous replication the standby lags, so a failover drops the lag window; use synchronous or semi-synchronous copies for data you cannot lose, at the price of commit latency and blocked writes while the standby is unreachable.
 - **Short timeouts cause needless switches** — a network glitch or a long pause triggers a failover that costs more than the blip, so set the timeout above your worst pause and add a hold-down between failovers.
 - **An untested failover fails when needed** — the standby has stale config, a cold cache or too little capacity, so rehearse the switch on a schedule and size the standby for the full load.
 
@@ -122,18 +122,23 @@ The old primary must not come back as primary. Resync it from the new primary as
 
 ```typescript summary="TypeScript — a monitor that waits for repeated misses, then fences, promotes and repoints in order"
 // Helpers assumed: sleep(ms), alert(msg), MAX_LAG_BYTES.
+// One monitor is shown for brevity; run several and require a majority to agree.
 async function watch(primary: Node, standby: Node, router: Router, missesAllowed = 3) {
   let misses = 0;
   while (misses < missesAllowed) {
+    const start = Date.now();
     // One lost probe is not a death: count consecutive misses.
     misses = (await primary.ping(1000)) ? 0 : misses + 1;
-    await sleep(1000);
+    await sleep(Math.max(0, 1000 - (Date.now() - start))); // keep a 1 s interval
   }
 
+  // If fence() throws or cannot confirm, abort and page a person: never promote unfenced.
   await primary.fence(); // cut it off BEFORE promoting, or two nodes may write
 
+  // Automatic mode refuses a lagging standby; alert-and-promote is a deliberate choice.
   if (standby.lagBytes() > MAX_LAG_BYTES) {
-    alert("promoting a lagging standby: recent writes will be lost");
+    alert("standby too far behind: promotion refused, a person decides");
+    return;
   }
   await standby.promote();       // wait until it accepts writes
   await router.pointTo(standby); // clients move last
@@ -154,9 +159,9 @@ async function watch(primary: Node, standby: Node, router: Router, missesAllowed
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **failure detection timeout** — how many missed probes, over what interval, before the monitor declares the primary dead; it sets the outage length and must sit above your worst pause
+- **failure detection timeout** — how many missed probes, over what interval, before the monitor declares the primary dead; it sets the outage length and must sit above your worst pause; start at 3 missed probes at 1 s, then raise it above the longest stall your latency data shows
 - **hold-down period** — the minimum time between failovers, so a flapping primary cannot trigger a chain of switches
-- **maximum acceptable lag** — how far behind the standby may be before automatic promotion is refused or an alert is raised, which is the most data you agree to lose
+- **maximum acceptable lag** — how far behind the standby may be before automatic promotion is refused or an alert is raised, which is the most data you agree to lose; refusing promotion keeps the data and extends the outage until a person decides
 - **replication mode** — synchronous, semi-synchronous or asynchronous copying, which sets how many acknowledged writes a failover can lose
 - **client redirect method and TTL** — how clients find the new primary, such as DNS with a short record TTL, a virtual address, a proxy or service discovery, which sets how long clients keep the old address
 
@@ -210,6 +215,10 @@ async function watch(primary: Node, standby: Node, router: Router, missesAllowed
 - [Heartbeat](./heartbeat.md) — Missed heartbeats are the usual trigger that declares the primary dead.
 - [Fencing Token](./fencing-token.md) — A token checked at storage refuses writes from the old primary after promotion.
 - [Health Endpoint Monitoring](../resilience/health-endpoint.md) — Health probes feed the monitor that decides the primary has failed.
+
+**Alternative to**
+
+- [Quorum & Consensus](./quorum-consensus.md) — When the old primary cannot be fenced, let a majority decide the leader instead of promoting one standby automatically.
 
 **Requires**
 

@@ -233,6 +233,7 @@ const latest = await quorumRead(replicas, "x", 2);
 
 - [Gossip Protocol](./gossip-protocol.md) — Use consensus when a single agreed value or linearizable read matters
 - [CRDT](./crdt.md) — Use agreement when a rule spans replicas; use a conflict-free replicated data type (CRDT) when replicas must keep writing alone.
+- [Failover](./failover.md) — When one standby must be promoted and the old primary can be fenced, failover does it without a vote.
 
 **Enables**
 
