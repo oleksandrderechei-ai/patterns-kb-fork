@@ -6716,13 +6716,6 @@
       "note_b": "One transfer object per published version keeps the domain model out of the wire contract"
     },
     {
-      "a": "api-versioning",
-      "verb": "combines-with",
-      "b": "contract-testing",
-      "note_a": "Where consumers cannot be enumerated, versioning replaces consumer-driven verification",
-      "note_b": "The other answer to changing a published contract, and the right one when callers are unknown"
-    },
-    {
       "a": "repository",
       "verb": "combines-with",
       "b": "fake-object",
@@ -10993,13 +10986,6 @@
       "note_b": "Routers can store path prefixes in a prefix tree to find the matching service"
     },
     {
-      "a": "rolling-deployment",
-      "verb": "variant-of",
-      "b": "blue-green-deployment",
-      "note_a": "Swaps instances in place in small batches, with no second full fleet",
-      "note_b": "Switches all traffic at once to a full second copy, so rollback is instant but double capacity is needed"
-    },
-    {
       "a": "canary-release",
       "verb": "combines-with",
       "b": "rolling-deployment",
@@ -11019,13 +11005,6 @@
       "b": "rolling-deployment",
       "note_a": "Decouples enabling a feature from the roll that carries its code",
       "note_b": "Ship the new code during the roll with the feature switched off, then enable it separately"
-    },
-    {
-      "a": "shadow-traffic",
-      "verb": "variant-of",
-      "b": "canary-release",
-      "note_a": "Mirrors requests to the new version and discards its responses, so no user is exposed",
-      "note_b": "Sends real users to the new version, so it can judge responses users act on"
     },
     {
       "a": "service-mesh",
@@ -13231,6 +13210,125 @@
       "b": "pessimistic-locking",
       "note_a": "Fold check and write into one statement with no application lock held; lock up front once the decision needs app code or the row is hot.",
       "note_b": "Locking holds the row while your code decides; a conditional write skips the lock when the rule fits one predicate."
+    },
+    {
+      "a": "api-gateway",
+      "verb": "combines-with",
+      "b": "sticky-session",
+      "note_a": "A streaming gateway needs connection affinity so a rebalance does not cut the flow",
+      "note_b": "Long-lived streams through a gateway are the case that needs affinity"
+    },
+    {
+      "a": "api-gateway",
+      "verb": "specializes",
+      "b": "single-access-point",
+      "note_a": "The gateway is this principle applied to client traffic across services",
+      "note_b": "A gateway is the usual form of the one guarded entry"
+    },
+    {
+      "a": "bff",
+      "verb": "combines-with",
+      "b": "mcp",
+      "note_a": "An agent is its own client class; a BFF exposing coarse MCP tools serves it instead of the human-facing API",
+      "note_b": "A BFF can be the MCP server shaped for one agent"
+    },
+    {
+      "a": "ambassador",
+      "verb": "exposed-to",
+      "b": "retry-storm",
+      "note_a": "A blanket retry policy in the proxy multiplies load on a struggling upstream",
+      "note_b": "Retries added by a per-instance proxy multiply the offered load"
+    },
+    {
+      "a": "api-routing",
+      "verb": "combines-with",
+      "b": "canary-release",
+      "note_a": "A rule that sends a weighted slice of traffic to the new version is how a canary is executed",
+      "note_b": "Routing is the mechanism that splits the slice"
+    },
+    {
+      "a": "api-routing",
+      "verb": "combines-with",
+      "b": "cdn",
+      "note_a": "A CDN edge is one place routing rules can run, adding caching but slow rule propagation",
+      "note_b": "Edge functions can run API routing rules at the edge"
+    },
+    {
+      "a": "consistent-hashing",
+      "verb": "combines-with",
+      "b": "sticky-session",
+      "note_a": "A ring over client or session keys gives sticky routing without a per-client table.",
+      "note_b": "Hashing the client or session key to a backend is the stateless-balancer way to get affinity; the ring keeps most pins when instances change."
+    },
+    {
+      "a": "blue-green-deployment",
+      "verb": "alternative-to",
+      "b": "rolling-deployment",
+      "note_a": "Replaces instances a few at a time in one fleet, so no second copy is needed, but both versions serve users mid-roll and rollback means rolling again",
+      "note_b": "Swaps the whole fleet at once to a second copy, so rollback is one routing change but capacity doubles"
+    },
+    {
+      "a": "shadow-traffic",
+      "verb": "variant-of",
+      "b": "canary-release",
+      "note_a": "A canary exposes a slice of users, so it can judge responses users act on",
+      "note_b": "Mirrors requests and discards the responses, so no user is exposed and user-facing correctness goes unjudged"
+    },
+    {
+      "a": "feature-flag",
+      "verb": "exposed-to",
+      "b": "lava-flow",
+      "note_a": "Flags nobody removes after rollout become permanent conditionals nobody dares touch, which is lava flow",
+      "note_b": "A release flag left in place after rollout is a common way for lava flow to start"
+    },
+    {
+      "a": "api-versioning",
+      "verb": "combines-with",
+      "b": "contract-testing",
+      "note_a": "Where consumers cannot be enumerated, versioning stands in for per-consumer verification, but a contract test still pins each live version",
+      "note_b": "The other answer to changing a published contract, and the right one when callers are unknown"
+    },
+    {
+      "a": "reverse-proxy",
+      "verb": "combines-with",
+      "b": "service-discovery",
+      "note_a": "Behind the proxy, discovery supplies the live instance list it forwards to",
+      "note_b": "A reverse proxy is the router that does the lookup for callers, so they hold a fixed address"
+    },
+    {
+      "a": "api-gateway",
+      "verb": "combines-with",
+      "b": "service-discovery",
+      "note_a": "Behind the gateway, discovery supplies the live instances it routes to",
+      "note_b": "A gateway resolves the service name to a live instance for callers outside the fleet"
+    },
+    {
+      "a": "a2a",
+      "verb": "often-confused-with",
+      "b": "acp",
+      "note_a": "That one connects a host to its agent; this one connects peers",
+      "note_b": "This one hosts an agent inside an application with a person present; the other hands work between independent peer agents"
+    },
+    {
+      "a": "fallback",
+      "verb": "alternative-to",
+      "b": "fail-fast",
+      "note_a": "Fail fast returns the error where a fallback returns a lesser answer; choose fail fast when a wrong answer costs more than none.",
+      "note_b": "A fallback returns a lesser answer where fail fast reports the error at once; choose a fallback when part of the answer is optional or an old answer is nearly as good."
+    },
+    {
+      "a": "bulkhead",
+      "verb": "combines-with",
+      "b": "timeout-deadline",
+      "note_a": "A permit held by a hung call is only freed when a deadline expires",
+      "note_b": "Bounds how long a call holds its compartment's permit"
+    },
+    {
+      "a": "compensating-transaction",
+      "verb": "exposed-to",
+      "b": "retry-storm",
+      "note_a": "Retrying a failed undo against a service that is already down adds load; cap compensation retries and back them off.",
+      "note_b": "Compensation retries against a service that is already down add to the retry load; this pattern's undos need a cap and backoff."
     }
   ],
   "group_order": {

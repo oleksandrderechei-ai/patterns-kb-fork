@@ -197,6 +197,7 @@ app.listen(443);
 **Generalizes**
 
 - [Gatekeeper](../distributed/routing/gatekeeper.md) — A gatekeeper is a hardened single entry
+- [API Gateway](../distributed/routing/api-gateway.md) — A gateway is the usual form of the one guarded entry
 
 **Implemented by**
 

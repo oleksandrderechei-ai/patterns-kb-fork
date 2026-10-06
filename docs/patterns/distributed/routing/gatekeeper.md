@@ -15,19 +15,19 @@ A dedicated, hardened broker sits at the network edge and validates every reques
 ## What it is
 <!--meta block=description-->
 
-A gatekeeper is a small, low-privilege broker between untrusted clients and a protected service. It is the only component that talks to the service: it authenticates, authorizes, rate-limits and validates each request against a strict schema before forwarding it, or hands the client scoped, temporary access. It resolves trust concentration, where parsing hostile input shares a process with your data. A compromised gatekeeper still faces a second boundary.
+A gatekeeper is a small, low-privilege broker between untrusted clients and a protected service. It is the only component that talks to the service: it authenticates, authorizes, rate-limits and validates each request against a strict schema before forwarding it, or hands the client scoped, temporary access. It keeps hostile-input parsing out of the process that holds your data.
 
 ## Explained
 <!--meta block=explain-->
 
-A gatekeeper is a small, low-privilege service that stands between untrusted clients and the service holding your data. It checks who the caller is, applies limits, validates the request against a strict schema and only then forwards it. Without it, the process that holds your data and business logic also parses hostile input and checks credentials, so a bug in that exposed surface is a bug in the process you can least afford to lose. Choose it over letting the service face the network when callers are untrusted: hostile parsing then happens in a process you can throw away, with no route to the data store, so compromising it gets an attacker a second boundary, not the backend.
+A gatekeeper is a small, low-privilege service that stands between untrusted clients and the service holding your data. It checks who the caller is, applies limits, validates the request against a strict schema and only then forwards it. Without it, the process that holds your data and business logic also parses hostile input and checks credentials, so a bug in that exposed surface is a bug in the process you can least afford to lose. Use it when callers are untrusted. Hostile parsing then runs in a process you can throw away, with no route to the data store.
 
 - **Added hop.** Every call pays a hop and a validation pass, so measure the added delay.
 - **Single point of failure.** It carries all traffic to the service, so run several copies.
 - **Schema drift.** Validation out of step with the service rejects legitimate traffic, so test both against one shared schema.
 - **Bypass routes.** It protects only the path through it, so close every other route to the service.
 
-**Example.** An orders service accepts JSON bodies up to 10 KB. The gatekeeper rejects larger bodies, bad tokens and bad schemas, and allows 50 requests a minute per client. A crafted 5 MB body crashes the gatekeeper's parser, one of 3 copies, which restarts in 2 s while the others serve, and the data store stays out of reach. The cost shows when the service adds a coupon field and the gatekeeper schema is not yet updated: every order with a coupon is rejected for the 40 minutes until the schema ships.
+**Example.** An orders service accepts JSON bodies up to 10 KB. The gatekeeper rejects larger bodies, bad tokens and bad schemas, and allows 50 requests a minute per client, counted in a store the 3 copies share. A crafted 4 KB body of deeply nested JSON crashes the parser in one copy, which restarts in 2 s while the others serve, and the data store stays out of reach. The cost shows when the service adds a coupon field and the gatekeeper schema is not yet updated: every order with a coupon is rejected for the 40 minutes until the schema ships.
 
 ## How it works
 <!--meta block=structure-->
@@ -55,7 +55,7 @@ flowchart LR
 
 - **Reverse-proxy gatekeeper** — The classic form: a hardened [reverse proxy](./reverse-proxy.md) terminates Transport Layer Security (TLS), strips and re-checks headers, and forwards only well-formed requests to the service sitting behind it.
 - **Gatekeepers in series** — A layered request path rather than a single gate: two gatekeepers in series, each with its own trust scope. The outer stage judges raw traffic — request shape and size, rate, known attack signatures — and never looks at your API; the inner stage knows the API and enforces tokens, quotas and schema on what survives. Neither has to be good at the other's job, which is what keeps each one small enough to reason about. It costs a second hop on every request and a second policy to keep current, so a service whose whole rule set fits comfortably in one gatekeeper should keep one.
-- **[Sidecar](./sidecar.md) gatekeeper** — Co-located with each service instance as a sidecar, reachable only on localhost or a private network — the edge is duplicated per instance instead of shared and shared-fate.
+- **[Sidecar](./sidecar.md) gatekeeper** — Co-located with each service instance as a sidecar, reachable only on localhost or a private network, so each instance has its own edge instead of a shared one. It shares the instance's host and trust domain, so it narrows input but does not isolate the service.
 - **Protocol-narrowing gatekeeper** — Translates a broad, attacker-facing protocol into a small, fixed set of internal calls, so the service never has more surface exposed than the gatekeeper chooses to forward.
 - **[Valet Key](./valet-key.md) handoff** — Instead of proxying every call, the gatekeeper validates once and issues a short-lived, scoped credential for direct client access — trading a per-request hop for a one-time check.
 
@@ -67,13 +67,13 @@ flowchart LR
 
 - **Centralizes security-sensitive validation in one small**, auditable component instead of spreading it across every service.
 - **Shrinks the surface the internal** service exposes to untrusted clients — only the gatekeeper ever talks to it directly.
-- **A compromised gatekeeper**, low-privilege and data-free, is a far smaller blast radius than a compromised service.
+- **If it holds no data and no credentials beyond forwarding**, a compromised gatekeeper exposes only what it may forward and the traffic it sees, not the store.
 - **Doing one job well** makes it easy to keep the code path narrow, tested, and simple to reason about.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Adds a network hop** and processing cost to every single request.
+- **Adds a network hop** and processing cost to every proxied request; a [Valet Key](./valet-key.md) handoff pays it only on the first check.
 - **Becomes a single point** of failure and a scaling bottleneck unless it's built and run highly available.
 - **Validation logic** must be kept in lockstep with what the service actually expects, or the two drift apart.
 - **Only protects the path that goes through it** — any other route into the service bypasses it entirely.
@@ -92,7 +92,7 @@ flowchart LR
 <!--meta polarity=avoid-->
 
 - **All callers are already trusted and internal** — the extra hop buys nothing.
-- **You need broad routing**, aggregation, or protocol translation across many backends — that's an [API Gateway](./api-gateway.md), gatekeeper is validation-only.
+- **You need broad routing or aggregation across many backends**: that is an [API Gateway](./api-gateway.md)'s job. A gatekeeper only screens and narrows what it forwards.
 - **Latency budgets** are so tight that one more network hop per request is unacceptable.
 
 ## Code sketch
@@ -104,14 +104,26 @@ type GateResult =
   | { ok: false; status: number; reason: string };
 
 async function gatekeep(req: Request): Promise<GateResult> {
+  if (Number(req.headers.get("content-length") ?? 0) > 10_240) {
+    return { ok: false, status: 413, reason: "body too large" };
+  }
   const token = req.headers.get("authorization");
-  if (!token || !(await verifyToken(token))) {
+  try {
+    if (!token || !(await verifyToken(token))) {
+      return { ok: false, status: 401, reason: "invalid credentials" };
+    }
+  } catch {
     return { ok: false, status: 401, reason: "invalid credentials" };
   }
   if (!withinRateLimit(clientIp(req))) {
     return { ok: false, status: 429, reason: "rate limit exceeded" };
   }
-  const parsed = RequestSchema.safeParse(await req.json());
+  let parsed;
+  try {
+    parsed = RequestSchema.safeParse(await req.json());
+  } catch {
+    return { ok: false, status: 400, reason: "malformed request" };
+  }
   if (!parsed.success) {
     return { ok: false, status: 400, reason: "malformed request" };
   }
@@ -122,7 +134,7 @@ async function gatekeep(req: Request): Promise<GateResult> {
 async function handle(req: Request): Promise<Response> {
   const gate = await gatekeep(req);
   if (!gate.ok) return new Response(gate.reason, { status: gate.status });
-  return forwardToService(gate.body); // service trusts this input completely
+  return forwardToService(gate.body); // service still re-checks authorisation
 }
 ```
 
@@ -139,9 +151,9 @@ async function handle(req: Request): Promise<Response> {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Rate-limit threshold** — Requests per second (or concurrent in-flight) allowed per client identity before the gate returns 429; sized to the backend capacity you are protecting.
+- **Rate-limit threshold** — Requests per second (or concurrent in-flight) allowed per client identity before the gate returns 429. Work it out from the load-tested backend maximum divided by expected active clients, with headroom. Key it by authenticated identity, not by IP behind shared NAT.
 - **Max request/body size** — Hard cap on payload bytes and header size so oversized or malformed input is rejected at the gate rather than parsed by the backend.
-- **Upstream connect and read timeouts** — How long the gate waits to open a connection to the protected service and to read its response before failing the request.
+- **Upstream connect and read timeouts** — How long the gate waits to open a connection to the protected service and to read its response. Set the read timeout just above the backend p99 and the connect timeout shorter. Return 504 on expiry and never auto-retry non-idempotent calls.
 - **TLS minimum version and cipher policy** — The floor for negotiated protocol version and the allowed cipher suites when terminating client TLS at the gate.
 - **Replica count** — Number of stateless gatekeeper instances run behind a balancer so the gate is not itself a single point of failure.
 
@@ -157,8 +169,8 @@ async function handle(req: Request): Promise<Response> {
 <!--meta polarity=failure-->
 
 - **Gate becomes the bottleneck** — Under load the gatekeeper saturates CPU on TLS and parsing and slows every request, since all traffic must pass through it.
-- **Validation drift** — The gate schema and the backend contract fall out of lockstep — valid requests get rejected, or malformed ones slip through to a backend that trusts them.
-- **Bypass path** — Any network route that reaches the backend without passing the gate leaves it entirely unprotected; the gate only guards the path through it.
+- **Validation drift** — The gate schema and the backend contract fall out of lockstep — valid requests get rejected, or malformed ones slip through to a backend that trusts them. Detect it with CI contract tests of the gate schema against the backend schema, and watch the 400 rate after each deploy.
+- **Bypass path** — Any network route that reaches the backend without passing the gate leaves it entirely unprotected.
 - **Fail-open on error** — If the gate passes requests through when its own checks error instead of failing closed, an internal fault silently disables validation.
 
 ### Readiness checklist

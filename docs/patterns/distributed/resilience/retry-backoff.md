@@ -22,7 +22,7 @@ A call fails for a reason that passes in a moment, such as a dropped packet or a
 ## Explained
 <!--meta block=explain-->
 
-Retry with backoff runs a failed call again after a wait, and makes the wait longer after each failure. Many failures pass within a second, so a retry fixes them without bothering the caller. Retrying at once is worse than not retrying: every client that failed at the same moment comes back at the same moment. So the wait doubles each time, stops growing at a ceiling, and gets random jitter, which gives each client a slightly different delay. Retry only failures that can pass, such as a timeout or a 503, and give each attempt its own [timeout](timeout-deadline.md) so a hung attempt cannot stall the loop. Return a bad request to the caller at once, because waiting will not change the answer. Choose it over failing straight away when the failure is brief and you can afford slower answers.
+Retry with backoff runs a failed call again after a wait, and makes the wait longer after each failure. Many brief failures pass within a second, so a retry fixes them without bothering the caller. When many clients fail together, retrying at once is worse than not retrying: they all come back at the same moment. So the wait doubles each time, stops growing at a ceiling, and gets random jitter, which gives each client a slightly different delay. Retry only failures that can pass, such as a timeout or a 503, and give each attempt its own [timeout](timeout-deadline.md) so a hung attempt cannot stall the loop. Return a bad request to the caller at once, because waiting will not change the answer. Choose it over failing straight away when the failure is brief and you can afford slower answers.
 
 - **Doubled writes.** A retried write can run twice if the success reply was lost, so send a key the server uses to ignore repeats.
 - **Multiplied layers.** Retries at several layers multiply, so let one layer own retrying.
@@ -67,9 +67,9 @@ flowchart TB
 - **Fixed delay** — Retry after the same interval every time. Simplest to reason about, and the only variant that never eases off as the failure persists.
 - **Exponential backoff** — Each retry's wait multiplies the last, usually doubling, capped at a maximum delay so the curve doesn't grow unbounded on a long outage.
 - **Jittered backoff** — Randomize the delay around the backoff curve — full jitter, equal jitter, or decorrelated jitter — so clients that failed at the same instant don't all retry at the same instant too.
-- **Retry budgets** — Cap total retry volume as a share of overall traffic, independent of any single caller's attempt count, so retries collectively can never outgrow the load they're meant to smooth over.
+- **Retry budgets** — Cap total retry volume as a share of overall traffic, independent of any single caller's attempt count, so retry volume stays bounded to a fixed share of traffic, not a multiple of it.
 - **Server-directed timing** — Honour a delay the server hands back — a Retry-After header or a protocol-level pushback signal — and let it win over the locally computed wait. The overloaded side knows when it wants traffic back; doubling your own curve against its advice retries on the wrong schedule.
-- **Declarative retry** — The curve is configuration on the step, not a loop inside the handler. A Step Functions retrier declares which errors it matches plus the first interval, the attempt cap, the multiplier, a ceiling on the interval and whether to jitter — so what counts as retryable and how long the tail runs are reviewable in one place instead of scattered across call sites. It also moves the wait off your own process, which is what you want when the retryable unit is a durable step rather than an in-flight request.
+- **Declarative retry** — The curve is configuration on the step, not a loop in the handler. A Step Functions retrier declares the matched errors, first interval, attempt cap, multiplier, interval ceiling and jitter. The wait also moves off your process, which suits a durable step.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -77,10 +77,10 @@ flowchart TB
 ### Pros
 <!--meta polarity=pro-->
 
-- **Resolves transient blips automatically**, without ever surfacing an error to the caller.
+- **Resolves transient blips automatically**, without surfacing an error to the caller, within the attempt cap and deadline.
 - **Spaces out load over time**, giving a struggling dependency room to recover instead of adding to the pile-up.
 - **Jitter desynchronizes clients** so a shared outage doesn't turn into a synchronized [retry storm](../../../hazards/retry-storm.md).
-- **Drops into any call site** with no changes required on the callee's side.
+- **Drops into any call site** for reads and idempotent calls; a retried write also needs the callee to honour a dedup key.
 
 ### Cons
 <!--meta polarity=con-->
@@ -116,7 +116,7 @@ const MAX_ATTEMPTS = 5, BASE_MS = 200, MAX_MS = 30_000;
 
 const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
 
-async function withRetry<T>(call: () => Promise<T>): Promise<T> {
+async function withRetry<T>(call: () => Promise<T>, deadline: number): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await call();                       // the call carries its own timeout
@@ -124,12 +124,15 @@ async function withRetry<T>(call: () => Promise<T>): Promise<T> {
       const lastTry = attempt + 1 >= MAX_ATTEMPTS;
       if (lastTry || !isTransient(err)) throw err;   // permanent: fail now, not later
       const backoff = Math.min(MAX_MS, BASE_MS * 2 ** attempt);
-      await sleep(Math.random() * backoff);      // full jitter: anywhere in 0…backoff
+      const wait = Math.random() * backoff;      // full jitter: only the upper bound grows
+      if (Date.now() + wait > deadline) throw err; // the caller's deadline bounds the loop
+      await sleep(wait);
     }
   }
 }
 
-await withRetry(() => verifyDocument(personaId, deadline));
+await withRetry(() => verifyDocument(personaId, deadline), deadline);
+// isTransient: timeout, 429, 503 retry; 400, 401, 404 fail now
 ```
 
 ```typescript summary="TypeScript — backoff with full jitter, written to a queue column"
@@ -179,12 +182,12 @@ const claim = `SELECT * FROM task WHERE status = 'pending' AND run_after <= now(
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Max attempts** — How many tries a call gets before the caller is told it failed — the hard end of the curve.
+- **Max attempts** — How many tries a call gets before the caller is told it failed — the hard end of the curve. The sketch starts at 5 attempts, a 200 ms base and a 30 s cap; size the total so it fits the caller's deadline.
 - **Base delay and multiplier** — The first wait and its growth factor (base × 2^attempt) — the shape of the curve.
 - **Max delay ceiling** — A cap on the per-attempt wait, so the exponential does not run away during a long outage.
 - **Jitter strategy** — Full, equal or decorrelated jitter — how much randomness is mixed into each delay.
 - **Retryable classification** — Which errors count as transient (timeouts, 429, 503) and which fail straight through (400, 401, 404).
-- **Retry budget** — A fleet-wide cap on retries as a share of total traffic, independent of any one caller's attempt count.
+- **Retry budget** — A fleet-wide cap on retries as a share of total traffic, independent of any one caller's attempt count. Set the share from the retry rate seen on a healthy day plus headroom; a token bucket, as in the AWS SDK and gRPC entries, enforces it.
 
 ### Signals to watch
 <!--meta polarity=signal-->

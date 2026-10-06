@@ -21,11 +21,11 @@ You own an API but not the applications calling it, so a breaking change breaks 
 ## Explained
 <!--meta block=explain-->
 
-API versioning lets you change a published contract without breaking clients you cannot make redeploy: the old behaviour stays, the new one is published beside it, and something in the request, a path segment, a query parameter, a header or a media type, says which the caller wants. Try additive changes first, because a client that ignores unknown fields survives a new field or a new optional parameter with no version at all. Version only for breaking changes such as removing or renaming a field. Choose where the version goes by your callers. A public API with unknown clients and shared caches wants it in the URL path, where caches and logs already see it. An API whose callers you control can use a header and keep one address per resource, but it must send a Vary header, which tells caches that the header changes the response, or a cache serves a v1 body to a v2 caller.
+API versioning lets you change a published contract without breaking clients you cannot make redeploy: the old behaviour stays, the new one is published beside it, and something in the request, a path segment, a query parameter, a header or a media type, says which the caller wants. Try additive changes first, because a client that ignores unknown fields survives a new field with no version at all. Version only for breaking changes such as removing or renaming a field. Choose where the version goes by your callers. A public API with unknown clients and shared caches wants it in the URL path, where caches and logs already see it. An API whose callers you control can use a header and keep one address per resource, but it must send a Vary header, so caches key on it, or a cache serves a v1 body to a v2 caller.
 
 - **Version count.** Each live version multiplies every fix, so keep one internal model and a translation layer per published contract.
 - **Versions never retire.** Publish a sunset date with each version and alert on traffic still arriving after it.
-- **Behaviour unversioned.** Changing what an operation does changes every version, so version behaviour changes too.
+- **Behaviour unversioned.** A version does not gate behaviour, so a changed operation changes every version; ship it behind a new version or opt-in flag.
 
 **Example.** Version 1 returns a name field, and version 2 splits it into first and last. Your internal model stores first and last. The v1 translator joins them and the v2 translator passes them through, so a fix to name handling is made once. v1 has a sunset date of 1 March. That day 4% of 50,000 daily calls, 2,000, still arrive on v1 from 3 clients, so you contact those 3 instead of switching it off blind. The cost is one translator per live version, which you keep until the count of v1 calls reaches zero.
 
@@ -71,7 +71,7 @@ sequenceDiagram
 
 - **Additive change, no version** — Ship the change as an addition — a new field, a new resource, a new optional parameter — and version nothing. Clients that ignore what they do not recognise keep working, and you carry no second contract at all. It covers most releases and is the only strategy with no ongoing cost, so exhaust it before reaching for anything below. It stops working the moment a change is breaking: removing or renaming a field, changing its type, tightening validation, changing a default, changing what an error means, or restructuring how resources relate. Whichever mechanism you then pick needs a defined answer for the caller that asks for nothing.
 - **Path versioning** — A segment of the URI names the version — `/v2/customers/3`. It is unmissable in a log, in a support ticket and in a cache key, and routing it is a rule the front door already knows how to write. In exchange, the same customer now has two addresses, and every link the API generates has to carry the version too.
-- **Query-string versioning** — The version rides as a parameter — `?api-version=2025-03-27` — with a documented default for callers that omit it. One resource keeps one path, which reads better and keeps generated links simpler than path versioning does. Some older browsers and proxies decline to cache a response whose URI carries a query string, so a read-heavy public API can lose cache hits it was relying on.
+- **Query-string versioning** — The version rides as a parameter — `?api-version=2025-03-27` — with a documented default for callers that omit it. One resource keeps one path, which reads better and keeps generated links simpler than path versioning does. Caches key on the full URI, so this works unless a legacy proxy or CDN rule strips or ignores the query; measure the hit rate of a read-heavy public API before choosing it.
 - **Header versioning** — A request header carries the version and the URI stays canonical, keeping versioning out of resource identity entirely and making an absent header trivial to default. The cost is visibility and caching: the version no longer appears in a URL anyone can paste, and the response must declare `Vary` on that header or a shared cache will mix the versions up.
 - **Media-type versioning** — The caller negotiates with `Accept: application/vnd.example.v2+json` and the response confirms in `Content-Type`; an unsupported value answers `406 Not Acceptable`. This is HTTP's own mechanism for the same resource in a different representation, so it fits hypermedia links, which can name the media type of what they point at. It also asks the most of both sides, and callers using a generic HTTP client have to be told to set it.
 - **Date-pinned versioning** — The caller pins a date rather than an integer, and the server applies every transformation introduced between that date and today. Each breaking change becomes one small, testable transformer instead of another fork of the service, which is what keeps a count of live versions from becoming a count of live codebases. It needs discipline: a transformer that is not exactly inverse to the change it describes rots quietly, and the chain grows longer every year.
@@ -82,10 +82,10 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Breaking changes on your schedule** — callers migrate on theirs, so you can make a breaking change on your own schedule.
+- **Breaking changes on your schedule** — callers migrate when they choose, so a breaking change ships on your timetable, not theirs.
 - **The contract becomes explicit**: a caller states what it was built against instead of hoping nothing moved.
-- **Fix design mistakes** — a new version is a place to fix design mistakes additive change cannot reach, without a coordinated cut-over.
-- **Deprecation by measurement** — per-version traffic shows exactly who is still on what, which turns deprecation from a negotiation into a measurement.
+- **Fix design mistakes** — a new version can correct design mistakes that additive change cannot reach, with no coordinated cut-over.
+- **Deprecation by measurement** — per-version traffic, with the caller identity on each request, shows who is still on what, which turns deprecation from a negotiation into a measurement.
 
 ### Cons
 <!--meta polarity=con-->
@@ -133,7 +133,7 @@ const CHANGES: Change[] = [
   },
   {
     date: "2025-09-01", summary: "state renamed to status",
-    downgrade: (b) => { const { status, ...rest } = b; return { ...rest, state: status }; },
+    downgrade: (b) => { const { status, ...rest } = b.address; return { ...b, address: { ...rest, state: status } }; },
   },
 ].sort((a, b) => b.date.localeCompare(a.date));   // newest first
 
@@ -146,7 +146,9 @@ function render(body: unknown, pinned: string = OLDEST) {
 // Vary is not optional here: the URI is identical across versions, so without it
 // a shared cache serves one caller's shape to another and the bug is unreproducible.
 res.setHeader("Vary", "Accept-Version");
-res.json(render(customer, req.header("Accept-Version")));
+const pin = req.header("Accept-Version") ?? OLDEST;
+if (!/^\d{4}-\d{2}-\d{2}$/.test(pin) || pin < OLDEST || pin > new Date().toISOString().slice(0, 10)) return res.status(406).end();   // a typo must not silently get the newest shape
+res.json(render(customer, pin));
 ```
 
 ## In the wild
@@ -166,7 +168,7 @@ res.json(render(customer, req.header("Accept-Version")));
 - **Meaning of an omitted version** — What happens when the caller states nothing — the oldest supported contract, or a rejection. Defaulting is kinder to casual callers and quietly pins them to a version you want to retire.
 - **Number of live versions** — How many contracts you are willing to keep correct at once. Every one is a row in the test matrix and a place the same bug has to be fixed again.
 - **Cache variance** — Which request fields the response varies on. Header and media-type versioning need `Vary` naming that header, or shared caches mix the versions.
-- **Deprecation window** — How long a version keeps working after its successor ships, published with the version rather than negotiated later.
+- **Deprecation window** — How long a version keeps working after its successor ships, published with the version rather than negotiated later. Size it from the slowest caller's release cycle and any contractual commitment, and send `Deprecation` and `Sunset` response headers so callers' tooling warns before the cut-off.
 - **Translation-layer placement** — Whether version shims live at the edge or leak into the domain. Kept at the edge, the business logic exists once; let them inside and every version forks the code.
 
 ### Signals to watch
@@ -222,8 +224,8 @@ res.json(render(customer, req.header("Accept-Version")));
 - [API Routing](./api-routing.md) — A path segment or a header is what routing dispatches on, so the version reaches the right handler
 - [Anti-Corruption Layer](../../ddd/acl.md) — A translation layer per published version keeps the domain model single while the contracts differ
 - [DTO](../../enterprise/dto.md) — The payload shape is what a version actually versions, so the transfer object is where a version lives
-- [Contract Testing](../../testing/contract-testing.md) — Where consumers cannot be enumerated, versioning replaces consumer-driven verification
 - [Hyrum's Law](../../../principles/hyrums-law.md) — A version policy has to count what callers actually depend on, not only what is documented
+- [Contract Testing](../../testing/contract-testing.md) — Where consumers cannot be enumerated, versioning stands in for per-consumer verification, but a contract test still pins each live version
 
 **Prevents**
 
