@@ -921,7 +921,7 @@
       "definition": "A majority of nodes must agree before a write counts",
       "route": "/patterns/distributed/coordination/quorum-consensus.html",
       "requires": ["replication"],
-      "related": ["gossip-protocol", "write-ahead-log", "distributed-lock", "redundancy", "vector-clock", "crdt", "merkle-tree", "two-phase-commit", "failover"]
+      "related": ["gossip-protocol", "write-ahead-log", "distributed-lock", "redundancy", "vector-clock", "crdt", "merkle-tree", "two-phase-commit", "failover", "fencing-token"]
     },
     {
       "id": "vector-clock",
@@ -977,7 +977,7 @@
       "definition": "Lock the row up front so no one else can touch it until you're done",
       "route": "/patterns/distributed/coordination/pessimistic-locking.html",
       "requires": [],
-      "related": ["optimistic-concurrency-control", "distributed-lock", "two-phase-commit", "lease", "conditional-write"]
+      "related": ["optimistic-concurrency-control", "distributed-lock", "two-phase-commit", "lease", "conditional-write", "fencing-token"]
     },
     {
       "id": "distributed-lock",
@@ -1001,7 +1001,7 @@
       "definition": "A number that rises with each lock grant and is checked by the resource, so a holder that lost its lock without noticing cannot overwrite newer work.",
       "route": "/patterns/distributed/coordination/fencing-token.html",
       "requires": ["distributed-lock"],
-      "related": ["failover", "lease", "optimistic-concurrency-control", "conditional-write", "leader-election"]
+      "related": ["failover", "lease", "optimistic-concurrency-control", "conditional-write", "leader-election", "pessimistic-locking", "quorum-consensus", "idempotency"]
     },
     {
       "id": "workflow-orchestration",
@@ -1545,7 +1545,7 @@
       "definition": "The same request applied twice has the same effect as once",
       "route": "/patterns/messaging/idempotency.html",
       "requires": [],
-      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer"]
+      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer", "fencing-token"]
     },
     {
       "id": "fan-in",

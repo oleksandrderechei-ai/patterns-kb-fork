@@ -237,6 +237,7 @@ res.status(result.status).json(result.body);
 - [Unique ID Generation](../distributed/coordination/unique-id-generation.md) — The key a consumer deduplicates on has to be generated somewhere, usually by the client
 - [Command-Query Separation](../../principles/command-query-separation.md) — Queries are repeatable by construction, commands need their own guard.
 - [Event-Carried State Transfer](./event-carried-state-transfer.md) — Version-checked upserts are idempotent handling of repeated state events.
+- [Fencing Token](../distributed/coordination/fencing-token.md) — Where a resource can compare a token, fencing refuses the stale write that replay-safety would only absorb.
 
 **Enables**
 

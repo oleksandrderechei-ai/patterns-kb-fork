@@ -13336,6 +13336,27 @@
       "b": "thundering-herd",
       "note_a": "Can fall into thundering herd when a popular lock frees and every waiter retries at once, unless retries are jittered or watch-based",
       "note_b": "A popular lock freeing wakes every waiter at once and hammers the lock store"
+    },
+    {
+      "a": "fencing-token",
+      "verb": "alternative-to",
+      "b": "pessimistic-locking",
+      "note_a": "A row lock holds inside one transaction on one store; a token is for a lock that spans servers where the holder can pause.",
+      "note_b": "Where the lock spans servers and the holder can pause, a fencing token refuses the stale write that a row lock cannot see."
+    },
+    {
+      "a": "fencing-token",
+      "verb": "combines-with",
+      "b": "quorum-consensus",
+      "note_a": "A consensus group issues each leader a term, and storage rejects any lower term, which is the token.",
+      "note_b": "The term a consensus group issues serves as a fencing token when storage rejects a lower one."
+    },
+    {
+      "a": "fencing-token",
+      "verb": "combines-with",
+      "b": "idempotency",
+      "note_a": "Where the resource cannot compare a token, make the write safe to replay instead.",
+      "note_b": "Where a resource can compare a token, fencing refuses the stale write that replay-safety would only absorb."
     }
   ],
   "group_order": {

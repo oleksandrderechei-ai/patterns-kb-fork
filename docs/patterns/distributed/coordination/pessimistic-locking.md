@@ -222,6 +222,7 @@ async function reserveSeat(db: Client, seatId: string, userId: string) {
 - [Two-Phase Commit](./two-phase-commit.md) — When the data spans databases, two-phase commit extends the same lock-until-commit idea across the network.
 - [Lease](./lease.md) — Row locks live inside one transaction, where a lease reaches across servers and survives a crashed holder.
 - [Conditional Write](./conditional-write.md) — Locking holds the row while your code decides; a conditional write skips the lock when the rule fits one predicate.
+- [Fencing Token](./fencing-token.md) — Where the lock spans servers and the holder can pause, a fencing token refuses the stale write that a row lock cannot see.
 
 **Prevents**
 

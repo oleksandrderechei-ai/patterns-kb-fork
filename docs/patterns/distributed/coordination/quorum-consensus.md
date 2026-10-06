@@ -228,6 +228,7 @@ const latest = await quorumRead(replicas, "x", 2);
 - [Vector Clock](./vector-clock.md) — Quorum reads can return divergent versions, and vector clocks tell the reader which to keep.
 - [Merkle Tree](./merkle-tree.md) — Quorum writes can miss a replica and a Merkle repair closes the gap later.
 - [Two-Phase Commit](./two-phase-commit.md) — Consensus can store a two-phase-commit coordinator's decision so its failure no longer blocks prepared participants.
+- [Fencing Token](./fencing-token.md) — The term a consensus group issues serves as a fencing token when storage rejects a lower one.
 
 **Alternative to**
 

@@ -17,23 +17,23 @@ An engine runs a long-running, multi-step process as durable code, persisting th
 ## What it is
 <!--meta block=description-->
 
-A server that charges the card, reserves stock and books a courier can restart halfway, and nothing remembers what already ran. A workflow engine saves the result of every step as it finishes. A new worker then replays the code, finished steps return their saved results, and the process continues, so no step is lost and none runs twice.
+A server that charges the card, reserves stock and books a courier can restart halfway, and nothing remembers what already ran. A workflow engine saves the result of every step as it finishes. A new worker then replays the code, finished steps return their saved results, and the process continues, so no recorded step is lost or repeated.
 
 ## Explained
 <!--meta block=explain-->
 
-A workflow engine runs a long, multi-step process as code and saves the result of every step as it finishes. If a worker crashes or is redeployed halfway, a new worker reruns the code from the top, each finished step returns its saved result instead of running again, and the process carries on from the crash point. No step is lost and none happens twice. Waiting for a human or a partner costs nothing, because between steps the process is just a database record. Choose it when many flows share the same needs for saved progress, retries and timers, and you would otherwise build them around every process. For a few simple flows, a state machine saved in your own database is cheaper.
+A workflow engine runs a long, multi-step process as code and saves the result of every step as it finishes. If a worker crashes or is redeployed halfway, a new worker reruns the code from the top, each finished step returns its saved result instead of running again, and the process carries on from the crash point. No step is lost and a recorded step never repeats; the step in flight at the crash can run again, so make it idempotent. Waiting for a human or a partner holds no worker or thread, because between steps the process is just a stored record. Choose it when many flows share the same needs for saved progress, retries and timers, and you would otherwise build them around every process. For a few simple flows, a state machine saved in your own database is cheaper.
 
 - **Deterministic code.** Replay needs the same answers every time, so keep clocks, random numbers and network calls inside steps and replay-test in CI.
 - **Deploys break live runs.** A changed flow shape fails runs in progress, so version it and keep the old path until they end.
 - **One more system.** You run another distributed system, or pay a managed service for it.
 
-**Example.** An order flow charges the card, reserves stock, books a courier, waits for the warehouse and emails the customer. A worker crashes at 14:03 after the reserve step. At 14:03:05 another worker replays the code: the charge and reserve return their saved results, and booking the courier runs next, so the card is charged once. The warehouse confirmation arrives 2 days later, and nothing runs while waiting. On day 1 you deploy a new fraud-check step before the charge. Runs already in progress lack it in their history and fail replay, so you keep the old path for 2 days until they finish.
+**Example.** An order flow charges the card, reserves stock, books a courier, waits for the warehouse and emails the customer. A worker crashes at 14:03 after the reserve step. At 14:03:05 another worker replays the code: the charge and reserve return their saved results, and booking the courier runs next, so the card is not charged again. The warehouse confirmation arrives 2 days later, and nothing runs while waiting. On day 1 you deploy a new fraud-check step before the charge. Runs already in progress lack it in their history and fail replay, so you keep the old path for 2 days until they finish.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="How does a five-step order survive the machine running it being restarted? Each step's result lands in the history at step 6 before the workflow asks for the next one, so whoever picks the job up reads what is already done."
+```mermaid caption="How does a five-step order survive the machine running it being restarted? Each step's result lands in the history before the workflow asks for the next one, so whoever picks the job up reads what is already done."
 flowchart LR
     WF["Workflow code"]
     subgraph Eng["Durable state the engine owns"]
@@ -52,7 +52,7 @@ flowchart LR
     classDef ext stroke-dasharray:4 4
 ```
 
-```mermaid caption="The engine records every step's result to a durable history and never runs your workflow code where the side effects happen — those live in activities. A crashed workflow resumes by replaying that history, so completed steps are returned from the record instead of re-executed."
+```mermaid caption="The engine records every step's result to a durable history. Workflow code holds no side effects; those live in activities. A crashed workflow resumes by replaying that history, so completed steps are returned from the record instead of re-executed."
 flowchart TB
     WF["Workflow: ordered steps as code"] -->|"await next step"| ENG["Engine schedules the step"]
     ENG -->|"dispatch activity"| ACT["Activity worker runs the side effect"]
@@ -66,7 +66,7 @@ flowchart TB
 <!--meta block=variations-->
 
 - **Durable execution (code-first)** — The workflow is authored as ordinary imperative code — awaits, loops, conditionals — and the engine rebuilds state by deterministically replaying that code against the recorded history. You get real language control flow for free; the price is that the workflow body must stay deterministic, with all wall-clock time, randomness, and I/O pushed into activities.
-- **Declarative state machine (config-first)** — The workflow is described as a state machine or DAG (directed acyclic graph) in JSON, YAML, or a DSL (domain-specific language), and the engine tracks each execution's position server-side and continues from it. This buys a visualizable diagram and simpler operations, at the cost of expressiveness — logic sometimes has to be contorted to fit the state-machine model.
+- **Declarative state machine (config-first)** — The workflow is described as a state machine, or a graph with branches and loops, in JSON, YAML, or a DSL (domain-specific language), and the engine tracks each execution's position server-side and continues from it. This buys a visualizable diagram and simpler operations, at the cost of expressiveness; logic sometimes has to be contorted to fit the state-machine model.
 - **Signals and durable timers** — A workflow can block on an external event — a human approval, a webhook callback — or on a wall-clock timer, and wait days or months holding only persisted state, with no live thread or worker memory consumed while it waits. The engine rehydrates the execution when the event or timer fires.
 - **Continue-as-New** — For workflows that loop indefinitely or accumulate a large history, the execution periodically snapshots its current state into a fresh run seeded with an empty history. This caps replay cost and keeps the persisted history from growing past the engine's size limit.
 
@@ -77,7 +77,7 @@ flowchart TB
 <!--meta polarity=pro-->
 
 - **You write the happy path**; the engine owns retries, timeouts, persisted progress, and crash recovery, so system plumbing stops leaking into business logic.
-- **A crash resumes exactly where it left off** — completed steps are returned from history, never re-run — so no step is silently lost or duplicated.
+- **A crash resumes exactly where it left off** — recorded steps return from history instead of re-running, and only the step in flight can run again, so give it an idempotency key.
 - **A workflow can wait days** or months for an external event on persisted state alone, without holding a thread or burning resources while it waits.
 - **The recorded history is a full audit trail**: you can see precisely which step a stuck process is blocked on, instead of reverse-engineering it from scattered logs.
 
@@ -88,7 +88,8 @@ flowchart TB
 - **Code-first engines demand deterministic workflow code**; a stray timestamp, random number, or direct network call in the workflow body breaks replay on recovery — keep all three inside activities, and replay-test the workflow in CI (continuous integration) so the contract is enforced by something other than review.
 - **The entire execution history is persisted for replay**, so a long-running or looping workflow can hit history-size limits unless it snapshots with Continue-as-New.
 - **It is overkill for a single-step job** — every step pays round-trips through the engine plus a history write, which does not pay off for high-frequency trivial work.
-- **A deploy that changes** a workflow's shape can wedge every execution already in flight, because their recorded history no longer matches the code replaying it — version or patch the change and keep the old path alive until the last old run drains, which on a month-long flow means a month of both.
+- **A deploy that changes** a workflow's shape can wedge any in-flight execution whose recorded history no longer matches the code replaying it. Version or patch the change and keep the old path until the last old run drains, which on a month-long flow means a month of both.
+- **Activities run at least once** — not exactly once, so every side-effecting step needs an idempotency key or a dedupe check downstream.
 
 ## When to use it
 <!--meta block=usage-->
@@ -113,11 +114,13 @@ flowchart TB
 ```typescript summary="TypeScript — the hand-rolled version: one row, one tick per finished step"
 const steps = ["charge", "reserve", "ship", "notify"] as const;
 
-// Called on a schedule, or whenever the job is nudged. Safe to call twice.
+// Called on a schedule, or whenever the job is nudged. Safe to call again
+// after a crash; the step in flight may repeat, so run() must be
+// idempotent, and concurrent calls need a lock.
 async function advance(jobId: string) {
   const job = await jobs.load(jobId);      // progress lives in the database
   for (const step of steps) {
-    if (job.done.includes(step)) continue; // already ran — never run again
+    if (job.done.includes(step)) continue; // already recorded, skipped
     await run(step, job);
     await jobs.markDone(jobId, step);      // written down before moving on
   }
@@ -129,9 +132,10 @@ async function advance(jobId: string) {
 
 ```typescript summary="TypeScript — a durable KYC flow that survives a crash by replaying its history"
 // The workflow reads like the happy path. The engine records each
-// activity's result to history, so a crash or a mid-flight deploy
-// replays this function and the completed steps return their recorded
-// result instead of re-submitting anything to a vendor.
+// activity's result to history, so a crash replays this function and
+// the completed steps return their recorded result instead of
+// re-submitting anything to a vendor. A deploy that reorders or adds
+// steps needs versioning.
 const { verifyIdentity, screenSanctions, notifyClient } =
   proxyActivities<Activities>({
     startToCloseTimeout: "10 minutes",
