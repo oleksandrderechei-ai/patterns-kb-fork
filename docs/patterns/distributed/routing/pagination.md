@@ -48,7 +48,7 @@ flowchart LR
     classDef ext stroke-dasharray:4 4
 ```
 
-```mermaid caption="What breaks when the collection changes mid-walk? Offset counts positions, and an insert moves every position after it — so the client re-reads one row and silently skips another. Keyset paging asks for \"everything after this key\" and is unaffected."
+```mermaid caption="What breaks when the collection changes mid-walk? Offset counts positions, and an insert moves every position after it — so the client re-reads one row and silently skips another. Keyset paging asks for \"everything after this key\": it never repeats or skips a row it has already passed, though a row inserted behind the cursor is never seen."
 sequenceDiagram
     participant C as Client
     participant A as List endpoint
@@ -70,7 +70,7 @@ sequenceDiagram
 - **Offset paging** — The caller sends how many rows to skip and how many to take — `?limit=25&offset=50` — with defaults for both. Any page is addressable, so a numbered page control and a "jump to last" button both work, which is why nearly every interface starts here. The store still walks the skipped rows, so latency grows with depth, and a concurrent insert or delete shifts every page after it.
 - **Keyset paging** — The caller sends the sort key of the last row it saw, and the query seeks past it on the index. Cost is flat no matter how deep the walk goes, and rows already returned cannot shift under a concurrent write. You give up random access — there is no page seven — and you need a sort key that is a total order, which usually means appending a unique id as the tie-breaker.
 - **Opaque page token** — The server encodes the cursor state — sort key, active filters, sometimes a snapshot id — into a single string the client only ever echoes back. It keeps the paging strategy private, so you can move from offset to keyset without a client release, and it stops callers hand-crafting cursors that skip the filters. Sign or encrypt it: an unsigned token is user input that reaches your query planner.
-- **Snapshot paging** — The first request pins a consistent view — an open transaction, a read timestamp, a search index point-in-time — and every later page reads that version. Drift disappears entirely, which is what a correct export needs. The price is a resource held open for the length of the walk, and a client that stops halfway leaves it there until it expires, so the lifetime has to be short and enforced.
+- **Snapshot paging** — The first request pins a consistent view, such as a read timestamp or a search index point-in-time, and every later page reads that version. Drift disappears entirely, which is what a correct export needs. The price is a resource held open for the length of the walk, and a client that stops halfway leaves it there until it expires, so the lifetime has to be short and enforced. An open database transaction fits only a server-side cursor on one connection, since it cannot span separate HTTP requests without pinning locks and vacuum.
 - **Byte-range paging** — The same idea applied to one large object rather than a collection. The response advertises `Accept-Ranges: bytes` and a total `Content-Length`, the client asks for `Range: bytes=0-2499`, and the server answers `206 Partial Content` with a `Content-Range`. It is how a resumable download survives a dropped connection — the client restarts from the last byte it has, not from zero.
 
 ## Trade-offs
@@ -79,7 +79,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Response size** and query cost stop depending on how much data exists, so one caller can no longer take the service down by asking a reasonable question.
+- **Response size** is bounded, and so is query cost under keyset paging on an indexed sort key, so one caller can no longer take the service down by asking a reasonable question. Deep offset and cross-shard merges still grow with depth and shard count.
 - **The caller sees the first** results in milliseconds instead of waiting for a complete answer it will mostly discard.
 - **Each page is an independent stateless request**, so pages can be retried, load-balanced across instances, and cached on their own.
 - **Keyset paging** makes the last page as cheap as the first, which is what makes a full-collection sync or export viable at all.
@@ -87,11 +87,11 @@ sequenceDiagram
 ### Cons
 <!--meta polarity=con-->
 
-- **A collection that changes** while the caller walks it can deliver a row twice or skip one entirely — offset paging always, keyset paging for rows not yet reached.
+- **A collection that changes** while the caller walks it can deliver a row twice or skip one entirely: offset paging always, keyset paging for rows not yet reached. A row whose sort key changes mid-walk moves across the cursor, so sort on an immutable column such as created_at.
 - **Every consumer now has a loop**, a termination condition and a retry story where it used to have one call.
-- **Total count costs a second scan** — it is a second full scan of the filtered set, so "showing 1-25 of 4,182,993" is more expensive than the page it decorates.
+- **Total count costs a second scan** — a second full scan of the filtered set, so "showing 1-25 of 4,182,993" costs more than the page it decorates.
 - **Keyset paging gives up random access**: there is no page seven, and no jump to the end.
-- **Paging a collection** spread over shards needs a page from every shard and a merge, so the work grows with shard count even though the response does not.
+- **Paging a collection** spread over shards fetches offset plus limit rows from each shard and merges them, so the work grows with depth and shard count while the response stays the same size. Keyset paging cuts it to limit rows per shard.
 - **Cursors are a compatibility surface**: change the sort order or the filter semantics and every cursor already in a client's hands is wrong.
 
 ## When to use it
@@ -118,20 +118,32 @@ sequenceDiagram
 ```typescript summary="TypeScript — keyset paging with a lookahead row and an opaque cursor"
 const MAX_LIMIT = 100;   // published, enforced — an uncapped limit is a DoS parameter
 
-type Cursor = { createdAt: string; id: string };
+type Cursor = { createdAt: string; id: string; customerId: string };
 
 // Opaque on purpose: signed, so clients cannot hand-craft one that skips filters.
+// sign/verify: HMAC with a server-side key. The filter rides in the token.
 const encode = (c: Cursor) => sign(Buffer.from(JSON.stringify(c)).toString("base64url"));
-const decode = (t: string): Cursor => JSON.parse(Buffer.from(verify(t), "base64url").toString());
+function decode(t: string, customerId: string): Cursor {
+  let c: Cursor;
+  try {
+    c = JSON.parse(Buffer.from(verify(t), "base64url").toString());
+  } catch {
+    throw new BadRequest("invalid_cursor");
+  }
+  if (c.customerId !== customerId) throw new BadRequest("invalid_cursor");
+  return c;
+}
 
-async function listOrders(q: { limit?: number; cursor?: string }) {
-  const limit = Math.min(q.limit ?? 25, MAX_LIMIT);
-  const after = q.cursor ? decode(q.cursor) : undefined;
+async function listOrders(customerId: string, q: { limit?: number; cursor?: string }) {
+  const limit = Math.min(Math.max(1, Math.trunc(q.limit ?? 25) || 25), MAX_LIMIT);
+  const after = q.cursor ? decode(q.cursor, customerId) : undefined;
 
   // (created_at, id) is a TOTAL order. created_at alone lets rows with an
   // identical timestamp repeat or vanish across a page boundary.
+  // created_at::text keeps microseconds; a JS Date truncates to ms and the tuple compare repeats rows.
+  // Check EXPLAIN shows an index range scan; if the OR defeats the seek, run two queries.
   const rows = await db.query(
-    `SELECT id, created_at, total FROM orders
+    `SELECT id, created_at::text AS created_at, total FROM orders
       WHERE customer_id = $1
         AND ($2::timestamptz IS NULL OR (created_at, id) < ($2, $3))
       ORDER BY created_at DESC, id DESC
@@ -143,7 +155,7 @@ async function listOrders(q: { limit?: number; cursor?: string }) {
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
   const last = items.at(-1);
-  const next_cursor = hasMore && last ? encode({ createdAt: last.created_at, id: last.id }) : null;
+  const next_cursor = hasMore && last ? encode({ createdAt: last.created_at, id: last.id, customerId }) : null;
   return { items, has_more: hasMore, next_cursor };
 }
 ```
@@ -154,7 +166,7 @@ async function listOrders(q: { limit?: number; cursor?: string }) {
 - **Stripe API** — Cursor pagination across every list endpoint: `limit` bounds the page, `starting_after` and `ending_before` carry an object id rather than an offset, and `has_more` tells the caller whether to continue. No total count is returned. {#wild-stripe}
 - **GitHub representational state transfer (REST) API** — Offset paging with `page` and `per_page`, and the next page advertised in a `Link` header with `rel="next"`, `rel="prev"` and `rel="last"` — so a client follows links instead of computing offsets. {#wild-github}
 - **Elasticsearch** — Deep paging is capped rather than merely discouraged: `from` plus `size` may not exceed `index.max_result_window`, which defaults to 10,000. Past that you use `search_after`, pinned to a point-in-time so the traversal reads one consistent view. {#wild-elasticsearch}
-- **Kubernetes API** — List requests take a `limit` and return a `continue` token that the next request echoes back — an opaque cursor whose encoding the API server is free to change. {#wild-kubernetes}
+- **Kubernetes API** — List requests take a `limit` and return a `continue` token that the next request echoes back: an opaque cursor whose encoding the API server is free to change. A token that outlives the server's retained history is rejected with `410 Gone`, and the client must restart the list. {#wild-kubernetes}
 
 ## In production
 <!--meta block=production-->
