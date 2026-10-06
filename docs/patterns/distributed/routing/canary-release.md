@@ -236,6 +236,7 @@ function onCanary(userId: string, weightPercent: number): boolean {
 - [Deployment Stamp](./deployment-stamp.md) — The slice can be a whole stamp rather than a percentage
 - [Quarantine](../../security/quarantine.md) — Pairs with a supply-chain gate: check what you ship, then who sees it first
 - [Rolling Deployment](./rolling-deployment.md) — A canary can be widened as a roll of new instances
+- [API Routing](./api-routing.md) — Routing is the mechanism that splits the slice
 
 **Alternative to**
 

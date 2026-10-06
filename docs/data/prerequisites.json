@@ -649,7 +649,7 @@
       "definition": "Decides what in a request names the service it wants",
       "route": "/patterns/distributed/routing/api-routing.html",
       "requires": [],
-      "related": ["api-gateway", "reverse-proxy", "load-balancer", "bff", "api-versioning", "trie"]
+      "related": ["api-gateway", "reverse-proxy", "load-balancer", "bff", "api-versioning", "trie", "canary-release", "cdn"]
     },
     {
       "id": "reverse-proxy",
@@ -689,7 +689,7 @@
       "definition": "Send a small slice of traffic to the new version and watch before widening",
       "route": "/patterns/distributed/routing/canary-release.html",
       "requires": ["load-balancer"],
-      "related": ["blue-green-deployment", "feature-flag", "health-endpoint", "deployment-stamp", "quarantine", "strangler-fig", "rolling-deployment"]
+      "related": ["blue-green-deployment", "feature-flag", "health-endpoint", "deployment-stamp", "quarantine", "strangler-fig", "rolling-deployment", "api-routing"]
     },
     {
       "id": "feature-flag",
@@ -793,7 +793,7 @@
       "definition": "Caches and serves static content from the edge, near the user",
       "route": "/patterns/distributed/routing/cdn.html",
       "requires": [],
-      "related": ["consistent-hashing", "cache-aside", "client-side-cache", "object-storage", "reverse-proxy", "storage"]
+      "related": ["consistent-hashing", "cache-aside", "client-side-cache", "object-storage", "reverse-proxy", "storage", "api-routing"]
     },
     {
       "id": "autoscaling",
