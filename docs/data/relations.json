@@ -13266,6 +13266,27 @@
       "b": "acp",
       "note_a": "That one connects a host to its agent; this one connects peers",
       "note_b": "This one hosts an agent inside an application with a person present; the other hands work between independent peer agents"
+    },
+    {
+      "a": "fallback",
+      "verb": "alternative-to",
+      "b": "fail-fast",
+      "note_a": "Fail fast returns the error where a fallback returns a lesser answer; choose fail fast when a wrong answer costs more than none.",
+      "note_b": "A fallback returns a lesser answer where fail fast reports the error at once; choose a fallback when part of the answer is optional or an old answer is nearly as good."
+    },
+    {
+      "a": "bulkhead",
+      "verb": "combines-with",
+      "b": "timeout-deadline",
+      "note_a": "A permit held by a hung call is only freed when a deadline expires",
+      "note_b": "Bounds how long a call holds its compartment's permit"
+    },
+    {
+      "a": "compensating-transaction",
+      "verb": "exposed-to",
+      "b": "retry-storm",
+      "note_a": "Retrying a failed undo against a service that is already down adds load; cap compensation retries and back them off.",
+      "note_b": "Compensation retries against a service that is already down add to the retry load; this pattern's undos need a cap and backoff."
     }
   ],
   "group_order": {
