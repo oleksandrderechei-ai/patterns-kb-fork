@@ -27,7 +27,7 @@ A service mesh puts a proxy beside every service instance to carry all of its tr
 - **Third suspect.** Every incident gains the proxy as a suspect, so keep proxy metrics beside the application's.
 - **Central blast radius.** One bad policy pushed centrally can stop all traffic, so roll policy out to a small share first.
 
-**Example.** A fleet has 300 instances, each with a proxy using 100 MB, so the mesh holds 30 GB. Assume each proxy adds 1 ms, so a call costs 2 ms, and a request that makes 4 calls costs 8 ms more. In return, rotating every certificate is one change in the control plane with no redeploy. A policy that denies all traffic would hit all 300 instances at once, so you push it to 5% first, 15 instances, and catch it within a minute instead of during a full outage.
+**Example.** A fleet has 300 instances, each with a proxy using 100 MB, so the mesh holds 30 GB. Assume each proxy adds 1 ms, so a call costs 2 ms, and a request that makes 4 calls costs 8 ms more. In return, rotating every certificate is one change in the control plane with no redeploy. A policy that denies all traffic would hit all 300 instances at once, so you push it to 5% first, 15 instances, and catch it there, provided an error-rate alert watches them and the push can be reverted at once, rather than during a full outage.
 
 ## How it works
 <!--meta block=structure-->
@@ -64,10 +64,10 @@ flowchart TB
 ### Pros
 <!--meta polarity=pro-->
 
-- **Applies mutual TLS**, retries, timeouts, load balancing, and circuit breaking uniformly to every service without touching app code or language.
+- **Applies mutual TLS**, retries, timeouts, load balancing and circuit breaking uniformly to every meshed service without app code changes; the circuit breaker is the proxy's outlier detection.
 - **Routing, security, and resilience policy** live in one place and take effect fleet-wide.
-- **Golden metrics**, distributed traces, and a live traffic topology come from the proxies for free.
-- **Enables a zero-trust posture**: automatic mutual TLS and workload identity between services.
+- **Golden metrics** and a live traffic topology come from the proxies without app changes; traces join up only if apps forward trace headers, and span volume has a cost (see sampling).
+- **Gives automatic mutual TLS** and workload identity, the base for a zero-trust posture once authorization policy is added.
 - **Progressive delivery** — canary releases, traffic splitting, fault injection — is controlled declaratively.
 
 ### Cons
@@ -112,15 +112,16 @@ class MeshProxy {
   async forward(target: string, body: unknown): Promise<Response> {
     const { timeoutMs, retries } = this.policy;
     let lastErr: unknown;
+    // Retry only idempotent calls. A real proxy adds jittered backoff, a retry budget and outlier ejection; omitted here.
     for (let attempt = 0; attempt <= retries; attempt++) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
         // mTLS, load balancing, routing and per-hop golden metrics also live
         // here, uniform across the fleet — never in the app.
-        return await fetch(target, {
-          method: "POST", body: JSON.stringify(body), signal: ctrl.signal,
-        });                            // success — no retry needed
+        const res = await fetch(target, { method: "POST", body: JSON.stringify(body), signal: ctrl.signal });
+        if (res.status < 500) return res;   // fetch does not throw on 5xx, so check it
+        lastErr = new Error("upstream " + res.status);
       } catch (err) {
         lastErr = err;                 // retried transparently; app unaware
       } finally {
@@ -147,16 +148,16 @@ class MeshProxy {
 <!--meta polarity=knob-->
 
 - **Sidecar resource requests and limits** — CPU and memory reserved for each proxy independently of the app; multiplied across every instance, this is the mesh baseline cost.
-- **Per-destination timeouts, retries, and connection pools** — The request timeout, retry count and budget, and connection-pool sizes each proxy enforces toward an upstream service.
+- **Per-destination timeouts, retries, and connection pools** — The request timeout, retry count and budget, and connection-pool sizes each proxy enforces toward an upstream service. Retries compound per hop (3 tries over 3 hops is 27x load), so cap retries with a budget as a share of requests and keep the timeout under the caller's deadline. Starting values are illustrative; tune against observed error rates.
 - **mTLS mode and certificate lifetime** — Strict versus permissive mutual TLS between services, and how often workload certificates are rotated.
-- **Outlier detection thresholds** — The consecutive-error count and maximum ejection percentage the proxies use to eject and later re-admit unhealthy upstream hosts.
+- **Outlier detection thresholds** — The consecutive-error count and maximum ejection percentage the proxies use to eject and later re-admit unhealthy upstream hosts. Cap ejection at a minority share of the pool, since ejecting too many hosts causes the outage it should prevent. Start with a conservative error count and tune it against the upstream's observed error rate.
 - **Trace sampling rate** — The fraction of requests traced, since emitting a span for every hop at full rate is expensive at fleet scale.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Proxy overhead per instance** — CPU and memory each sidecar consumes relative to its app; multiplied across the fleet it is the real cost of the pattern.
-- **Added hop latency** — The p99 latency the proxy adds routing in and out of a service versus a direct call.
+- **Added hop latency** — The p99 latency the proxy adds routing in and out of a service versus a direct call. Record the direct-call p99 before onboarding and alert when the added p99 exceeds an agreed share of the service's latency budget.
 - **Config propagation lag** — Time for a control-plane change to reach every proxy; long convergence means proxies are running divergent config.
 - **mTLS handshake failures and certificate expiry** — Failed handshakes or certificates approaching expiry warn of an imminent fleet-wide outage.
 

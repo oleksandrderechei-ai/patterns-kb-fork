@@ -21,13 +21,13 @@ A **backend-for-frontend** is a thin service, owned by the team that builds one 
 ## Explained
 <!--meta block=explain-->
 
-A backend-for-frontend is a thin service, owned by the team that builds one client such as the iOS app, that sits between that client and the shared services, calls what it needs, and returns exactly the shape that client's screens expect. Without one, a single general API serves mobile, web and partners, and its contract moves with every client's needs. Mobile wants a small payload to save battery, a dashboard wants rich data, and a partner wants a contract that never shifts. Choose it over one generic API when clients differ so much in payload, aggregation and release rhythm that no single contract fits, and when the frontend team will run a service. The shared services stay generic.
+A backend-for-frontend is a thin service, owned by the team that builds one client such as the iOS app, that sits between that client and the shared services. It calls what it needs and returns exactly the shape that client's screens expect. Without one, a single general API serves mobile, web and partners, and its contract moves with every client's needs. Mobile wants a small payload to save battery, a dashboard wants rich data, and a partner wants a contract that never shifts. Choose it over one generic API when clients differ so much in payload, aggregation and release rhythm that no single contract fits, and when the frontend team will run a service. The shared services stay generic.
 
 - **More services.** Each client gets one more deployable with its own pipeline and on-call, so create one only where the divergence is real.
-- **Copied logic.** Login, error mapping and caching get repeated in each, so move them into a shared library once the second copy appears.
+- **Copied logic.** Login, error mapping and caching get repeated in each; a shared library fixes it but couples releases, so share only stable concerns.
 - **Drift.** One entity can take a different shape behind each client, so name an owner for the shared meaning of core entities.
 
-**Example.** The mobile order screen needs 4 fields: id, status, total and delivery estimate. The generic API returns 25 fields, 6 KB, from three services, which the app fetches in 3 sequential calls of 150 ms over cellular, 450 ms in all. A mobile BFF calls the same three services in parallel inside the data centre at 20 ms each and returns 0.5 KB, so the app makes one 150 ms call and waits about 170 ms. The cost is a new service for the mobile team to deploy and watch, and a second place where the order shape is defined.
+**Example.** The mobile order screen needs 4 fields: id, status, total and delivery estimate. The generic API returns 25 fields, 6 KB, across three services, which the app fetches in 3 sequential calls of 150 ms over cellular, 450 ms in all. A mobile BFF calls the same three services in parallel inside the data centre at 20 ms each, so the app makes one 150 ms call and waits about 170 ms. The latency gain comes from fan-out and co-location; a generic aggregating endpoint would match it, but only the BFF cuts the payload to 0.5 KB. The cost: one more service for the mobile team to run, and a second place where the order shape is defined.
 
 ## How it works
 <!--meta block=structure-->
@@ -56,11 +56,11 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Per-platform BFF** — One BFF per platform — iOS, Android, web — each tuned to that platform's payload size, latency budget, and release cadence.
-- **One BFF per experience** — Count the BFFs by the experiences you deliver, not by the app stores you publish to: if iOS and Android present the same experience, one mobile BFF serves both and there is one shaping layer to keep in step instead of two. Ownership decides the rest — a BFF that two teams change is a shared backend again. The risk runs the other way as its client list grows, when the accumulated per-client shaping starts to conflict and the split you avoided becomes the fix.
+- **One BFF per experience** — Count BFFs by experience, not by app store: if iOS and Android present the same experience, one mobile BFF serves both. A BFF that two teams change is a shared backend again, and as its client list grows, conflicting per-client shaping forces the split anyway.
 - **GraphQL BFF** — The BFF exposes one GraphQL schema instead of several representational state transfer (REST) endpoints, so each screen queries exactly the fields it needs in a single round trip.
 - **Team-owned BFF** — The BFF lives in the same repo and on-call rotation as the frontend it serves, so the frontend team ships both without waiting on a shared backend team.
-- **Edge-deployed BFF** — Runs as an edge function (Lambda@Edge, Cloudflare Workers) close to the client, so aggregation happens near the request instead of after a long backbone hop.
-- **Agent BFF** — An autonomous AI agent is its own class of client: it discovers operations at runtime and needs self-describing, coarse-grained tools rather than the fine-grained calls a screen makes. A BFF shaped for it — exposing tools over something like the Model Context Protocol (MCP) — beats making the agent share a human-facing API.
+- **Edge-deployed BFF** — Runs as an edge function (Lambda@Edge, Cloudflare Workers) close to the client, so aggregation happens near the request instead of after a long backbone hop. It pays off only when the downstream services or their data are cached or replicated near the edge; otherwise each fan-out call crosses the long hop.
+- **Agent BFF** — An autonomous AI agent is its own class of client: it discovers operations at runtime and needs self-describing, coarse-grained tools rather than the fine-grained calls a screen makes. A BFF shaped for it, exposing tools over the Model Context Protocol (MCP), can serve it better than a human-facing API.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -68,7 +68,7 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Each client gets a payload** shaped exactly for its screens — no unused fields, no client-side reshaping.
+- **Each client gets a payload** shaped for its screens, with far fewer unused fields and less client-side reshaping, as long as one team owns that shape.
 - **Frontend teams own their BFF** and ship on their own schedule, without queuing behind a shared backend roadmap.
 - **Aggregates several downstream calls into one round trip**, cutting chattiness for bandwidth-constrained clients.
 - **Keeps client-specific branching out of the shared services**, which stay generic and simpler to reason about.
@@ -78,8 +78,9 @@ flowchart LR
 
 - **Multiplies backend services** — one per client type — each with its own deploy, monitoring, and on-call.
 - **Cross-cutting logic** (auth, error mapping, caching) tends to duplicate across BFFs unless it's factored into a shared library.
-- **The same downstream data** can drift into slightly different shapes across BFFs if no one's watching for it.
+- **The same downstream data** can end up in different shapes across BFFs unless someone owns the shared meaning.
 - **Adds one more hop** and one more moving part between the client and the services it ultimately needs.
+- **Fan-out ties latency and availability to the slowest downstream call**, so each call needs its own timeout and a rule for partial responses.
 
 ## When to use it
 <!--meta block=usage-->
@@ -102,25 +103,32 @@ flowchart LR
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — a mobile BFF aggregating two services"
+// timeout + partial response: see the readiness checklist
+const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+  Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
+const ok = <T,>(r: PromiseSettledResult<T>) => r.status === "fulfilled" ? r.value : null;
+
 // Mobile BFF: one call, shaped for the app's home screen
 app.get("/mobile/home/:userId", async (req, res) => {
   const { userId } = req.params;
 
-  // Fan out to the shared backend services in parallel
-  const [profile, orders] = await Promise.all([
-    userService.getProfile(userId),
-    orderService.getRecentOrders(userId, { limit: 3 }),
+  // Fan out in parallel; each call gets its own timeout
+  const [p, ord] = await Promise.allSettled([
+    withTimeout(userService.getProfile(userId), 300),
+    withTimeout(orderService.getRecentOrders(userId, { limit: 3 }), 300),
   ]);
+  const profile = ok(p);
+  if (!profile) return res.status(502).end(); // profile is required
 
   // Reshape into exactly what the mobile UI renders — nothing more
   res.json({
     name: profile.displayName,
     avatarUrl: profile.avatarSmallUrl,  // small asset, not the desktop one
-    recentOrders: orders.map(o => ({
+    recentOrders: ok(ord)?.map(o => ({
       id: o.id,
       total: o.totalFormatted,
       status: o.status,
-    })),
+    })) ?? null, // orders degrade to null
   });
 });
 ```
@@ -192,6 +200,7 @@ app.get("/mobile/home/:userId", async (req, res) => {
 - [API Routing](./api-routing.md) — Each client-specific backend needs its own name at the edge — a hostname, a path prefix, or a header
 - [DTO](../../enterprise/dto.md) — The tailored response shape is what a client-specific backend returns
 - [Interface Segregation Principle](../../../principles/interface-segregation.md) — A backend per client is the same split along who-uses-what, applied to an application programming interface (API)
+- [Model Context Protocol](./mcp.md) — An agent is its own client class; a BFF exposing coarse MCP tools serves it instead of the human-facing API
 
 **Specializes**
 

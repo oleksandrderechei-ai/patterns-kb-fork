@@ -81,5 +81,6 @@ Stop new lava from forming. Give every module an owner, delete a feature flag in
 
 - [Strangler Fig](../patterns/distributed/coordination/strangler-fig.md) — The old system lingers unowned when the cutover is never finished
 - [External Configuration Store](../patterns/distributed/coordination/external-configuration-store.md) — Stale keys and flags accumulate that no one dares remove
+- [Feature Flag](../patterns/distributed/routing/feature-flag.md) — A release flag left in place after rollout is a common way for lava flow to start
 
 <!-- relationships:end -->

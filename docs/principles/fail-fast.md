@@ -72,6 +72,10 @@ Underneath both traps is a trade you should price per path: failing fast buys di
 - [Design for Self-Healing](./self-healing.md) — Failing fast is the detection half; healing is what happens next
 - [Make Illegal States Unrepresentable](./make-illegal-states-unrepresentable.md) — Checks at run time and stops at once, for what a type cannot rule out
 
+**Alternative to**
+
+- [Fallback](../patterns/distributed/resilience/fallback.md) — A fallback returns a lesser answer where fail fast reports the error at once; choose a fallback when part of the answer is optional or an old answer is nearly as good.
+
 **Prevents**
 
 - [Unbounded Queue](../hazards/unbounded-queue.md) — A bounded queue rejects now instead of exhausting memory later

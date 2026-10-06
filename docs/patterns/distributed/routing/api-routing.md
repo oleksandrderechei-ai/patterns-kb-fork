@@ -21,13 +21,13 @@ Teams want to release alone, and callers want one thing to learn. API routing de
 ## Explained
 <!--meta block=explain-->
 
-API routing is the choice of which part of a request, the path, the hostname or a header, names the service that should answer it. Without a deliberate choice, each team picks its own and callers must learn all of them. Choose the scheme by who bears the cost of change. Hostnames, such as billing.api.example.com, push the cost onto callers, who must track one name per service, and give each team its own release schedule. Paths, such as /billing, put every service under one name, which is easier for callers but puts all routing in one shared configuration. Headers need control of the client, so they are a poor front door but a good way to carry versions and canary choices behind one. Then price the place where the rules run: your own proxy is dearest at low traffic and cheapest at very high traffic, a managed [gateway](api-gateway.md) is the reverse, and a CDN edge adds caching but takes up to 30 minutes to apply a change everywhere.
+API routing is the choice of which part of a request, the path, the hostname or a header, names the service that should answer it. Without a deliberate choice, each team picks its own and callers must learn all of them. Choose the scheme by who bears the cost of change. Hostnames, such as billing.api.example.com, push the cost onto callers, who must track one name per service, and give each team its own release schedule. Paths, such as /billing, put every service under one name, which is easier for callers but puts all routing in one shared configuration. Headers need control of the client, so they are a poor front door but a good way to carry versions and canary choices behind one. Then price the place where the rules run: your own proxy is dearest at low traffic and cheapest at very high traffic, a managed [gateway](api-gateway.md) is the reverse, and an edge function such as Lambda@Edge can take up to 30 minutes to reach every location.
 
-- **Shared configuration.** One bad rule in a shared path file becomes an outage for everyone, so review it carefully.
+- **Shared configuration.** One bad rule in a shared path file becomes an outage for everyone, so have a second person review every change to it.
 - **Rule pile-up.** Rules are added faster than removed, so delete old ones on a schedule.
 - **Overlap surprises.** Overlapping rules resolve by order, so put specific rules first and test one sample request per rule.
 
-**Example.** api.example.com holds 30 path rules from 6 teams. One team adds /billing/\* at position 4, and the export team's /billing/export/\* sits at position 21. The first match wins, so about 2,000 export calls an hour land on billing and return 404. You fix it by putting specific rules first, and by running a test that sends one sample request per rule before each release, which would have caught it. A quarterly review also deletes the 8 rules that point to retired services. The cost is that review and test on a shared file, which hostname routing would have avoided.
+**Example.** api.example.com holds 30 path rules from 6 teams. One team adds /billing/\* at position 4, and the export team's /billing/export/\* sits at position 21. The first match wins, so about 2,000 export calls an hour land on billing and return 404, because billing has no export route. You fix it by putting specific rules first, and by running a test that sends one sample request per rule and asserts which upstream answers, before each release, which would have caught it. A quarterly review also deletes the 8 rules that point to retired services. The cost is that review and test on a shared file, which hostname routing would have avoided.
 
 ## How it works
 <!--meta block=structure-->
@@ -63,7 +63,7 @@ flowchart LR
 - **Path routing** — Every service sits under one hostname and a URI segment selects it — `api.example.com/billing`. Consumers learn one address and the documentation stays in one place, which is why most teams start here. The bill is operational: one shared configuration that every team's traffic passes through, an extra hop of latency, and a misconfiguration that can disrupt every service at once — so it needs a change-management process mature enough to be trusted with that.
 - **Hostname routing** — Each service gets its own name — `billing.api.example.com` — and teams own everything from the DNS entry down. Nothing is shared, so nothing has to be coordinated at release time, and isolating a Region or a version is just another label on the front (`eu.billing.api.example.com`). The cost lands on the consumer, who now has to remember a different hostname per API; a client SDK hides that, and brings its own burden of versioning, multi-language support and breaking-change communication.
 - **Header routing** — A header names the version, the operation, or the variant, while the path still says which resource is meant. Configuration changes are small and easy to automate, which makes it the natural fit for version routing, feature flags and A/B tests. It assumes you control the client enough to set custom headers, and proxies, CDNs and load balancers cap total header size — rarely a problem, but a real one once headers and cookies accumulate.
-- **Self-managed HTTP proxy** — An HTTP server or an ingress controller maps the request onto an internal address by rule. It gives service teams full control and no per-request platform fee, and is the cheapest option at very high volume; below that it is the most expensive, because the cost moves from the invoice to the people who test and operate it.
+- **Self-managed HTTP proxy** — An HTTP server or an ingress controller maps the request onto an internal address by rule. It gives service teams full control and no per-request platform fee, and is the cheapest option at very high volume; below that it is the most expensive, because the cost moves from the invoice to the people who test and operate it. The crossover depends on request volume, the gateway's per-request price and the cost of the people who operate the proxy; work it out before choosing.
 - **Managed [API gateway](./api-gateway.md)** — The same routing as a managed service, with authentication, [throttling](../resilience/rate-limiter.md), tracing and usage tiers available at the same hop. Route on a wildcard — `/billing/*` — rather than enumerating every path, so the root configuration does not have to change every time a team adds an endpoint. Per-request pricing is the constraint at high volume.
 - **[CDN](./cdn.md) edge routing** — The routing decision runs as code at the edge, which is what makes canary releases, A/B tests and path rewriting expressible. It is the cheap option when you also want the responses cached. Two limits shape it: CloudFront's dynamic origin selection unifies at most 250 origins, and an edge-function change takes minutes to deploy and up to 30 minutes to reach every point of presence, blocking further updates until it finishes.
 
@@ -74,7 +74,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Clients bind** to a stable naming scheme while the services behind it are split, merged and moved.
-- **One place for shared concerns** — the routing layer is one place to apply what every service would otherwise reimplement: auth, throttling, logging, tracing.
+- **One place for shared concerns** — auth, throttling, logging and tracing are applied once here, not reimplemented in every service.
 - **Nothing behind the routing layer** has to run on the same platform, language or cloud; being HTTP-compatible is the whole contract.
 - **A rule can send** a slice of traffic somewhere new, which is what makes canaries and gradual cut-overs possible without touching clients.
 
@@ -83,8 +83,8 @@ flowchart LR
 
 - **Path and header routing** put every team's traffic through one shared configuration, where a bad change is a shared outage.
 - **Hostname routing pushes the cost onto consumers**, who must learn and track a hostname per service.
-- **Every scheme adds a hop**, and its latency and availability are now floors under everything behind it.
-- **Header routing needs client control** — header routing only works where you control the client, which rules it out for a genuinely public API.
+- **Path and header routing add a hop**, and its latency and availability are floors under everything behind it. Hostname routing adds none unless a shared proxy sits behind the names.
+- **Header routing needs client control** — header routing only works where you control the client, which rules it out as the front door for a public API; it still carries versions and canary choices behind one.
 - **Rules accumulate faster than anyone removes them**, and precedence between overlapping rules is where the surprises live.
 
 ## When to use it
@@ -123,7 +123,7 @@ const rules: Rule[] = [
   { pathPrefix: "/orders", header: ["x-api-version", "2"], upstream: "http://orders-v2.internal" },
   { host: "billing.api.example.com",                       upstream: "http://billing.internal" },
   { pathPrefix: "/orders",                                 upstream: "http://orders.internal" },
-  { pathPrefix: "/",                                       upstream: "http://web.internal" },  // default route
+  { pathPrefix: "/",                                       upstream: "http://web.internal" },  // catch-all hides routing mistakes; delete this rule to get the 404 below
 ];
 
 function resolve(req: { headers: Record<string, string>; url: string }): string | undefined {
@@ -216,6 +216,8 @@ function resolve(req: { headers: Record<string, string>; url: string }): string 
 - [Backend-for-Frontend](./bff.md) — One hostname or path prefix per client type is how a backend-for-frontend is exposed
 - [API Versioning](./api-versioning.md) — Version selection is the most common reason to route on a header rather than on the path
 - [Trie](../coordination/trie.md) — Routers can store path prefixes in a prefix tree to find the matching service
+- [Canary Release](./canary-release.md) — A rule that sends a weighted slice of traffic to the new version is how a canary is executed
+- [CDN](./cdn.md) — A CDN edge is one place routing rules can run, adding caching but slow rule propagation
 
 **Implemented by**
 

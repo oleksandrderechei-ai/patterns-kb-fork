@@ -21,19 +21,19 @@ When one optional service fails, a page that treats every failure alike returns 
 ## Explained
 <!--meta block=explain-->
 
-A fallback is a second answer your code returns when the first source fails, so the request succeeds with less. You wrap the call: on an error, a timeout or an open [circuit breaker](circuit-breaker.md) (a gate that stops calls to a failing service), the wrapper tries the next tier. A tier can be a cached copy, a constant, a cheaper computation such as the most popular items in place of personalised ones, or another provider. The last tier depends on nothing, so it cannot fail. Choose it over a plain error when part of the answer is optional or an old answer is nearly as good, because a timeout or breaker only makes a failure fast, and a fast failure is still a failure.
+A fallback is a second answer your code returns when the first source fails, so the request succeeds with less. You wrap the call: on an error, a timeout or an open [circuit breaker](circuit-breaker.md) (a gate that stops calls to a failing service), the wrapper tries the next tier. A tier can be a cached copy, a constant, a cheaper computation such as the most popular items in place of personalised ones, or another provider. The last tier depends on no other service, so it fails only through a bug in the wrapper itself. Choose it over a plain error when part of the answer is optional or an old answer is nearly as good, because a timeout or breaker only makes a failure fast, and a fast failure is still a failure.
 
 - **Stale can be wrong.** Cap the age of any copy and mark the response as degraded.
 - **Hidden outage.** Alert on the share of responses served by a fallback.
 - **Rarely run.** It runs only in incidents, so test it by breaking the primary on purpose.
 - **Added load.** Keep each tier cheaper than the one above it.
 
-**Example.** A product page calls recommendations with a 200 ms deadline, at 500 requests a second. The service goes down. Without a fallback, all 500 requests a second fail, and the shop sells nothing. With a fallback, the wrapper reads the user's last list, kept for up to 10 minutes. Users with no copy get a fixed list of 10 popular items. The page loads in about 210 ms, the buy button works, and the response is tagged stale or default. The cost is quality: after 10 minutes the stale tier expires, so everyone sees the default list, and an alert on the fallback share rising above 5 percent tells you to fix the service.
+**Example.** A product page calls recommendations with a 200 ms deadline, at 500 requests a second. The service goes down. Without a fallback the page treats the error as fatal, so all 500 requests a second fail. With a fallback, the wrapper reads the user's last list, kept 10 minutes. Users with no copy get a fixed list of 10 popular items. The page loads in about 210 ms (200 ms plus an assumed 10 ms cache read), the buy button works, and the response is tagged stale or default. The cost is quality: after 10 minutes the stale tier expires, so everyone sees the default list, and an alert on a rising fallback share tells you to fix it.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="How does a request still get an answer when its dependency is down? The wrapper tries the live source at 1, and when that fails at 2 it walks down the tiers (a stale copy at 3, then a fixed default at 4), always from cheapest dependency to none, and at 5 it tells the caller which tier answered."
+```mermaid caption="How does a request still get an answer when its dependency is down? The wrapper tries the live source at 1, and when that fails at 2 it walks down the tiers (a stale copy at 3, then a fixed default at 4), each tier depending on less than the one above and answering less faithfully, and at 5 it tells the caller which tier answered."
 flowchart LR
     Caller["Request handler"]
     subgraph FB["Fallback chain — one call"]
@@ -74,7 +74,7 @@ sequenceDiagram
 
 Walk the first diagram from the handler. The wrapper calls the live source with a deadline. A good answer goes straight back. On a failure the wrapper tries the next tier, and each tier depends on less than the one before: a cache read depends on the cache, a default depends on nothing. The response carries the tier that answered, so the caller can hide a widget, show a banner, or skip writing the answer back to a cache.
 
-Two rules keep the chain safe. A fallback must not call the thing that just failed, or it fails in the same breath. And the chain has an end: the last tier is always something that cannot fail, such as a constant.
+A fallback must not call the thing that just failed, or it fails for the same reason at the same moment; the last tier depends on nothing, such as a constant.
 
 ## Variations
 <!--meta block=variations-->
@@ -95,7 +95,7 @@ Two rules keep the chain safe. A fallback must not call the thing that just fail
 - **Keeps the page working** — a failure in an optional dependency costs the user one widget, not the whole response.
 - **Turns fast failure into a useful answer** — a breaker or timeout that ends in an error still fails the request, and the fallback gives it something to return.
 - **Decided calmly in advance** — you pick the degraded behaviour in a design review, not at 3 a.m. under pressure.
-- **Layers on other patterns** — it adds no new moving parts to a [circuit breaker](./circuit-breaker.md) or a [timeout](./timeout-deadline.md) that already ends calls early.
+- **Layers on other patterns** — it builds on a [circuit breaker](./circuit-breaker.md) or a [timeout](./timeout-deadline.md) you already run, but adds its own tiers, a cache and an age rule, which need tests and capacity.
 
 ### Cons
 <!--meta polarity=con-->
@@ -139,6 +139,7 @@ async function recommendations(userId: string): Promise<Result<string[]>> {
     cache.set(userId, { value, at: Date.now() });
     return { value, tier: "live" };
   } catch {
+    // Catch only timeouts and network errors; rethrow the rest.
     // Tier 2: the last good copy, only while it is young enough to trust.
     const hit = cache.get(userId);
     if (hit && Date.now() - hit.at < MAX_AGE_MS) {
@@ -163,15 +164,15 @@ async function recommendations(userId: string): Promise<Result<string[]>> {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **maximum staleness** — how old a cached copy may be before the stale tier refuses to serve it; too long serves wrong data, too short empties the tier during a long outage
-- **trigger conditions** — which errors, timeouts and open-breaker states send a call to the fallback; a broad trigger hides bugs, a narrow one leaves real failures as errors
+- **maximum staleness** — how old a cached copy may be before the stale tier refuses to serve it; too long serves wrong data, too short empties the tier during a long outage. Start from how fast the data changes (the sketch uses 10 minutes) and shorten it once the stale copy age signal shows real use.
+- **trigger conditions** — which errors, timeouts and open-breaker states send a call to the fallback; a broad trigger hides bugs, a narrow one leaves real failures as errors. Exclude client errors such as 4xx and caller bugs; the sketch's bare catch is the broad extreme, so narrow it to timeouts and network errors.
 - **tier order** — the order of tiers from most to least faithful; each tier should depend on less than the one above
 - **per-tier deadline** — how long each tier may take; a slow fallback delays the user as much as the failure did
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **fallback share** — the share of responses served by a fallback tier, per tier — the number to alert on
+- **fallback share** — the share of responses served by a fallback tier, per tier. This is the number to alert on: alert on a rise above that tier's normal share, and on any default-tier share for a feature that should be live.
 - **stale copy age** — how old the cached copies being served are
 - **fallback latency** — the latency of the fallback path against the primary path
 - **fallback error rate** — a fallback that itself fails turns a degraded answer into an error
@@ -221,6 +222,7 @@ async function recommendations(userId: string): Promise<Result<string[]>> {
 **Alternative to**
 
 - [Load Shedding](./load-shedding.md) — A fallback still serves a reduced answer where shedding refuses the request outright.
+- [Fail Fast](../../../principles/fail-fast.md) — Fail fast returns the error where a fallback returns a lesser answer; choose fail fast when a wrong answer costs more than none.
 
 **Often confused with**
 

@@ -21,13 +21,13 @@ Service discovery replaces a configured address with a question asked at call ti
 ## Explained
 <!--meta block=explain-->
 
-Service discovery replaces a configured address with a question asked at call time: instances register themselves in a registry when they start and drop out when they stop, and a caller asks for a service by name and gets somewhere to send the request. It exists because instances no longer stay put: a scheduler places them where there is room, scaling doubles them and a rolling deploy replaces all of them within a minute, so any fixed host and port is a snapshot of a fleet that has already changed. Run an explicit registry only when your platform does not already turn a virtual address into healthy instances; two registries give two answers to one question.
+Service discovery replaces a configured address with a question asked at call time: instances register themselves in a registry when they start and drop out when they stop, and a caller asks for a service by name and gets somewhere to send the request. It exists because instances no longer stay put: a scheduler places them where there is room, scaling doubles them and a rolling deploy can replace all of them in minutes, so any fixed host and port is a snapshot of a fleet that has already changed. Run an explicit registry only when your platform does not already turn a virtual address into healthy instances; two registries give two answers to one question.
 
 - **Registry on every path.** Callers should cache the last good list and keep serving from it during a registry outage.
 - **Stale views.** Caching makes each list slightly stale, so try another instance when a connection is refused.
 - **Lease length.** Short evicts healthy instances during a pause and long routes to dead ones, so separate alive from ready.
 
-**Example.** A service has 5 instances, a 30 s lease and 50 calls a second. Instance 3 crashes, and callers keep it in their list until the lease runs out. One call in five hits it, 10 failures a second, 300 over the 30 s. If callers retry another instance when a connection is refused, those calls succeed on the second try. Shortening the lease to 10 s would cut the failures to 100, but a 12 s garbage-collection pause on a healthy instance would then evict it, which is why lease length alone does not fix it.
+**Example.** A service has 5 instances, a 30 s lease and 50 calls a second. Instance 3 crashes, and callers keep it in their list until the lease runs out and their cache refreshes. One call in five hits it, 10 failures a second, at most about 300 over the 30 s lease. If callers retry another instance when a connection is refused, those calls succeed on the second try, so these are extra attempts, not failed requests. Shortening the lease to 10 s would cut the failures to 100, but a 12 s garbage-collection pause on a healthy instance would then evict it, which is why lease length alone does not fix it.
 
 ## How it works
 <!--meta block=structure-->
@@ -74,6 +74,7 @@ sequenceDiagram
 - **Third-party registration** — A platform component watches instance lifecycle and maintains the registry, so services stay unaware they are being discovered. This is what a container platform does for you, and why most teams never write registration code.
 - **Name-service projection** — Project the registry into a naming service the caller already speaks, so a plain hostname resolves to live instances and nothing in the caller changes. Simplest possible client, at the price of the naming layer's own caching — which is frequently more aggressive than the eviction loop it is meant to reflect.
 - **Sidecar-resolved lookup** — A [sidecar](./sidecar.md) proxy alongside each instance does the resolution, giving router-side simplicity in the caller with caller-side hop counts. The shape a [service mesh](./service-mesh.md) generalizes across the whole fleet.
+- **Push-based updates** — The registry streams changes to callers instead of callers polling. The stale window shrinks to propagation delay, at the cost of a long-lived connection per caller and a resync path after a drop.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -83,7 +84,7 @@ sequenceDiagram
 
 - **Instances can be replaced**, moved or multiplied without a config change or a redeploy anywhere else.
 - **Scaling out is a registration**, so new capacity starts receiving traffic without anyone being told about it.
-- **A failed instance is removed** from rotation by the same loop that added it, so eviction needs no separate mechanism.
+- **A failed instance is removed** from rotation by the same loop that added it, so eviction needs no separate mechanism, provided the lease and readiness signal are tuned.
 - **The registry becomes a single** accurate inventory of what is actually running, which is useful well beyond routing.
 
 ### Cons
@@ -94,6 +95,7 @@ sequenceDiagram
 - **Router-side lookup** adds a hop and a component to replicate, configure and keep available.
 - **Health-check timing is wrong in both directions**: eager eviction removes healthy instances during a pause, lax eviction keeps routing to dead ones.
 - **Cached instance lists** mean callers act on a view of the fleet that is always slightly out of date, and no setting removes that window.
+- **Callers that refresh** on the same interval, or start cold together after an outage, hit the registry in bursts unless refreshes are jittered.
 
 ## When to use it
 <!--meta block=usage-->
@@ -136,11 +138,12 @@ class Client {
   private cache: Instance[] = []; private refreshAt = 0;
   constructor(private registry: Registry, private service: string) {}
   async call(path: string): Promise<Response> {
-    if (Date.now() >= this.refreshAt) { // cache the list for 5s
-      [this.cache, this.refreshAt] = [this.registry.resolve(this.service), Date.now() + 5_000];
+    if (this.cache.length === 0 || Date.now() >= this.refreshAt) { // cache for 5s; re-resolve when empty
+      try { [this.cache, this.refreshAt] = [this.registry.resolve(this.service), Date.now() + 5_000]; }
+      catch { /* registry down: keep serving the last good list */ }
     }
     for (const i of [...this.cache]) {  // stale cache: a refusal is expected, not exceptional
-      try { return await fetch(i.url + path); }
+      try { return await fetch(i.url + path, { signal: AbortSignal.timeout(2_000) }); } // a hang counts as a refusal
       catch { this.cache = this.cache.filter((c) => c.id !== i.id); }
     }
     throw new Error(`no reachable instance of ${this.service}`);
@@ -154,7 +157,7 @@ class Client {
 - **Consul** — Service registry with health checking, where registered services are resolvable both through an HTTP API and as ordinary DNS names — the name-service projection and the explicit-registry variants in one product. {#wild-consul}
 - **Kubernetes Services and EndpointSlices** — Third-party registration taken to its conclusion: the platform watches pod lifecycle and readiness, maintains the endpoint set itself, and resolves a stable in-cluster name to it, so application code contains no registration or lookup logic at all. {#wild-kubernetes-services}
 - **Netflix Eureka** — The caller-side variant in its best-known form: instances self-register and heartbeat, clients fetch and cache the full registry, and instance selection happens in the client. {#wild-eureka}
-- **Apache ZooKeeper** — Used for discovery through ephemeral nodes, whose lifetime is tied to the registering session — so an instance disappearing from the registry is the same event as its connection dropping. {#wild-zookeeper}
+- **Apache ZooKeeper** — Used for discovery through ephemeral nodes tied to the registering session, so the session timeout plays the lease: the instance leaves the registry when its session expires, not the instant its connection drops. {#wild-zookeeper}
 
 ## In production
 <!--meta block=production-->
@@ -218,6 +221,8 @@ class Client {
 - [Sidecar](./sidecar.md) — A sidecar proxy resolves on the instance's behalf: router simplicity at caller hop counts
 - [Ambassador](./ambassador.md) — The ambassador is where an out-of-process client puts its discovery logic
 - [Agent2Agent](../coordination/a2a.md) — The agent card is this pattern's record, published by the service rather than a registry
+- [Reverse Proxy](./reverse-proxy.md) — A reverse proxy is the router that does the lookup for callers, so they hold a fixed address
+- [API Gateway](./api-gateway.md) — A gateway resolves the service name to a live instance for callers outside the fleet
 
 **Requires**
 

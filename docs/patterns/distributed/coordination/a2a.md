@@ -231,6 +231,7 @@ return task.artifacts;    // untrusted content — validate before it reaches yo
 **Often confused with**
 
 - [Model Context Protocol](../routing/mcp.md) — That one connects an application to capabilities; this one connects independent agents
+- [Agent Client Protocol](../routing/acp.md) — That one connects a host to its agent; this one connects peers
 
 **Implemented by**
 

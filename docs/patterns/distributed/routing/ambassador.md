@@ -20,14 +20,14 @@ Every service that calls the network needs retries, timeouts and secure connecti
 ## Explained
 <!--meta block=explain-->
 
-An ambassador is a small proxy that runs beside each copy of your service, on the same host, and handles its outbound network work, such as retries, timeouts, encrypted connections and finding the other service, so your code calls a local address and the proxy does the real talking. Each instance has its own copy, so there is no shared chokepoint. Choose it over client libraries when networking policy must change without redeploying application code and you run several languages: a switch to mutual TLS, where both sides prove who they are, becomes one artifact shipped everywhere. It is the idea a [sidecar](sidecar.md) deploys.
+An ambassador is a small proxy that runs beside each copy of your service, on the same host, and handles its outbound network work, such as retries, timeouts, encrypted connections and finding the other service, so your code calls a local address and the proxy does the real talking. In the sidecar form each instance has its own copy, so there is no shared chokepoint. Choose it over client libraries when networking policy must change without redeploying application code and you run several languages: a switch to mutual TLS, where both sides prove who they are, becomes one artifact shipped everywhere. It is the idea a [sidecar](sidecar.md) deploys.
 
 - **Less control.** The proxy decides when to retry and whom to trust, and changing that means rolling a new artifact past every instance.
 - **Silent drift.** App and proxy versions can part ways, so report the proxy version with each deploy.
 - **Two hops.** Each request crosses two processes, so pass one trace id through both.
 - **One more process.** It must stay alive per instance, so tie its health check to the app's.
 
-**Example.** Forty services in Go, Java and Python call a payment API with one policy: 3 retries, a 2 s timeout, mutual TLS. As libraries that is 3 codebases to change. To cut the timeout to 1 s, you ship one proxy configuration to 40 services with 5 copies each, 200 proxies, and touch no application code. The cost is 200 extra processes: at 50 MB each that is 10 GB of memory, plus a local hop on every call and two places to look when a request fails.
+**Example.** Forty services in Go, Java and Python call a payment API with one policy: 3 attempts, a 2 s timeout, mutual TLS. As libraries that is 3 codebases to change. To cut the timeout to 1 s, you ship one proxy configuration to 40 services with 5 copies each, 200 proxies, and touch no application code. The cost is 200 extra processes: at an assumed 50 MB each that is 10 GB of memory, plus a local hop on every call and two places to look when a request fails.
 
 ## How it works
 <!--meta block=structure-->
@@ -54,8 +54,8 @@ flowchart LR
 <!--meta block=variations-->
 
 - **[Sidecar](./sidecar.md)** — The ambassador runs as a second container in the same pod, sharing the network namespace and lifecycle with the app — the standard cloud-native deployment, and the form most service meshes use.
-- **Host-level ambassador** — One ambassador process per host, shared by every service instance running there — fewer processes to run, but less isolation between tenants.
-- **Embedded library fallback** — Where a sidecar can't run — some serverless or legacy platforms — the same policy ships as an in-process library instead. Less polyglot-friendly, but works where a second process isn't an option.
+- **Host-level ambassador** — One ambassador process per host, shared by every service instance running there. It needs fewer processes, but one crash or saturated proxy affects every service on the host, and tenants share one failure domain.
+- **Embedded library fallback** — Where a sidecar can't run, such as some serverless or legacy platforms, ship the same policy in-process. It gives up one artifact for every language: you need one library per language.
 - **Per-concern ambassadors** — Split responsibilities across several small ambassadors — one for mTLS, one for rate limiting — instead of one do-everything proxy, so each can be versioned and scaled independently.
 
 ## Trade-offs
@@ -64,7 +64,7 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Keeps retries**, TLS, discovery, and metrics out of application code entirely, written once regardless of language.
+- **Keeps retry, TLS, discovery and metrics mechanics** out of application code, written once; the app still decides which calls are safe to retry.
 - **Lets a polyglot fleet share** identical networking behavior without a client library per language.
 - **Upgraded, patched, or reconfigured** independently of the application it serves.
 - **Centralizes network policy changes** — like a mutual TLS rollout — to one artifact deployed everywhere.
@@ -72,7 +72,7 @@ flowchart LR
 ### Cons
 <!--meta polarity=con-->
 
-- **Adds an extra hop** and an extra process per service instance — small latency, but real resource overhead at scale.
+- **Adds a local hop** to every call and one proxy process per instance. Latency is usually small until the proxy is CPU-throttled; memory cost is sized in the explain example.
 - **One more moving part to deploy**, monitor, and keep alive alongside every instance of every service.
 - **Ambassador and application** can drift out of version sync even though they're meant to ship together.
 - **Debugging a request** means tracing through two processes instead of one.
@@ -104,20 +104,29 @@ import http from "node:http";
 // Listens on localhost; the app calls this instead of the network directly.
 const REMOTE = "backend.internal:8443";
 const MAX_ATTEMPTS = 3;
+const SAFE = new Set(["GET", "HEAD"]); // retry only idempotent methods
 
 http.createServer(async (req, res) => {
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c); // buffered for brevity; a real proxy streams, pools and caps size
+  const retryable = SAFE.has(req.method ?? "GET");
+  const attempts = retryable ? MAX_ATTEMPTS : 1;
+  const { connection, "content-length": _len, ...fwd } = req.headers; // strip hop-by-hop
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const upstream = await fetch(`https://${REMOTE}${req.url}`, {
         method: req.method,
-        headers: { ...req.headers, host: REMOTE },
+        body: retryable ? undefined : Buffer.concat(chunks),
+        signal: AbortSignal.timeout(2000), // the 2 s timeout from the example
+        headers: { ...fwd, host: REMOTE } as HeadersInit,
         // TLS origination happens here — the app spoke plain HTTP.
       });
       res.writeHead(upstream.status);
       res.end(await upstream.text());
       return; // success, stop retrying
     } catch (err) {
-      if (attempt === MAX_ATTEMPTS) {
+      if (attempt === attempts) {
         res.writeHead(502);
         res.end("ambassador: upstream unreachable");
         return;
@@ -140,8 +149,8 @@ http.createServer(async (req, res) => {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Retry policy** — How many times the sidecar retries a failed upstream call and the per-attempt timeout before it gives up. Unbounded retries turn one slow dependency into a retry storm.
-- **Circuit-breaker limits** — Caps on concurrent connections, pending requests, and active requests to an upstream, above which the sidecar sheds load instead of queueing it.
+- **Retry policy** — How many times the sidecar retries a failed upstream call and the per-attempt timeout before it gives up. Unbounded retries turn one slow dependency into a retry storm. Work out the per-attempt timeout from the upstream's p99 and keep attempts times timeout under the caller's own deadline; cap retries as a share of requests.
+- **Circuit-breaker limits** — Caps on concurrent connections, pending requests, and active requests to an upstream, above which the sidecar sheds load instead of queueing it. Size the caps from peak concurrency times upstream latency, then tune from the overflow count.
 - **Connection pool and keep-alive** — Upstream pool size and idle timeout, so the sidecar reuses connections instead of paying TLS setup on every call.
 - **Sidecar resource requests and limits** — CPU and memory reserved for the proxy container. Too little and it gets CPU-throttled, adding latency to every request it fronts.
 
@@ -158,7 +167,7 @@ http.createServer(async (req, res) => {
 
 - **Sidecar saturation** — The proxy runs out of CPU or connection-pool slots and becomes the bottleneck for the app it is meant to protect.
 - **Startup and shutdown ordering** — The app begins serving before the sidecar is ready, or the sidecar exits first on shutdown, so early or in-flight requests fail.
-- **Config or version drift** — A control-plane push fails or the sidecar image lags the app, so routing and TLS policy silently diverge from intent.
+- **Config or version drift** — A control-plane push fails or the sidecar image lags the app, so routing and TLS policy silently diverge from intent. Expose the proxy version or config version as a metric and alert when instances disagree.
 - **Retry amplification** — An aggressive retry policy multiplies load on an already-struggling upstream.
 
 ### Readiness checklist
@@ -200,6 +209,10 @@ http.createServer(async (req, res) => {
 **Often confused with**
 
 - [API Gateway](./api-gateway.md) — Client-side networking proxy vs. server-side entry point
+
+**Exposed to**
+
+- [Retry Storm](../../../hazards/retry-storm.md) — A blanket retry policy in the proxy multiplies load on a struggling upstream
 
 **Implemented by**
 

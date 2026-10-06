@@ -29,7 +29,7 @@ A valet key is a signed token that lets a client use one resource directly, for 
 - **Leaks through logs.** A key in a URL lands in access logs, so keep keys out of logged URLs and expire them fast.
 - **Audit gap.** Your trail ends at issuing, so make it joinable with the storage access logs.
 
-**Example.** Users upload 200 files an hour at 50 MB each, 10 GB an hour, which a proxying server would receive and then send on, 20 GB of bandwidth. With keys, your server issues 200 tokens and moves no file bytes. Each token names uploads/u-42/ plus a random file name, allows PUT only and expires in 10 minutes, with u-42 taken from the login, not the request. If one leaks, it can write one file for at most 10 minutes. The cost is that you no longer see the bytes, so a virus scan runs after the file lands.
+**Example.** Users upload 200 files an hour at 50 MB each, 10 GB an hour, which a proxying server would receive and then send on, 20 GB of bandwidth. With keys, your server issues 200 tokens and moves no file bytes. Each token names uploads/u-42/ plus a random file name, allows PUT only and expires in 10 minutes, with u-42 taken from the login, not the request. If one leaks, it can write only to that one object name, repeatedly and at any size, for at most 10 minutes. The cost is that you no longer see the bytes, so a virus scan runs after the file lands.
 
 ## How it works
 <!--meta block=structure-->
@@ -73,7 +73,7 @@ sequenceDiagram
 
 - **Pre-signed URLs** — A cloud storage vendor signs a URL with an embedded expiry and permission set — Simple Storage Service (S3) pre-signed URLs and Azure SAS tokens are the canonical form.
 - **Signed cookies** — The key rides in a cookie instead of the URL, so it covers a whole path prefix (a CDN (content delivery network)'s private content tree) rather than one object.
-- **Single-use vs. multi-use keys** — A single-use key is invalidated after one redemption, closing the replay window entirely; a multi-use key trades that safety for fewer round trips.
+- **Single-use vs. multi-use keys** — Where the resource tracks redemption, a single-use key is invalidated after one use, which shrinks replay to the first redeemer; plain pre-signed URLs cannot do this and stay valid until expiry, which saves round trips.
 - **Capability URLs** — The URL itself is the only credential — no separate login step — so possessing the link is equivalent to holding the permission.
 
 ## Trade-offs
@@ -84,7 +84,7 @@ sequenceDiagram
 
 - **Removes the app server from the data path**, freeing it for control-plane work only.
 - **Scales bandwidth-** or storage-heavy operations without provisioning servers to carry them.
-- **Scoped and time-limited**, so a leaked key exposes only one resource, and only briefly.
+- **Scoped and time-limited**: a leaked key exposes only what its scope names and only until expiry, so scope it to one object and keep the expiry short.
 - **The client never holds standing** credentials to the resource itself.
 
 ### Cons
@@ -93,9 +93,9 @@ sequenceDiagram
 - **A valid key generally can't** be revoked before it expires — bind it to a server-side policy or a signing key you can rotate if you need a recall, and decide that at issuing time rather than during the incident.
 - **Getting scope** or expiry wrong quietly grants broader or longer access than intended — build the scope from the authenticated identity, never from a path the client supplied.
 - **Requires the resource layer to support token-based validation** — not every store does.
-- **Clock skew** or an overlong expiry undermines the whole "temporary" guarantee — keep both sides on synchronized time and treat the expiry as the blast radius, since it is.
+- **Clock skew** or an overlong expiry stretches the "temporary" window. Keep both sides on synchronized time; scope and expiry together are the blast radius.
 - **Your audit trail stops at issuance**: what the holder actually did is only in the resource's own access log. Make the two joinable on a request or object id, or the record has a hole exactly where the data path used to be.
-- **Caps neither the bytes transferred** nor the number of times the key is used, so a client looping on an upload runs up an egress bill against a key that is behaving exactly as issued. Where the store allows it, grant create rather than write — create refuses to overwrite, which makes each key good for one object.
+- **Caps neither the bytes transferred** nor the number of uses unless the key form carries a size condition, so a client looping on an upload runs up an egress bill on a valid key. Where the store allows it, grant create rather than write: create refuses to overwrite, which makes each key good for one object.
 - **Puts a live credential in a URL**, which means it lands in every access log along the path. Restrict who can read those logs, and hold log shipping back until the keys inside have expired.
 
 ## When to use it
@@ -119,6 +119,8 @@ sequenceDiagram
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — issuing and verifying a fifteen-minute upload key"
+import { timingSafeEqual } from "node:crypto";
+
 interface ValetKey {
   resource: string;
   action: "read" | "write";
@@ -126,6 +128,7 @@ interface ValetKey {
   signature: string;
 }
 
+// hmacSha256 (hex digest) is assumed; "write" is used for simplicity, prefer a create-only grant where the store has one
 function mintKey(resource: string, action: ValetKey["action"], ttlMs: number, secret: string): ValetKey {
   const expiresAt = Date.now() + ttlMs;
   const payload = `${resource}:${action}:${expiresAt}`;
@@ -133,26 +136,28 @@ function mintKey(resource: string, action: ValetKey["action"], ttlMs: number, se
 }
 
 // Run by the object store itself, never by the API that issued the key
-function verifyKey(key: ValetKey, requestedResource: string, secret: string): boolean {
+function verifyKey(key: ValetKey, requestedResource: string, requestedAction: ValetKey["action"], secret: string): boolean {
   if (Date.now() > key.expiresAt) return false;              // past the window
   if (key.resource !== requestedResource) return false;       // one key, one object
+  if (key.action !== requestedAction) return false;       // one key, one action
   const payload = `${key.resource}:${key.action}:${key.expiresAt}`;
-  return hmacSha256(payload, secret) === key.signature;        // tamper check
+  const a = Buffer.from(hmacSha256(payload, secret)), b = Buffer.from(key.signature);
+  return a.length === b.length && timingSafeEqual(a, b);   // constant-time tamper check
 }
 
 // The onboarding API issues a fifteen-minute write key for exactly one ID photo and
 // hands it to the onboardee. The bytes go browser → store; this server never sees them.
 const resource = `id-photos/${personaId}/${flowId}.jpg`;
 const key = mintKey(resource, "write", 15 * 60_000, SECRET);
-const uploadUrl = `https://blobs.example.com/${resource}?exp=${key.expiresAt}&sig=${key.signature}`;
+const uploadUrl = `https://blobs.example.com/${resource}?exp=${key.expiresAt}&act=${key.action}&sig=${key.signature}`;
 ```
 
 ## In the wild
 <!--meta block=wild-->
 
-- **Amazon S3 pre-signed URLs** — The app signs a URL with the caller credentials, scoped to one object and one HTTP method, with a bounded expiry (up to 7 days for signature v4); the browser then uploads or downloads straight to S3 with no account key exposed. {#wild-s3-presigned}
+- **Amazon S3 pre-signed URLs** — The app signs a URL with the caller credentials, scoped to one object and one HTTP method, with a bounded expiry (up to 7 days for signature v4 with long-lived IAM user credentials; a URL signed with temporary credentials stops working when they expire); the browser then uploads or downloads straight to S3 with no account key exposed. {#wild-s3-presigned}
 - **Azure Shared Access Signatures** — Grants a named permission set (read, write, list) on a blob, container, or queue for a start-to-expiry window, optionally restricted by IP range and HTTPS-only; a user-delegation SAS is signed with Microsoft Entra credentials so the account key never leaves the server. {#wild-azure-sas}
-- **CloudFront signed URLs and cookies** — The distribution nominates a trusted key group whose public key validates each signature, granting time-limited access to private edge content; a signed URL covers one file while signed cookies cover a path pattern, and a custom policy can additionally restrict by IP range and date window. {#wild-cloudfront-signed}
+- **CloudFront signed URLs and cookies** — The distribution nominates a trusted key group whose public key validates each signature, granting time-limited access to private edge content; a canned-policy signed URL covers one file while signed cookies cover a path pattern, and a custom policy can additionally restrict by IP range and date window. {#wild-cloudfront-signed}
 
 ## In production
 <!--meta block=production-->
@@ -160,9 +165,9 @@ const uploadUrl = `https://blobs.example.com/${resource}?exp=${key.expiresAt}&si
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Expiry (time to live, TTL)** — How long the key stays valid. Make it as short as the operation allows, because it is the window a leaked key stays useful for.
+- **Expiry (time to live, TTL)** — How long the key stays valid. Make it as short as the operation allows, because it is the window a leaked key stays useful for. Size it from the slowest expected transfer at the largest object size, plus a retry margin.
 - **Scope** — The resource and actions the key names — one object, one method. It is the ceiling on what a leaked key can reach.
-- **Single-use or multi-use** — Whether redemption invalidates the key, closing the replay window, or it stays usable until expiry for fewer round trips.
+- **Single-use or multi-use** — Whether redemption invalidates the key, which closes replay only where the resource tracks redemption, or it stays usable until expiry for fewer round trips.
 - **Clock-skew tolerance** — The leeway allowed on expiry checks, absorbing small differences between the issuing server and the validating resource.
 - **Redemption conditions** — Extra restrictions the resource can enforce where it supports them — an IP range, HTTPS only, a start time — narrowing the same credential further.
 - **Signing key rotation period** — How often the signing material changes. Rotation is the only recall some key forms have, so its period is also a security dial.

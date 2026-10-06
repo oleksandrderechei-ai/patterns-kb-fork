@@ -213,6 +213,7 @@ class EdgeNode {
 - [Object Storage](./object-storage.md) — Caches and serves objects that live in an object store, close to the user.
 - [Reverse Proxy](./reverse-proxy.md) — Each edge node is a caching reverse proxy near the user
 - [Storage](../../../capabilities/storage.md) — The origin behind most content delivery networks (CDNs) is a bucket, not an application server.
+- [API Routing](./api-routing.md) — Edge functions can run API routing rules at the edge
 
 **Prevents**
 

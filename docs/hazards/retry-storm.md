@@ -94,5 +94,7 @@ The dependency has a move of its own. Refuse excess work quickly and cheaply ins
 
 - [Saga](../patterns/distributed/coordination/saga.md) — Each step's retries and its compensations multiply load on a service that is already failing
 - [Outbox](../patterns/distributed/coordination/outbox.md) — A relay that republishes after a failure floods a recovering broker
+- [Ambassador](../patterns/distributed/routing/ambassador.md) — Retries added by a per-instance proxy multiply the offered load
+- [Compensating Transaction](../patterns/distributed/resilience/compensating-transaction.md) — Compensation retries against a service that is already down add to the retry load; this pattern's undos need a cap and backoff.
 
 <!-- relationships:end -->

@@ -27,7 +27,7 @@ The agent client protocol is a small set of agreed messages between a code edito
 - **Lowest common denominator.** Keep a native extension for what only one editor can do.
 - **Young protocol.** Few implementations exist, so keep the agent core independent and the protocol an adapter.
 
-**Example.** A coding agent must support 3 editors. As plug-ins that is 3 codebases; over the protocol it is 1 agent. You edit app.ts but have not saved. The agent asks the editor to read app.ts and receives your unsaved text, so its edit applies to what you see, where a read from disk would have overwritten your change. It then asks permission to run npm test, and the editor shows you a prompt. The cost shows on large turns: reading 30 files at 5 ms a round trip is 150 ms, and batching 10 files per request cuts that to 3 trips, 15 ms.
+**Example.** A coding agent must support 3 editors. As plug-ins that is 3 codebases; over the protocol it is 1 agent. You edit app.ts but have not saved. The agent asks the editor to read app.ts and receives your unsaved text, so its edit applies to what you see, where a read from disk would have overwritten your change. It then asks permission to run npm test, and the editor shows you a prompt. The cost shows on large turns: reading 30 files at an assumed 5 ms a round trip is 150 ms; reading 10 files instead, or caching within a turn, cuts that to 50 ms.
 
 ## How it works
 <!--meta block=structure-->
@@ -79,7 +79,7 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Editor-hosted subprocess** — The baseline and the only fully specified form: the editor starts the agent, owns its lifetime, and talks to it over standard input and output. No network, no ports, no authentication problem — and no sharing one agent between two windows.
+- **Editor-hosted subprocess** — The baseline and the only fully specified form: the editor starts the agent, owns its lifetime, and talks to it over standard input and output. No network, no ports, no authentication problem, but one agent cannot be shared between two windows.
 - **Non-editor host** — Any application with a document surface can implement the client role, which is how a notes application or a review tool ends up running the same coding agents an integrated development environment (IDE) does. The agent needs no change at all; the host supplies the same small surface.
 - **Remote agent** — The agent runs elsewhere and the transport becomes a network connection. Stated by the protocol as work in progress, so treat it as a direction rather than a choice you can make today.
 
@@ -102,8 +102,8 @@ sequenceDiagram
 - **Reusing another protocol's types couples the two**: a change there becomes a change here.
 - **A subprocess over standard input** and output ties the agent's lifetime to one window, so sharing one agent across clients is a non-goal rather than a missing feature.
 - **A lowest-common-denominator surface gives up** editor-specific affordances that a native plug-in could use.
-- **Mediating every file read** and write through the client adds a round trip to operations an agent does thousands of times.
-- **It is the youngest** and narrowest of the agent protocols, with the smallest set of implementations, so the ecosystem risk is real rather than theoretical.
+- **Mediating every file read** and write through the client adds a round trip to operations an agent performs many times per turn; the example sizes it at 150 ms for 30 reads.
+- **A young protocol** with few implementations so far, so ecosystem risk is real. Keep the agent core independent and the protocol an adapter.
 
 ## When to use it
 <!--meta block=usage-->
@@ -118,8 +118,8 @@ sequenceDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **Need is tools and data for an agent** — that is the [tool protocol](./mcp.md), which this one reuses rather than replaces.
-- **The two parties are peer** agents rather than a host and an assistant — delegation between them is [Agent2Agent](../coordination/a2a.md).
+- **Need is tools and data for an agent.** That is the [tool protocol](./mcp.md), which this one reuses rather than replaces.
+- **The two parties are peer** agents, not a host and an assistant. Delegation between peers is [Agent2Agent](../coordination/a2a.md).
 - **One editor is the only target** and its own extension API already does everything you need.
 - **The interaction is not human-facing**, since the permission model assumes someone is there to answer.
 
@@ -140,10 +140,10 @@ const theirs = await rpc.request("initialize", {
 const { sessionId } = await rpc.request("session/new", { cwd: workspaceRoot });
 
 // The agent asks the host for everything. These handlers are where the host keeps authority.
-rpc.handle("fs/readTextFile", ({ path }) => editor.bufferOrDisk(path));   // unsaved edits included
-rpc.handle("session/requestPermission", async ({ toolCall }) => {
-  const choice = await editor.askUser(toolCall);          // a human decides, not the agent
-  return { outcome: choice ? "selected" : "cancelled" };  // a refusal is a result, not an error
+rpc.handle("fs/read_text_file", ({ path }) => editor.bufferOrDisk(path));   // unsaved edits included
+rpc.handle("session/request_permission", async ({ toolCall }) => {
+  const choice = await editor.askUser(toolCall);  // a human picks an option, not the agent
+  return choice ? { outcome: { outcome: "selected", optionId: choice.optionId } } : { outcome: { outcome: "cancelled" } };  // a decline is a selected reject option; cancelled means the turn was cancelled
 });
 
 await rpc.request("session/prompt", { sessionId, prompt: [{ type: "text", text: userInput }] });
@@ -219,5 +219,9 @@ await rpc.request("session/prompt", { sessionId, prompt: [{ type: "text", text: 
 **Requires**
 
 - [AI Agent](../../architecture/ai-agent.md) — It standardises how an agent is hosted, so there has to be an agent
+
+**Often confused with**
+
+- [Agent2Agent](../coordination/a2a.md) — This one hosts an agent inside an application with a person present; the other hands work between independent peer agents
 
 <!-- relationships:end -->
