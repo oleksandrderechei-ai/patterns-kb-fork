@@ -28,7 +28,7 @@ A thread pool keeps a fixed set of worker threads that take tasks from a queue a
 - **Hidden overload** An unbounded queue hides overload as memory growth; bound it and decide what a full queue does with a new task.
 - **Leftover state** Thread-local data or an uncaught exception can carry into the next task; clear thread-locals and catch errors inside each task.
 
-**Example.** An 8-core machine runs tasks that spend 90 ms waiting on a network call and 10 ms on the CPU. A pool of 8 threads finishes 8 / 0.1 s = 80 tasks a second. If 200 arrive each second, the queue grows by 120 a second, and with no bound the process runs out of memory in the end. The size rule gives 8 x (1 + 90 / 10) = 88 threads, which lifts the ceiling to the 8 cores' limit of 8 / 0.01 s = 800 tasks a second. With a queue bound of 1,000, a pool that stays overloaded would start rejecting after about 8 s, so callers see "busy" instead of silent growth.
+**Example.** An 8-core machine runs tasks that spend 90 ms waiting on a network call and 10 ms on the CPU. A pool of 8 threads finishes 8 / 0.1 s = 80 tasks a second. If 200 arrive each second, the queue grows by 120 a second and, unbounded, exhausts memory. The size rule gives 8 x (1 + 90 / 10) = 88 threads, which raises the ceiling to 8 / 0.01 s = 800 tasks a second, so 200 a second no longer queues; check that the downstream can take 88 calls at once. With the 8-thread pool and a queue bound of 1,000, rejection starts after about 8 s, so callers see "busy" instead of silent growth.
 
 ## How it works
 <!--meta block=structure-->
@@ -53,8 +53,8 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Fixed-size pool** — N threads created up front and reused for the life of the process — the simplest and most predictable default, and the one most runtimes ship as their standard executor.
-- **Cached / elastic pool** — Grows toward a cap as demand rises and retires idle threads after a timeout, trading a hard resource ceiling for lower latency under bursty, uneven load.
+- **Fixed-size pool** — N threads created up front and reused for the life of the process. The simplest and most predictable default, as in the Java Executors fixed-pool factory.
+- **Cached / elastic pool** — Grows as demand rises and retires idle threads after a timeout, trading a hard resource ceiling for lower latency under bursty, uneven load. The cap is optional: Java's cached executor sets none, so a burst can become a thread explosion unless you bound it.
 - **Work-stealing pool** — Each worker owns its own task deque and steals from a busy neighbor's when its own is empty, instead of every thread contending on one shared queue — how `ForkJoinPool`-style runtimes scale many small, unevenly sized tasks.
 - **[Bulkhead](../distributed/resilience/bulkhead.md) pools** — One dedicated pool per tenant, endpoint, or workload type instead of a single shared pool, so a caller that saturates its own pool can't starve every other caller's threads too.
 
@@ -65,7 +65,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Amortizes thread creation cost** — threads are built once and reused across many tasks.
-- **Bounds live concurrency to a known number**, protecting memory and the scheduler.
+- **Bounds live concurrency to a known number** — live threads are capped, protecting the scheduler and stack memory; queue memory is protected only if the queue is bounded too.
 - **The queue absorbs bursts** instead of turning every spike into more live threads.
 - **One number** — pool size — is a single, tunable knob for real parallelism.
 
@@ -143,10 +143,11 @@ func (p *Pool) Submit(task func()) error {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **pool size** — the real parallelism dial (corePoolSize/maximumPoolSize in JVM terms): near core count for CPU-bound work, larger for IO-bound — worked out from the measured wait-to-compute ratio, not guessed
+- **pool size** — the real parallelism dial (corePoolSize/maximumPoolSize in JVM terms): near core count for CPU-bound work; for IO-bound work threads = cores x (1 + wait / compute), with both times measured under real load, not guessed
 - **queue bound** — an unbounded queue converts overload into silent memory growth and latency; a bounded one converts it into visible backpressure the caller must handle
 - **rejection policy** — what happens when the queue is full — throw, block the submitter, run on the caller's thread, or drop; each pushes the pain to a different place, and the default was chosen for you
 - **idle keep-alive** — how long an elastic pool retains an idle worker before retiring it; too short and every burst re-pays thread creation, too long and the pool never shrinks
+- **core vs max with a bounded queue** — threads above core start only after the queue is full, so raising maximumPoolSize alone changes nothing while the queue has room; tune core, max and queue bound together
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -200,6 +201,7 @@ func (p *Pool) Submit(task func()) error {
 - [Reactor](./reactor.md) — A pool absorbs handler work so the event loop never blocks
 - [Fork-Join](./fork-join.md) — A fork-join pool is a thread pool tuned for many small tasks that wait for each other
 - [Proactor](./proactor.md) — A pool of workers can drain a proactor's completion queue
+- [Backpressure](./backpressure.md) — A bounded queue in front of the pool rejects or parks submitters instead of growing
 
 **Variant of**
 
@@ -216,6 +218,7 @@ func (p *Pool) Submit(task func()) error {
 - [Noisy Neighbour](../../hazards/noisy-neighbour.md) — Can fall into noisy neighbour when one shared pool lets a slow or heavy task class take every worker
 - [Synchronous I/O](../../hazards/synchronous-io.md) — Can fall into synchronous io when a fixed pool of worker threads runs out when each one parks on a blocking call
 - [Unbounded Queue](../../hazards/unbounded-queue.md) — Can fall into unbounded queue when a work queue with no limit hides overload until the heap is exhausted
+- [Starvation](../../hazards/starvation.md) — Can fall into starvation when long or blocking tasks hold every worker
 
 **Demonstrated by**
 

@@ -103,5 +103,6 @@ Instrument before you tune. Per-class tail latency and the age of the oldest que
 
 - [Priority Queue](../patterns/messaging/priority-queue.md) — Low-priority items are never served while high-priority work keeps arriving
 - [Read-Write Lock](../patterns/concurrency/rw-lock.md) — A stream of readers can keep a writer out indefinitely
+- [Thread Pool](../patterns/concurrency/thread-pool.md) — A fixed pool is a common site where long tasks crowd out the rest
 
 <!-- relationships:end -->

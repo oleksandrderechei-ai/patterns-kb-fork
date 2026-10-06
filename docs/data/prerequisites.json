@@ -1209,7 +1209,7 @@
       "definition": "Reuses a fixed set of worker threads",
       "route": "/patterns/concurrency/thread-pool.html",
       "requires": [],
-      "related": ["bulkhead", "producer-consumer", "future-promise", "semaphore", "reactor", "fork-join", "proactor"]
+      "related": ["bulkhead", "producer-consumer", "future-promise", "semaphore", "reactor", "fork-join", "proactor", "backpressure"]
     },
     {
       "id": "future-promise",
@@ -1257,7 +1257,7 @@
       "definition": "A slow consumer signals upstream to slow down",
       "route": "/patterns/concurrency/backpressure.html",
       "requires": [],
-      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer"]
+      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer", "thread-pool"]
     },
     {
       "id": "semaphore",

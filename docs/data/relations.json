@@ -13446,6 +13446,20 @@
       "b": "object-storage",
       "note_a": "Large content gets its own store type when an area is split by technology",
       "note_b": "A natural target store when an area's large content is split out"
+    },
+    {
+      "a": "thread-pool",
+      "verb": "exposed-to",
+      "b": "starvation",
+      "note_a": "Can fall into starvation when long or blocking tasks hold every worker",
+      "note_b": "A fixed pool is a common site where long tasks crowd out the rest"
+    },
+    {
+      "a": "backpressure",
+      "verb": "combines-with",
+      "b": "thread-pool",
+      "note_a": "A pool's full queue is where the slow-down signal fires",
+      "note_b": "A bounded queue in front of the pool rejects or parks submitters instead of growing"
     }
   ],
   "group_order": {

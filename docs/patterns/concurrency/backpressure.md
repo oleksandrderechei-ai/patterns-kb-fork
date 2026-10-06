@@ -219,6 +219,7 @@ class BoundedChannel<T> {
 - [Channels](./channels.md) — A bounded channel is one way to apply it
 - [Ring Buffer](./ring-buffer.md) — A bounded ring gives backpressure a visible place to act
 - [Polling Consumer](../messaging/polling-consumer.md) — A consumer that pulls at its own pace is the simplest form of backpressure
+- [Thread Pool](./thread-pool.md) — A pool's full queue is where the slow-down signal fires
 
 **Alternative to**
 
