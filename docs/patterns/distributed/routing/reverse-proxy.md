@@ -15,7 +15,7 @@ Sits in front of one or more backend servers and receives every client request o
 ## What it is
 <!--meta block=description-->
 
-A reverse proxy sits in front of one or more backends, takes every client request, forwards it to a suitable backend and returns the response as if it had produced it. The real servers stay unaddressable. It factors shared edge work, such as TLS termination, compression, caching and access control, out of every backend into one intermediary. Unlike a forward proxy, it acts for servers. It is also a natural single point of failure to make redundant.
+A reverse proxy sits in front of backends, forwards each client request to a suitable backend and returns the response as if it had produced it. The real servers stay off public addresses if network rules block direct access. It factors shared edge work, such as TLS termination and caching, out of every backend into one intermediary. Unlike a forward proxy, it acts for servers. It is also a single point of failure, so run it redundant.
 
 ## Explained
 <!--meta block=explain-->
@@ -24,7 +24,7 @@ A reverse proxy is a server in front of your backends that receives every client
 
 - **Extra hop.** Each request pays a hop plus parsing and TLS handshake CPU, so keep connections to backends open and reuse them.
 - **Single point of failure.** Everything behind it vanishes if it dies, so run two or more behind a shared address.
-- **Exposed secrets.** Ending TLS there puts plaintext and private keys on your most exposed host, so give it minimal rights and short-lived certificates.
+- **Exposed secrets.** Ending TLS there puts plaintext and private keys on an exposed host, so restrict its rights and key access and use short-lived certificates.
 
 **Example.** Six backends sit on private addresses and only the proxy has a public one. Of 1,000 requests a second, 60% are static files that the proxy serves from its cache, so the backends see 400. Each request pays about 1 ms for the extra hop. If a single proxy died, all six backends would vanish from the clients' view at once, so you run two behind one shared address, each sized for the full 1,000 requests a second, and one failing costs no traffic.
 
@@ -53,8 +53,8 @@ flowchart LR
 
 - **TLS termination / offloading** — The proxy performs the HTTPS handshake and speaks plain HTTP to backends, so certificates and cipher configuration live in one place instead of on every server.
 - **Caching reverse proxy** — Caches backend responses and serves repeat requests itself, shielding backends from load — the same edge role a [content delivery network (CDN)](./cdn.md) plays at global scale.
-- **Proxy as [load balancer](./load-balancer.md)** — When it fronts several interchangeable instances and spreads requests across them, the reverse proxy is simultaneously acting as a [Load Balancer](./load-balancer.md).
-- **Forward vs. reverse** — A forward proxy fronts clients reaching outward and hides who they are; a reverse proxy fronts servers being reached and hides where they are. Same mechanism, opposite direction of trust.
+- **Proxy as [load balancer](./load-balancer.md)** — When it fronts several interchangeable instances and spreads requests across them, it is also a [Load Balancer](./load-balancer.md).
+- **Contrast: forward proxy** — A forward proxy fronts clients reaching outward and hides who they are; a reverse proxy fronts servers being reached and hides where they are.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -62,7 +62,7 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Hides backend topology** — servers can move, scale, or be replaced without clients ever knowing their addresses.
+- **Hides backend topology** — servers can move, scale or be replaced without clients seeing their addresses, provided redirects and Host headers are rewritten at the proxy.
 - **Factors cross-cutting concerns** — TLS termination, caching, compression, access control — into one place, configured once rather than per backend.
 - **Forms a security boundary**: backends sit on a private network, reachable only through the proxy's controlled surface.
 - **Gives one point** to observe and govern all inbound traffic — logging, request limits, and rate limits apply uniformly.
@@ -71,7 +71,7 @@ flowchart LR
 <!--meta polarity=con-->
 
 - **Adds a network hop**, and at Layer 7 the request parsing and TLS work that cost latency and CPU.
-- **Becomes a single point** of failure and a single choke point unless it is made redundant in turn.
+- **Becomes a single point** of failure and a single choke point unless it is made redundant in turn; the shared address needs its own failover and both proxies need identical config.
 - **Is another stateful component to configure**, secure, and keep patched — at the most exposed point in the system.
 - **Terminating TLS means decrypting traffic at the edge**: the plaintext and the private keys now live on the proxy.
 
@@ -125,7 +125,7 @@ const proxy = http.createServer((clientReq, clientRes) => {
   clientReq.pipe(upstream); // forward the client's request body to the backend
 });
 
-proxy.listen(443); // clients connect here; the backends stay private
+proxy.listen(8080); // plain HTTP for brevity; production terminates TLS with https.createServer, sets an upstream timeout and adds x-forwarded-for
 ```
 
 ## In the wild
@@ -142,8 +142,8 @@ proxy.listen(443); // clients connect here; the backends stay private
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Upstream timeouts** — Connect, read, and send deadlines for the backend connection (proxy_connect_timeout, proxy_read_timeout); they bound how long a slow backend can tie up a proxy worker before the request is abandoned.
-- **Upstream keepalive pool** — How many idle connections to each backend are kept open and reused, so most requests skip a fresh TCP and TLS handshake to the origin.
+- **Upstream timeouts** — Connect, read and send deadlines for the backend connection (proxy_connect_timeout, proxy_read_timeout); they bound how long a slow backend can tie up a proxy worker. Set read just above the backend's slowest normal response, found in the upstream latency logs; keep connect short.
+- **Upstream keepalive pool** — How many idle connections to each backend are kept open and reused, so most requests skip a fresh TCP and TLS handshake to the backend.
 - **Response buffering** — Whether the proxy buffers the full backend response before relaying it (proxy_buffering) and the buffer sizes; buffering frees the backend sooner but spends proxy memory and disables streaming.
 - **Response cache** — Time to live (TTL), total cache size, and the cache key for cacheable responses; a hit is served by the proxy without ever touching the backend.
 - **Request size limits** — Maximum request body and header buffer sizes (client_max_body_size); they cap how much memory one request can force the proxy to hold and reject oversized uploads early.
@@ -152,17 +152,17 @@ proxy.listen(443); // clients connect here; the backends stay private
 <!--meta polarity=signal-->
 
 - **Upstream response time vs. total time** — The backend's own latency separated from the total the client sees; a widening gap points at proxy-side buffering, TLS, or queuing rather than the backend.
-- **Gateway error rate** — 502 Bad Gateway (backend unreachable) and 504 Gateway Timeout (backend too slow) returned by the proxy — the direct signal that upstreams are failing or saturated.
+- **Gateway error rate** — 502 Bad Gateway (backend unreachable) and 504 Gateway Timeout (backend too slow) returned by the proxy: upstreams are failing or saturated.
 - **Active connections and worker saturation** — Concurrent client and upstream connections against the configured limits; approaching them means new clients start queuing or being refused.
-- **Cache hit ratio** — Share of responses served from the proxy's cache versus forwarded to a backend, when caching is on — it quantifies the load actually shielded from origins.
+- **Cache hit ratio** — Share of responses served from the proxy's cache versus forwarded to a backend, when caching is on — it quantifies the load actually shielded from backends.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Upstream saturation** — The proxy accepts more concurrent requests than the backends can serve; connections queue, read timeouts fire, and clients get 504s even though the proxy itself looks healthy.
+- **Upstream saturation** — The proxy accepts more concurrent requests than backends can serve; connections queue, read timeouts fire and clients get 504s. Cap in-flight requests per backend and shed early with 503.
 - **TLS handshake CPU spikes** — A surge of new HTTPS connections makes termination CPU-bound, and in-flight requests slow because handshakes crowd out useful work.
 - **Buffering memory pressure** — Large responses or many slow clients held in proxy buffers exhaust memory or spill to disk, and the proxy slows for everyone.
-- **File-descriptor exhaustion** — Under high concurrency the proxy runs out of open sockets or ephemeral ports for upstream connections and can accept no new work until some free up.
+- **File-descriptor exhaustion** — Under high concurrency the proxy runs out of open sockets or ephemeral ports for upstream connections and can accept no new work. Raise the file-descriptor limit above client plus upstream connections and reuse upstream connections through keepalive.
 
 ### Readiness checklist
 <!--meta polarity=check-->
