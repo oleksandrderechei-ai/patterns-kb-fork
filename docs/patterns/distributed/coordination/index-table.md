@@ -21,7 +21,7 @@ Stores keyed only by primary key answer "give me this id" well, but any other qu
 ## Explained
 <!--meta block=explain-->
 
-An index table is a second table you build and keep up to date, keyed by the field you search on, for stores that offer no secondary index. A lookup becomes one cheap read of the index instead of a scan that reads everything and throws most away. Choose it when your store cannot index that field for you, and when the query runs often enough to repay the extra writes. If the engine offers its own secondary index, use that, because it is free and consistent. You decide what the index holds. Copy only the primary key and the index stays small, but every read needs a second lookup. Copy everything and one read answers, at the cost of a full second copy. Copy the hot fields only, which is usually right.
+An index table is a second table you build and keep up to date, keyed by the field you search on, for stores that offer no secondary index. A lookup becomes one cheap read of the index instead of a scan that reads everything and throws most away. Choose it when your store cannot index that field for you, and when the query runs often enough to repay the extra writes. If the engine offers its own secondary index, use that, because it removes the maintenance you would otherwise write; check whether it is synchronous. You decide what the index holds. Copy only the primary key and the index stays small, but every read needs a second lookup. Copy everything and one read answers, at the cost of a full second copy. Copy the hot fields only, which is usually right.
 
 - **A write per index.** Each index is another place to write. Build one only for a query you actually run.
 - **Indexes drift.** Keeping several in step is hard. Post changes to a queue and accept a short window of disagreement.
@@ -75,7 +75,7 @@ sequenceDiagram
 - **Normalised reference index** — The index stores only the secondary key and the primary key, and the rows stay in the fact table. Smallest to store and cheapest to maintain, and every read pays a second round trip — which also means a stale index entry is caught by the second lookup rather than returned as truth.
 - **Partial denormalisation** — The index duplicates the handful of fields the common query displays and references the fact table for everything else. The usual choice, because it buys the one-hop read for the queries that matter without buying a second copy of the whole dataset.
 - **Composite key** — Where queries filter on a combination of fields, concatenate them into the index key. Entries then sort by the first attribute and by the second within it, so both the prefix query and the full combination are contiguous ranges — and the order you concatenate in decides which queries are cheap.
-- **Index over a hashed shard key** — Key the index by the natural value and store the hashed shard key as the payload. This is the case with the largest payoff: it restores ordered and range access to a store whose [Sharding](../routing/sharding.md) scattered it, and it saves recomputing an expensive hash on every lookup.
+- **Index over a hashed shard key** — Key the index by the natural value and store the hashed shard key as the payload. This restores ordered and range access to a store whose [Sharding](../routing/sharding.md) scattered it, and the fact-row fetch goes straight to its shard.
 - **Sharded index** — The index table is itself large enough to partition, and gets its own shard key. Worth remembering that this reintroduces the original problem one level down — an index sharded on the wrong key has the same access-path gap the fact table had.
 
 ## Trade-offs
@@ -84,9 +84,9 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **A full scan becomes a keyed lookup**, which changes the query from linear in the dataset to roughly constant.
+- **A full scan becomes a keyed lookup** or range read, so cost follows the number of entries returned rather than the size of the dataset.
 - **Ordered and range access come** back to a hash-sharded store, which otherwise has no way to answer "everything between these two values".
-- **Expensive hash computation moves off the read path**, because the index already holds the shard key the lookup needs.
+- **The index already carries the shard key**, so the fact-row fetch goes straight to the right shard.
 - **You choose the storage-versus-round-trip point** per index rather than accepting whatever the engine would have done.
 
 ### Cons
@@ -113,8 +113,8 @@ sequenceDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The engine already maintains secondary indexes.** Let it — hand-built indexes are strictly worse when the alternative is free and transactional.
-- **The data is volatile**. The index goes stale as fast as you rebuild it, and maintenance outruns the saving.
+- **The engine already maintains secondary indexes.** Let it: an engine index removes the hand-built maintenance, though it still costs a write per change and may itself be asynchronous, so check which your store gives.
+- **The data is volatile.** Every change must also write the index, so maintenance load and the stale window grow with churn, and maintenance can outrun the saving.
 - **The candidate key has few** distinct values or a heavily skewed distribution, where a scan is competitive.
 - **The real need is a precomputed answer** rather than a faster path to the rows — that is a [Materialized View](./materialized-view.md).
 
@@ -130,6 +130,7 @@ type IndexEntry = { town: string; lastName: string; shardKey: string; customerId
 interface Store {
   put(table: string, key: string, value: unknown): Promise<void>
   delete(table: string, key: string): Promise<void>
+  get(table: string, key: string, shardKey: string): Promise<Customer | undefined>
   rangeScan(table: string, prefix: string): Promise<IndexEntry[]>
 }
 
@@ -137,19 +138,27 @@ interface Store {
 // "everyone in Bergen" and "the Olsens in Bergen" are one contiguous range.
 const indexKey = (c: Customer) => `${c.town}#${c.lastName}#${c.id}`
 
-const findByTown = (store: Store, town: string) =>
-  store.rangeScan('customers_by_town', `${town}#`)
+// The index is a hint: re-read each fact row (the shard key routes the read)
+// and drop entries the row no longer supports.
+async function findByTown(store: Store, town: string) {
+  const entries = await store.rangeScan('customers_by_town', `${town}#`)
+  const rows = await Promise.all(entries.map(e => store.get('customers', e.customerId, e.shardKey)))
+  return rows.filter((r): r is Customer => r !== undefined && r.town === town)
+}
 
 // Called by the worker draining the change queue, never inline with the write:
 // the two tables are updated separately, so there is a window where they disagree.
-async function reindex(store: Store, before: Customer | null, after: Customer) {
-  if (before && indexKey(before) !== indexKey(after)) {
+// after === null means the customer was removed.
+async function reindex(store: Store, before: Customer | null, after: Customer | null) {
+  if (before && (!after || indexKey(before) !== indexKey(after))) {
     await store.delete('customers_by_town', indexKey(before))
   }
-  await store.put('customers_by_town', indexKey(after), {
-    town: after.town, lastName: after.lastName,
-    shardKey: hashShardKey(after.id), customerId: after.id,
-  })
+  if (after) {
+    await store.put('customers_by_town', indexKey(after), {
+      town: after.town, lastName: after.lastName,
+      shardKey: hashShardKey(after.id), customerId: after.id,
+    })
+  }
 }
 ```
 
@@ -167,7 +176,7 @@ async function reindex(store: Store, before: Customer | null, after: Customer) {
 
 - **Projection breadth** — Which fields the index duplicates. Keys only is cheapest to maintain and costs a second read; all fields is one hop and a full second copy.
 - **Composite key field order** — Decides which prefix queries are contiguous ranges, and therefore which queries are cheap.
-- **Index maintenance lag budget** — How far behind the fact table an asynchronously-updated index may fall before it is considered broken.
+- **Index maintenance lag budget** — How far behind the fact table an asynchronously-updated index may fall before it is considered broken. Compute it from the longest staleness the least tolerant reader accepts, and alert before it is reached.
 - **Index shard key** — An index large enough to partition needs its own key, and the wrong one recreates the access-path gap one level down.
 
 ### Signals to watch
