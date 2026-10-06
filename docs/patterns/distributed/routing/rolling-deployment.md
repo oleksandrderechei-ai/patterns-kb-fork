@@ -206,9 +206,9 @@ async function roll(f: Fleet, next: string, surge = 1, readyTimeoutMs = 60_000) 
 - [Load Balancer](./load-balancer.md) — Relies on the load balancer's health checks to send traffic only to ready instances
 - [Feature Flag](./feature-flag.md) — Ship the new code during the roll with the feature switched off, then enable it separately
 
-**Variant of**
+**Alternative to**
 
-- [Blue-Green Deployment](./blue-green-deployment.md) — Swaps instances in place in small batches, with no second full fleet
+- [Blue-Green Deployment](./blue-green-deployment.md) — Swaps the whole fleet at once to a second copy, so rollback is one routing change but capacity doubles
 
 **Implemented by**
 

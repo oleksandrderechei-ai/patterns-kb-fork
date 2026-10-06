@@ -27,7 +27,7 @@ Blue-green deployment runs two full copies of your system, blue serving users an
 - **Shared data store.** Rollback works only while the old version reads what the new one wrote, so add columns first, remove later.
 - **Long sessions.** Open connections do not switch, so keep blue running as long as your longest session.
 
-**Example.** A service runs on 20 servers. You build 20 more with the new release, run smoke tests while they carry no users, and at 14:00 point the router at them. The column the release needs was added a week earlier, so blue still reads the data. At 14:06 errors climb from 0.2% to 4%, and at 14:07 you point the router back, a one-minute rollback instead of a rebuild. The cost was 40 servers during a 30-minute watch window, and after it you delete the 20 you no longer need.
+**Example.** A service runs on 20 servers. You build 20 more with the new release, run smoke tests while they carry no users, and at 14:00 point the router at them. The column the release needs was added a week earlier, so blue still reads the data. At 14:06 errors climb from 0.2% to 4%, and at 14:07 you point the router back, a one-minute rollback instead of a rebuild. The cost was 40 servers for seven minutes, and you now delete the 20 green servers and fix the release.
 
 ## How it works
 <!--meta block=structure-->
@@ -86,9 +86,9 @@ Long-lived connections do not switch. A websocket or a streaming connection esta
 ### Pros
 <!--meta polarity=pro-->
 
-- **Rollback costs one routing change** rather than a rebuild — the fastest recovery any release strategy offers.
-- **Never runs a half-upgraded fleet**, so no user meets a state that was never designed or tested.
-- **The new version is exercised** on real infrastructure before a single user reaches it.
+- **Rollback costs one routing change** rather than a rebuild, as long as blue is still running and the data stays readable by it.
+- **No machine is ever half-upgraded**, but both versions share the store and long-lived sessions during the overlap, so that overlap must be designed for.
+- **The new version is exercised** on production infrastructure and data before any user reaches it, though without real load; keep smoke tests read-only or tagged.
 - **Deployment stops being a scheduled outage**, which removes the maintenance window and the argument about when to hold it.
 - **Pairs with disposable infrastructure**: build green fresh every time and configuration drift stops accumulating.
 
@@ -176,7 +176,7 @@ await db.dropColumn("orders", "customer_id");
 
 - **Argo Rollouts** — Its BlueGreen strategy keeps an activeService and a previewService pointing at two ReplicaSets, promotes by re-pointing the active service, and holds the old ReplicaSet for a configurable scaleDownDelaySeconds so a rollback needs no rebuild. {#wild-argo-rollouts}
 - **AWS CodeDeploy blue/green** — CodeDeploy provisions a replacement set of instances or tasks, registers them behind a second load balancer target group, shifts traffic to it, and can roll back by shifting the listener back to the original group. {#wild-aws-codedeploy}
-- **Azure App Service deployment slots** — A staging slot runs the new version on its own worker, is warmed up before the swap, and the swap exchanges the routing of the two slots — so swapping back is the documented rollback. {#wild-app-service-slots}
+- **Azure App Service deployment slots** — A staging slot hosts the new version beside production in the same App Service plan, is warmed up before the swap, and the swap exchanges the two slots' routing, so swapping back is the rollback. {#wild-app-service-slots}
 
 ## In production
 <!--meta block=production-->
@@ -184,7 +184,7 @@ await db.dropColumn("orders", "customer_id");
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Bake window** — How long the new fleet serves all traffic before the old one is destroyed. Longer catches slow-burning faults that only appear after a cache fills or a nightly job runs; shorter halves the period you pay for two fleets.
+- **Bake window** — How long the new fleet serves all traffic before the old one is destroyed. Longer catches slow-burning faults that only appear after a cache fills or a nightly job runs; shorter shortens the period you pay for two fleets.
 - **Drain grace period** — How long the router lets in-flight requests finish on the old fleet before cutting it. Set it below your longest normal request and the switch shows up to users as truncated responses.
 - **Warm-up before the switch** — Synthetic traffic against the new fleet so pools, caches and just-in-time compilation are ready. Skip it and the release trades a deployment outage for a cold-start latency spike at the exact moment everyone is watching.
 - **Auto-promotion** — Whether the switch happens automatically once the smoke tests pass, or waits for an approval. Automatic is faster and removes a human from the critical path; manual is what you want while the process is still new.
@@ -193,7 +193,7 @@ await db.dropColumn("orders", "customer_id");
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Error rate and latency on the new fleet against the old one baseline** — Compare the two rather than watching an absolute threshold — a change that is only visible as a delta is exactly the change a threshold misses.
+- **Error rate and latency on the new fleet against the old fleet's baseline** — Compare the two rather than watching an absolute threshold, since a change visible only as a delta is the one a threshold misses.
 - **In-flight requests on the draining fleet** — Should fall to zero within the grace period. If it does not, either the grace is too short or something is holding connections open longer than the request model assumes.
 - **Capacity and quota consumption during the overlap** — Peak usage during a release is roughly double steady state. Watch it against the limit, because this is the moment a quota bites.
 - **Long-lived connections still on the old fleet** — Tells you when the switch is actually finished. Without it, the release looks complete while a population of users is still on the previous version.
@@ -249,10 +249,7 @@ await db.dropColumn("orders", "customer_id");
 **Alternative to**
 
 - [Canary Release](./canary-release.md) — Switch all at once, or ramp a weighted slice and watch
-
-**Has variant**
-
-- [Rolling Deployment](./rolling-deployment.md) — Switches all traffic at once to a full second copy, so rollback is instant but double capacity is needed
+- [Rolling Deployment](./rolling-deployment.md) — Replaces instances a few at a time in one fleet, so no second copy is needed, but both versions serve users mid-roll and rollback means rolling again
 
 **Implemented by**
 

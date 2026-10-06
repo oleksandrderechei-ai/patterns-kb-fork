@@ -216,6 +216,7 @@ class HashRing {
 - [Distributed Cache](../../caching/distributed-cache.md) — Picks the owning cache node in a clustered cache
 - [Partition Around Limits](../../../principles/partition-around-limits.md) — Consistent hashing is what makes partition count cheap to change
 - [Sharding](./sharding.md) — Consistent hashing is how shards are placed
+- [Sticky Session](./sticky-session.md) — A ring over client or session keys gives sticky routing without a per-client table.
 
 **Prevents**
 

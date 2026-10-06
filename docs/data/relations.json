@@ -11007,13 +11007,6 @@
       "note_b": "Routers can store path prefixes in a prefix tree to find the matching service"
     },
     {
-      "a": "rolling-deployment",
-      "verb": "variant-of",
-      "b": "blue-green-deployment",
-      "note_a": "Swaps instances in place in small batches, with no second full fleet",
-      "note_b": "Switches all traffic at once to a full second copy, so rollback is instant but double capacity is needed"
-    },
-    {
       "a": "canary-release",
       "verb": "combines-with",
       "b": "rolling-deployment",
@@ -13231,6 +13224,20 @@
       "b": "cdn",
       "note_a": "A CDN edge is one place routing rules can run, adding caching but slow rule propagation",
       "note_b": "Edge functions can run API routing rules at the edge"
+    },
+    {
+      "a": "consistent-hashing",
+      "verb": "combines-with",
+      "b": "sticky-session",
+      "note_a": "A ring over client or session keys gives sticky routing without a per-client table.",
+      "note_b": "Hashing the client or session key to a backend is the stateless-balancer way to get affinity; the ring keeps most pins when instances change."
+    },
+    {
+      "a": "blue-green-deployment",
+      "verb": "alternative-to",
+      "b": "rolling-deployment",
+      "note_a": "Replaces instances a few at a time in one fleet, so no second copy is needed, but both versions serve users mid-roll and rollback means rolling again",
+      "note_b": "Swaps the whole fleet at once to a second copy, so rollback is one routing change but capacity doubles"
     }
   ],
   "group_order": {

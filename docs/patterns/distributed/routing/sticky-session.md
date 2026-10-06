@@ -21,14 +21,14 @@ A sticky session, or session affinity, is a load-balancing policy that routes ev
 ## Explained
 <!--meta block=explain-->
 
-A sticky session ties each client to one backend instance, so every request in its session goes to the instance that holds its state in memory. A [load balancer](load-balancer.md) assumes any instance can answer any request, which fails the moment a backend keeps something locally that a later request needs, such as a login, a cart, a half-finished upload or an open websocket. Choose it over moving that state into a shared store (see [stateless service](stateless-service.md)) when the state cannot leave the process yet, so the fleet works behind a balancer with no shared store on the hot path.
+A sticky session ties each client to one backend instance, so every request in its session goes to the instance that holds its state in memory. A [load balancer](load-balancer.md) assumes any instance can answer any request, which fails the moment a backend keeps something locally that a later request needs, such as a login, a cart, a half-finished upload or the handshake before a websocket. Choose it over moving that state into a shared store (see [stateless service](stateless-service.md)) when the state cannot leave the process yet. The hot path then needs no store read, though anything that must survive a crash still needs a store, written off the read path.
 
 - **Uneven load.** A few long-lived clients can weigh down some instances while the rest idle, so cap session length.
 - **Slow rebalancing.** A new instance takes only new arrivals, and retiring one means waiting for its pins to expire.
 - **Lost state.** A dead instance loses whatever lived only in its memory, so keep anything that matters in a store as well.
 - **Address pinning.** Pinning by client address puts a whole office behind one NAT (shared address translator) on a single backend, so pin by cookie.
 
-**Example.** Four instances serve 400 users with a cookie pin, 100 each. Ten users run 30-minute uploads that all pinned to instance 2, whose CPU reaches 95% while the others sit at 30%. You add a fifth instance, but the 400 existing users stay where they are, so it takes only new arrivals and the overload eases only as sessions end. If instance 1 crashes, its 100 users lose any cart held only in its memory, so you also save carts to a store.
+**Example.** Say four instances serve 400 users with a cookie pin, 100 each. Ten users run 30-minute uploads that all happen to pin to instance 2, whose CPU reaches 95% while the others sit at 30%. You add a fifth instance, but the 400 existing users stay where they are, so it takes only new arrivals and the overload eases only as sessions end. If instance 1 crashes, its 100 users lose any cart held only in its memory, so you also save carts to a store.
 
 ## How it works
 <!--meta block=structure-->
@@ -55,9 +55,9 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Balancer-inserted cookie vs. application-cookie affinity** — The balancer either adds its own affinity cookie naming the backend, or hashes a cookie the app already sets — a session id — so no extra cookie is needed and the pin follows the application's own session.
-- **Source-IP / Layer-4 affinity** — Pin by hashing the client's address; needs no cookie and works for any protocol, but collapses when many clients share one address behind NAT, a corporate proxy, or carrier-grade NAT.
-- **[Consistent-hashing](./consistent-hashing.md) affinity** — Map the affinity key onto a hash ring so that adding or removing a backend re-pins only a fraction of clients, instead of reshuffling every client the moment the pool changes size.
+- **Balancer-inserted cookie vs. application-cookie affinity** — The balancer either adds its own affinity cookie naming the backend, or reuses a cookie the app already sets, such as a session id, so no extra cookie is needed. For the app cookie it learns which backend each value maps to, or issues its own time-limited cookie keyed on it.
+- **Source-IP / Layer-4 (transport-level, TCP/IP) affinity** — Pin by hashing the client's address; needs no cookie and works for any protocol, but collapses when many clients share one address behind NAT, a corporate proxy, or carrier-grade NAT. Cookie affinity needs a balancer that reads the HTTP request, so it must terminate TLS; under TLS passthrough only address or hash affinity is available.
+- **[Consistent-hashing](./consistent-hashing.md) affinity** — Map the affinity key onto a hash ring so that adding or removing a backend re-pins only a fraction of clients, instead of reshuffling every client the moment the pool changes size. No per-client table is kept, but the re-pinned clients still lose any state held only in memory, a backend failure re-pins its keys silently, and hot keys cannot be rebalanced.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -67,7 +67,7 @@ flowchart LR
 
 - **Lets each backend** keep session state in local memory, avoiding a shared session store and its network round-trip on every request.
 - **Keeps a client's data warm on one instance**, so per-user caches and connections stay hot across requests.
-- **Makes long-lived**, inherently pinned connections — websockets, server-sent events, staged uploads — work through a balancer at all.
+- **Makes inherently pinned flows** work through a balancer: multi-request staged uploads, long-polling fallbacks, and the handshake before a websocket or server-sent-events stream.
 
 ### Cons
 <!--meta polarity=con-->
@@ -142,15 +142,15 @@ class StickyBalancer {
 <!--meta polarity=knob-->
 
 - **Affinity mechanism** — Cookie-based versus source-IP hash — a cookie survives a client changing address and works behind NAT, while IP-hash needs no cookie but pins a whole shared address onto one backend.
-- **Stickiness duration / cookie lifetime** — How long a client stays pinned before it may be rebalanced — a cookie Max-Age or a load-balancer stickiness-duration setting; shorter lets the pool rebalance sooner.
-- **Affinity cookie attributes** — The cookie name plus its Secure, HttpOnly and SameSite flags, which govern whether the pin can be read or forged by client-side code.
+- **Stickiness duration / cookie lifetime** — How long a client stays pinned before it may be rebalanced, as a cookie Max-Age or a load-balancer stickiness-duration setting. Size it from the session length seen in your logs (idle timeout plus margin), and note whether the clock is sliding (each request refreshes it) or absolute. Shorter lets the pool rebalance sooner.
+- **Affinity cookie attributes** — The cookie name plus its Secure, HttpOnly and SameSite flags, which limit script access and cross-site sending. A client can still set the value by hand, so the balancer accepts a pin only for a valid backend and treats it as a hint.
 - **Failover when the pinned backend is down** — Whether the balancer re-pins the client to a healthy instance — dropping any session held only in the dead one — or fails the request instead.
 - **Draining / stickiness on scale-in** — Whether a backend being removed keeps serving its already-pinned sessions until they end, rather than dropping them the instant it leaves rotation.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Per-instance load skew** — Requests or active sessions per backend; affinity concentrates load, so a widening gap between the busiest and idlest instance is the thing to watch.
+- **Per-instance load skew** — Requests or active sessions per backend. Affinity concentrates load, so alert when the busiest-to-median ratio stays above a threshold you set from a baseline week of normal traffic.
 - **Session-loss / re-pin rate** — How often clients are forced onto a new backend from instance churn or expiry — each event a dropped in-memory session unless that state was persisted.
 - **Sessions pinned per draining instance** — How many live sessions a scale-in or deploying instance still holds, which gates how long it must stay in rotation before it can leave.
 
@@ -168,7 +168,7 @@ class StickyBalancer {
 - Decide the failure policy up front: on losing a pinned instance, re-pin and accept session loss, or persist the session so a re-pin is transparent.
 - Set the stickiness duration no longer than the session actually needs, so the pool can rebalance.
 - Prefer cookie affinity over source-IP affinity wherever clients sit behind NAT or shared proxies.
-- Set Secure, HttpOnly and SameSite on the affinity cookie so it cannot be read or forged from the browser.
+- Set Secure, HttpOnly and SameSite on the affinity cookie to limit exposure, and never treat the cookie as authorisation.
 - Confirm connection draining holds the pinned sessions on a scale-in instance until they end or migrate, rather than cutting them.
 
 ## Where it shows up
@@ -194,6 +194,7 @@ class StickyBalancer {
 
 - [WebSocket](../../messaging/websocket.md) — A held socket is the main reason to pin a client to one instance.
 - [API Gateway](./api-gateway.md) — Long-lived streams through a gateway are the case that needs affinity
+- [Consistent Hashing](./consistent-hashing.md) — Hashing the client or session key to a backend is the stateless-balancer way to get affinity; the ring keeps most pins when instances change.
 
 **Alternative to**
 
