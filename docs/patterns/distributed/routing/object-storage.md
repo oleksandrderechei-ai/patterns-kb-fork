@@ -22,14 +22,14 @@ Object storage keeps data as whole objects, each a blob of bytes, metadata and a
 ## Explained
 <!--meta block=explain-->
 
-Object storage keeps files as whole objects, each a block of bytes with metadata and a unique key, and you read or write one by key over an HTTP API. You store big files such as videos and backups there and keep only the key in your database. Without it, a 40 MB video in a database row makes every backup, restore and unrelated query slower, because the bytes sit in the same pages as your other data. The store is cheap per gigabyte, copies each object across devices for durability, and grows without you provisioning capacity. Choose it over a database for large files you write once and read whole, and over a file system when you do not need renames, appends or locks. An object is replaced, never edited in place, and you cannot query inside it.
+Object storage keeps files as whole objects, each a block of bytes with metadata and a unique key, and you read or write one by key over an HTTP API. You store big files such as videos and backups there and keep only the key in your database. Without it, a 40 MB video in a database row bloats every backup and restore, and can slow queries that share its pages, depending on how your database stores large values. The store is cheap per gigabyte, copies each object across devices for durability, and grows without you provisioning capacity. Choose it over a database for large files you write once and read whole, and over a file system when you do not need renames, appends or locks. An object is replaced, never edited in place, and you cannot query inside it.
 
 - **Latency.** It is slower than a local disk, so put a CDN in front of hot objects.
 - **Varying consistency.** Guarantees differ between stores, so check the one you run.
 - **Exposure.** A public bucket or leaked signed link exposes data, so block public access and keep signed links short.
 - **Drift.** The database row and the object drift apart, so write the row first and sweep for orphans in both directions.
 
-**Example.** Users upload 1,000 videos of 40 MB a day, 40 GB in all. Each client uploads straight to the store with a signed link that expires in 10 minutes, and your database keeps one row with a key of about 60 characters. The row is written first, marked pending. If 2% of uploads are abandoned, 20 a day leave 800 MB of bytes with no finished row. Without a sweep that is about 292 GB a year paid for and never read. The sweep deletes pending rows and objects older than 1 hour that have no match.
+**Example.** Users upload 1,000 videos of 40 MB a day, 40 GB in all. Each client uploads straight to the store with a signed link that expires in 10 minutes, and your database keeps one row with a key of about 60 characters. The row is written first, marked pending. If 2% of uploads reach the store but the row never completes, 20 a day leave up to 800 MB of bytes with no finished row. Without a sweep that is up to about 292 GB a year paid for and never read. The sweep deletes pending rows and objects older than 1 hour that have no match.
 
 ## How it works
 <!--meta block=structure-->
@@ -85,7 +85,7 @@ flowchart LR
 
 - **No filesystem or transactional semantics** — you replace whole objects, can't edit in place, and can't query their contents.
 - **Higher per-request latency** than local disk or a database, especially first-byte from a cold tier.
-- **Consistency varies by store** — the flagship clouds are now strongly consistent, but overwrites and listings can still lag on other S3-compatible stores and across regions. Pin the guarantee you depend on to the store you actually run, and never let a read-after-overwrite be load-bearing across a replica.
+- **Consistency varies by store** — the flagship clouds are now strongly consistent, but overwrites and listings can still lag on other S3-compatible stores and across regions. Check the guarantee for the store you run.
 - **A public bucket or a leaked pre-signed URL** is a data-exposure risk; access control is easy to misconfigure — block public access at the account level, and keep signed lifetimes in minutes rather than days.
 - **Nothing joins the metadata row to the object**, so the two drift: an abandoned upload leaves a row with no bytes, and a deleted row leaves bytes nobody will ever ask for again but you keep paying for. Write the row first, and give a sweep the job of reconciling both directions.
 
@@ -106,16 +106,15 @@ flowchart LR
 - **You need transactions**, partial updates, or low-latency random access into the data.
 - **You need real filesystem semantics** — rename, append, directory locks — in which case reach for a file store.
 
-The rule of thumb: keep the structured reference in your database and the bytes in object storage. Blurring that line is how databases bloat and buckets leak.
-
 ## Code sketch
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — the bytes go to the store, the key goes in the row"
-// Upload: the file goes to the store, the database only learns its key.
-const key = `avatars/${userId}.jpg`;
+// Row first, then bytes: a failed upload leaves a pending row, never an orphan object.
+const key = `avatars/${userId}/${crypto.randomUUID()}.jpg`;   // new key per upload: nothing stale behind a CDN
+await db.users.update(userId, { pendingAvatarKey: key });
 await store.put(key, bytes, "image/jpeg");
-await db.users.update(userId, { avatarKey: key });
+await db.users.update(userId, { avatarKey: key, pendingAvatarKey: null });
 
 // Read: hand out a short-lived URL instead of the bytes, so the image
 // travels browser ↔ store and never through your servers.
@@ -161,8 +160,8 @@ async function idPhotoUrl(flowId: string, store: ObjectStore, db: Db): Promise<s
 <!--meta polarity=knob-->
 
 - **Storage class / tier** — Per-object hot, infrequent-access, or archive tier, set directly or by lifecycle rule. Colder classes cost less per gigabyte and more per read, so choose from how often an object is actually fetched rather than from how old it is.
-- **Lifecycle rules** — The age or prefix conditions that move objects to a colder class or delete them outright. They are what keeps the bill tracking what you serve instead of everything you have ever kept.
-- **Multipart threshold & part size** — Above what size an upload splits, and how large each part is. Smaller parts make a dropped connection cheap to retry and cost more requests; larger parts do the reverse.
+- **Lifecycle rules** — The age or prefix conditions that move objects to a colder class or delete them outright. They are what keeps the bill tracking what you serve instead of everything you have ever kept. Include rules that abort incomplete multipart uploads and expire noncurrent versions, or both keep billing silently.
+- **Multipart threshold & part size** — Above what size an upload splits, and how large each part is. Smaller parts make a dropped connection cheap to retry and cost more requests; larger parts do the reverse. Take the minimum part size and part-count cap from your store's documentation, then pick the part size from your typical upload size and connection quality.
 - **Versioning** — Whether a write keeps the previous version of a key, or objects are locked write-once. A bad overwrite becomes recoverable, and every superseded version keeps billing until a lifecycle rule clears it.
 - **Bucket policy & encryption** — Public-access block, identity and access management (IAM) and bucket policy, and server-side encryption at rest. This is the surface where one permissive statement turns a private bucket into a public one.
 
@@ -178,10 +177,10 @@ async function idPhotoUrl(flowId: string, store: ObjectStore, db: Db): Promise<s
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Hot-prefix throttling** — Requests concentrated on one key prefix get rate-limited.
+- **Hot-prefix throttling** — Requests concentrated on one key prefix get rate-limited and return throttle errors (503 or 429). Spread keys with a hash or random leading segment, retry with backoff, and read your store's documented per-prefix request rate.
 - **Egress cost blowout** — Serving large objects straight to users instead of through a CDN.
 - **Public-bucket exposure** — A misconfigured policy leaks private data.
-- **Stale read after overwrite** — The major clouds now read an overwrite back immediately, and their listings are strongly consistent too — the caveat survives in cross-region replicas read before replication catches up, and in S3-compatible stores that still settle writes or listings asynchronously.
+- **Stale read after overwrite** — The major clouds read an overwrite back immediately. Cross-region replicas read before replication catches up, and S3-compatible stores that settle writes or listings asynchronously, can still serve the old object.
 - **Cold-tier retrieval spike** — Objects aged into archive must be restored before they can be read.
 
 ### Readiness checklist
@@ -220,6 +219,7 @@ async function idPhotoUrl(flowId: string, store: ObjectStore, db: Db): Promise<s
 - [Sweeper](../coordination/sweeper.md) — Nothing joins the metadata row to the object, so a sweep reconciles the drift in both directions
 - [Prefer Managed Services](../../../principles/managed-services.md) — Object storage is the clearest case for renting rather than running
 - [Vertical Partitioning](./vertical-partitioning.md) — Holding the bulky fields of an entity is the everyday use, with the database row keeping only the key
+- [Functional Partitioning](./functional-partitioning.md) — A natural target store when an area's large content is split out
 
 **Prevents**
 

@@ -194,6 +194,7 @@ sidecar.listen(SIDECAR_PORT); // clients talk to the sidecar, not the app direct
 - [Distributed Tracing](../resilience/distributed-tracing.md) — Telemetry export is a standard companion-process responsibility, alongside transport layer security (TLS) and secret rotation
 - [Container Orchestration](../coordination/container-orchestration.md) — The orchestrator is what guarantees the helper starts, stops and moves with its service.
 - [Service Discovery](./service-discovery.md) — One of the concerns a sidecar takes off the application, alongside retries and mutual transport layer security (TLS)
+- [Compute Resource Consolidation](./compute-resource-consolidation.md) — Consolidating sidecars trades per-service isolation for less duplicated overhead.
 
 **Part of**
 

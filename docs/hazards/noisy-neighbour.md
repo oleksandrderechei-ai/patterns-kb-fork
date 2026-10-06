@@ -94,5 +94,6 @@ Attribution comes first in practice, because you cannot throttle, bill or even n
 **Threatens**
 
 - [Thread Pool](../patterns/concurrency/thread-pool.md) — One shared pool lets a slow or heavy task class take every worker
+- [Compute Resource Consolidation](../patterns/distributed/routing/compute-resource-consolidation.md) — Consolidation is the deliberate choice that creates the exposure.
 
 <!-- relationships:end -->

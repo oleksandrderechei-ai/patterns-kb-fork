@@ -227,7 +227,10 @@ async function onMessage(msg: Message) {
 - [Service Mesh](../routing/service-mesh.md) — The mesh proxy can start and propagate spans on every hop without any application change
 - [Sidecar](../routing/sidecar.md) — Exporting spans from a companion process keeps the tracing software development kit (SDK) and its configuration out of the application
 - [Health Endpoint Monitoring](./health-endpoint.md) — A probe says whether an instance is healthy; a trace says which hop made a request slow
-- [Geode](../routing/geode.md) — Without it, a fully decoupled multi-region topology is effectively opaque
+
+**Enables**
+
+- [Geode](../routing/geode.md) — Asynchronous multi-region request paths cannot be followed without it
 
 **Requires**
 
