@@ -16,7 +16,7 @@ Deploys a helper process in lock-step beside the main application — same host,
 ## What it is
 <!--meta block=description-->
 
-A sidecar is a second container deployed next to one application instance, sharing its host and network but running as its own unit, in any language. It carries cross-cutting work such as TLS termination, log shipping or secret rotation, so every service gets it without importing a library and without a release when it changes. It is never deployed or scaled apart from its partner.
+A sidecar is a second container deployed next to one application instance, sharing its host and network but running as its own unit, in any language. It carries cross-cutting work such as TLS termination, log shipping or secret rotation, so every service gets it without importing a library and without a release when it changes. In the sidecar form it is deployed and scaled with its partner.
 
 ## Explained
 <!--meta block=explain-->
@@ -24,10 +24,10 @@ A sidecar is a second container deployed next to one application instance, shari
 A sidecar is a second container that runs next to your application instance, sharing its host and network, and does a supporting job for it, such as shipping logs, renewing certificates or handling traffic, without any change to the application's code. Without it, the same job is a library, which means one implementation per language and a release of every service whenever the library changes. Choose it when the behaviour must attach to an application you cannot or should not modify, in whatever language it uses, so one artifact upgrades on its own schedule. Prefer a library when only one service needs the behaviour or the host has no spare room.
 
 - **Per-instance bill.** Each application copy carries a second container whose memory and CPU multiply by fleet size, so give it a small fixed limit.
-- **Start order.** The pair starts and stops in no fixed order, so make the application wait for the sidecar's readiness and drain on shutdown.
+- **Start order.** Plain containers start and stop in no fixed order; use native sidecar ordering and make the application wait for sidecar readiness.
 - **Shared fate.** A sick sidecar degrades a healthy application, so give it its own health check and restart policy.
 
-**Example.** A fleet has 120 application instances, each with a 64 MB log-shipping sidecar, so the sidecars hold 7,680 MB, about 7.7 GB. Updating the shipper is one image rollout to 120 instances and touches no application, where a library would mean three services in three languages each shipping a release. If the application starts before the sidecar, its first seconds of logs go nowhere, so you make it write to a local file that the sidecar tails once it is ready.
+**Example.** A fleet has 120 application instances, each with a 64 MB log-shipping sidecar limit, so the sidecars may hold 7,680 MB, about 7.7 GB. Updating the shipper is one image rollout with no application code change, where a library would mean three services in three languages each shipping a release; the rollout still replaces each pod, so use a rolling update. If the application starts before the sidecar, its first seconds of logs go nowhere, so it writes to a local file that a log sidecar tails once ready.
 
 ## How it works
 <!--meta block=structure-->
@@ -55,7 +55,7 @@ flowchart LR
 - **[Ambassador](./ambassador.md)** — A sidecar specialized as an out-of-process client library — it handles retries, discovery, and TLS on behalf of the main container behind a plain local socket.
 - **Mesh data-plane proxy** — An Envoy- or Linkerd-style proxy runs as a sidecar in every pod, forming the data plane of a [service mesh](./service-mesh.md) while a control plane configures them all centrally.
 - **Logging or metrics sidecar** — Tails the app's log files or scrapes its metrics endpoint and ships them off-host, so the app never links a vendor's telemetry SDK.
-- **Kubernetes native sidecar container** — Since Kubernetes 1.29, a container marked `restartPolicy: Always` starts before the main containers and stops after, formalizing what used to be an init-container workaround.
+- **Kubernetes native sidecar container** — Since Kubernetes 1.29, a container marked `restartPolicy: Always` starts before the main containers and stops after, and its startup probe gates the app's start; this formalizes the init-container workaround.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -64,9 +64,9 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Adds cross-cutting behavior** without touching the main app's code or language.
-- **Deploys, versions, and patches** independently from the app it serves.
+- **Is built, versioned and patched** as its own artifact, though a rollout still replaces the whole pod.
 - **Reusable across an entire polyglot fleet** — the app just needs a localhost socket.
-- **Runs as its own process**, so its crash or resource spike doesn't directly take the app down.
+- **Runs as its own process**: a sidecar crash or spike is contained to its own container; if the app depends on it, as with a traffic-path proxy, the app degrades (see con 3).
 
 ### Cons
 <!--meta polarity=con-->
@@ -74,7 +74,7 @@ flowchart LR
 - **Doubles the containers to deploy**, monitor, and patch on every single instance.
 - **Adds latency** and CPU/memory overhead on every host it rides on.
 - **Shared fate cuts both ways**: an unhealthy sidecar degrades the app it's attached to.
-- **Coordinating startup order**, shutdown order, and health checks between the two is nontrivial.
+- **Coordinating startup order**, shutdown order and health checks between the two takes work.
 
 ## When to use it
 <!--meta block=usage-->
@@ -99,7 +99,7 @@ flowchart LR
 ```typescript summary="TypeScript — a minimal logging proxy sidecar"
 import http from "node:http";
 
-// The sidecar owns the public port; the app listens only on localhost.
+// Inbound-only logging proxy: no TLS, retries or health handling. The app must bind to localhost.
 const APP_PORT = 8080;
 const SIDECAR_PORT = 9000;
 
@@ -118,6 +118,7 @@ const sidecar = http.createServer((req, res) => {
     },
   );
 
+  upstream.on("error", () => { res.writeHead(502); res.end(); }); // app down: 502, no crash
   req.pipe(upstream);
 });
 
@@ -127,7 +128,7 @@ sidecar.listen(SIDECAR_PORT); // clients talk to the sidecar, not the app direct
 ## In the wild
 <!--meta block=wild-->
 
-- **Kubernetes** — A pod co-schedules its containers on one node sharing a network namespace and volumes; since 1.29 a native sidecar is an init container with restartPolicy: Always, guaranteeing it starts before and terminates after the main containers. {#wild-kubernetes}
+- **Kubernetes** — A pod co-schedules its containers on one node sharing a network namespace and volumes. Since 1.29 a native sidecar is an init container with restartPolicy: Always; it starts before and stops after the main containers, and its startup probe gates their start, but application-level readiness still needs its own probe. {#wild-kubernetes}
 - **Linkerd** — Injects its Rust linkerd2-proxy into every pod to transparently handle mTLS, retries, and per-request metrics; the injected proxies form the mesh data plane, configured centrally by the control plane. {#wild-linkerd}
 - **Fluent Bit** — A lightweight C log forwarder that tails the app log files with its tail input plugin and ships them to a backend, so the app links no logging SDK; it is also commonly run as a node-level DaemonSet. {#wild-fluent-bit}
 

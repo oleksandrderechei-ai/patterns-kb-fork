@@ -192,9 +192,9 @@ verifyProvider({
 
 **Combines with**
 
-- [API Versioning](../distributed/routing/api-versioning.md) — The other answer to changing a published contract, and the right one when callers are unknown
 - [Fake Object](./fake-object.md) — A verified contract is what makes a lightweight in-memory stand-in trustworthy
 - [Hyrum's Law](../../principles/hyrums-law.md) — Consumer-driven tests record what callers depend on, making hidden dependencies visible
+- [API Versioning](../distributed/routing/api-versioning.md) — The other answer to changing a published contract, and the right one when callers are unknown
 
 **Requires**
 
