@@ -184,7 +184,7 @@ await db.dropColumn("orders", "customer_id");
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Bake window** — How long the new fleet serves all traffic before the old one is destroyed. Longer catches slow-burning faults that only appear after a cache fills or a nightly job runs; shorter shortens the period you pay for two fleets.
+- **Bake window** — How long the new fleet serves all traffic before the old one is destroyed. A longer window catches slow-burning faults that only appear after a cache fills or a nightly job runs; a shorter one cuts the period you pay for two fleets.
 - **Drain grace period** — How long the router lets in-flight requests finish on the old fleet before cutting it. Set it below your longest normal request and the switch shows up to users as truncated responses.
 - **Warm-up before the switch** — Synthetic traffic against the new fleet so pools, caches and just-in-time compilation are ready. Skip it and the release trades a deployment outage for a cold-start latency spike at the exact moment everyone is watching.
 - **Auto-promotion** — Whether the switch happens automatically once the smoke tests pass, or waits for an approval. Automatic is faster and removes a human from the critical path; manual is what you want while the process is still new.
