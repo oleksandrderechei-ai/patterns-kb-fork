@@ -196,6 +196,7 @@ function mergeSet(a: ORSet, b: ORSet): ORSet {
 **Combines with**
 
 - [Gossip Protocol](./gossip-protocol.md) — State-based conflict-free replicated data types (CRDTs) spread by gossip and tolerate its duplicates and reordering.
+- [HyperLogLog](./hyperloglog.md) — A cardinality sketch is one such mergeable state.
 
 **Alternative to**
 

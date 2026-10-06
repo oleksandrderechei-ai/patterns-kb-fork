@@ -23,11 +23,11 @@ One machine cannot hold or crunch a dataset of billions of records in reasonable
 
 MapReduce splits a big dataset across many machines, runs your function on each piece in parallel, groups the results by key, and runs a second function on each group to produce the answer. You write only the two functions. The framework spreads the data, moves it, and reruns any task whose machine died. Choose it over a single machine when the computation itself, not only the data, takes hours on one core and nobody is waiting on the answer. The same shape fits summarising long documents chunk by chunk and generating embeddings at scale.
 
-- **Costly shuffle.** Grouping by key moves data over the network and spills to disk. Run a combiner to sum partial results first.
-- **Skewed keys.** One very common key sends most values to one reducer, which sets the pace. Split such keys.
+- **Costly shuffle.** Grouping by key moves data over the network and spills to disk. Run a combiner, a map-side step summing partial results first.
+- **Skewed keys.** A common key sends most values to one reducer, which sets the pace. Salt it into sub-keys, merge later.
 - **Repeated passes.** Iterative algorithms rerun the whole dataset each pass. Use an in-memory engine for those.
 
-**Example.** You count words in 1 TB of logs. One machine reading 100 MB/s needs 10,000 s, about 2.8 hours. On 100 machines the read takes about 100 s. The shuffle sends pairs to 20 reducers. If one key, the word the, is 40% of the pairs and the pairs total 200 GB, its reducer receives 80 GB while an even split would give each 10 GB, so the job runs about 8 times longer than it should. A combiner sums each machine's the count first, so that key sends one pair per machine instead of millions, and the skew vanishes.
+**Example.** You count words in 1 TB of logs. One machine reading 100 MB/s needs 10,000 s, about 2.8 hours. On 100 machines the read takes about 100 s. The shuffle sends pairs to 20 reducers. If one key, the word the, is 40% of the pairs and the pairs total 200 GB, its reducer receives 80 GB while an even split would give each 10 GB, so the job runs about 8 times longer than it should. A combiner sums the count inside each map task first, so that key sends one pair per task instead of millions. With one task per machine, that reducer's input falls from 80 GB to about 100 pairs.
 
 ## How it works
 <!--meta block=structure-->
@@ -56,8 +56,8 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Classic batch vs. in-memory DAG** — The original model (Hadoop) writes each stage to disk. In-memory DAG (directed acyclic graph) engines like Spark generalize map/shuffle/reduce into a graph of transformations kept in memory — far faster for multi-pass and iterative work, at the cost of holding data in RAM.
-- **Combiner** — A map-side pre-aggregation that partially reduces each map task's output before it is shuffled. When the reduce is associative (a sum, a count), a combiner shrinks the volume moved across the network dramatically.
+- **Classic batch vs. in-memory DAG** — The original model (Hadoop) writes each stage to disk. In-memory DAG (directed acyclic graph) engines such as Spark keep stages in memory and skip that disk write. That is faster for multi-pass and iterative work while the working set fits in RAM.
+- **Combiner** — A map-side pre-aggregation run on each map task's output before the shuffle. The reduce must be associative and commutative, because the framework may run the combiner zero, one or many times. A sum or count works. An average needs (sum, count) pairs. A hot key then sends one pair per map task instead of millions.
 - **Map-only jobs** — Embarrassingly-parallel transforms — filtering, format conversion, enrichment — that need no grouping. Drop the reduce stage entirely and each map task writes its output directly.
 - **Multi-stage pipelines** — Real work rarely fits one map/reduce pass. Chain several jobs, or express the whole computation as a DAG, so the output of one stage feeds the next without a manual hand-off.
 
@@ -68,7 +68,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Scales horizontally to enormous datasets** — add machines and the work spreads onto them.
-- **Parallelism and fault tolerance are automatic**; a task that fails just gets re-run elsewhere.
+- **Fault tolerance is automatic** — a task that fails is re-run on another machine, provided tasks are idempotent. A reducer that overflows on a hot key fails again. Parallelism needs no code from you.
 - **A simple mental model** — write two functions and let the framework handle the hard parts.
 - **Moving computation to the data** keeps most reads local and cuts network traffic.
 
@@ -78,7 +78,7 @@ flowchart LR
 - **High latency** — it is a batch model, not interactive; jobs run in minutes to hours.
 - **The shuffle is expensive**: grouping by key moves data across the network and spills to disk.
 - **Awkward for iterative algorithms** — each pass re-reads and re-writes the whole dataset.
-- **Skewed keys bottleneck one reducer** — a skewed key sends most values to one reducer, making it the bottleneck for the whole job.
+- **Skewed keys overload one reducer** — a hot key sends most values to a single reducer, and the whole job runs at its pace.
 
 ## When to use it
 <!--meta block=usage-->
@@ -175,6 +175,8 @@ mapReduce(["the cat sat", "the dog sat"]); // { the: 2, sat: 2, cat: 1, dog: 1 }
 - use a combiner to shrink the shuffle where the reduce is associative
 - size the reducer count to the data volume
 - keep tasks idempotent — the framework re-runs them
+- Split a hot key with salting: find it from the task-skew signal, add a random suffix so its values spread over several reducers, then merge the partial results in a second pass.
+- Re-run stragglers speculatively: start a duplicate of a slow task and keep whichever copy finishes first. This is safe only because tasks are idempotent.
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -207,6 +209,10 @@ mapReduce(["the cat sat", "the dog sat"]); // { the: 2, sat: 2, cat: 1, dog: 1 }
 
 - [Scatter-Gather](../../messaging/scatter-gather.md) — Both split then combine, but map-reduce is data-parallel batch, not request/reply
 - [Big Compute](../../architecture/big-compute.md) — Both split work across many machines; this one splits a dataset and moves work to the data, big compute splits one computation over cores.
+
+**Exposed to**
+
+- [Hot Partition](../../../hazards/hot-partition.md) — Falls into it when one hot key sends most values to a single reducer.
 
 **Demonstrated by**
 

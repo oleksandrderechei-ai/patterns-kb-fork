@@ -202,6 +202,10 @@ async function rebuild(
 - [Retrieval-Augmented Generation](../../ml/rag.md) — A vector index over documents is one of these, rebuilt by an embedding job rather than a query
 - [Change Data Capture](./change-data-capture.md) — A change-data-capture stream is one way to keep the view fed as the source changes
 
+**Alternative to**
+
+- [Sliding Window](./sliding-window.md) — A standing rollup replaces a hand-kept window when every event is stored anyway.
+
 **Part of**
 
 - [CQRS](../../architecture/cqrs.md) — The read model is a materialized view
