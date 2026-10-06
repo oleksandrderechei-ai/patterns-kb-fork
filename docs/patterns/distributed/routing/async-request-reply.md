@@ -80,7 +80,7 @@ sequenceDiagram
 - **Held-open push channel** — The caller opens a server-sent event stream or a websocket and is told the instant the state changes. Notification latency is as low as it goes, which suits an interactive screen watching one job. It costs a live connection per waiting caller, and it recovers badly on its own — a client that reloads has to fall back to a poll to find out what it missed.
 - **Result behind a [claim check](../../messaging/claim-check.md)** — The terminal status carries a short-lived link to the payload rather than the payload itself, and the caller fetches it from [object storage](./object-storage.md). It keeps the status resource small and cheap to poll no matter how large the output gets, and it lets the download be resumed and range-requested. The link's lifetime is now part of the contract, and it has to outlast a caller that polls slowly.
 - **Fire-and-forget** — There is no reply at all: the submit is acknowledged and the caller never asks again. It is the cheapest shape and the right one for telemetry and notifications, where nobody acts on the outcome. It is the wrong one everywhere else, because the caller has no way to distinguish work that completed from work that was silently dropped.
-- **Reply on a second queue** — Where the transport is a broker rather than HTTP, the caller sends to a request queue and waits on a response queue, tagging the message with an identifier the responder echoes back so the reply reaches the caller that is waiting — a [Correlation Identifier](../../messaging/correlation-identifier.md). A per-caller reply queue named in the message itself works the same way and disappears with the caller. Be clear about what this is: the caller blocks on an answer, so you have rebuilt a synchronous call on asynchronous plumbing and taken on the broker's failure modes to do it.
+- **Reply on a second queue** — Where the transport is a broker rather than HTTP, the caller sends to a request queue and waits on a response queue, tagging the message with an identifier the responder echoes back so the reply reaches the caller that is waiting — a [Correlation Identifier](../../messaging/correlation-identifier.md). A per-caller reply queue named in the message itself works the same way and disappears with the caller. The caller blocks on an answer, so this rebuilds a synchronous call on asynchronous plumbing and takes on the broker's failure modes.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -90,8 +90,8 @@ sequenceDiagram
 
 - **The response no longer** has to fit inside a connection timeout, so work that takes minutes stops depending on a network nobody controls.
 - **The request tier stays cheap** and stateless while the expensive work runs on hardware suited to it, scaled on its own.
-- **A durable job record** turns a lost connection into a recoverable state, because the caller can always ask again what happened.
-- **A burst of submissions** becomes queue depth rather than a pile of held connections, so load is absorbed instead of refused.
+- **A durable job record** turns a lost connection into a recoverable state, because the caller can ask again what happened for as long as terminal state retention lasts.
+- **A burst of submissions** becomes queue depth rather than a pile of held connections, so load is absorbed rather than refused, until depth outgrows what workers can drain within the operation deadline.
 
 ### Cons
 <!--meta polarity=con-->
@@ -101,7 +101,8 @@ sequenceDiagram
 - **Polling load scales** with waiting callers rather than with work, and clients that ignore `Retry-After` set the rate themselves.
 - **Without an idempotency key on the submit**, an ambiguous timeout becomes duplicated work the caller never asked for.
 - **An operation that never reaches** a terminal state is invisible: nothing errors, and the caller polls a running job whose worker died an hour ago.
-- **Terminal state retention is a real deadline** — expire it before a slow caller collects and the result is gone with no error anywhere.
+- **Terminal state retention is a real deadline.** Expire it before a slow caller collects and the result is gone: the status read returns 404, the same as for an id that never existed.
+- **A caller that gives up** cannot stop a running job, so abandoned work and its cost continue unless the operation resource offers a cancel that workers check.
 
 ## When to use it
 <!--meta block=usage-->
@@ -136,8 +137,8 @@ app.post("/reports", async (req, res) => {
     `INSERT INTO operations (id, idempotency_key, state, params)
           VALUES (gen_random_uuid(), $1, 'accepted', $2)
      ON CONFLICT (idempotency_key) DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
-       RETURNING id, state`, [key, req.body]);
-  await queue.enqueue({ operationId: op.id });   // same transaction, or an outbox
+       RETURNING id, state, (xmax = 0) AS inserted`, [key, req.body]);
+  if (op.inserted) await queue.enqueue({ operationId: op.id }); // NOT atomic with the INSERT as written: write an outbox row in the same transaction, or a crash here loses an accepted job
   res.status(202).location(`/operations/${op.id}`).set("Retry-After", "5").json({ id: op.id, state: op.state });
 });
 // STATUS: one resource, three answers. 303 hands the caller to the result so it
@@ -159,7 +160,7 @@ app.get("/operations/:id", async (req, res) => {
 <!--meta block=wild-->
 
 - **Google Cloud long-running operations** — A slow method returns an `Operation` resource instead of a result. It carries `done`, and then either `response` or `error`; callers poll `operations.get`, and the same shape is reused across services so one client knows how to wait for all of them. {#wild-google-lro}
-- **Azure Resource Manager async operations** — Slow control-plane calls answer `202 Accepted` with an `Azure-AsyncOperation` or `Operation-Location` header naming the status resource, plus `Retry-After` to set the polling interval. {#wild-azure-async}
+- **Azure Resource Manager async operations** — Slow control-plane calls answer `202 Accepted` with an `Azure-AsyncOperation` or `Location` header naming the status resource, plus `Retry-After` to set the polling interval. {#wild-azure-async}
 - **Amazon Textract** — Document analysis is split in two: a start call returns a `JobId`, a get call polls it, and completion can also be published to a notification topic so callers can stop polling entirely. {#wild-aws-textract}
 
 ## In production
@@ -178,7 +179,7 @@ app.get("/operations/:id", async (req, res) => {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Age of the oldest non-terminal operation** — The single most useful number here. It rises the moment workers stop draining and long before any error rate moves.
+- **Age of the oldest non-terminal operation** — It rises the moment workers stop draining, typically long before any error rate moves.
 - **Accepted versus terminal rate** — Submissions in against completions out. A sustained gap is a backlog forming, whatever the queue depth says.
 - **Poll requests per operation** — How many status reads each operation costs. It shows whether clients honour `Retry-After` and whether polling is becoming the dominant load.
 - **Duplicate submission rate** — Submits that matched an existing idempotency key. A rise means clients are timing out before the 202 reaches them.
