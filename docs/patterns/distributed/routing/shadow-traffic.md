@@ -27,7 +27,7 @@ Shadow traffic duplicates each live request at the router and sends the copy to 
 - **Extra load.** Every mirrored request costs the shadow a full request; sample a share, or size the shadow like production.
 - **Noisy diffs.** Ids and timestamps differ by design; normalise them before you read a diff as a bug.
 
-**Example.** A team replaces a search service and mirrors 10 percent of 2,000 requests per second, so the shadow takes 200 per second. Over an hour it sees 720,000 requests and returns an error on 0.4 percent that the old version served, all with one rare filter combination, so they fix it before any user sees it. The p99 of the new version is 180 ms against 120 ms for the old. The cost is a shadow sized for 200 requests per second, and a test index so it never writes to the live one.
+**Example.** A team replaces a search service and mirrors 10 percent of 2,000 requests per second, so the shadow takes 200 per second. Over an hour it sees 720,000 requests and returns an error on 0.4 percent of requests the old version answered correctly, all with one rare filter combination, so they fix it before any user sees it. The p99 is 180 ms against 120 ms for the old, indicative only: the shadow runs a test index at a tenth of the load. The cost is a shadow sized for 200 requests per second, and a test index so it never writes to the live one.
 
 ## How it works
 <!--meta block=structure-->
@@ -49,7 +49,7 @@ flowchart LR
     classDef ext stroke-dasharray:4 4
 ```
 
-```mermaid caption="What can the shadow break? Nothing the user waits for. If the shadow is slow or down, the client has already been answered, and the mirror gives up on the copy after its own timeout."
+```mermaid caption="What can the shadow break? Nothing the user waits for. If the shadow is slow or down, the client has already been answered, and the mirror should give up on the copy after its own timeout."
 sequenceDiagram
     autonumber
     participant C as Client
@@ -65,9 +65,9 @@ sequenceDiagram
     Note over S: crash or slow, no effect on C
 ```
 
-The mirror sits at a router, proxy or [service mesh](./service-mesh.md). It sends the copy after, or in parallel with, the primary call and never waits for it, which is why a failing shadow cannot slow a user.
+The mirror sits at a router, proxy or [service mesh](./service-mesh.md). It sends the copy after, or in parallel with, the primary call and never waits for it.
 
-The hard part is side effects. A shadow that writes to the real database, sends the real email or charges the real card does it a second time. Point the shadow at its own data store or sandboxed dependencies, and make non-idempotent calls fail closed. To judge correctness, record both responses and diff them offline, ignoring fields that differ by design such as timestamps and ids.
+The hard part is side effects. A shadow that writes to the real database, sends the real email or charges the real card does it a second time. Point the shadow at its own data store or sandboxed dependencies, and make non-idempotent calls fail closed (reject them rather than run them). To judge correctness, record both responses and diff them offline, ignoring fields that differ by design such as timestamps and ids.
 
 ## Variations
 <!--meta block=variations-->
@@ -77,6 +77,7 @@ The hard part is side effects. A shadow that writes to the real database, sends 
 - **Sampled shadowing** — Mirror a fixed share of requests, such as 5 percent, to bound the extra load. A rare request shape may then never be seen.
 - **Replay from a log** — Capture requests, then replay them against the new version later, at any speed. It allows load tests at several times production rate, but state and time-dependent requests may no longer make sense.
 - **Message copy** — At a messaging layer, a [wire tap](../../messaging/wire-tap.md) copies messages to a side channel for a shadow consumer. The same idea, applied to messages instead of requests.
+- **Diverging state** — A shadow on its own data store drifts from production, so reads differ and the diff reports false regressions. Seed it from a snapshot, or replicate production writes into it.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -84,10 +85,10 @@ The hard part is side effects. A shadow that writes to the real database, sends 
 ### Pros
 <!--meta polarity=pro-->
 
-- **Zero user exposure** — the shadow answer is never returned, so a crash or wrong result harms no one.
+- **Zero user exposure** — the shadow answer is never returned, so a crash or wrong result is not served; side effects and data copies still need isolation.
 - **Real traffic shape** — real payloads, volume and odd data reach the new version, which a test suite cannot invent.
-- **Finds latency and crash regressions before launch** — you see p99 and error rate on the new version under real load.
-- **No change to the primary path** — the primary answers first, so a broken shadow does not affect users.
+- **Finds latency and crash regressions before launch** — you see p99 and error rate on the new version under real load, if the shadow has production-like capacity and data; a sample shows p99 only at the sample rate.
+- **No change to the primary path** — the copy never delays the user's answer; a shadow sharing a database or cache with the primary can still slow it, so isolate them.
 
 ### Cons
 <!--meta polarity=con-->
@@ -112,7 +113,7 @@ The hard part is side effects. A shadow that writes to the real database, sends 
 
 - **Requests have side effects you cannot isolate** — payments, emails and notifications would run twice.
 - **Requests carry personal data the shadow may not hold** — copying them extends the data's reach.
-- **The old service is already near capacity** — the mirror adds load to the primary path, or the shadow needs equal capacity you lack.
+- **The old service is already near capacity** — a mirror adds copying work, and any shared database or cache load, to the primary path.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -127,8 +128,9 @@ function withShadow(primary: Handler, shadow: Handler, sampleRate = 0.05): Handl
 
     if (copy) {
       copy.headers.set("x-shadow", "1");                            // the shadow can refuse side effects
+      const kept = res.clone();                                     // the user path consumes res, so keep a copy for the diff
       void shadow(copy)                                             // fire and forget
-        .then((s) => record(res, s))                                // diff offline, never returned
+        .then((s) => record(kept, s))                                // diff offline, never returned
         .catch(() => {});                                           // a failing shadow is invisible
     }
     return res;
@@ -163,7 +165,7 @@ declare function record(primary: Response, shadow: Response): void;
 
 **Variant of**
 
-- [Canary Release](./canary-release.md) — Mirrors requests to the new version and discards its responses, so no user is exposed
+- [Canary Release](./canary-release.md) — A canary exposes a slice of users, so it can judge responses users act on
 
 **Implemented by**
 

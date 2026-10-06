@@ -21,13 +21,13 @@ A load balancer or orchestrator outside a process cannot tell whether it can sti
 ## Explained
 <!--meta block=explain-->
 
-A health endpoint is a web address your service answers only for machines, so a [load balancer](../routing/load-balancer.md) or an orchestrator (the tool that starts, stops and restarts copies of your service) can ask whether it is working. It replies fast and cheaply, with a bare 200 or a short summary. Without it, the platform guesses from uptime and CPU and sends users to copies that will fail them. Ask two questions. Liveness asks whether the process works at all, and a no means restart it. Readiness asks whether it should get traffic now, and a no means route around it and leave it running, since a copy warming its cache is alive but not ready. Merging them turns a short dependency hiccup into a restart storm. Choose it over watching ports or CPU whenever something must decide where traffic goes.
+A health endpoint is a web address your service answers only for machines, so a [load balancer](../routing/load-balancer.md) or an orchestrator (the tool that starts, stops and restarts copies of your service) can ask whether it is working. It replies fast and cheaply, with a bare 200 or a short summary. Without it, the platform guesses from an open port and sends users to copies that will fail them. Ask two questions. Liveness asks whether the process works at all, and a no means restart it. Readiness asks whether it should get traffic now, and a no means route around it and leave it running, since a copy warming its cache is alive but not ready. Merging them turns a short dependency hiccup into a restart storm. Choose it over watching ports or CPU when an independent instance sits behind a router that must decide where traffic goes.
 
 - **Deep checks cascade.** Calling every dependency can overload them, so give each call a short timeout and cache the answer.
 - **False alarms.** One blip in a minor dependency pulls a healthy copy out, so check only what the request path needs.
 - **Leaks internals.** A detailed answer exposes your topology, so keep it off the public network.
 
-**Example.** Three copies of a service sit behind a load balancer. Each checks the database with a 1 s timeout every 10 s, and the platform restarts a copy after 3 failed liveness checks. The database goes down for 40 s and a restart takes 60 s. If one check serves both questions, all three copies fail 3 checks by 30 s and restart together, so the site stays down until 90 s. With readiness separate, the database check only removes the copies from rotation, liveness still passes, nothing restarts, and traffic returns within 10 s of the database coming back, at 50 s. The cost is one more route to keep honest.
+**Example.** Three copies of a service sit behind a load balancer. Each checks the database with a 1 s timeout every 10 s, and the platform restarts a copy after 3 failed liveness checks. The database goes down for 40 s and a restart takes 60 s. If one check serves both questions, all three copies fail 3 checks by 30 s and restart together, so the site stays down until 90 s. With readiness separate, the database check only removes the copies from rotation, liveness still passes, nothing restarts, and traffic returns within 10 s of the database coming back, at 50 s. The pool is still empty until 50 s; the cost is one more route to keep honest.
 
 ## How it works
 <!--meta block=structure-->
@@ -75,9 +75,9 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Liveness vs. readiness probes** — Two separate routes with different consequences — a failed liveness check restarts the process, a failed readiness check just pulls it out of rotation.
+- **Liveness vs. readiness probes** — Two separate routes with different consequences — a failed liveness check restarts the process, a failed readiness check just pulls it out of rotation. Liveness checks only the process itself, never a dependency; dependency checks belong in readiness.
 - **Shallow vs. deep checks** — A shallow check confirms the process can respond at all; a deep check also pings its own dependencies. Deep checks catch more, but can themselves cascade if every instance hammers the same downstream at once.
-- **Evaluate on a timer, serve the stored verdict** — Decouple evaluating health from answering about it: a background task re-checks the dependencies on its own interval and caches the verdict, and the route hands back whatever the last evaluation decided. Downstream load is then set by that interval alone, however many instances are probed and however often — which is the remedy for the cascade a deep check invites. You pay for it in staleness: an instance can keep reporting healthy for up to one interval after it stops being healthy, so the refresh period becomes a floor under how fast anything can be detected.
+- **Evaluate on a timer, serve the stored verdict** — Decouple evaluating health from answering about it: a background task re-checks the dependencies on its own interval and caches the verdict, and the route returns the last one. Downstream load is then set by the interval and the instance count, not by how often the route is probed, which is the remedy for the cascade a deep check invites. The cost is staleness of up to one interval, which also sets the floor on detection time.
 - **Startup probe / grace period** — A separate, more lenient check during boot so a slow-starting instance isn't killed by liveness before it has finished warming up.
 - **Aggregated dependency health** — The response body lists each dependency's status individually, so on-call engineers get a diagnosis, not just a single pass/fail bit.
 
@@ -88,7 +88,7 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - **Gives orchestrators and load balancers a real signal** instead of guessing from an open socket.
-- **Cheap and fast enough to poll** every few seconds without meaningful load.
+- **A shallow or cached check is cheap enough to poll** every few seconds; a deep check costs one dependency call per instance per poll.
 - **Separating liveness from readiness** lets each control loop react the right way — restart vs. reroute.
 - **Doubles as an operational tool** — curl it during an incident and see what the orchestrator sees.
 
@@ -96,8 +96,8 @@ sequenceDiagram
 <!--meta polarity=con-->
 
 - **A deep check that pings every dependency** can itself become a [cascading failure](../../../hazards/cascading-failure.md) under load.
-- **False positives**: the process responds fine while a critical path it doesn't check is silently broken.
-- **False negatives**: one blip on a nonessential dependency trips readiness and yanks a healthy instance out.
+- **False negatives**: the process responds fine while a critical path it doesn't check is silently broken.
+- **False positives**: one blip on a nonessential dependency fails readiness and pulls a healthy instance out of rotation.
 - **Another endpoint to secure** — unauthenticated deep checks can leak internal topology to anyone who asks.
 
 ## When to use it
@@ -122,24 +122,26 @@ sequenceDiagram
 
 ```typescript summary="TypeScript — separate liveness and readiness routes"
 let ready = false;
+let verdict = { ok: false, db: "unknown" }; // last evaluation, served as-is
 export function markReady() { ready = true; } // called once boot finishes
 
-// Liveness: is the process itself still functioning?
-app.get("/healthz", (_req, res) => {
-  res.status(200).json({ status: "ok" });
-});
-
-// Readiness: should it currently receive traffic?
-app.get("/readyz", async (_req, res) => {
-  if (!ready) {
-    return res.status(503).json({ status: "starting" });
-  }
+// Evaluate on a timer: load on the db is set by this interval and the instance count, not the probe rate
+setInterval(async () => {
   try {
-    await withTimeout(db.ping(), 500); // bounded — never hang the check
-    res.status(200).json({ status: "ok", db: "up" });
+    await withTimeout(db.ping(), 500); // keep below the probe timeoutSeconds; the explain example uses 1 s, tune per dependency
+    verdict = { ok: true, db: "up" };
   } catch {
-    res.status(503).json({ status: "degraded", db: "down" });
+    verdict = { ok: false, db: "down" };
   }
+}, 5000); // staleness is up to one interval
+
+// Liveness: the process only, never a dependency
+app.get("/healthz", (_req, res) => { res.status(200).json({ status: "ok" }); });
+
+// Readiness: return the cached verdict
+app.get("/readyz", (_req, res) => {
+  if (!ready) return res.status(503).json({ status: "starting" });
+  res.status(verdict.ok ? 200 : 503).json({ status: verdict.ok ? "ok" : "degraded", db: verdict.db });
 });
 ```
 
@@ -157,7 +159,7 @@ app.get("/readyz", async (_req, res) => {
 <!--meta polarity=knob-->
 
 - **Probe period** — How often the endpoint is polled (periodSeconds) — frequent enough to react, sparse enough not to load the service.
-- **Failure and success thresholds** — Consecutive failures before an instance is acted on and successes before it is restored (failureThreshold, successThreshold) — the anti-flap dials.
+- **Failure and success thresholds** — Consecutive failures before an instance is acted on and successes before it is restored (failureThreshold, successThreshold), the anti-flap dials. Time to act is periodSeconds times failureThreshold; keep timeoutSeconds below periodSeconds and above the dependency's slowest normal reply.
 - **Probe timeout** — A hard bound on the check itself (timeoutSeconds) so a slow dependency can never make the health check hang.
 - **Startup grace** — An initial delay or dedicated startup probe (initialDelaySeconds, startupProbe) so a slow-booting instance is not killed before it has warmed up.
 - **Check depth** — Shallow (the process can respond at all) versus deep (it also pings its own dependencies) — depth catches more but risks cascading.

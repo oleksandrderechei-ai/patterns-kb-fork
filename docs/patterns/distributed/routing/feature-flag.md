@@ -87,7 +87,7 @@ The two mechanisms are worth keeping distinct even though they overlap. A canary
 ### Pros
 <!--meta polarity=pro-->
 
-- **Turning a feature off** takes seconds and needs no build, which is the fastest incident response available.
+- **Turning a feature off** needs no build and takes effect within one refresh interval, seconds to a minute when polled, which is faster than any redeploy.
 - **Unfinished work can be merged and deployed continuously**, so long-lived branches and their merge conflicts disappear.
 - **Deploying and releasing become separate decisions**, so engineering and product stop having to agree on a date.
 - **Targeting rules** let one feature ramp gradually while the rest of the build stays untouched.
@@ -96,7 +96,7 @@ The two mechanisms are worth keeping distinct even though they overlap. A canary
 ### Cons
 <!--meta polarity=con-->
 
-- **Every flag doubles the paths through the code**, and combinations multiply — three flags are eight configurations, and the tests cover two.
+- **Every flag doubles the paths through the code**, and combinations multiply: three flags are eight configurations, and a typical suite exercises only all-off and all-on.
 - **Flags outlive their features**. Left in place they become permanent conditionals nobody dares remove (the [lava flow](../../../hazards/lava-flow.md) pattern) because nobody knows what depends on them.
 - **The flag store becomes something** the system depends on, and how much depends on it is set by where the value is read.
 - **A change with no deployment** leaves no deployment record, so the flip has to be audited deliberately or an incident timeline will not show it.
@@ -120,16 +120,17 @@ The two mechanisms are worth keeping distinct even though they overlap. A canary
 - **The change is a straightforward** replacement with no need to run both paths — a flag adds a branch to delete later for nothing.
 - **Nobody owns removing it**, in which case you are choosing a permanent conditional rather than a temporary one.
 - **The variation is genuinely a domain concept**, such as a pricing rule, which belongs in the model as a policy rather than behind a release switch.
-- **Whole release, not one behaviour** — you want to control the whole release rather than one behaviour inside it; that is what the router and a canary are for.
+- **Whole release, not one behaviour** — the router and a canary control a whole release; a flag controls one behaviour inside it.
 
 ## Code sketch
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — read from memory, default to the old path"
 // The value is refreshed in the background, so the request path never waits on
-// the flag store and an outage there costs nothing.
+// the flag store and an outage there costs nothing once a value has been read.
 class Flags {
   private values = new Map<string, Rule>();
+  private lastOkAt = 0;
 
   constructor(private store: FlagStore, intervalMs = 30_000) {
     setInterval(() => this.refresh(), intervalMs).unref();
@@ -138,19 +139,23 @@ class Flags {
   private async refresh() {
     try {
       this.values = await this.store.fetchAll();
-    } catch {
+      this.lastOkAt = Date.now();
+    } catch (err) {
+      console.warn("flag refresh failed", err);
       // Keep the last known values. A flag store outage must not be an outage.
     }
   }
 
-  enabled(key: string, userId: string): boolean {
-    const rule = this.values.get(key);
-    if (!rule) return false;              // unknown flag means the old path
-    return hash32(`${key}:${userId}`) % 100 < rule.percent;
+  staleness(): number { return Date.now() - this.lastOkAt; }  // export as a gauge
+
+  enabled(flag: FlagDef, userId: string): boolean {
+    const rule = this.values.get(flag.key);
+    if (!rule) return flag.default;  // unknown means the declared default
+    return hash32(`${flag.key}:${userId}`) % 100 < rule.percent;
   }
 }
 
-if (flags.enabled("new_checkout", user.id)) {
+if (flags.enabled(NEW_CHECKOUT, user.id)) {
   return newCheckout(cart);
 }
 return legacyCheckout(cart);
@@ -164,7 +169,7 @@ export const NEW_CHECKOUT = defineFlag({
   key: "new_checkout",
   kind: "release",           // release toggles are temporary; kill switches are not
   owner: "payments",
-  expiresOn: "2026-09-01",   // a build after this date fails, rather than warns
+  expiresOn: "2026-12-01",   // a build after this date fails, rather than warns
   default: false,            // what every caller gets when the store is silent
 });
 
@@ -192,18 +197,18 @@ export const RECOMMENDATIONS = defineFlag({
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Refresh interval** — How often the service pulls the current rules into memory. It is exactly how long a kill switch takes to reach the whole fleet, and how long two behaviours coexist after any change.
+- **Refresh interval** — How often the service pulls the current rules into memory. It bounds how long a kill switch takes to reach the fleet (the interval plus fetch time), and how long two behaviours coexist after any change. Start from your kill-switch deadline minus fetch time.
 - **Default value** — What every call site returns when the store has never answered. Default to the old behaviour and a flag-store failure is invisible; default to the new one and it becomes an uncontrolled release.
 - **Evaluation location** — In-process against cached rules, or a call to the store per request. Local keeps the store off the request path; remote makes changes instant and adds a dependency that can take the service down.
 - **Targeting rule** — Percentage, plan, region or account list, and the attribute the percentage hashes on. Hashing on the user id keeps a person on one side; hashing per request does not.
-- **Expiry on release toggles** — The date after which the build fails rather than warns. It is the only mechanism that reliably removes flags, because every softer version is ignored.
+- **Expiry on release toggles** — The date after which the build fails rather than warns. A failing build is a strong forcing function, because warnings tend to be ignored; pair it with an owner and a removal ticket.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Evaluations per flag, split by variant** — Shows what the fleet is actually doing, and it is how you find a flag that everyone has forgotten: no evaluations at all, or one hundred percent on one side for months.
 - **Age of the oldest release toggle** — The single number that tracks flag debt. Left unwatched it grows until nobody will touch a conditional because nobody knows what still depends on it.
-- **Rule cache staleness** — Time since the last successful refresh, per instance. A stale instance is one that will not honour a kill switch, and the fleet-wide maximum is the number that matters.
+- **Rule cache staleness** — Time since the last successful refresh, per instance. A stale instance will not honour a kill switch, and the fleet-wide maximum is the number that matters; alert when it exceeds two refresh intervals.
 - **Flag changes on the incident timeline** — Flips leave no deployment record, so they have to be emitted deliberately. Without this, a review of a flag-caused incident finds no change at all around the time it started.
 
 ### Failure modes under load
@@ -262,6 +267,7 @@ export const RECOMMENDATIONS = defineFlag({
 **Exposed to**
 
 - [Boat Anchor](../../../hazards/boat-anchor.md) — Can fall into boat anchor when flags nobody removes after rollout become permanent dead branches
+- [Lava Flow](../../../hazards/lava-flow.md) — Flags nobody removes after rollout become permanent conditionals nobody dares touch, which is lava flow
 
 **Implemented by**
 

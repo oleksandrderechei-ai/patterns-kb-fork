@@ -16,7 +16,7 @@ A rolling deployment upgrades a service in place by replacing its instances in s
 ## What it is
 <!--meta block=description-->
 
-Stopping every instance to upgrade means downtime, and starting a second full copy means paying for double capacity. A rolling deployment replaces instances in small batches: it starts a few new ones, waits until they report ready, then retires the same number of old ones, and repeats until none are left. The fleet never drops below a floor. A bad version reaches only the batch in flight before the roll halts.
+Stopping every instance means downtime, and starting a second full copy means paying for double capacity. A rolling deployment replaces instances in small batches: it starts a few new ones, waits until they report ready, then retires the same number of old ones, and repeats until none are left. With the unavailable limit at 0, the fleet stays at target size. A bad version that fails its readiness check reaches only the batch in flight before the roll halts.
 
 ## Explained
 <!--meta block=explain-->
@@ -24,10 +24,10 @@ Stopping every instance to upgrade means downtime, and starting a second full co
 A rolling deployment upgrades a fleet in place. It starts a few instances of the new version, waits until each one reports that it is ready, then drains and stops the same number of old ones, and repeats until none remain. Two limits set the pace: how many extra instances may exist (surge) and how many may be missing (unavailable). Choose it over a [blue-green deployment](./blue-green-deployment.md) when you cannot pay for a full second fleet and can live with two versions serving at once. Choose a blue-green deployment instead when you need a switch back that takes seconds. Without the readiness gate, a broken build replaces the whole fleet one batch at a time.
 
 - **Two versions at once.** Requests and data cross versions mid-roll; keep changes backward compatible and expand the schema before you contract it.
-- **Slow rollback.** Undoing a bad version is another roll, as long as the first; keep the old image and halt on the first failed check.
+- **Slow rollback.** Undoing a bad version takes as long as the part already rolled; keep the old image and halt on the first failed check.
 - **Weak readiness checks.** A check that passes early sends users to cold instances; make it call a real dependency.
 
-**Example.** A service runs 10 instances. You set surge to 2 and unavailable to 0, so the fleet never drops below 10 serving instances and peaks at 12. Each batch takes about 40 s to become ready, plus a 30 s soak, so five batches take about 6 minutes. On batch 3 the new version fails its readiness check. The controller halts with 4 new and 6 old instances serving, and users saw no errors. The cost is that going back means rolling those 4 again, about 2.5 minutes.
+**Example.** A service runs 10 instances. You set surge to 2 and unavailable to 0, so the fleet never drops below 10 serving instances and peaks at 12. Each batch takes about 40 s to become ready, plus a 30 s soak, so five batches take about 6 minutes. On batch 3 the new version fails its readiness check. The controller halts with 4 new and 6 old instances serving, and users saw no errors from the failed batch, which never passed readiness. The cost is that going back means rolling those 4 again, about 2.5 minutes.
 
 ## How it works
 <!--meta block=structure-->
@@ -87,7 +87,7 @@ The readiness check is what makes the roll safe. An instance that has started is
 <!--meta polarity=pro-->
 
 - **No downtime and no second fleet** — capacity stays near the target, so you pay for one spare batch, not a full copy.
-- **Bad versions stop early** — a failing readiness check halts the roll after one batch, so most instances stay on the old version.
+- **Bad versions stop early** — a failing readiness check halts the roll at the first batch that fails, so most instances stay on the old version.
 - **Needs only the platform** — an orchestrator or load balancer with health checks does it, with no routing layer of your own.
 - **Resource-light for large fleets** — the cost of the spare is a small share of a large fleet, where a full second copy is not.
 
@@ -95,9 +95,10 @@ The readiness check is what makes the roll safe. An instance that has started is
 <!--meta polarity=con-->
 
 - **Two versions serve at once** — requests, messages and rows cross versions mid-roll. Keep changes backward compatible and split schema changes into expand then contract.
-- **Rollback is another roll** — undoing a bad version takes as long as the deploy did. Keep the previous image and, where speed matters, prefer a [blue-green deployment](./blue-green-deployment.md).
+- **Rollback is another roll** — undoing a bad version takes as long as the part of the roll already done. Keep the previous image and, where speed matters, prefer a [blue-green deployment](./blue-green-deployment.md).
 - **Readiness checks are easy to get wrong** — a check that passes before the instance can serve sends users to a cold instance. Make it exercise a real dependency.
-- **Slow roll on large fleets** — batches times soak time add up to hours. Raise the batch size once the first batch proves healthy.
+- **Readiness proves a start, not correctness** — a logic bug passes the gate and spreads batch by batch. Pair the roll with a soak and an error-rate halt.
+- **Slow roll on large fleets** — batches times soak time can reach hours: at 70 s per batch, 200 instances at 2 per batch take about 2 hours. Raise the batch size once the first batch proves healthy.
 
 ## When to use it
 <!--meta block=usage-->
@@ -114,7 +115,7 @@ The readiness check is what makes the roll safe. An instance that has started is
 
 - **A breaking change in the data or protocol** — old and new cannot coexist, so switch all at once or version the interface first.
 - **You need an instant way back** — a bad version must be off in seconds, which a roll cannot do.
-- **Instances hold state or long connections** — draining takes too long, so stop-and-start would drop users.
+- **Instances hold state or long connections** — draining waits on them for a long time, and cutting them early would drop users.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -151,11 +152,12 @@ async function roll(f: Fleet, next: string, surge = 1, readyTimeoutMs = 60_000) 
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Surge** — How many instances may run above the target size; Kubernetes calls it \`maxSurge\`. More speed, more spare capacity paid.
-- **Unavailable limit** — How many instances may be missing during the roll; Kubernetes calls it \`maxUnavailable\`. Set it to 0 to keep full capacity.
-- **Readiness check** — The probe an instance must pass before it takes traffic; Kubernetes uses \`readinessProbe\`. Make it exercise real dependencies.
-- **Minimum ready time** — How long a new instance must stay ready before the roll counts it; Kubernetes calls it \`minReadySeconds\`.
-- **Progress deadline** — How long the roll may stall before it is marked failed; Kubernetes calls it \`progressDeadlineSeconds\`.
+- **Surge** — How many instances may run above the target size; Kubernetes calls it `maxSurge`. More speed, more spare capacity paid.
+- **Unavailable limit** — How many instances may be missing during the roll; Kubernetes calls it `maxUnavailable`. Set it to 0 to keep full capacity.
+- **Readiness check** — The probe an instance must pass before it takes traffic; Kubernetes uses `readinessProbe`. Make it exercise real dependencies.
+- **Minimum ready time** — How long a new instance must stay ready before the roll counts it; Kubernetes calls it `minReadySeconds`.
+- **Progress deadline** — How long the roll may stall before it is marked failed; Kubernetes calls it `progressDeadlineSeconds`. It only flags the failure; rollback is still yours.
+- **Drain grace period** — How long a stopping instance may finish in-flight requests; Kubernetes calls it `terminationGracePeriodSeconds`. Set it above your longest normal request.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -170,13 +172,13 @@ async function roll(f: Fleet, next: string, surge = 1, readyTimeoutMs = 60_000) 
 
 - **Stalled roll** — New instances fail readiness and the fleet runs mixed versions until someone acts.
 - **Early readiness** — A check that passes too early sends traffic to cold instances and shows as an error spike on every batch.
-- **Cut connections** — Draining cuts long-lived connections and requests, which clients see as resets unless they retry.
+- **Cut connections** — Draining cuts long-lived connections and requests, which clients see as resets unless they retry. Remove the instance from the router, wait the drain time, then stop it.
 - **Capacity dip at peak** — With unavailable above 0, traffic that peaks during the roll meets fewer instances than it needs.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- New and old versions tolerate each others requests and data
+- New and old versions tolerate each other's requests and data
 - Schema changes are expanded first and contracted in a later release
 - The previous version is still available to roll back to
 - Drain time covers your longest normal request
@@ -206,9 +208,9 @@ async function roll(f: Fleet, next: string, surge = 1, readyTimeoutMs = 60_000) 
 - [Load Balancer](./load-balancer.md) — Relies on the load balancer's health checks to send traffic only to ready instances
 - [Feature Flag](./feature-flag.md) — Ship the new code during the roll with the feature switched off, then enable it separately
 
-**Variant of**
+**Alternative to**
 
-- [Blue-Green Deployment](./blue-green-deployment.md) — Swaps instances in place in small batches, with no second full fleet
+- [Blue-Green Deployment](./blue-green-deployment.md) — Swaps the whole fleet at once to a second copy, so rollback is one routing change but capacity doubles
 
 **Implemented by**
 

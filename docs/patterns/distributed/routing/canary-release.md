@@ -28,7 +28,7 @@ A canary release sends a small share of real traffic, often 1 to 5 percent, to t
 - **Skewed slice.** Sending only employees muddles the comparison, so sample users uniformly.
 - **Slow release.** The ramp turns minutes into hours, so keep a documented fast path for urgent fixes.
 
-**Example.** Traffic is 500 requests a second, so a 2% slice is 10 a second. The rule is no decision before 1,800 requests, which takes 3 minutes at that rate. The ramp is 2, 10, 50 and 100 percent, holding 30 minutes at each, so a release takes about 2 hours. At 10%, 50 requests a second, the new version shows 0.6% errors against 0.1% on the old. You send the slice back to zero, and only 10% of users saw errors, for at most 30 minutes. The cost is those 2 hours against one switch, so urgent fixes take the documented fast path.
+**Example.** Traffic is 500 requests a second, so a 2% slice is 10 a second. The rule is no decision before 1,800 requests, which takes 3 minutes at that rate. The ramp is 2, 10, 50 and 100 percent, holding 30 minutes at each, so a release takes about 2 hours. At 10%, 50 requests a second, the new version shows 0.6% errors against 0.1% on the old. You send the slice back to zero. Only 10% of users were on the new version, and 0.6% of their requests failed, for at most 30 minutes at 10% after 30 at 2%. The cost is those 2 hours against one switch, so urgent fixes take the documented fast path.
 
 ## How it works
 <!--meta block=structure-->
@@ -87,7 +87,7 @@ Comparing the two populations only works if they are comparable. Route the canar
 - **Bounds the blast radius** of a bad release to the current step, instead of every user at once.
 - **Tests against production conditions no staging environment reproduces** — real load, real data, real clients.
 - **Compares the candidate against** a control running at the same moment, so a regression is visible as a delta rather than guessed from a threshold.
-- **Abort is the same weighted** call that widened it, so recovery needs no rebuild and no separate procedure.
+- **Abort is the same weighted** call that widened it, so routing recovers with no rebuild and no separate procedure. Zero weight stops new exposure; it does not repair data the candidate already wrote.
 - **Makes progressive delivery routine**, which lets a team ship smaller changes more often rather than batching them for a big release.
 
 ### Cons
@@ -123,12 +123,14 @@ Comparing the two populations only works if they are comparable. Route the canar
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — the ramp, and the gate that stops it"
+// illustrative values, not defaults: the example block uses different numbers
 const STEPS = [1, 10, 25, 50, 100];   // percent of traffic on the candidate
+const MIN_REQUESTS = 5_000;
 
 async function ramp(candidate: Target, baseline: Target) {
   for (const weight of STEPS) {
     await router.setWeight(candidate, weight);
-    await hold({ minutes: 15, minRequests: 5_000 });  // enough to mean something
+    await hold({ minutes: 15, minRequests: MIN_REQUESTS });  // enough to mean something
 
     const verdict = await compare(candidate, baseline);
     if (!verdict.healthy) {
@@ -142,6 +144,8 @@ async function ramp(candidate: Target, baseline: Target) {
 // that is what separates "the release is bad" from "it is a busy afternoon".
 async function compare(candidate: Target, baseline: Target) {
   const [c, b] = await Promise.all([metrics(candidate), metrics(baseline)]);
+  if (c.requests < MIN_REQUESTS) return { healthy: false, reason: "insufficient sample" };
+  // ratio is noisy near a zero baseline; also require an absolute error-rate floor
   if (c.errorRate > b.errorRate * 1.2) return { healthy: false, reason: "errors" };
   if (c.p99 > b.p99 * 1.3) return { healthy: false, reason: "latency" };
   return { healthy: true };
@@ -169,7 +173,7 @@ function onCanary(userId: string, weightPercent: number): boolean {
 
 - **Argo Rollouts** — Its canary strategy is a list of steps — setWeight and pause — and an AnalysisTemplate that queries a metrics provider between steps, promoting or aborting the rollout on the query result rather than on a human watching a dashboard. {#wild-argo-rollouts-canary}
 - **Flagger** — A Kubernetes operator that drives progressive delivery on top of a service mesh or ingress controller: it steps the traffic weight up on a schedule, runs metric checks and webhooks at each step, and rolls back automatically when a check fails. {#wild-flagger}
-- **Istio** — A VirtualRoute splits traffic across subsets by weight, which is the routing primitive a canary needs; the mesh also emits per-subset request metrics, so the candidate and the baseline are measurable without changing the application. {#wild-istio-weighted}
+- **Istio** — A VirtualService splits traffic across subsets by weight, with the subsets declared in a DestinationRule. That is the routing primitive a canary needs. The mesh also emits per-subset request metrics, so the candidate and the baseline are measurable without changing the application. {#wild-istio-weighted}
 
 ## In production
 <!--meta block=production-->
@@ -178,8 +182,8 @@ function onCanary(userId: string, weightPercent: number): boolean {
 <!--meta polarity=knob-->
 
 - **Step sequence** — The weights the ramp passes through. Small early steps bound the worst case; too many steps stretch a release across a day and tempt people to skip the gate.
-- **Hold duration and minimum sample per step** — How long each weight is observed, and how many requests must be seen before the verdict counts. On a low-traffic service the duration binds; on a busy one the sample does.
-- **Comparison thresholds** — How much worse than baseline is too worse — expressed as a ratio rather than an absolute, so a busy afternoon does not read as a regression.
+- **Hold duration and minimum sample per step** — How long each weight is observed, and how many requests must be seen before the verdict counts. On a low-traffic service the duration binds; on a busy one the sample does. Size the sample from the baseline error rate and the smallest regression worth catching; hold time is then that sample divided by the slice's request rate.
+- **Comparison thresholds** — How much worse than baseline is too worse — expressed as a ratio rather than an absolute, so a busy afternoon does not read as a regression. Add an absolute floor as well, since a ratio misfires when the baseline error rate is near zero.
 - **Split key** — Whether traffic is split per request or by a stable hash of the user. Per request samples uniformly; per user keeps one person on one version, which any user-visible change needs.
 - **Abort policy** — Whether a failed check sets the weight to zero automatically or pages a human. Automatic bounds the exposure to one hold window and will occasionally abort on noise.
 
@@ -198,7 +202,7 @@ function onCanary(userId: string, weightPercent: number): boolean {
 - **A skewed slice invalidates the comparison** — The candidate is served to internal users or one region, so the populations differ in exactly the ways that matter. The gate reports a clean comparison it did not actually make.
 - **Version attribution is wrong** — Metrics from both versions land in the same series because the version label is missing or the mesh reports at the wrong granularity. Everything looks fine at every step because everything is averaged together.
 - **Users flip between versions** — Per-request splitting with a user-visible change produces inconsistent behaviour on consecutive clicks. It reads to users as a broken product rather than as a release in progress.
-- **The ramp stalls halfway** — An approval is missed or an abort leaves weight at an intermediate value, and two versions run against one store far longer than the compatibility window was designed for.
+- **The ramp stalls halfway** — An approval is missed or an abort leaves weight at an intermediate value, and two versions run against one store far longer than the compatibility window was designed for. Alert when a weight has been held longer than a set number of hold windows, and give the ramp a deadline after which it rolls back or is promoted.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -236,6 +240,7 @@ function onCanary(userId: string, weightPercent: number): boolean {
 - [Deployment Stamp](./deployment-stamp.md) — The slice can be a whole stamp rather than a percentage
 - [Quarantine](../../security/quarantine.md) — Pairs with a supply-chain gate: check what you ship, then who sees it first
 - [Rolling Deployment](./rolling-deployment.md) — A canary can be widened as a roll of new instances
+- [API Routing](./api-routing.md) — Routing is the mechanism that splits the slice
 
 **Alternative to**
 
@@ -243,7 +248,7 @@ function onCanary(userId: string, weightPercent: number): boolean {
 
 **Has variant**
 
-- [Shadow Traffic](./shadow-traffic.md) — Sends real users to the new version, so it can judge responses users act on
+- [Shadow Traffic](./shadow-traffic.md) — Mirrors requests and discards the responses, so no user is exposed and user-facing correctness goes unjudged
 
 **Requires**
 
