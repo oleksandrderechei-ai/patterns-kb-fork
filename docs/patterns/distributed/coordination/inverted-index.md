@@ -21,14 +21,14 @@ To find the documents containing a word, a plain table makes you read every row.
 ## Explained
 <!--meta block=explain-->
 
-An inverted index answers "which documents contain this word" without reading the documents. At write time an analyzer splits each document into terms, and the index keeps, for each term, a sorted list of the ids of documents that contain it (a posting list). A query is analyzed the same way, then the lists of its terms are intersected for AND or merged for OR, and the matching ids are scored and returned. Choose it over a scan or an ordinary B-tree index (one that orders whole values) when users type free text, because a B-tree cannot find a word in the middle of a field. Writers add small immutable segments and merge them later, in the manner of an [LSM tree](lsm-tree.md), so search is fast and writes stay sequential.
+An inverted index answers "which documents contain this word" without reading the documents. At write time an analyzer splits each document into terms, and the index keeps, for each term, a sorted list of the ids of documents that contain it (a posting list). A query is analyzed the same way, then the lists of its terms are intersected for AND or merged for OR, and the matching ids are scored and returned. Choose it over a scan or an ordinary B-tree index (one that orders whole values) when users type free text, because a B-tree cannot find a word in the middle of a field. Writers add small immutable segments and merge them later, in the manner of an LSM tree, so search is fast and writes stay sequential.
 
 - **Write cost.** One document updates a list per distinct term, so write in batches and accept a refresh delay before it is searchable.
 - **Size.** Lists, positions and statistics can rival the text itself, so store ids as compressed gaps.
 - **Lazy deletes.** A deleted document stays in its segment until a merge rewrites it, so keep spare disk for merges.
 - **Analyzer lock-in.** A wrong tokenizer hides documents silently, and changing it means reindexing everything.
 
-**Example.** You hold 10 million product descriptions of about 50 words each. A scan reads 500 million words per query and takes a second or more. The index holds about 2 million distinct terms: "waterproof" has a list of 80,000 ids and "jacket" has 120,000. A query for both reads those two lists, about 200,000 small integers, and intersects them in a few milliseconds, letting the shorter list drive the merge. The price is that adding one description touches about 40 lists, so you write in batches, and a new product shows up only after the next refresh, typically about a second later.
+**Example.** You hold 10 million product descriptions of about 50 words each. A scan reads 500 million words per query, on the order of a second. The index holds about 2 million distinct terms: "waterproof" has a list of 80,000 ids and "jacket" has 120,000. A query for both reads those two lists, about 200,000 small integers, and intersects them in milliseconds, letting the shorter list drive the merge. The price is that adding one description touches about 40 lists, so you write in batches, and a new product shows up only after the next refresh, an interval you set, often about a second.
 
 ## How it works
 <!--meta block=structure-->
@@ -79,18 +79,18 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Query cost follows the list sizes** — a query reads only its terms' lists, not the corpus, so latency stays flat as the document count grows.
+- **Query cost follows the list sizes** — a query reads only its terms' lists, not the corpus, so latency grows with the length of those lists, and rare terms stay fast as documents are added.
 - **Boolean logic is cheap** — AND is an intersection of sorted lists, OR is a union and NOT a difference, all single passes.
 - **Ranking inputs sit in the entries** — term counts and positions stored beside each id let you score without reopening documents.
-- **Lists compress well** — sorted ids stored as small gaps shrink to a fraction of the text size.
+- **Lists compress well** — sorted ids stored as small gaps take far fewer bytes than raw ids, though positions and statistics can still add up to the text's size.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **Writes touch many lists** — one document updates a list per distinct term, so batch into segments and accept a short delay before new documents show.
 - **Deletes and updates are lazy** — a deleted document is only marked, and its entries linger until a merge rewrites the segment. Budget disk for that.
-- **A common word makes a huge list** — a query on a very frequent term reads millions of ids. Drop stop words, cap candidates, or let a rarer term drive the merge.
-- **It answers only what you analyzed** — a wrong stemmer or tokenizer hides documents silently, and changing the analyzer means reindexing everything.
+- **A common word makes a huge list** — a query on a very frequent term reads millions of ids. Drop stop words (very common words such as "the"), cap candidates, or let a rarer term drive the merge.
+- **It answers only what you analyzed** — a wrong stemmer (which cuts words to a root, so "running" matches "run") or tokenizer hides documents silently, and changing the analyzer means reindexing everything.
 - **It is a second copy of your data** — it lags the source of truth, so feed it by [change data capture](change-data-capture.md) and be ready to rebuild it.
 
 ## When to use it
@@ -109,7 +109,7 @@ sequenceDiagram
 
 - **Lookups are by exact key or by a range of values**; an ordinary B-tree index is smaller and cheaper.
 - **The corpus is small**, a few thousand rows, where a scan finishes in milliseconds.
-- **You need new writes visible at once** with strict consistency; the segment delay will break that.
+- **You need new writes visible at once** with strict consistency; the refresh delay usually breaks that. Measure the time from write to first visible hit and compare it with your freshness budget.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -140,6 +140,7 @@ function intersect(a: number[], b: number[]): number[] {
 function search(query: string): number[] {
   const lists = analyze(query).map(t => postings.get(t) ?? []);
   lists.sort((x, y) => x.length - y.length);                 // start with the rarest term
+  if (lists.length === 0) return [];  // empty query: reduce has no seed
   return lists.reduce(intersect);
 }
 
@@ -150,9 +151,9 @@ search("waterproof jacket");                                 // [1]
 ## In the wild
 <!--meta block=wild-->
 
-- **Apache Lucene** — The Java search library whose index is segment-based: documents are written to immutable segments of term-to-document lists, and background merges combine them. Solr and Elasticsearch are built on it. {#wild-lucene}
-- **Elasticsearch** — A distributed search server built on Lucene. Each shard is a Lucene index, so a query fans out to every shard of an index and the results are merged. {#wild-elasticsearch}
-- **PostgreSQL GIN index** — Generalized Inverted Index, used for full-text search on tsvector columns, for arrays and for jsonb. It maps each element or lexeme to the rows that contain it. {#wild-postgres-gin}
+- **Apache Lucene** — The Java search library whose index is segment-based: documents are written to immutable segments of term-to-document lists, and background merges combine them. Solr and Elasticsearch are built on it. {#wild-wild-lucene}
+- **Elasticsearch** — A distributed search server built on Lucene. Each shard is a Lucene index, so by default a query fans out to every shard of an index and the results are merged. {#wild-wild-elasticsearch}
+- **PostgreSQL GIN index** — Generalized Inverted Index, used for full-text search on tsvector columns, for arrays and for jsonb. It maps each element or lexeme to the rows that contain it. {#wild-wild-postgres-gin}
 
 ## Where it shows up
 <!--meta block=fluency-->
