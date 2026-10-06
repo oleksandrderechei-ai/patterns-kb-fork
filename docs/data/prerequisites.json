@@ -1273,7 +1273,7 @@
       "definition": "Remove races by giving each thread sole ownership of its data",
       "route": "/patterns/concurrency/thread-confinement.html",
       "requires": [],
-      "related": ["monitor-object", "reactor", "immutability", "active-object", "mutex"]
+      "related": ["monitor-object", "reactor", "immutability", "mutex", "active-object"]
     },
     {
       "id": "batching",

@@ -77,10 +77,10 @@ The deeper escape is to **not share the locks at all**: confine each piece of st
 **Mitigated by**
 
 - [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) — A lock-acquisition timeout is the backstop that breaks an otherwise indefinite wait
-- [Thread Confinement](../patterns/concurrency/thread-confinement.md) — No shared locks to acquire in conflicting orders, so no cycle can form
 - [Minimize Coordination](../principles/minimize-coordination.md) — Removing shared locks removes the cycle rather than managing it
 - [Lock-Free](../patterns/concurrency/lock-free.md) — Remove the locks entirely and the hold-and-wait precondition disappears
 - [Actor Model](../patterns/concurrency/actor-model.md) — Actors remove lock-ordering deadlocks by giving each piece of state one owner; circular request-reply waits can still stall them, so time out every ask
+- [Thread Confinement](../patterns/concurrency/thread-confinement.md) — Confinement removes lock-order cycles, but owners blocked on each other's queues can still deadlock
 
 **Threatens**
 

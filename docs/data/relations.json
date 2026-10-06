@@ -4336,13 +4336,6 @@
       "note_b": "Give one owner the state so there's no sharing to race over at all"
     },
     {
-      "a": "thread-confinement",
-      "verb": "prevents-hazard",
-      "b": "deadlock",
-      "note_a": "No shared locks to acquire in conflicting orders, so no cycle can form",
-      "note_b": "No shared locks to acquire in conflicting orders, so no cycle can form"
-    },
-    {
       "a": "minimize-coordination",
       "verb": "prevents-hazard",
       "b": "deadlock",
@@ -11098,13 +11091,6 @@
       "note_b": "The monitor makes callers run the method under a lock, where an active object runs it for them"
     },
     {
-      "a": "active-object",
-      "verb": "alternative-to",
-      "b": "thread-confinement",
-      "note_a": "Confines state to one thread and lets callers reach it through a queued request",
-      "note_b": "Confinement leaves each thread its own data and needs no queue"
-    },
-    {
       "a": "channels",
       "verb": "combines-with",
       "b": "producer-consumer",
@@ -13488,6 +13474,20 @@
       "b": "rw-lock",
       "note_a": "A monitor can guard its state with a read-write lock, so read-only methods run in parallel",
       "note_b": "A monitor can guard its state with a read-write lock instead of a mutex, so read-only methods run together"
+    },
+    {
+      "a": "thread-confinement",
+      "verb": "prevents-hazard",
+      "b": "deadlock",
+      "note_a": "No shared locks, so no lock-order cycle; owners that wait on each other's queues can still deadlock",
+      "note_b": "Confinement removes lock-order cycles, but owners blocked on each other's queues can still deadlock"
+    },
+    {
+      "a": "active-object",
+      "verb": "alternative-to",
+      "b": "thread-confinement",
+      "note_a": "Confines state to one thread and lets callers reach it through a queued request",
+      "note_b": "Both confine state to one thread; Active Object adds a method-call proxy, a queue and futures, while confinement only requires one owner"
     }
   ],
   "group_order": {
