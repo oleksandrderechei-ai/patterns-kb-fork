@@ -197,6 +197,7 @@ proxy.listen(8080); // plain HTTP for brevity; production terminates TLS with ht
 - [Load Balancer](./load-balancer.md) — Fronting interchangeable instances, the proxy is also spreading the load
 - [CDN](./cdn.md) — A content delivery network (CDN) edge plays this same caching-proxy role at global scale
 - [Sidecar](./sidecar.md) — Deployed per-instance as a sidecar, the proxy runs over localhost
+- [Service Discovery](./service-discovery.md) — Behind the proxy, discovery supplies the live instance list it forwards to
 
 **Enables**
 

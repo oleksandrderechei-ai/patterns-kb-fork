@@ -6716,13 +6716,6 @@
       "note_b": "One transfer object per published version keeps the domain model out of the wire contract"
     },
     {
-      "a": "api-versioning",
-      "verb": "combines-with",
-      "b": "contract-testing",
-      "note_a": "Where consumers cannot be enumerated, versioning replaces consumer-driven verification",
-      "note_b": "The other answer to changing a published contract, and the right one when callers are unknown"
-    },
-    {
       "a": "repository",
       "verb": "combines-with",
       "b": "fake-object",
@@ -11028,13 +11021,6 @@
       "note_b": "Ship the new code during the roll with the feature switched off, then enable it separately"
     },
     {
-      "a": "shadow-traffic",
-      "verb": "variant-of",
-      "b": "canary-release",
-      "note_a": "Mirrors requests to the new version and discards its responses, so no user is exposed",
-      "note_b": "Sends real users to the new version, so it can judge responses users act on"
-    },
-    {
       "a": "service-mesh",
       "verb": "combines-with",
       "b": "shadow-traffic",
@@ -13238,6 +13224,48 @@
       "b": "rolling-deployment",
       "note_a": "Replaces instances a few at a time in one fleet, so no second copy is needed, but both versions serve users mid-roll and rollback means rolling again",
       "note_b": "Swaps the whole fleet at once to a second copy, so rollback is one routing change but capacity doubles"
+    },
+    {
+      "a": "shadow-traffic",
+      "verb": "variant-of",
+      "b": "canary-release",
+      "note_a": "A canary exposes a slice of users, so it can judge responses users act on",
+      "note_b": "Mirrors requests and discards the responses, so no user is exposed and user-facing correctness goes unjudged"
+    },
+    {
+      "a": "feature-flag",
+      "verb": "exposed-to",
+      "b": "lava-flow",
+      "note_a": "Flags nobody removes after rollout become permanent conditionals nobody dares touch, which is lava flow",
+      "note_b": "A release flag left in place after rollout is a common way for lava flow to start"
+    },
+    {
+      "a": "api-versioning",
+      "verb": "combines-with",
+      "b": "contract-testing",
+      "note_a": "Where consumers cannot be enumerated, versioning stands in for per-consumer verification, but a contract test still pins each live version",
+      "note_b": "The other answer to changing a published contract, and the right one when callers are unknown"
+    },
+    {
+      "a": "reverse-proxy",
+      "verb": "combines-with",
+      "b": "service-discovery",
+      "note_a": "Behind the proxy, discovery supplies the live instance list it forwards to",
+      "note_b": "A reverse proxy is the router that does the lookup for callers, so they hold a fixed address"
+    },
+    {
+      "a": "api-gateway",
+      "verb": "combines-with",
+      "b": "service-discovery",
+      "note_a": "Behind the gateway, discovery supplies the live instances it routes to",
+      "note_b": "A gateway resolves the service name to a live instance for callers outside the fleet"
+    },
+    {
+      "a": "a2a",
+      "verb": "often-confused-with",
+      "b": "acp",
+      "note_a": "That one connects a host to its agent; this one connects peers",
+      "note_b": "This one hosts an agent inside an application with a person present; the other hands work between independent peer agents"
     }
   ],
   "group_order": {

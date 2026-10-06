@@ -601,7 +601,7 @@
       "definition": "Single entry point that routes to backing services",
       "route": "/patterns/distributed/routing/api-gateway.html",
       "requires": [],
-      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session"]
+      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session", "service-discovery"]
     },
     {
       "id": "bff",
@@ -657,7 +657,7 @@
       "definition": "Fronts hidden backends, forwarding and terminating client connections for them",
       "route": "/patterns/distributed/routing/reverse-proxy.html",
       "requires": [],
-      "related": ["api-gateway", "api-routing", "load-balancer", "cdn", "sidecar"]
+      "related": ["api-gateway", "api-routing", "load-balancer", "cdn", "sidecar", "service-discovery"]
     },
     {
       "id": "service-mesh",
@@ -713,7 +713,7 @@
       "definition": "Change a published contract while the callers built on the old one keep working",
       "route": "/patterns/distributed/routing/api-versioning.html",
       "requires": [],
-      "related": ["api-routing", "acl", "dto", "contract-testing", "hyrums-law"]
+      "related": ["api-routing", "acl", "dto", "hyrums-law", "contract-testing"]
     },
     {
       "id": "async-request-reply",
@@ -729,7 +729,7 @@
       "definition": "Resolve a logical service name to an instance that is alive right now",
       "route": "/patterns/distributed/routing/service-discovery.html",
       "requires": ["health-endpoint"],
-      "related": ["load-balancer", "circuit-breaker", "sidecar", "ambassador", "a2a"]
+      "related": ["load-balancer", "circuit-breaker", "sidecar", "ambassador", "a2a", "reverse-proxy", "api-gateway"]
     },
     {
       "id": "mcp",
@@ -745,7 +745,7 @@
       "definition": "One contract between a coding agent and whatever application hosts it",
       "route": "/patterns/distributed/routing/acp.html",
       "requires": ["ai-agent"],
-      "related": ["mcp", "agent-sandboxing"]
+      "related": ["mcp", "agent-sandboxing", "a2a"]
     },
     {
       "id": "shadow-traffic",
@@ -1049,7 +1049,7 @@
       "definition": "Delegate a stateful task to an agent you did not build",
       "route": "/patterns/distributed/coordination/a2a.html",
       "requires": ["ai-agent"],
-      "related": ["mcp", "async-request-reply", "service-discovery"]
+      "related": ["mcp", "async-request-reply", "service-discovery", "acp"]
     },
     {
       "id": "outbox",
@@ -1865,7 +1865,7 @@
       "definition": "Prove the test double still matches what the provider actually returns",
       "route": "/patterns/testing/contract-testing.html",
       "requires": ["test-stub"],
-      "related": ["api-versioning", "fake-object", "hyrums-law"]
+      "related": ["fake-object", "hyrums-law", "api-versioning"]
     },
     {
       "id": "authentication-enforcer",
