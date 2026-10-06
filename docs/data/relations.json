@@ -13217,6 +13217,20 @@
       "b": "heartbeat",
       "note_a": "Gossip carries heartbeat counters and suspicions, so no node watches all the others.",
       "note_b": "Gossip spreads heartbeat counters and suspicions so no node watches all the others."
+    },
+    {
+      "a": "optimistic-concurrency-control",
+      "verb": "combines-with",
+      "b": "retry-backoff",
+      "note_a": "A loser's wait between reload and rewrite is capped, jittered backoff, so a hot row does not collapse into lockstep retries.",
+      "note_b": "The retried operation can be a version-checked write, where a loss means reload and redo, not blind repeat."
+    },
+    {
+      "a": "conditional-write",
+      "verb": "alternative-to",
+      "b": "pessimistic-locking",
+      "note_a": "Fold check and write into one statement with no application lock held; lock up front once the decision needs app code or the row is hot.",
+      "note_b": "Locking holds the row while your code decides; a conditional write skips the lock when the rule fits one predicate."
     }
   ],
   "group_order": {

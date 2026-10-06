@@ -27,7 +27,7 @@ Federated identity lets one identity provider check who a user is, then vouch fo
 - **Trust upkeep.** Keys rotate and clock drift rejects good tokens. Rotate on a schedule that cached keys can follow, and sync clocks.
 - **Revocation gap.** Disabling a user does not end issued tokens. Keep lifetimes short, and end each service session too.
 
-**Example.** Five services trust one provider, and each accepts a signed token for 10 minutes. A user signs in once at 09:00 and uses all five with no further password prompts. At 09:20 an administrator disables the account. The provider refuses any new token at once, but the token issued at 09:15 is still accepted until 09:25, a gap of 5 minutes. A one-hour token would have left the user in until 10:15. If the provider is down, nobody new can sign in to any of the five. Shorter tokens narrow the gap, but they send users back to the provider more often.
+**Example.** Five services trust one provider, and each accepts a signed token for 10 minutes. A user signs in once at 09:00 and uses all five with no further password prompts, because services silently fetch fresh tokens while the user's provider session is live, as at 09:15. At 09:20 an administrator disables the account. The provider refuses any new token at once, but the token issued at 09:15 is still accepted until 09:25, a gap of 5 minutes. A one-hour token would have left the user in until 10:15. Shorter tokens narrow the gap, but they send users back to the provider more often.
 
 ## How it works
 <!--meta block=structure-->
@@ -75,9 +75,10 @@ sequenceDiagram
 - **SAML 2.0** — XML assertions signed by the IdP, delivered via browser redirect or POST bindings — still the default for enterprise and government SSO (single sign-on).
 - **OpenID Connect (OIDC)** — OAuth 2.0 plus a signed ID token in JWT (JSON Web Token) form — lighter weight than SAML, and the default for modern web and mobile sign-in.
 - **SP-initiated vs. IdP-initiated** — The flow can start when a user hits the service and gets redirected out, or from a link on the IdP's own portal. SP-initiated preserves a state parameter and resists injected-assertion attacks better.
-- **Identity broker** — A middle party sits between many identity providers and many relying services so each side integrates once instead of pairwise — the shape behind Okta, Auth0, and Azure AD B2C.
+- **Identity broker** — A middle party sits between many identity providers and many relying services, so each side integrates once instead of pairwise. Okta and Auth0 are examples.
 - **Just-in-time provisioning** — The relying service creates or updates the local user record automatically on first successful assertion, so no one has to pre-register accounts by hand.
 - **Workload identity federation** — The federated subject does not have to be a person. A service or a deployment pipeline presents a token issued by its own platform, the relying party validates it against that issuer, and grants short-lived access in exchange — so there is no long-lived secret stored anywhere to leak or rotate. The trust moves into the issuer's claims, which is where the care goes: pin the subject, the audience and the repository or environment conditions exactly, because a loose match federates every tenant of that platform and not just yours.
+- **Back-channel logout** — The IdP calls each relying party to end its session, which narrows the logout gap without closing it.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -87,7 +88,7 @@ sequenceDiagram
 
 - **One login serves every participating service** — users manage a single credential.
 - **MFA, password policy**, and session lifetime are enforced once, at the IdP.
-- **Disabling a user** at the IdP revokes their access everywhere at once.
+- **Disabling a user at the IdP blocks every new token at once**; access ends everywhere once issued tokens and service sessions expire, and short lifetimes narrow that gap.
 - **Relying services can drop their own credential store**, shrinking a major breach surface.
 - **Enables partner and B2B sign-in** without provisioning a fresh account per user per system.
 
@@ -98,7 +99,8 @@ sequenceDiagram
 - **Trust setup is real operational overhead**: metadata exchange, certificate rotation, clock skew.
 - **Global logout is unreliable** — killing the IdP session doesn't always end every SP-side session.
 - **Debugging spans two systems and a redirect chain**; an audience or clock mismatch fails cryptically.
-- **Every relying service is now** hard-dependent on the IdP's uptime to let anyone in at all.
+- **Every relying service depends on the IdP's uptime for new logins**; sessions already started survive until they expire.
+- **Account linking and claim mapping drift**: a changed email or subject at the IdP orphans or merges local accounts.
 
 ## When to use it
 <!--meta block=usage-->
@@ -132,13 +134,17 @@ async function federatedLogin(idToken: string): Promise<LocalSession> {
   const { payload } = await jwtVerify(idToken, idp.jwks, {
     issuer: idp.issuer,
     audience: "our-service-client-id", // reject tokens issued for someone else
+    algorithms: ["RS256"],
   });
 
-  // We trust the IdP's claims outright — we never saw a password.
+  // We trust the IdP's signed claims. Key accounts on issuer plus sub;
+  // treat email as an unverified attribute unless email_verified is true.
+  // In a redirect flow, also compare payload.nonce to the nonce stored
+  // with the login request.
   const sub = payload.sub as string;
   const email = payload.email as string;
 
-  const user = await findOrProvisionUser(sub, email); // just-in-time provisioning
+  const user = await findOrProvisionUser(payload.iss as string, sub, email); // just-in-time provisioning
   return startLocalSession(user); // our own session, scoped to our service only
 }
 ```
@@ -177,7 +183,7 @@ async function federatedLogin(idToken: string): Promise<LocalSession> {
 - **IdP outage locks everyone out** — the single point of trust becomes a single point of failure — while the IdP is unreachable, no one can obtain a fresh token, so every relying service refuses new logins at once
 - **key rotation without cache refresh** — the IdP rolls its signing key but relying parties are still serving a stale JWKS cache; every token signed by the new key fails signature validation until the caches expire or are purged
 - **clock skew rejects valid tokens** — the IdP and relying-party clocks drift apart beyond the tolerance; freshly issued tokens are rejected as not-yet-valid or already-expired, and it fails cryptically across a whole fleet
-- **global logout gap** — killing the IdP session does not reliably end each relying party session, so a user who signed out at the IdP can still be live on an SP until that local session expires on its own
+- **global logout gap** — killing the IdP session does not reliably end each relying party session, so a user who signed out at the IdP can still be live on an SP until that local session expires on its own; back-channel logout or short local session lifetimes narrow it
 
 ### Readiness checklist
 <!--meta polarity=check-->

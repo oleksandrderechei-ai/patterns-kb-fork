@@ -220,6 +220,7 @@ async function reserveSeat(db: Client, seatId: string, userId: string) {
 - [Distributed Lock](./distributed-lock.md) — A database row lock is simpler, but it holds only for the length of one transaction on one store
 - [Two-Phase Commit](./two-phase-commit.md) — When the data spans databases, two-phase commit extends the same lock-until-commit idea across the network.
 - [Lease](./lease.md) — Row locks live inside one transaction, where a lease reaches across servers and survives a crashed holder.
+- [Conditional Write](./conditional-write.md) — Locking holds the row while your code decides; a conditional write skips the lock when the rule fits one predicate.
 
 **Prevents**
 
