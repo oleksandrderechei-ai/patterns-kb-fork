@@ -225,6 +225,10 @@ await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
 - [Fallback](./fallback.md) — Without a fallback, a timeout turns a slow call into a plain error.
 - [Hedged Request](./hedged-request.md) — A hedge turns a slow call into a fast one before the timeout turns it into an error.
 
+**Alternative to**
+
+- [Heartbeat](../coordination/heartbeat.md) — When a request is in flight a deadline suffices, so no heartbeat is needed.
+
 **Enables**
 
 - [Circuit Breaker](./circuit-breaker.md) — You can't trip on slowness without timeouts

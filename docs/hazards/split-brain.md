@@ -93,8 +93,8 @@ Choose the failure detector's timeouts with the cost of both mistakes in view: t
 - [Distributed Lock](../patterns/distributed/coordination/distributed-lock.md) — A fencing token gets a resumed leader's writes rejected
 - [CRDT](../patterns/distributed/coordination/crdt.md) — Conflict-free merging makes divergent writes harmless where availability must be kept.
 - [Failover](../patterns/distributed/coordination/failover.md) — Failover with fencing is the guard against a returning old primary writing alongside the new one.
-- [Heartbeat](../patterns/distributed/coordination/heartbeat.md) — Careful failure detection keeps a pause from being read as a death that splits the cluster.
 - [Lease](../patterns/distributed/coordination/lease.md) — Time-bound ownership narrows the window in which two nodes both claim to lead.
 - [Fencing Token](../patterns/distributed/coordination/fencing-token.md) — A rising token checked at storage stops a stale node from writing after a split.
+- [Heartbeat](../patterns/distributed/coordination/heartbeat.md) — Careful failure detection keeps a pause from being read as a death that splits the cluster.
 
 <!-- relationships:end -->

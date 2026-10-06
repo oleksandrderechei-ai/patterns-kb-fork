@@ -221,6 +221,7 @@ class LeaderElector {
 **Alternative to**
 
 - [Minimize Coordination](../../../principles/minimize-coordination.md) — A leader is coordination you accept when partitioning will not work
+- [Vector Clock](./vector-clock.md) — Where there is no single leader, a vector clock tells concurrent writes apart.
 
 **Requires**
 

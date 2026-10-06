@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-05",
+  "updated": "2026-10-06",
   "note": "Every typed edge between two pages, once: a verb on one page and its inverse on the other are one record. The single source: gen-relations (make gen) splices every page's relationships block (the marked block <!-- relationships:start --> … <!-- relationships:end -->) from it through tools/src/lib/render-relations.ts, the relations gate holds every edge closed and paired, and gen-prerequisites builds docs/data/prerequisites.json from it. node scripts/kb.mjs link and unlink write whole records; an edit by hand is fine too, then run make gen. A record is {a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b?, maps_label_a?, maps_label_b?}: `verb` is read from a's side and b reads its inverse (the verbs and their inverses are docs/data/content-model.json's; of a pair, the verb listed first there is the one written, and a symmetric verb is its own inverse). note_* is that side's note as markdown inline text, its links relative to that side's own page; group_* is a custom group heading, present only when it is not the verb's label; maps_* names the element on that side's page the edge maps to (a capability's mapping row, a comparison's matrix row), and maps_label_* is that row's first cell as plain text: row ids are positional, so the relations gate fails a pin whose row no longer reads its label (kb.mjs link --maps writes both). A page lists its sides in record order inside each group; group_order pins a page's group order where it is not the default (verb labels in the content model's order, then custom headings). Edit this file, never the rendered block; an edge whose other side is missing is a finding.",
   "relations": [
     {
@@ -10825,13 +10825,6 @@
       "note_b": "A failing health check can be the signal that triggers promotion of a standby."
     },
     {
-      "a": "gossip-protocol",
-      "verb": "combines-with",
-      "b": "heartbeat",
-      "note_a": "A gossip protocol carries failure-detection heartbeats between members.",
-      "note_b": "Gossip spreads heartbeat counters and suspicions so no node watches all the others."
-    },
-    {
       "a": "heartbeat",
       "verb": "often-confused-with",
       "b": "health-endpoint",
@@ -10844,13 +10837,6 @@
       "b": "lease",
       "note_a": "A lease renewal is itself a heartbeat, and its expiry is the timeout.",
       "note_b": "The renewal stream of a lease doubles as the liveness signal for its holder."
-    },
-    {
-      "a": "heartbeat",
-      "verb": "prevents-hazard",
-      "b": "split-brain",
-      "note_a": "A detector that waits for repeated misses and confirmers avoids declaring a live node dead and promoting a second leader.",
-      "note_b": "Careful failure detection keeps a pause from being read as a death that splits the cluster."
     },
     {
       "a": "leader-election",
@@ -13203,6 +13189,34 @@
       "b": "leader-election",
       "note_a": "Leader election is where the rising token comes from: each new leader takes the next term.",
       "note_b": "Election grants the role; a rising fencing token makes a deposed leader's late writes fail."
+    },
+    {
+      "a": "leader-election",
+      "verb": "alternative-to",
+      "b": "vector-clock",
+      "note_a": "Where there is no single leader, a vector clock tells concurrent writes apart.",
+      "note_b": "A leader gives one write order, so no clock is needed; a vector clock serves replicas with no leader."
+    },
+    {
+      "a": "heartbeat",
+      "verb": "prevents-hazard",
+      "b": "split-brain",
+      "note_a": "Only a tuned detector, with a long timeout and confirmers, avoids declaring a live node dead and promoting a second leader; a naive one causes the split, and fencing is still needed.",
+      "note_b": "Careful failure detection keeps a pause from being read as a death that splits the cluster."
+    },
+    {
+      "a": "heartbeat",
+      "verb": "alternative-to",
+      "b": "timeout-deadline",
+      "note_a": "A call deadline reveals a failure only while a request waits; a heartbeat covers the idle node.",
+      "note_b": "When a request is in flight a deadline suffices, so no heartbeat is needed."
+    },
+    {
+      "a": "gossip-protocol",
+      "verb": "combines-with",
+      "b": "heartbeat",
+      "note_a": "Gossip carries heartbeat counters and suspicions, so no node watches all the others.",
+      "note_b": "Gossip spreads heartbeat counters and suspicions so no node watches all the others."
     }
   ],
   "group_order": {

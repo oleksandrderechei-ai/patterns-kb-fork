@@ -21,12 +21,12 @@ When replicas accept writes without coordinating, a store that orders versions b
 ## Explained
 <!--meta block=explain-->
 
-A vector clock is a small map of counters, one per replica, attached to each version of a value. A replica that writes adds one to its own counter. A replica that receives a version keeps the larger counter for each entry. To compare two versions, check every entry: if one map is at most the other everywhere, that version is an ancestor and you can drop it. If each map is ahead somewhere, the writes were concurrent, meaning neither writer saw the other, and you keep both. Choose it over last-write-wins by timestamp when replicas accept writes without a leader and losing an update is costly, because machine clocks drift and timestamps pick a winner by accident.
+A vector clock is a small map of counters, one per replica, attached to each version of a value. A replica that writes adds one to its own counter. A reader that merges siblings takes the larger counter for each entry, then adds one on its own. To compare two versions, check every entry: if one map is at most the other everywhere, that version is an ancestor and you can drop it. If each map is ahead somewhere, the writes were concurrent, meaning neither writer saw the other, and you keep both. Choose it over last-write-wins by timestamp when replicas accept writes without a leader and losing an update is costly, because machine clocks drift and timestamps pick a winner by accident.
 
 - **No merge.** It finds conflicts but does not resolve them, so write a merge rule or store the value as a conflict-free data type.
-- **Growing clock.** The map gains one entry per writer, so use server names, not client IDs, and cap the size, accepting a few false conflicts.
+- **Growing clock.** One entry per writer. Server names bound it but can falsely order concurrent client writes; capping costs false conflicts.
 
-**Example.** Three replicas hold a cart. A stores \[milk\] with clock {A:1}. Phone and laptop both read it. The phone writes through B: \[milk, eggs\], clock {A:1, B:1}. The laptop writes through C: \[milk, bread\], clock {A:1, C:1}. When a replica compares them, B is ahead on one entry and C on the other, so it keeps both. The next read returns both carts, the app takes the union \[milk, eggs, bread\], and writes it back with clock {A:1, B:1, C:1} plus one on the writer, so it beats both. With timestamps, one of the two items would have been dropped without a trace. The price is one extra version stored until someone merges.
+**Example.** Three replicas hold a cart. A stores \[milk\] with clock {A:1}. Phone and laptop both read it. The phone writes through B: \[milk, eggs\], clock {A:1, B:1}. The laptop writes through C: \[milk, bread\], clock {A:1, C:1}. When a replica compares them, B is ahead on one entry and C on the other, so it keeps both. The next read returns both carts, the app takes the union \[milk, eggs, bread\], and writes it back with clock {A:1, B:1, C:1} plus one on the writer, so it beats both. With timestamps, one of the two items would have been dropped without a trace. A union cannot tell a removed item from an unseen one, so deletes can return.
 
 ## How it works
 <!--meta block=structure-->
@@ -78,7 +78,7 @@ Cost shows up in step 4. Siblings pile up if nobody merges, and the clock gains 
 ## Variations
 <!--meta block=variations-->
 
-- **Lamport timestamp** — Leslie Lamport's logical clock (1978): one counter per process instead of a vector, carried by every message and pushed past the sender's value by every receiver. Colin Fidge and Friedemann Mattern replaced it with a vector in 1988. It is tiny and gives a total order that respects cause and effect, which suits ordering a log or breaking ties. It cannot say two events were concurrent, so it cannot detect a conflict.
+- **Lamport timestamp** — Leslie Lamport's logical clock (1978): one counter per process instead of a vector, carried by every message and pushed past the sender's value by every receiver. Colin Fidge and Friedemann Mattern independently proposed the vector form in 1988. It is tiny and gives a total order (every event gets one fixed place in line, ties broken by process ID) that respects cause and effect, which suits ordering a log or breaking ties. It cannot say two events were concurrent, so it cannot detect a conflict.
 - **Version vector** — the same structure, but it counts versions of one item per replica instead of events per process, and it advances only on writes to that item, not on every message. Replicas of a database use it to decide which copy of a key is newer or in conflict, which is the form you meet in storage systems.
 - **Dotted version vector** — a version vector that also carries the single event, a dot, that created this version. It stops one replica serving many clients from falsely marking their concurrent writes as ordered, and so keeps the number of siblings from growing without need. Riak adopted it for that reason.
 - **Pruned clock** — a vector cut to a fixed size by removing the oldest entries. Amazon's Dynamo paper describes this, with a size threshold. The clock stays small, but a removed entry makes a descendant look concurrent, so you get a few extra siblings.
@@ -90,7 +90,7 @@ Cost shows up in step 4. Siblings pile up if nobody merges, and the clock gains 
 ### Pros
 <!--meta polarity=pro-->
 
-- **Detects concurrent writes** — a store that keeps both versions loses no update, where wall-clock order drops one without a sign.
+- **Detects concurrent writes** — a store that keeps both versions loses no update, provided each entry identifies the writer and readers merge and write back, where wall-clock order drops one without a sign.
 - **Needs no synchronised clocks** — it counts events, not seconds, so a replica with a clock hour off still orders correctly.
 - **Needs no coordination on write** — a replica ticks its own counter locally, so writes stay available during a partition.
 - **Proves ancestry both ways** — a lower clock means an ancestor and a concurrent pair means a conflict, which a Lamport timestamp cannot tell you.
@@ -101,7 +101,7 @@ Cost shows up in step 4. Siblings pile up if nobody merges, and the clock gains 
 - **Detects conflicts but does not resolve them** — siblings go back to the reader, so you must write a merge rule or keep the data in a [conflict-free replicated data type (CRDT)](./crdt.md).
 - **The clock grows with the writers** — one entry per replica or client that ever wrote, so a large fleet gives a clock as large as the value; pruning cuts it at the price of false conflicts.
 - **Siblings pile up** — if readers do not merge and write back, each concurrent write adds a version to store, ship and return.
-- **Entries are tied to identity** — a client that gets a new ID on each restart adds a new entry every time, and a replica that is replaced must hand its counter over.
+- **Entries are tied to identity** — a client that gets a new ID on each restart adds a new entry every time, a replica that is replaced must hand its counter over, and one that restarts with an empty counter reuses values and corrupts ordering. A write that omits the context it read counts as concurrent with everything.
 
 ## When to use it
 <!--meta block=usage-->
@@ -162,8 +162,8 @@ function compare(a: VC, b: VC): "before" | "after" | "equal" | "concurrent" {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **clock entry identity** — Use a replica or server ID as the entry, not a client ID, so the clock is bounded by the number of servers and a restarting client adds no entry.
-- **pruning threshold** — The maximum number of entries kept before the oldest is dropped; a lower cap keeps values small and a higher cap avoids false siblings.
+- **clock entry identity** — Use a replica or server ID as the entry, not a client ID, so the clock is bounded by the number of servers and a restarting client adds no entry. With server IDs alone, concurrent writes from different clients through one server look ordered and the older is dropped; pair them with a dot (see Dotted version vector) or read before writing.
+- **pruning threshold** — The maximum number of entries kept before the oldest is dropped; a lower cap keeps values small and a higher cap avoids false siblings. Set it above the number of servers that can coordinate writes to one key, then raise it while the false-sibling rate falls.
 - **merge rule** — What reconciles siblings on read: a union, a per-field choice or a call back to the application.
 
 ### Signals to watch
@@ -177,7 +177,7 @@ function compare(a: VC, b: VC): "before" | "after" | "equal" | "concurrent" {
 <!--meta polarity=failure-->
 
 - **sibling explosion** — Many writers update a hot key without reading first, so each read returns and each write ships a long list of versions.
-- **false conflicts after pruning** — A dropped entry makes an ordered pair look concurrent, so you merge versions that were not in conflict.
+- **false conflicts after pruning** — A dropped entry makes an ordered pair look concurrent, so you merge versions that were not in conflict. Count merges that yield one version equal to an ancestor; if the count climbs, raise the cap.
 - **entry sprawl** — Clients that take a new ID on each start add an entry every time, and the clock grows without bound.
 
 ### Readiness checklist
@@ -215,6 +215,7 @@ function compare(a: VC, b: VC): "before" | "after" | "equal" | "concurrent" {
 
 - [Optimistic Concurrency Control](./optimistic-concurrency-control.md) — Detects concurrent writes across replicas with no single version counter to check.
 - [CRDT](./crdt.md) — Detects the conflict and leaves the merge to you.
+- [Leader Election](./leader-election.md) — A leader gives one write order, so no clock is needed; a vector clock serves replicas with no leader.
 
 **Requires**
 
