@@ -16,7 +16,7 @@ Pushes static content out to a distributed fleet of edge servers positioned near
 ## What it is
 <!--meta block=description-->
 
-A **content delivery network** is a set of cache servers in many regions between users and your origin server. Round-trip time is bounded by distance, and one origin takes every spike, crawler and hotlink. Each request goes to the nearest cache, which answers from a fresh copy without touching the origin, so the origin sees only first requests and misses.
+A **content delivery network** is a set of cache servers in many regions between users and your origin server. Round-trip time is bounded by distance, and one origin takes every spike, crawler and hotlink. Each request goes to the nearest cache, which answers from a fresh copy without touching the origin, so the origin sees only first requests, misses and refreshes after a copy expires.
 
 ## Explained
 <!--meta block=explain-->
@@ -33,7 +33,7 @@ A CDN (content delivery network) is a set of cache servers in many regions that 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="How does everyone after the first user avoid the trip to the origin? Step 3 pays the distance once; steps 4 to 7 serve every later request from a machine milliseconds away, and the origin never hears about them."
+```mermaid caption="How does everyone after the first user avoid the trip to the origin? Step 3 pays the distance once; steps 4 to 7 serve every later request from a machine milliseconds away, and the origin hears nothing until the copy expires or is purged."
 flowchart LR
     User["First user"]
     DNS["DNS / anycast routing"]
@@ -56,7 +56,7 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **[Cache-Aside](../../caching/cache-aside.md) pull model** — The default: an edge node checks its own cache, and on a miss fetches from origin and stores the result — origin traffic tracks only cold, actually-requested paths.
+- **[Cache-Aside](../../caching/cache-aside.md) pull model** — The default: an edge node checks its own cache and, on a miss, fetches from origin and stores the result, so origin traffic follows cold paths plus refreshes after TTL expiry or purge.
 - **Push CDN** — The origin proactively uploads or replicates content to edges ahead of demand, instead of waiting for a first request. Common for large media libraries with a known release schedule.
 - **[Consistent Hashing](./consistent-hashing.md) for edge selection** — Within a PoP or across a shard, requests for the same key route to the same cache node by hash, so duplicate copies of one object don't scatter across the fleet.
 - **Multi-CDN** — Route across two or more CDN vendors, by region or health, to avoid a single provider's outage or peering problem taking down delivery entirely.
@@ -69,8 +69,8 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Cuts latency** by answering from a PoP physically close to the user, not the origin.
-- **Absorbs traffic spikes** and bandwidth cost at the edge, shielding the origin.
-- **Improves availability** — cached content can keep serving through an origin outage.
+- **Absorbs traffic spikes** and bandwidth cost at the edge, shielding the origin, provided the hit ratio stays high; a poor cache key sends spikes straight to origin.
+- **Keeps serving through a short origin outage** — cached content keeps serving until its TTL expires, or longer if the edge is set to serve stale.
 - **Scales to a global audience** without provisioning the origin for worldwide peak load.
 
 ### Cons
@@ -113,6 +113,7 @@ interface CacheEntry {
 
 class EdgeNode {
   private cache = new Map<string, CacheEntry>();
+  private inflight = new Map<string, Promise<string>>();
 
   constructor(private readonly origin: Origin) {}
 
@@ -121,9 +122,14 @@ class EdgeNode {
     if (hit && hit.expiresAt > Date.now()) {
       return hit.body; // cache hit — no origin request
     }
-    const { body, ttlSeconds } = await this.origin.fetch(path); // cache miss
-    this.cache.set(path, { body, expiresAt: Date.now() + ttlSeconds * 1000 });
-    return body;
+    const pending = this.inflight.get(path);
+    if (pending) return pending; // concurrent misses share one origin fetch
+    const fetching = this.origin.fetch(path).then(({ body, ttlSeconds }) => {
+      this.cache.set(path, { body, expiresAt: Date.now() + ttlSeconds * 1000 });
+      return body;
+    }).finally(() => this.inflight.delete(path));
+    this.inflight.set(path, fetching);
+    return fetching; // cache miss
   }
 
   purge(path: string): void {
@@ -145,7 +151,7 @@ class EdgeNode {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Cache TTL / max-age** — How long an edge serves an object before revalidating with origin, set via Cache-Control or an edge override per asset class.
+- **Cache TTL / max-age** — How long an edge serves an object before revalidating with origin, set via Cache-Control or an edge override per asset class. Use long TTLs for fingerprinted assets and short TTLs or revalidation for HTML; work out each from how often the content changes and how fast a purge reaches every edge.
 - **Cache key composition** — Which parts of the request — path, selected query params, headers, cookies — vary the cached object; over-broad keys destroy the hit ratio.
 - **Origin timeout and failover** — How long the edge waits on origin and whether it fails over to a backup origin or serves stale content.
 - **Tiered caching / origin shield** — Whether misses funnel through a mid-tier before hitting origin, so origin sees far fewer requests.
@@ -165,7 +171,7 @@ class EdgeNode {
 - **Hit-ratio collapse** — The cache key varies on a cookie or volatile query param, so nearly everything misses and origin is flooded.
 - **Stale content after deploy** — TTL too long or a purge that did not propagate leaves old assets served from some PoPs.
 - **Cache stampede** — Many edges miss the same key at once when it expires and hit origin simultaneously; needs request coalescing or a shield.
-- **Origin outage past TTL** — Once cached copies expire the edge has nothing to serve, and errors surface to users.
+- **Origin outage past TTL** — Once cached copies expire the edge has nothing to serve, and errors surface to users; serve stale on origin error, with a grace window longer than the expected outage.
 
 ### Readiness checklist
 <!--meta polarity=check-->
