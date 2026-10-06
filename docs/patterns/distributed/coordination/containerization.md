@@ -24,7 +24,7 @@ Servers prepared by hand drift apart: a patch here, a pinned library there, a co
 Containerization packages an application with its runtime and libraries into one image that never changes after it is built, so the thing you tested is the same thing that runs in production. Without it, machines drift apart through hand patches and edited config files until two servers differ in ways nobody can list. An image is a stack of layers, each stored once by content, so forty services sharing a base layer pull it once per host, and a code change rebuilds only the layers above it. Choose it over installing onto prepared machines when you create and destroy instances often or run services with different runtime versions on one host.
 
 - **Inherited vulnerabilities** You own the base image vulnerabilities; scan on build and rebuild when the base updates.
-- **Image size** Size is paid on every scale-out; use a small base, build in one stage, ship from another, and debug through logs.
+- **Image size** Size is paid on every scale-out; use a small base and a multi-stage build, and debug through logs.
 - **Movable tags** A tag can be repointed at new content; reference digests (the content hash).
 - **Shared kernel** Containers share one kernel, so a workload needing strong separation needs its own machine.
 
@@ -54,10 +54,10 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Multi-stage build** — Compile in one stage with the full toolchain, then copy only the produced binary into a clean final stage. The compiler, the build cache and the source never reach the shipped image, which cuts both its size and everything an attacker could use inside it.
-- **Minimal or distroless base** — A base carrying the runtime and nothing else — no shell, no package manager, often no writable filesystem. It removes most of the exploitation surface, and removes your ability to open a shell in a misbehaving container, so it pairs with committing to debug through logs and ephemeral debug containers instead.
+- **Minimal or distroless base** — A base carrying the runtime and nothing else: no shell, no package manager. It removes most of the exploitation surface and your ability to open a shell in a misbehaving container, so you debug through logs or ephemeral debug containers instead. It can also run with a read-only root filesystem.
 - **Build-tool image construction** — Produce the image from the application's own build system rather than from an imperative build file, so layering follows the dependency graph the tool already knows. Removes a class of hand-written mistakes, at the cost of less control over exactly what lands where.
-- **Digest pinning and signing** — Reference images by content digest rather than by a mutable tag, and verify a signature before running. A tag can be repointed at different content by whoever controls the registry; a digest cannot, which is the difference between an image reference and an image identity.
-- **Promotion of one artifact across environments** — Build once and promote the same digest from test to staging to production, injecting environment differences as configuration at run time. Rebuilding per environment silently reintroduces exactly the drift the image was adopted to remove.
+- **Digest pinning and signing** — Reference images by content digest rather than by a mutable tag, and verify a signature before running. A tag can be repointed at different content by whoever controls the registry; a digest cannot.
+- **Promotion of one artifact across environments** — Build once and promote the same digest from test to staging to production, injecting environment differences as configuration at run time. Rebuilding per environment brings the drift back.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -67,8 +67,8 @@ flowchart LR
 
 - **The artifact that was tested** is the artifact that runs, because nothing modifies it between the two.
 - **Shared layers are stored and transferred once**, so a fleet of similar services costs far less to distribute than its total size suggests.
-- **Rollback is running the previous digest**, with no uninstall step and nothing to undo on the host.
-- **A developer's machine runs** the same image as production, so "works here" stops being a claim about the machine.
+- **Rollback is running the previous digest**, with no uninstall step and nothing to undo on the host, provided the new version changed no persistent state; data migrations need their own rollback.
+- **A developer's machine runs** the same image as production, so "works here" says more about the image than about the machine, though kernel, CPU architecture and configuration can still differ.
 
 ### Cons
 <!--meta polarity=con-->
@@ -102,6 +102,7 @@ flowchart LR
 
 ```text summary="Plain text — a multi-stage build, ordered so a code change rebuilds one layer"
 # ---- stage 1: build, with the whole toolchain available ----
+# Production: pin the base by @sha256:<digest>; the tag is shown for readability.
 FROM node:22 AS build
 WORKDIR /src
 
@@ -115,6 +116,7 @@ COPY . .
 RUN npm run build && npm prune --omit=dev
 
 # ---- stage 2: the shipped image, with no compiler and no source ----
+# Production: pin the base by @sha256:<digest>; the tag is shown for readability.
 FROM gcr.io/distroless/nodejs22-debian12
 WORKDIR /app
 
@@ -122,7 +124,8 @@ WORKDIR /app
 COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/dist ./dist
 
-USER nonroot                 # never the default privileged account
+# never the default privileged account
+USER nonroot
 EXPOSE 8080
 CMD ["dist/server.js"]
 
@@ -153,8 +156,8 @@ CMD ["dist/server.js"]
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Image size and pull time** — Compressed size and the time a host spends pulling it. Paid on every scale-out and every cold start, so it shows up as latency rather than as a build metric.
-- **Build cache hit rate** — How many layers are reused per build. A sudden drop is usually a build file edit that moved something above the dependency install.
+- **Image size and pull time** — Compressed size and the time a host spends pulling it. Paid on every scale-out and every cold start, so it shows up as latency rather than as a build metric. Set the budget as scale-out latency target minus node start time, multiplied by the pull bandwidth measured on a cold host.
+- **Build cache hit rate** — How many layers are reused per build. A sudden drop is usually a build file edit that moved something above the dependency install. Record the median hit rate over a week and alert when a build with no dependency change falls below it.
 - **Base image age and known vulnerabilities** — How long since the base was refreshed, and what a scan reports. Rises on its own with no change from you, which is what makes it easy to miss.
 - **Digest drift per environment** — Whether the digest running in production is the digest that passed testing. Any difference means something was rebuilt rather than promoted.
 

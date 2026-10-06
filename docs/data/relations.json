@@ -12647,15 +12647,6 @@
     {
       "a": "data-analytics",
       "verb": "implements",
-      "b": "a2a",
-      "note_a": "The managed agent runtimes host and call agents over the A2A protocol.",
-      "note_b": "Each cloud's managed agent runtime speaks A2A, so a hosted agent can call another.",
-      "maps_a": "mapping-row-16",
-      "maps_label_a": "Managed agent runtime"
-    },
-    {
-      "a": "data-analytics",
-      "verb": "implements",
       "b": "inverted-index",
       "note_a": "Every managed search engine keeps an inverted index; you rent it with the service.",
       "note_b": "Managed search is an inverted index you rent rather than build.",
@@ -13357,6 +13348,34 @@
       "b": "idempotency",
       "note_a": "Where the resource cannot compare a token, make the write safe to replay instead.",
       "note_b": "Where a resource can compare a token, fencing refuses the stale write that replay-safety would only absorb."
+    },
+    {
+      "a": "container-orchestration",
+      "verb": "combines-with",
+      "b": "blue-green-deployment",
+      "note_a": "The stable name moves between two full sets; the orchestrator holds both and flips the name.",
+      "note_b": "Managed or in-cluster, the orchestrator is where the switch is declared."
+    },
+    {
+      "a": "container-orchestration",
+      "verb": "combines-with",
+      "b": "canary-release",
+      "note_a": "Replica share gives a coarse canary for free; finer slices need proxy weighting.",
+      "note_b": "The orchestrator supplies the replica-share split; weighted slices come from the proxy layer."
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "a2a",
+      "note_a": "The managed agent runtimes host and call agents over the A2A protocol.",
+      "note_b": "Managed agent runtimes on some clouds can host and call A2A agents, so a hosted agent can call another."
+    },
+    {
+      "a": "a2a",
+      "verb": "combines-with",
+      "b": "api-gateway",
+      "note_a": "A gateway in the path applies one authorization and quota policy to delegated traffic across many peers.",
+      "note_b": "Fronts agent-to-agent calls as well as service calls."
     }
   ],
   "group_order": {

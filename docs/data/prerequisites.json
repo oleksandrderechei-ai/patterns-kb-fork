@@ -601,7 +601,7 @@
       "definition": "Single entry point that routes to backing services",
       "route": "/patterns/distributed/routing/api-gateway.html",
       "requires": [],
-      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session", "service-discovery"]
+      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session", "service-discovery", "a2a"]
     },
     {
       "id": "bff",
@@ -681,7 +681,7 @@
       "definition": "Stand the new version up beside the old, then move traffic across",
       "route": "/patterns/distributed/routing/blue-green-deployment.html",
       "requires": [],
-      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "containerization", "deployment-stamp", "web-queue-worker", "rolling-deployment"]
+      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "containerization", "deployment-stamp", "web-queue-worker", "rolling-deployment", "container-orchestration"]
     },
     {
       "id": "canary-release",
@@ -689,7 +689,7 @@
       "definition": "Send a small slice of traffic to the new version and watch before widening",
       "route": "/patterns/distributed/routing/canary-release.html",
       "requires": ["load-balancer"],
-      "related": ["blue-green-deployment", "feature-flag", "health-endpoint", "deployment-stamp", "quarantine", "strangler-fig", "rolling-deployment", "api-routing"]
+      "related": ["blue-green-deployment", "feature-flag", "health-endpoint", "deployment-stamp", "quarantine", "strangler-fig", "rolling-deployment", "api-routing", "container-orchestration"]
     },
     {
       "id": "feature-flag",
@@ -1025,7 +1025,7 @@
       "definition": "Declare the cluster you want; a control loop keeps it that way",
       "route": "/patterns/distributed/coordination/container-orchestration.html",
       "requires": ["containerization"],
-      "related": ["workflow-orchestration", "health-endpoint", "stateless-service", "autoscaling", "sidecar", "microservices", "compute-resource-consolidation"]
+      "related": ["workflow-orchestration", "health-endpoint", "stateless-service", "autoscaling", "sidecar", "microservices", "compute-resource-consolidation", "blue-green-deployment", "canary-release"]
     },
     {
       "id": "external-configuration-store",
@@ -1049,7 +1049,7 @@
       "definition": "Delegate a stateful task to an agent you did not build",
       "route": "/patterns/distributed/coordination/a2a.html",
       "requires": ["ai-agent"],
-      "related": ["mcp", "async-request-reply", "service-discovery", "acp"]
+      "related": ["mcp", "async-request-reply", "service-discovery", "acp", "api-gateway"]
     },
     {
       "id": "outbox",

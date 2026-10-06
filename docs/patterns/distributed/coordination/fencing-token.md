@@ -25,7 +25,7 @@ A fencing token is a number that rises with every grant of a lock, and the prote
 
 - **Resource must check.** It stores the number and compares it in the same atomic step as the write. Use a conditional update.
 - **Counter must not go back.** Keep it in a durable or replicated store that survives restarts.
-- **Writes only.** A stale holder's other side effects still happen. A resource you cannot change needs an [idempotent design](../../messaging/idempotency.md) instead.
+- **Writes only.** A stale holder's other side effects still happen. A resource you cannot change needs an idempotent design instead.
 
 **Example.** Client A takes the lock for a nightly report job and gets token 33. It stalls for 40 s in a garbage-collection pause and the 30 s lock expires. Client B takes the lock with token 34 and writes its report, so the store records 34. At 40 s A wakes, still believes it holds the lock, and writes with 33. The store sees 33 is below 34 and refuses it, and A learns it lost the lock. Without the check, A's older report would replace B's. The cost is one integer per guarded row and one comparison per write.
 

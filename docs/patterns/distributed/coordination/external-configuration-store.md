@@ -27,7 +27,7 @@ An external configuration store keeps your settings in one central place that ap
 - **Boot dependency.** A cache does not help if the store is down at start. Ship a last-known-good file and fall back to it.
 - **Shared blast radius.** One bad value reaches every service. Stage changes like code and keep revision history for rollback.
 
-**Example.** A service runs 40 copies and each re-reads its settings every 60 s. You change max-items from 50 to 20, and within 60 s all 40 copies use 20, with no release. At 03:00 the store goes down, and the running copies keep their cached values. A crash loop then restarts all 40. Without a fallback file, none of the 40 can boot. With a last-known-good file shipped in the package, all 40 start with the values from the last deploy, which may be one change behind. That one-change lag is what the fallback costs.
+**Example.** A service runs 40 copies and each re-reads its settings every 60 s. You change max-items from 50 to 20, and within 60 s all 40 copies use 20, with no release. At 03:00 the store goes down, and the running copies keep their cached values. A crash loop then restarts all 40. Without a fallback file, none of the 40 can boot. With a last-known-good file shipped in the package, all 40 start with the values from the last deploy, missing every runtime change made since that deploy. That lag is what the fallback costs.
 
 ## How it works
 <!--meta block=structure-->
@@ -49,7 +49,7 @@ flowchart LR
     FB -->|"5 startup only, store unreachable"| IF
 ```
 
-```mermaid caption="A shared setting has a shared blast radius, so treat a change like a deployment. Revision history and rollback are what turn a bad edit into a two-minute recovery instead of an incident across every application reading that key."
+```mermaid caption="A shared setting has a shared blast radius, so treat a change like a deployment. Revision history and rollback are what turn a bad edit into a rollback to the previous revision instead of an incident across every application reading that key."
 sequenceDiagram
     autonumber
     participant O as Operator
@@ -86,8 +86,8 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Changing a setting stops requiring a release**, which removes downtime and the administrative cost from every configuration change.
-- **Instances converge on one value** instead of drifting apart during a rolling update.
+- **Changing a setting stops requiring a release** for applications that reread it, which removes the release's downtime and administrative cost.
+- **Instances converge on one value** instead of drifting apart during a rolling update, after at most one refresh interval; until then they may disagree.
 - **Shared settings get one definition**. A queue endpoint changes once rather than in six repositories that will not all be found.
 - **Access becomes auditable and revertible** — you can see who changed what, and roll back to the previous revision.
 - **It gives feature flags** and progressive rollout somewhere to live, which makes safe deployment practices possible rather than aspirational.
@@ -99,8 +99,8 @@ sequenceDiagram
 - **Cached values go stale silently**. Without change notification or an expiry policy, an edit reaches nobody and the store quietly stops being the source of truth.
 - **A shared setting has a shared blast radius**. An administrator tuning one value for one application can break every other application reading that key, which is why changes need staging like code does.
 - **Permissions have to be split and enforced**. Read and write need separating, and the backing store itself must be closed to anyone bypassing the interface — including the local fallback copy, which needs the same audit treatment.
-- **Schema must be extensible** — the schema has to be extensible from day one: typed values, collections, several versions. Retrofitting structure onto a flat key-value store in use is painful.
-- **Edge cases must be specified** — edge-case behaviour has to be specified rather than discovered — missing keys, malformed values, key case sensitivity, nulls and empty strings all need a decided answer.
+- **Schema must be extensible** — typed values, collections and several versions must be designed in from day one. Retrofitting structure onto a flat key-value store in use is painful.
+- **Edge cases must be specified** — missing keys, malformed values, key case sensitivity, nulls and empty strings each need a decided answer before launch, rather than being discovered in production.
 - **For a single application** with settings that change at release cadence, it is pure added operational complexity.
 
 ## When to use it
@@ -140,8 +140,11 @@ export class Configuration {
     private readonly fallback: Settings,
   ) {}
   async start(): Promise<void> {
-    await this.refresh().catch(() => { this.cache = this.fallback })
-    setInterval(() => void this.refresh().catch(() => {}), 30_000)
+    await this.refresh().catch(() => { this.cache = this.fallback /* emit fallback-activation metric here */ })
+    setInterval(
+      () => void this.refresh().catch(() => { /* emit fetch-failure metric and record lastSuccess here */ }),
+      30_000,
+    )
   }
   private async refresh(): Promise<void> {
     // Version first: an unchanged store costs one cheap call, not every key.
@@ -172,8 +175,8 @@ export class Configuration {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Cache refresh interval** — How long an instance may serve a superseded value. Shorter costs requests to the store; longer widens the window where instances disagree.
-- **Startup fallback path** — The last-known-good file the deployment ships, read when the store is unreachable at boot.
+- **Cache refresh interval** — How long an instance may serve a superseded value. Shorter costs requests to the store; longer widens the window where instances disagree. The sketch polls every 30 s and the example 60 s; pick the longest staleness a flag flip or rollback can tolerate, and check the store's request quota against fleet size divided by interval.
+- **Startup fallback path** — The last-known-good file the deployment ships, read when the store is unreachable at boot. Regenerate it from the store at build time, so its age is the gap since the last deploy.
 - **Sentinel key for change detection** — Poll one version key rather than every setting, so an unchanged store costs one cheap call per tick.
 - **Read and write role separation** — Distinct identities for reading settings and for changing them, enforced at the store rather than by convention.
 

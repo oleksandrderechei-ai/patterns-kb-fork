@@ -241,6 +241,7 @@ function onCanary(userId: string, weightPercent: number): boolean {
 - [Quarantine](../../security/quarantine.md) — Pairs with a supply-chain gate: check what you ship, then who sees it first
 - [Rolling Deployment](./rolling-deployment.md) — A canary can be widened as a roll of new instances
 - [API Routing](./api-routing.md) — Routing is the mechanism that splits the slice
+- [Container Orchestration](../coordination/container-orchestration.md) — The orchestrator supplies the replica-share split; weighted slices come from the proxy layer.
 
 **Alternative to**
 

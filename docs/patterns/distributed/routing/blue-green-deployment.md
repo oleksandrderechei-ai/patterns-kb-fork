@@ -245,6 +245,7 @@ await db.dropColumn("orders", "customer_id");
 - [Containerization](../coordination/containerization.md) — The two sides differ only by which image digest they run
 - [Deployment Stamp](./deployment-stamp.md) — Ephemeral green is a freshly provisioned stamp
 - [Web-Queue-Worker](../../architecture/web-queue-worker.md) — Both halves swap together, so size for two versions running during the switch
+- [Container Orchestration](../coordination/container-orchestration.md) — Managed or in-cluster, the orchestrator is where the switch is declared.
 
 **Alternative to**
 
