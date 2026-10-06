@@ -202,6 +202,7 @@ class ShardedStore {
 - [Immutability](../functional/immutability.md) — Keeps mutable state safe by letting only one thread touch it
 - [Mutex](./mutex.md) — Gives each value to one thread, so no lock is needed
 - [Active Object](./active-object.md) — Both confine state to one thread; Active Object adds a method-call proxy, a queue and futures, while confinement only requires one owner
+- [Lock-Free](./lock-free.md) — Share one word without a lock instead of giving it one owner
 
 **Generalizes**
 

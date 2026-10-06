@@ -13488,6 +13488,20 @@
       "b": "thread-confinement",
       "note_a": "Confines state to one thread and lets callers reach it through a queued request",
       "note_b": "Both confine state to one thread; Active Object adds a method-call proxy, a queue and futures, while confinement only requires one owner"
+    },
+    {
+      "a": "scheduling",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "Many jobs on one cron instant fire together; jitter spreads them",
+      "note_b": "Shared schedules such as midnight release the crowd at once"
+    },
+    {
+      "a": "lock-free",
+      "verb": "alternative-to",
+      "b": "thread-confinement",
+      "note_a": "Makes the shared word cheap to update; confinement removes the sharing so no atomics are needed",
+      "note_b": "Share one word without a lock instead of giving it one owner"
     }
   ],
   "group_order": {

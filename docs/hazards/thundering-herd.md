@@ -94,5 +94,6 @@ Recovery deserves its own plan, because that is when the herd is largest and the
 - [Retry with Backoff](../patterns/distributed/resilience/retry-backoff.md) — Clients that fail together retry together unless the delay is jittered
 - [Lease](../patterns/distributed/coordination/lease.md) — Leases granted together expire together, and the holders all renew in the same instant
 - [Distributed Lock](../patterns/distributed/coordination/distributed-lock.md) — A popular lock freeing wakes every waiter at once and hammers the lock store
+- [Scheduling](../patterns/concurrency/scheduling.md) — Shared schedules such as midnight release the crowd at once
 
 <!-- relationships:end -->

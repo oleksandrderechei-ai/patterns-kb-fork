@@ -1273,7 +1273,7 @@
       "definition": "Remove races by giving each thread sole ownership of its data",
       "route": "/patterns/concurrency/thread-confinement.html",
       "requires": [],
-      "related": ["monitor-object", "reactor", "immutability", "mutex", "active-object"]
+      "related": ["monitor-object", "reactor", "immutability", "mutex", "active-object", "lock-free"]
     },
     {
       "id": "batching",
@@ -1297,7 +1297,7 @@
       "definition": "Update shared memory with an atomic retry loop instead of a lock",
       "route": "/patterns/concurrency/lock-free.html",
       "requires": [],
-      "related": ["copy-on-write", "conditional-write", "optimistic-concurrency-control", "monitor-object", "ring-buffer", "mutex"]
+      "related": ["copy-on-write", "conditional-write", "optimistic-concurrency-control", "monitor-object", "ring-buffer", "mutex", "thread-confinement"]
     },
     {
       "id": "copy-on-write",
