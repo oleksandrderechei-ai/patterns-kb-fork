@@ -27,7 +27,7 @@ Pessimistic locking takes a lock on the rows you are about to change before you 
 - **Deadlocks.** Opposite lock order aborts one transaction. Lock rows in one fixed order and retry the aborted side.
 - **One transaction only.** A lock cannot span services or a human pause.
 
-**Example.** A seat-map transaction locks row 12 for 20 ms, so that row can serve 1,000 divided by 20, about 50 bookings a second. A developer adds an 800 ms payment call inside the transaction. The lock now lasts 820 ms and the same row serves about 1.2 bookings a second, so the queue behind it grows. Move the payment call after the commit and the rate returns to 50. Separately, if one transaction locks seat A then B while another locks B then A, the database aborts one after its wait timeout, so you lock seats in ascending order.
+**Example.** A seat-map transaction locks row 12 for 20 ms (illustrative), so that row can serve 1,000 divided by 20, about 50 bookings a second. A developer adds an 800 ms payment call inside the transaction. The lock now lasts 820 ms and the same row serves about 1.2 bookings a second, so the queue behind it grows. Move the payment call after the commit and the rate returns to 50. Separately, if one transaction locks seat A then B while another locks B then A, the database detects the wait cycle and aborts one, so you lock seats in ascending order.
 
 ## How it works
 <!--meta block=structure-->
@@ -76,6 +76,7 @@ sequenceDiagram
 - **Wait, fail fast, or time out** — By default the lock request waits, and how long depends on the engine: PostgreSQL blocks indefinitely unless you set a lock timeout, while MySQL/InnoDB caps the wait for you. Treat the bound as something you configure, not something you inherit. `NOWAIT` fails immediately if the row is already locked, letting the caller back off rather than queue. Picking one is a policy choice: queue behind contention, or shed it.
 - **Advisory locks on an arbitrary key** — The lock does not have to be attached to data. PostgreSQL and MySQL both let a caller name a lock — an integer or a string the application chooses — and serialise everyone who asks for that same name; the PostgreSQL manual's own example of what they are for is emulating pessimistic locking. Taken at session scope, an advisory lock is held until it is released or the connection ends, so a critical section spanning several statements or several transactions can stay inside the database you already run instead of reaching for a distributed lock. What the engine enforces is the lock, not the convention: a caller that writes the row without asking for the key succeeds, and never learns that anyone was holding it.
 - **Lock granularity and scope** — Row-level is the default and the finest. A broad `SELECT` — or a missing index that forces a scan — can lock far more rows than you intended, and some engines escalate to page or table locks under pressure. Lock the narrowest set that makes the decision safe, and no more.
+- **Isolation level decides what the waiter sees** — after Txn B's wait ends, `READ COMMITTED` re-reads the row A wrote. In PostgreSQL, `REPEATABLE READ` and `SERIALIZABLE` abort B with a serialization failure ("could not serialize access due to concurrent update"), which the caller must retry.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -83,9 +84,9 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Prevents lost updates outright** — no retry loop, no clobbered writes; the winner is whoever acquires the lock, decided deterministically.
+- **Prevents lost updates outright** for every writer that takes the lock, with no retry loop; a path that writes without it still clobbers. The winner is whoever acquires the lock, decided deterministically.
 - **Handles arbitrary read-decide-write logic** that no single conditional `WHERE` clause could express.
-- **Predictable under high contention** — where optimistic retries would thrash, a lock queue simply serializes the work.
+- **Predictable under high contention** — degrades gracefully where optimistic retries would thrash: a lock queue serializes the work, though throughput on a hot row still caps at one transaction per hold time.
 - **Uses the database's own battle-tested** locking and [deadlock](../../../hazards/deadlock.md) detection — no new infrastructure to run.
 
 ### Cons
@@ -95,7 +96,7 @@ sequenceDiagram
 - **Reduced concurrency**: contending writers are serialized, and every transaction pays the lock cost even when it would never have collided.
 - **Deadlock risk when transactions acquire** locks in inconsistent order; the database aborts one side and the app must catch and retry it.
 - **Lock-wait timeouts surface as errors** the caller must handle, and a forgotten `COMMIT` on a held connection can block others indefinitely.
-- **Does not span connections, services, or time** — it lives and dies with one transaction, so it is not a distributed lock.
+- **Does not span connections, services, or time** — a row lock from `FOR UPDATE` ends with its transaction. Only a session-scoped advisory lock outlasts it, and that still stops at one database, so it is not a distributed lock.
 
 ## When to use it
 <!--meta block=usage-->
@@ -105,7 +106,7 @@ sequenceDiagram
 
 - **Collisions on the same rows are frequent**, so optimistic retries would just thrash.
 - **The decision between reading** and writing is real application logic, not a predicate the database can check inside the `UPDATE`.
-- **Exactly one writer per record** — you must guarantee exactly one transaction mutates a record at a time — balances, inventory, seat selection.
+- **Exactly one writer per record** — at a time among writers that take the lock: balances, inventory, seat selection.
 - **The whole operation fits inside a single**, short database transaction.
 
 ### Avoid when
@@ -172,7 +173,7 @@ async function reserveSeat(db: Client, seatId: string, userId: string) {
 
 - **Lock wait time** — How long transactions spend blocked before acquiring. PostgreSQL shows it as sessions with \`wait_event_type = 'Lock'\` in \`pg_stat_activity\` and ungranted rows in \`pg_locks\`. A rising figure is the first sign the contended rows have become the bottleneck.
 - **Deadlock rate** — Deadlocks detected per interval — PostgreSQL keeps a per-database counter in \`pg_stat_database.deadlocks\`. Steady state should sit near zero; any sustained trend means two code paths take the same rows in different orders.
-- **Abort rate by error code** — The share of transactions ending in a lock-wait timeout or deadlock rather than a commit (MySQL 1205 and 1213; PostgreSQL SQLSTATE 40P01, and 55P03 from \`NOWAIT\`). Track it as a proportion of attempts — the absolute count moves with traffic and hides the trend.
+- **Abort rate by error code** — The share of transactions ending in a lock-wait timeout or deadlock rather than a commit (MySQL 1205 and 1213; PostgreSQL SQLSTATE 40P01, and 55P03 from \`NOWAIT\` or an expired \`lock_timeout\`). Track it as a proportion of attempts, since the absolute count moves with traffic and hides the trend.
 - **Lock hold time (p95/p99)** — How long a locking transaction runs from acquisition to commit. On a single contended row this is the throughput ceiling — roughly one transaction per hold time — so watch the tail, where a few slow transactions set the queue length for everyone.
 - **Connection pool wait time** — A blocked transaction keeps its connection while it waits, so lock contention on a handful of rows shows up as pool saturation and queuing for unrelated traffic that never touches those rows.
 

@@ -4630,13 +4630,6 @@
       "note_b": "Election with terms and fencing stops a stale leader writing"
     },
     {
-      "a": "distributed-lock",
-      "verb": "prevents-hazard",
-      "b": "split-brain",
-      "note_a": "An unfenced lease survives a partition and two holders write",
-      "note_b": "A fencing token gets a resumed leader's writes rejected"
-    },
-    {
       "a": "write-through",
       "verb": "prevents-hazard",
       "b": "stale-cache",
@@ -10846,13 +10839,6 @@
       "note_b": "Row locks live inside one transaction, where a lease reaches across servers and survives a crashed holder."
     },
     {
-      "a": "lease",
-      "verb": "prevents-hazard",
-      "b": "split-brain",
-      "note_a": "A holder that must stop at its deadline cannot keep acting as the sole owner while another holds the grant.",
-      "note_b": "Time-bound ownership narrows the window in which two nodes both claim to lead."
-    },
-    {
       "a": "fencing-token",
       "verb": "combines-with",
       "b": "lease",
@@ -13329,6 +13315,27 @@
       "b": "retry-storm",
       "note_a": "Retrying a failed undo against a service that is already down adds load; cap compensation retries and back them off.",
       "note_b": "Compensation retries against a service that is already down add to the retry load; this pattern's undos need a cap and backoff."
+    },
+    {
+      "a": "lease",
+      "verb": "prevents-hazard",
+      "b": "split-brain",
+      "note_a": "Narrows split-brain to the pause case: a holder that checks its own clock stops at its deadline, but a paused one still needs a Fencing Token.",
+      "note_b": "A lease stops a holder that can see its own clock, but a paused holder still acts, so add a fencing token checked at the resource."
+    },
+    {
+      "a": "distributed-lock",
+      "verb": "prevents-hazard",
+      "b": "split-brain",
+      "note_a": "Leases a single owner that must stop at expiry, so a partitioned old holder is refused once a fencing token is checked at the resource",
+      "note_b": "A fencing token gets a resumed leader's writes rejected"
+    },
+    {
+      "a": "distributed-lock",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "Can fall into thundering herd when a popular lock frees and every waiter retries at once, unless retries are jittered or watch-based",
+      "note_b": "A popular lock freeing wakes every waiter at once and hammers the lock store"
     }
   ],
   "group_order": {

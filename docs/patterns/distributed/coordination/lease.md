@@ -66,9 +66,9 @@ sequenceDiagram
     Note over A: wakes at 14 s and still believes it holds the lease
 ```
 
-The walk starts when the holder asks for the lease and the grantor records the owner and an expiry, the current time plus the term. The holder then works, checking before each step that its own clock says the lease is still valid, with a margin for clock drift. At a fraction of the term, usually between one third and one half, it asks to renew, and the grantor moves the expiry forward. A refusal to a second caller is the grantor keeping its promise.
+The walk starts when the holder asks for the lease and the grantor records the owner and an expiry, the current time plus the term. The holder then works, checking before each step that its own clock says the lease is still valid, with a margin for clock drift. At one third of the term or sooner, it asks to renew, and the grantor moves the expiry forward. A refusal to a second caller is the grantor keeping its promise.
 
-If the holder crashes, renewals stop and the grantor waits until the recorded expiry before it grants the resource again. The grantor never revokes early, because it cannot tell a crash from a pause. That wait is the recovery time, so it is set by the term you choose.
+If the holder crashes, renewals stop and the grantor waits until the recorded expiry, plus a drift allowance that mirrors the holder's margin, before it grants the resource again. The grantor never revokes early, because it cannot tell a crash from a pause. That wait is the recovery time, so it is set by the term you choose. A grantor that restarts and loses its records must persist leases or refuse every grant for one full term plus the drift allowance, or it can grant a live lease twice.
 
 ## Variations
 <!--meta block=variations-->
@@ -85,9 +85,9 @@ If the holder crashes, renewals stop and the grantor waits until the recorded ex
 ### Pros
 <!--meta polarity=pro-->
 
-- **Crashed holders clean up after themselves** — the grant lapses at the deadline, so no one clears it by hand and no failure detector has to be right.
-- **Recovery time is known in advance** — a resource is idle for at most one term after its holder dies, which you can put in a recovery target.
-- **Needs agreement on duration only** — the two sides compare how long a term lasts, not what time it is, so clocks may differ by hours as long as they tick at nearly the same rate.
+- **Crashed holders clean up after themselves** — the grant lapses at the deadline, so no one clears it by hand and no separate failure detector is needed, only a term longer than the worst pause.
+- **Recovery time is known in advance** — a resource is idle for at most one term after its holder dies, which you can put in a recovery target, provided clock drift stays within the safety margin and the grantor itself is up.
+- **Needs agreement on duration only** — the two sides compare how long a term lasts, not what time it is, so clocks may disagree on the hour if they tick at nearly the same rate.
 - **Renewal is cheap while the holder is healthy** — one small message per third of a term keeps the grant, however long the work runs.
 
 ### Cons
@@ -95,7 +95,7 @@ If the holder crashes, renewals stop and the grantor waits until the recorded ex
 
 - **A paused holder keeps acting after the lease is gone** — a stall longer than the term leaves two parties who both believe they own the resource, so add a [Fencing Token](./fencing-token.md) checked at the resource.
 - **Term length is a bind** — a short term loses leases to ordinary jitter, and a long term leaves a dead holder's resource idle, so set it from your measured worst pause and your recovery target.
-- **The holder must stop when it cannot renew** — a healthy holder cut off from the grantor loses the resource at the deadline, so the grantor is a dependency of every holder and needs its own redundancy.
+- **The holder must stop when it cannot renew** — a healthy holder cut off from the grantor loses the resource at the deadline, so the grantor is a dependency of every holder and needs its own redundancy, replicated with consensus rather than plain copies, or it can grant one resource twice.
 - **Early revocation is impossible** — the grantor cannot take a lease back before expiry without the holder's help, so a stuck but renewing holder keeps the resource until you stop it.
 
 ## When to use it
@@ -135,6 +135,8 @@ class Lease {
     if (!(await this.g.acquire(this.key, this.ttlMs))) return false;
     // Count from when we asked: network delay shortens the lease, never lengthens it.
     this.validUntil = asked + this.ttlMs;
+    // Keep the handle; clear it and mark the lease lost once validUntil passes
+    // with no successful renewal, and when the work is done.
     setInterval(() => this.renew(), this.ttlMs / 3);
     return true;
   }
@@ -143,6 +145,8 @@ class Lease {
     const asked = performance.now();
     const ok = await this.g.renew(this.key, this.ttlMs).catch(() => false);
     if (ok) this.validUntil = asked + this.ttlMs;
+    // A refusal or error means the lease may be lost: holds() turns false at the margin,
+    // so work stops. Pass the fencing token from acquire/renew with every write to the resource.
   }
 
   // Call before every step of work; stop at once when it is false.
@@ -165,7 +169,7 @@ class Lease {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **lease term** — how long a grant lasts without renewal; it is also the longest idle time after a holder dies, so set it above your worst measured pause and below your recovery target
+- **lease term** — how long a grant lasts without renewal; it is also the longest idle time after a holder dies, so set it above your worst measured pause and below your recovery target; if no term satisfies both, shorten the pauses or add a fencing token and accept the longer term
 - **renewal interval** — how often the holder renews, as a fraction of the term such as one third, so a single lost renewal does not cost the lease
 - **safety margin** — how long before its local deadline the holder stops work, sized to the clock drift you can bound over one term
 - **renewal jitter** — a random offset on each holder's renewal timer so thousands of leases do not all renew in the same instant
@@ -226,7 +230,7 @@ class Lease {
 
 **Prevents**
 
-- [Split-Brain](../../../hazards/split-brain.md) — A holder that must stop at its deadline cannot keep acting as the sole owner while another holds the grant.
+- [Split-Brain](../../../hazards/split-brain.md) — Narrows split-brain to the pause case: a holder that checks its own clock stops at its deadline, but a paused one still needs a Fencing Token.
 
 **Exposed to**
 
