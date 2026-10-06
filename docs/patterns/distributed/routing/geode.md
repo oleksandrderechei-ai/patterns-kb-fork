@@ -78,9 +78,9 @@ sequenceDiagram
 
 - **Local aggregation versus central aggregation** — Either every node computes its own aggregates from its replica, or one node computes them and the result replicates outward. Local is faster and duplicates the work; central does the work once and makes one node's failure visible in every other node's numbers. A change feed with per-partition leases lets you pick per data set rather than for the whole system.
 - **Mesh between nodes** — Nodes cooperate over the replication feed plus a real-time push channel, so a user connected to one node can be reached through another without either side knowing where the other user is. This is what makes messaging and presence workable on a topology with no home region.
-- **Serverless nodes** — Build each node from consumption-billed compute and an idle node costs almost nothing, which is the difference between affording three nodes and affording thirty. It is the single change that makes wide geode deployments economic, since the alternative is paying for always-on capacity in every region at once.
+- **Serverless nodes** — Consumption-billed compute makes an idle node cost little, which helps wide deployments. Storage, replication traffic and egress still grow with node count, so serverless cuts only the compute share.
 - **Zonal, multi-zone or regional footprint** — Each node can occupy a single availability zone, several zones, or a whole region. Stacking local redundancy under the global pattern raises complexity and is worth it when a storage engine underneath can only replicate to a paired region, or when a regulator has an opinion about where a node sits.
-- **Per-node [API Gateway](./api-gateway.md)** — An API-management layer in front of each node's compute is not required by the pattern, and it is where per-node rate limiting, authentication and a firmer contract live once the deployment is large enough that you cannot hand-hold each one.
+- **Per-node [API Gateway](./api-gateway.md)** — An API-management layer in front of each node's compute is optional. It holds per-node rate limiting and authentication once the fleet is too large to manage by hand, and it must be configured identically on every node or the nodes stop being equal.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -88,10 +88,10 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Resilience grows with every node added**. The system survives the simultaneous loss of several regions, because losing a node removes capacity rather than removing the ability to serve.
-- **There is no failover to get wrong**. Every node is already live, so a regional outage is a routing decision rather than an incident with a runbook.
+- **Resilience grows with every node added**. The system survives the loss of several regions at once, as long as the remaining nodes have headroom for the displaced traffic and replication still converges, because losing a node removes capacity rather than the ability to serve.
+- **There is no failover to get wrong**. Every node is already live, so a regional outage is a routing decision rather than an incident with a runbook, provided the edge's health probes detect the failure. A node that answers probes but serves errors stays in rotation.
 - **Latency drops for everyone**, not just for users near the home region — requests are served from a node close to them and never cross an ocean to reach state.
-- **Regional demand spikes** are absorbed by the whole fleet, because any node can take any request.
+- **Regional demand spikes** spill over to other nodes, which works only if each has spare capacity. Spilled users pay extra distance, so size headroom per node.
 
 ### Cons
 <!--meta polarity=con-->
@@ -102,6 +102,7 @@ sequenceDiagram
 - **Every node is another ingress** point and another set of secrets. Each layer needs locking down so the only way in is the edge tier, and the surface grows linearly with the fleet.
 - **It is cloud-native or nothing**. Retrofitting an existing platform onto equal, self-contained nodes is hard enough that the honest answer is usually no.
 - **Unequal nodes invalidate the premise** — any constraint that makes nodes unequal does so, and data-residency rules are the most common one.
+- **The edge tier and its health checks are the one global component**. A bad routing change there reaches every node at once, so stage routing changes and keep a last-known-good config.
 
 ## When to use it
 <!--meta block=usage-->
@@ -170,8 +171,8 @@ async function read(
 <!--meta polarity=knob-->
 
 - **Node count and placement** — More nodes buy resilience and proximity at a flat rate; the cheapest point between more nodes and bigger nodes is workload-specific and has to be load-tested.
-- **Replication consistency level** — How much of the write must land elsewhere before it is acknowledged — the direct latency-versus-durability dial.
-- **Edge routing and health-probe thresholds** — How fast a struggling node is taken out of rotation, and how much flapping you tolerate to get there.
+- **Replication consistency level** — How much of the write must land elsewhere before it is acknowledged — the direct latency-versus-durability dial. The sketch's two levels are local acknowledgement and session (the read waits for the client's write token). Use session only for reads that cannot tolerate staleness, since each wait adds latency; measure the replication window to price it.
+- **Edge routing and health-probe thresholds** — How fast a struggling node is taken out of rotation, and how much flapping you tolerate to get there. Start from measured p99 probe latency and node recovery time: set failures-to-eject just above normal jitter and require several clean probes to rejoin, so flapping stays bounded.
 - **Conflict resolution policy** — Multi-region write acceptance means concurrent writes to one record need a decided rule rather than a discovered one.
 
 ### Signals to watch
@@ -186,7 +187,7 @@ async function read(
 <!--meta polarity=failure-->
 
 - **Read-your-writes breaks on reroute** — A user routed to a different node inside the replication window sees their own change missing.
-- **A failing node is still in rotation** — A node that answers health probes but serves errors keeps taking traffic, and the pattern has no failover step to fall back on.
+- **A failing node is still in rotation** — A node that answers health probes but serves errors keeps taking traffic, and the pattern has no failover step to fall back on. Mitigation: probe a real read and write path and eject on error rate, not liveness alone.
 - **One request is untraceable** — Work spread asynchronously across instances in several regions cannot be reconstructed without tracing already in place.
 - **Conflicting writes silently resolved** — A last-writer-wins policy discards an update without an error, so the loss shows up as a support ticket rather than an alert.
 
@@ -221,13 +222,13 @@ async function read(
 **Combines with**
 
 - [Load Balancer](./load-balancer.md) — A global edge tier steers each request to the nearest healthy node
-- [Distributed Tracing](../resilience/distributed-tracing.md) — One request runs asynchronously across instances in several regions, so tracing is a prerequisite rather than an improvement
 - [Autoscaling](./autoscaling.md) — Each node scales out on its own inside the shared backplane's constraints
 
 **Requires**
 
 - [Replication](../coordination/replication.md) — Every node holds the whole dataset, so a multi-write replication backplane is the pattern's floor
 - [Stateless Service](./stateless-service.md) — Any node must be able to take any request, which rules out state pinned to one of them
+- [Distributed Tracing](../resilience/distributed-tracing.md) — One request runs asynchronously across instances in several regions, so tracing is a prerequisite rather than an improvement
 
 **Often confused with**
 

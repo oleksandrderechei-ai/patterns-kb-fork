@@ -219,6 +219,7 @@ async function idPhotoUrl(flowId: string, store: ObjectStore, db: Db): Promise<s
 - [Sweeper](../coordination/sweeper.md) — Nothing joins the metadata row to the object, so a sweep reconciles the drift in both directions
 - [Prefer Managed Services](../../../principles/managed-services.md) — Object storage is the clearest case for renting rather than running
 - [Vertical Partitioning](./vertical-partitioning.md) — Holding the bulky fields of an entity is the everyday use, with the database row keeping only the key
+- [Functional Partitioning](./functional-partitioning.md) — A natural target store when an area's large content is split out
 
 **Prevents**
 

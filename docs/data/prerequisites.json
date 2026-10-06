@@ -497,7 +497,7 @@
       "definition": "Isolates resources so one failure can't sink all",
       "route": "/patterns/distributed/resilience/bulkhead.html",
       "requires": [],
-      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline"]
+      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline", "multi-tenancy"]
     },
     {
       "id": "health-endpoint",
@@ -529,7 +529,7 @@
       "definition": "Caps how many requests a client can make in a window",
       "route": "/patterns/distributed/resilience/rate-limiter.html",
       "requires": [],
-      "related": ["bulkhead", "backpressure", "load-leveling", "load-shedding", "api-gateway", "pagination", "partition-around-limits", "priority-queue", "sliding-window", "leaky-bucket"]
+      "related": ["bulkhead", "backpressure", "load-leveling", "load-shedding", "api-gateway", "pagination", "partition-around-limits", "priority-queue", "sliding-window", "leaky-bucket", "multi-tenancy"]
     },
     {
       "id": "timeout-deadline",
@@ -593,7 +593,7 @@
       "definition": "Follow one request across every service it touches, as a single timeline",
       "route": "/patterns/distributed/resilience/distributed-tracing.html",
       "requires": ["correlation-identifier"],
-      "related": ["service-mesh", "sidecar", "health-endpoint", "geode"]
+      "related": ["service-mesh", "sidecar", "health-endpoint"]
     },
     {
       "id": "api-gateway",
@@ -809,7 +809,7 @@
       "definition": "Store large unstructured blobs in a purpose-built store, keep only a reference in the database",
       "route": "/patterns/distributed/routing/object-storage.html",
       "requires": [],
-      "related": ["cdn", "valet-key", "claim-check", "sweeper", "managed-services", "vertical-partitioning"]
+      "related": ["cdn", "valet-key", "claim-check", "sweeper", "managed-services", "vertical-partitioning", "functional-partitioning"]
     },
     {
       "id": "geohash",
@@ -849,15 +849,15 @@
       "definition": "Many customers on shared infrastructure, with a tenant key and a choice of how much each tenant shares",
       "route": "/patterns/distributed/routing/multi-tenancy.html",
       "requires": [],
-      "related": ["deployment-stamp", "sharding", "defense-in-depth"]
+      "related": ["deployment-stamp", "sharding", "defense-in-depth", "rate-limiter", "bulkhead"]
     },
     {
       "id": "geode",
       "label": "Geode",
       "definition": "Identical worldwide nodes, any of which can serve any request",
       "route": "/patterns/distributed/routing/geode.html",
-      "requires": ["replication", "stateless-service"],
-      "related": ["deployment-stamp", "load-balancer", "distributed-tracing", "autoscaling"]
+      "requires": ["replication", "stateless-service", "distributed-tracing"],
+      "related": ["deployment-stamp", "load-balancer", "autoscaling"]
     },
     {
       "id": "vertical-partitioning",
@@ -873,7 +873,7 @@
       "definition": "Give each business area its own store, sized and tuned for how that area is used",
       "route": "/patterns/distributed/routing/functional-partitioning.html",
       "requires": [],
-      "related": ["sharding", "bounded-context", "outbox", "saga", "vertical-partitioning"]
+      "related": ["sharding", "bounded-context", "outbox", "saga", "vertical-partitioning", "object-storage"]
     },
     {
       "id": "saga",
