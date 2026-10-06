@@ -160,6 +160,19 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   `reverse-proxy`, `stateless-service`→`distributed-cache`, and `deployment-stamp` to
   `sharding` and `autoscaling`.
 
+- Left from the 2026-10-06 kb-improve run over `concurrency` (pages not reached, edits a
+  page groom may not make, or that need a source): nine pages were not groomed —
+  `copy-on-write`, `mutex`, `proactor`, `active-object`, `channels`, `ring-buffer`,
+  `barrier`, `fork-join`, `double-checked-locking`. `batching` tradeoffs-con-1 uses a colon
+  after its bold lead where its neighbours use a dash. A `concurrency` theme decide row for
+  code that must not wait (`lock-free` usage-when-2). Needing a source: starting values for
+  `scheduling` tick and alert thresholds, the LL/SC caveat on `lock-free` fetch-and-add, a
+  striped-counter variation (Java `LongAdder`) on `lock-free`. Candidate edges to judge on
+  their own: `lock-free` prevents-hazard `race-condition`, `scheduling` combines-with
+  `workflow-orchestration` and alternative-to `sweeper`, a rewritten `scheduling`→`starvation`
+  note, `batching` exposed-to `poison-message` and combines-with `dead-letter-channel` and
+  `idempotency`.
+
 ## Questions
 
 Each may be a page gap. The ids after each question are the top `kb.mjs find` hits, the
