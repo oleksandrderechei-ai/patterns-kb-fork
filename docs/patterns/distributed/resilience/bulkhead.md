@@ -226,6 +226,7 @@ for (const [type, pool] of Object.entries(pools)) {
 - [Fault Injection](./fault-injection.md) — The isolation claim is unverified until something is deliberately overwhelmed
 - [Fallback](./fallback.md) — A call turned away by the bulkhead can be answered from a fallback.
 - [Timeout / Deadline](./timeout-deadline.md) — A permit held by a hung call is only freed when a deadline expires
+- [Multi-Tenancy](../routing/multi-tenancy.md) — Compartments per tenant keep one tenant's load from spending another's capacity.
 
 **Alternative to**
 

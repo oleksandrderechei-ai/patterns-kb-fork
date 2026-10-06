@@ -28,7 +28,7 @@ A deployment stamp is a complete copy of your whole stack, built from one templa
 - **Shared parts.** The router and that store become single points of failure, so make them more available than any stamp.
 - **Spare.** Survivors must absorb a failed stamp, so plan one spare and run at least two stamps.
 
-**Example.** A load test shows one stamp serves 5,000 requests a second, and peak demand is 18,000. That needs 4 stamps, since 18,000 divided by 5,000 is 3.6. If one fails, the other 3 carry only 15,000, so 4 is not enough. With a spare you run 5, and after a loss the other 4 carry 20,000. A bad release that corrupts one stamp reaches only that stamp's 20% of users. The cost is 5 stamps on the bill where 3.6 would do.
+**Example.** A load test shows one stamp serves 5,000 requests a second, and peak demand is 18,000. That needs 4 stamps, since 18,000 divided by 5,000 is 3.6. If one fails, the other 3 carry only 15,000, so 4 is not enough. With a spare you run 5, and after a loss the other 4 carry 20,000. A bad release reaches only 20% of users if you ship one stamp at a time. The cost is 5 stamps on the bill where 3.6 would do.
 
 ## How it works
 <!--meta block=structure-->
@@ -74,7 +74,7 @@ sequenceDiagram
     P->>R: deregister stamp A
 ```
 
-Three tiers fall out of the drawing, and every resource in the system belongs to exactly one of them. **Global** resources are shared by every stamp and live as long as the system: the router, the durable store, the image registry. **Regional** resources outlive individual stamps but not the region: the log and metric stores that must still be readable after the stamp that emitted them is gone. **Stamp** resources are ephemeral and hold nothing you cannot rebuild.
+Three tiers fall out of the drawing, and every resource in the system belongs to exactly one of them. **Global** resources are shared by every stamp and live as long as the system: the router, the durable store, the image registry. **Regional** resources outlive individual stamps but not the region: the log and metric stores that must still be readable after the stamp that emitted them is gone. **Stamp** resources are ephemeral and hold nothing you cannot rebuild. The router also keeps a map from each user or tenant to its stamp. That map is global state, and each user stays on one stamp, so the stamps themselves stay stateless.
 
 Assigning a resource to the wrong tier is the characteristic failure. Push something stateful down into the stamp and you can no longer delete the stamp. Pull something high-churn up into the global tier and every stamp now shares a blast radius with every other one — which is how a single expired credential in a shared store takes down all stamps at the same moment, the exact outcome the pattern was adopted to prevent.
 
@@ -84,7 +84,7 @@ Assigning a resource to the wrong tier is the characteristic failure. Push somet
 - **Regional stamp** — One stamp per region, with the router sending each user to the nearest healthy one. This is the common shape: it buys latency and regional fault tolerance in the same move, and it makes a regional outage a routing event rather than an incident.
 - **Several stamps per region** — When one stamp hits a hard ceiling — a subscription quota, a cluster node limit, an address range — you add a second stamp in the same region instead of enlarging the first. Capacity keeps growing past the limit that would otherwise cap the whole system, at the cost of more units to deploy and observe.
 - **Tenant stamp** — Stamps partitioned by customer rather than by geography, so a large tenant gets its own copy of the stack. Isolation becomes the point and geography becomes incidental — it is how you promise one tenant that another cannot make them slow, and it is the answer to [Noisy Neighbour](../../../hazards/noisy-neighbour.md) when a shared pool has stopped being defensible.
-- **Ephemeral versus long-lived stamps** — A long-lived stamp is updated in place and lives for months; an ephemeral one is replaced on every release and lives for days. Ephemeral stamps eliminate configuration drift and give you [Blue-Green Deployment](./blue-green-deployment.md) for free, because a release already builds a new stamp. They cost double infrastructure during every changeover, and they force every piece of state out of the stamp before you can adopt them.
+- **Ephemeral versus long-lived stamps** — A long-lived stamp is updated in place and lives for months; an ephemeral one is replaced on every release and lives for days. Ephemeral stamps reduce configuration drift when built only from the template, and make [Blue-Green Deployment](./blue-green-deployment.md) a routing change, since each release already builds a new stamp. They cost double infrastructure during every changeover, the shared store must serve two versions, and all state must leave the stamp first.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -92,7 +92,7 @@ Assigning a resource to the wrong tier is the characteristic failure. Push somet
 ### Pros
 <!--meta polarity=pro-->
 
-- **Contains a failure** to the users on one stamp. A corrupted cluster or an exhausted quota stops at the stamp boundary instead of reaching everyone.
+- **Contains a failure** inside a stamp to the users on that stamp. A corrupted cluster or an exhausted quota stops at the stamp boundary, though the global router, store and shared credentials still fail every stamp at once.
 - **Turns capacity planning into arithmetic** — load-test one stamp, then deploy demand divided by that number.
 - **Recovery is redeployment**. There is no repair procedure to write, rehearse or get wrong at 3am.
 - **Scales past per-account and per-cluster ceilings**, because the ceiling applies to a stamp rather than to the system.
@@ -105,10 +105,11 @@ Assigning a resource to the wrong tier is the characteristic failure. Push somet
 - **Demands that every stamp** be built from a template. Any hand-made change is lost on the next deployment, which is the intent and also the discipline nobody enjoys.
 - **Forces state out** of the stamp before you can adopt it, which is usually the hard part of the migration.
 - **Moves the single point** of failure to the global router and the global store, and both now need more availability than any individual stamp does.
-- **Requires headroom** on every surviving stamp to absorb a failed one. Size each stamp for its own peak and a failover will simply move the outage, so the capacity model has to carry N+1 or the isolation is theatre.
+- **Requires headroom** on every surviving stamp to absorb a failed one. If each stamp is sized only for its own peak, failover moves the outage, so the capacity model must carry N+1, with enough quota and warm capacity in the survivors.
 - **Leaves you running several versions** at once during a changeover, so the shared store must tolerate readers and writers from two releases — later versions must ignore fields they do not understand rather than reject them.
 - **Punishes you for starting with one stamp**. A single deployment lets single-stamp assumptions harden into code and configuration unnoticed, and they all surface at once when you add the second — so run at least two from the beginning, even if the second is small.
-- **Makes moving a tenant between stamps genuinely hard**. Stamps are independent by design, so a migration means custom logic to copy a customer's data across and delete it from the original, usually over a backplane that exists for nothing else.
+- **Makes moving a tenant between stamps hard**. Tenant data lives in the global store, so a move re-points the tenant's stamp mapping and migrates its partition. Stamps are independent by design, so that needs custom logic.
+- **Defeats its own isolation** if a release goes to every stamp at once. Ship one stamp first, wait for its health checks to pass, then widen.
 
 ## When to use it
 <!--meta block=usage-->
@@ -192,10 +193,10 @@ function tierOf(r: Resource): Tier {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Stamp size** — The tested capacity of one unit — the request rate it serves with every component inside it at an acceptable saturation. Larger stamps cost less per request and concentrate more users behind one failure; smaller stamps do the opposite.
+- **Stamp size** — The tested capacity of one unit — the request rate it serves with every component inside it at an acceptable saturation. Larger stamps cost less per request and concentrate more users behind one failure; smaller stamps do the opposite. Find it by load-testing one stamp until latency or errors degrade, recording the request rate there, and setting the ceiling below it.
 - **Traffic weights** — The share of traffic the router sends to each registered stamp. Weights are how a release ramps and how a rollback happens, so they need to be a deployable value rather than a console change.
-- **Headroom factor** — Spare capacity across the fleet, expressed as how many stamps may fail before the survivors saturate. Provision every stamp for its own peak and a failover moves the outage instead of absorbing it.
-- **Health probe interval and timeout** — How often the router asks each stamp whether it is healthy and how long it waits. Shorter detects a bad stamp sooner and multiplies probe load across every router edge, which is why the probe result is usually cached inside the stamp.
+- **Headroom factor** — Spare capacity across the fleet, expressed as how many stamps may fail before the survivors saturate. Provision every stamp for its own peak and a failover moves the outage instead of absorbing it. With N stamps and k tolerated failures, run each at most (N-k)/N of its tested ceiling at fleet peak. For k=1, three stamps means about 67%.
+- **Health probe interval and timeout** — How often the router asks each stamp whether it is healthy and how long it waits. Shorter detects a bad stamp sooner and multiplies probe load across every router edge, so the result can be cached inside the stamp. Detection time is about the interval times the number of consecutive failures required before ejecting or restoring a stamp. Set that count above 1 to stop flapping.
 - **Scale-in floor** — The minimum instance count a stamp holds when its region is idle. Too low and the morning ramp is served by a cold stamp; too high and off-peak regions carry peak cost all night.
 
 ### Signals to watch

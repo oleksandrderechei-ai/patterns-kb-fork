@@ -16,12 +16,12 @@ Sits in front of a fleet of interchangeable instances and spreads every incoming
 ## What it is
 <!--meta block=description-->
 
-A load balancer presents one stable address in front of a pool of identical backend instances and decides, per request or connection, which one handles it. It tracks which instances exist, polls their health and applies a routing algorithm across the survivors. It resolves the capacity ceiling and single point of failure of one machine. Layer 4 balancers forward connections by address and port, and Layer 7 balancers read the request to route on path, header or cookie.
+A load balancer presents one stable address in front of a pool of identical backend instances and decides, per request or connection, which one handles it. It tracks which instances exist, polls their health and applies a routing algorithm across the survivors. It lifts the per-machine capacity ceiling and removes one instance as a single point of failure, though the balancer itself must be made redundant.
 
 ## Explained
 <!--meta block=explain-->
 
-A load balancer is one stable address that spreads requests across a group of identical copies of your service and skips the ones that are down. Callers talk to the balancer, never to a copy, so you can add copies, restart them and deploy without callers noticing. Without it, one machine caps your capacity and its crash ends the service, and clients picking copies themselves would each need a current list and would hit dead copies. The balancer keeps the list, polls a health check on each copy, and picks among the healthy ones by a rule such as round-robin (take turns) or least connections. Choose it over buying a bigger machine once one box cannot hold the load or must not be your single point of failure. Layer 4 balancers forward connections by address and port without reading them. Layer 7 balancers read the request, so they route by path, header or cookie at the price of more work per request.
+A load balancer is one stable address that spreads requests across a group of identical copies of your service and skips the ones that are down. Callers talk to the balancer, never to a copy, so you can add copies, restart them and deploy without callers noticing, provided health checks drop dead copies quickly and draining lets in-flight requests finish. Without it, one machine caps your capacity and its crash ends the service, and clients picking copies themselves would each need a current list and would hit dead copies. The balancer keeps the list, polls a health check on each copy, and picks among the healthy ones by a rule such as round-robin (take turns) or least connections. Choose it over buying a bigger machine once one box cannot hold the load or must not be your single point of failure. Layer 4 forwards connections without reading them; Layer 7 reads the request to route by path, header or cookie, at more cost per request.
 
 - **Single point of failure.** The balancer can fail too, so run two behind a shared address.
 - **Blind turns.** Taking turns ignores real load, so use least connections when requests differ in cost.
@@ -68,9 +68,9 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Turns many small instances into one logical service** — capacity scales by adding instances, not by upsizing one box.
-- **Removes a single instance** as a single point of failure; an unhealthy one is skipped, not fatal.
+- **Removes a single instance** as a single point of failure; once health checks mark it down (interval times miss count) it is skipped, but requests sent in that gap fail.
 - **Centralizes health checking** and instance discovery so callers never track the current pool themselves.
-- **Enables zero-downtime deploys** — roll instances out of and back into rotation one at a time.
+- **Enables near-zero-downtime deploys** — with draining and readiness checks, roll instances out of and back into rotation one at a time.
 
 ### Cons
 <!--meta polarity=con-->
@@ -88,13 +88,13 @@ flowchart LR
 
 - **You run more than one interchangeable instance** of a service and need one stable entry point to it.
 - **You need to scale horizontally** past what a single instance can serve.
-- **Instances can fail**, redeploy, or be added and removed, and callers shouldn't see any of it.
+- **Instances can fail**, redeploy, or be added and removed, and callers should not have to track or retry against the changing pool.
 
 ### Avoid when
 <!--meta polarity=avoid-->
 
 - **There is only ever one instance** — the balancer is pure overhead with nothing to spread across.
-- **Requests need one stateful process** — they must be handled by one specific process; route directly, or shard, instead of balancing.
+- **Requests need one stateful process** — requests must reach one specific stateful process; route directly or shard instead of balancing.
 - **Need routing, not spreading** — what you actually need is request routing by path or tenant, not capacity spreading; that's closer to an [API Gateway](./api-gateway.md)'s job.
 
 ## Code sketch
@@ -148,7 +148,7 @@ class LoadBalancer {
 <!--meta polarity=knob-->
 
 - **Balancing algorithm** — Round-robin, weighted round-robin, least-connections, least-response-time, or hash-based; the choice decides how evenly work spreads when request costs vary.
-- **Health-check interval and thresholds** — How often the pool is probed, the per-probe timeout, and how many consecutive passes or failures flip an instance in or out of rotation.
+- **Health-check interval and thresholds** — How often the pool is probed, the per-probe timeout, and how many consecutive passes or failures flip an instance in or out of rotation. Interval times fail threshold is the outage you accept before ejection (5 s times 2 is the 10 s in the example); keep the timeout below the interval.
 - **Connection draining delay** — Grace window during which an instance being removed keeps serving in-flight requests but receives no new ones, so deploys do not cut live connections.
 - **Idle connection timeout** — How long an idle client or upstream connection is held open before the balancer closes it and frees the slot.
 - **Per-backend connection limit** — Maximum concurrent connections routed to one instance before the balancer treats it as full and looks elsewhere.
@@ -166,7 +166,7 @@ class LoadBalancer {
 
 - **Empty pool** — If every backend fails health checks at once the balancer has nowhere to route and returns errors for all traffic — an overly strict or dependency-coupled check can trigger this fleet-wide.
 - **Slow instance absorbs its share** — A naive algorithm like round-robin keeps sending an even share to an instance that is passing health checks but responding slowly, dragging tail latency.
-- **Thundering herd on recovery** — A just-added or just-recovered cold instance is handed its full share immediately and is overwhelmed before caches and pools warm up.
+- **Thundering herd on recovery** — A just-added or just-recovered cold instance is handed its full share immediately and is overwhelmed before caches and pools warm up. Ramp its weight up over a warm-up window, or cap its connections until it is warm.
 - **Sticky-session concentration** — Session affinity pins load unevenly, and a recycled instance drops the in-memory sessions pinned to it.
 
 ### Readiness checklist
