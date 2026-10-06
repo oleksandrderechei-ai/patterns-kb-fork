@@ -55,10 +55,10 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Cron / calendar schedules** — Fire at fixed recurring wall-clock times — "every day at 2am", "the first of the month". Expressive for human-meaningful cadences, but the place where timezone and daylight-saving pitfalls live.
-- **Delay queues** — Run a job after N seconds rather than at a named time — a message becomes visible only once its visibility timeout or delay elapses. Ideal for "retry in five minutes" and deferred side effects.
-- **Interval / rate schedules** — Fire every N units — every 30 seconds, every hour — measured from the last run rather than a calendar. Simpler than cron when you only care about cadence, not a specific clock time.
-- **Distributed scheduling with a [single leader](../distributed/coordination/leader-election.md)** — Across replicas, elect one node (or hold a lock) so a scheduled job fires exactly once instead of once per replica. The cost of running the scheduler in more than one process.
-- **Durable [workflow schedulers](../distributed/coordination/workflow-orchestration.md)** — Beyond a plain timer: multi-step, retried, resumable workflows whose state and pending timers survive a restart. Heavier to operate, but the only option when a delayed step must not be lost.
+- **Delay queues** — Run a job after N seconds rather than at a named time; a message becomes visible to consumers only once its per-message delay has elapsed. Ideal for "retry in five minutes" and deferred side effects.
+- **Interval / rate schedules** — Fire every N units, such as every 30 seconds or every hour, rather than at a calendar time. Fixed-rate keeps the cadence and may bunch runs after a stall; fixed-delay waits N after each finish and drifts. Simpler than cron when only cadence matters.
+- **Distributed scheduling with a [single leader](../distributed/coordination/leader-election.md)** — Across replicas, elect one node (or hold a lock) so a scheduled job fires once instead of once per replica. This cuts duplicate runs to rare cases; a failover can still miss or repeat one, so keep handlers safe to repeat. Costs a lock or election store.
+- **Durable [workflow schedulers](../distributed/coordination/workflow-orchestration.md)** — Beyond a plain timer: multi-step, retried, resumable workflows whose state and pending timers survive a restart. Heavier to run, but the fit when a delayed step must not be lost and later steps depend on it; a durable delay queue covers a single step.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -79,7 +79,7 @@ flowchart LR
 - **Needs durable storage**, or queued jobs vanish on a restart.
 - **Running it across replicas** needs [leader election](../distributed/coordination/leader-election.md) or a lock to fire once.
 - **Jobs sharing one instant** cause a [thundering herd](../../hazards/thundering-herd.md), like at midnight.
-- **Overlapping runs force a policy** — when a run is still going as the next one is due, let them overlap, skip the new one, or cancel the old — and a job that slowly grows past its interval starts running against itself before anyone picks one.
+- **Overlapping runs need a policy** — let them overlap, skip the new run or cancel the old one. A job that slowly outgrows its interval starts running against itself before anyone picks one.
 
 ## When to use it
 <!--meta block=usage-->
@@ -103,6 +103,7 @@ flowchart LR
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — a tiny delay scheduler"
+// Memory-only: jobs are lost on restart. Real code adds a store, a lock and a worker pool.
 type Job = { dueAt: number; task: () => void };
 
 class DelayScheduler {
@@ -127,7 +128,9 @@ class DelayScheduler {
   private fireDue(): void {
     const now = Date.now();
     while (this.jobs.length && this.jobs[0].dueAt <= now) {
-      this.jobs.shift()!.task();     // hand the due job to its worker
+      const job = this.jobs.shift()!;
+      try { job.task(); }      // runs inline here; a worker pool would take it
+      catch { /* one failing task must not stop the rest */ }
     }
     this.arm();                      // schedule the next tick
   }
@@ -150,10 +153,12 @@ class DelayScheduler {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **tick / poll interval** — how often the scheduler checks for due jobs
+- **tick / poll interval** — how often the scheduler checks for due jobs; keep it well under the lag you can tolerate
 - **max concurrency** — how many due jobs may run at once
 - **retry policy** — max attempts and backoff for failed jobs
 - **jitter** — random spread added to shared schedules to avoid a herd
+- **misfire policy** — whether runs missed during downtime are skipped, run once or replayed
+- **overlap policy** — skip, queue or cancel a run still going when the next is due
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -178,6 +183,7 @@ class DelayScheduler {
 - add jitter to schedules many jobs share
 - single-fire across replicas via a leader or lock
 - alert on scheduling lag
+- compare due times against one clock, the store's, not each node's
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -209,6 +215,10 @@ class DelayScheduler {
 **Prevents**
 
 - [Starvation](../../hazards/starvation.md) — Aging and fair scheduling promote work that has waited
+
+**Exposed to**
+
+- [Thundering Herd](../../hazards/thundering-herd.md) — Many jobs on one cron instant fire together; jitter spreads them
 
 **Demonstrated by**
 

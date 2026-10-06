@@ -28,7 +28,7 @@ A reactor is one loop that waits on many connections at once, asks the operating
 - **Callback code** Callbacks are harder to follow than straight-line code; use async and await where your language has them.
 - **Non-blocking calls only** Every call in the path must be non-blocking, so pick non-blocking libraries from the start.
 
-**Example.** A chat server holds 10,000 connections. With one thread each and a 1 MB stack, that is about 10 GB of stacks before any message arrives. A reactor serves them with one thread. Each message takes a 0.05 ms handler, so one loop handles about 20,000 messages a second. Now one handler runs a 200 ms blocking database query: for those 200 ms, all 10,000 connections get nothing, and you see a pause with no error. Handing that query to a worker pool and replying when it finishes keeps the loop moving. The cost is code split into two parts, the request and the reply, that you must now connect.
+**Example.** A chat server holds 10,000 connections. With one thread each and a 1 MB stack, that is about 10 GB of reserved stack address space, plus scheduler cost. A reactor serves them with one thread. Each message takes a 0.05 ms handler, so one loop handles at most about 20,000 messages a second, before read and write call costs. Now one handler runs a 200 ms blocking database query: for those 200 ms, all 10,000 connections get nothing, and you see a pause with no error. Handing that query to a worker pool and replying when it finishes keeps the loop moving. The cost is code split into two parts, the request and the reply, that you must now connect.
 
 ## How it works
 <!--meta block=structure-->
@@ -55,9 +55,9 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Single-threaded reactor** — One loop runs both the demultiplexing and every handler. Simplest, no locking anywhere, but a slow handler stalls all other connections. Doug Schmidt formalized the pattern in the ACE framework in the mid-1990s.
-- **[Worker-pool](./thread-pool.md) reactor** — The loop only demultiplexes and dispatches; the actual handler work runs on a bounded thread or task pool, so one slow handler no longer blocks ingestion of new events.
-- **Multi-reactor (thread-per-core)** — Run N independent loops, each pinned to a core and owning its own slice of connections, sharing nothing — the shape behind nginx workers and modern thread-per-core servers.
+- **Single-threaded reactor** — One loop runs both the demultiplexing (waiting on the OS for ready sources) and every handler. Simplest, no locking for loop-owned state, but a slow handler stalls all other connections. Doug Schmidt formalized the pattern in the ACE framework in the mid-1990s.
+- **[Worker-pool](./thread-pool.md) reactor** — The loop only demultiplexes and dispatches; the actual handler work runs on a bounded thread or task pool, so one slow handler no longer blocks ingestion of new events. Handlers now run off the loop, so shared state needs locks or per-connection serialization, and replies must be ordered per connection.
+- **Multi-reactor (thread-per-core)** — Run N independent loops, each pinned to a core and owning its own slice of connections, sharing little (such as the listening socket); the shape behind nginx workers and modern thread-per-core servers.
 - **Reactor vs. Proactor** — Reactor notifies "this descriptor is ready, go read it yourself"; Proactor notifies "your read already completed, here's the data" — the OS or an async layer performs the I/O, as in Windows IOCP.
 
 ## Trade-offs
@@ -66,8 +66,8 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **No thread-per-connection overhead** — one loop scales to tens of thousands of idle sockets.
-- **No locking inside the loop**: handlers on the same thread never race each other.
+- **No thread-per-connection overhead** — one loop scales to tens of thousands of idle sockets, within the file-descriptor limit and while handlers stay short.
+- **No locking inside the loop**: handlers on the same thread never race each other, while state stays confined to that loop. Sharing across loops or pool workers needs locks or message passing.
 - **Low, predictable memory footprint per connection** compared to a parked thread and stack.
 - **Dispatch order within the loop is explicit** and easy to reason about.
 
@@ -78,6 +78,7 @@ flowchart LR
 - **One loop uses one core** — real parallelism needs multiple reactor instances.
 - **Callback-driven control flow** is harder to step through than straight-line, blocking code.
 - **Every handler must be written non-blocking**, which pushes async style through the whole call chain.
+- **Partial reads and writes** leave a per-connection state machine to maintain, with buffered output and fairness across connections.
 
 ## When to use it
 <!--meta block=usage-->
@@ -116,6 +117,8 @@ class Reactor {
   // The loop: block until the OS says something is ready,
   // then dispatch each ready fd to its handler. A handler
   // must never block — that stalls every other connection.
+  // Real epoll/kqueue keeps the registered set in the kernel (register would call epoll_ctl); rebuilding the key list each pass is for illustration only.
+  // A handler reads until the call would block (EAGAIN), then returns. Heavy work goes to a worker pool; its result is registered back on the loop as a new event.
   run(): void {
     while (true) {
       const ready = demultiplex([...this.handlers.keys()]); // epoll/kqueue

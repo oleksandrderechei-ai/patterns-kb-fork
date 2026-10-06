@@ -241,6 +241,10 @@ app.get("/operations/:id", async (req, res) => {
 
 - [Long Polling](../../messaging/long-polling.md) — Long polling is the held-request way to learn the result of the work.
 
+**Often confused with**
+
+- [Future / Promise](../../concurrency/future-promise.md) — A future is the in-process handle for a result not yet ready; this pattern is the same handle idea across a network boundary
+
 **Prevents**
 
 - [Busy Front End](../../../hazards/busy-front-end.md) — The front end accepts the work and hands back a handle, so no request thread is held while the job runs

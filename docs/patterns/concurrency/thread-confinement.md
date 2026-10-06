@@ -16,7 +16,7 @@ Eliminate synchronization by partitioning state so each thread exclusively owns 
 ## What it is
 <!--meta block=description-->
 
-Every race needs mutable state touched by more than one thread. Locks tame the shared access; thread confinement removes the sharing. Each piece of mutable state gets one owning thread, and requests are routed to the owner, so no lock is needed and no race is possible. You pay by having to split the state cleanly by owner, and work that spans owners becomes hard.
+Every race needs mutable state touched by more than one thread. Locks tame the shared access; thread confinement removes the sharing. Each piece of mutable state gets one owning thread, and requests are routed to the owner, so no lock is needed and no data race on that state is possible. You pay by having to split the state cleanly by owner, and work that spans owners becomes hard.
 
 ## Explained
 <!--meta block=explain-->
@@ -57,7 +57,7 @@ flowchart LR
 
 - **Stack confinement** — The simplest form, and free: state that lives only in a method's local variables and never escapes is reachable by exactly one thread — the caller. No mechanism at all, just discipline about not publishing a reference. It stops being confined the moment the object leaks out.
 - **Thread-local storage** — Each thread gets its own private instance of a variable — a non-thread-safe formatter, a scratch buffer, a per-thread database connection. The runtime keys the storage by thread, so there is no shared instance to guard. Finest grain; watch for leaks on pooled threads that outlive the value's usefulness.
-- **Single-threaded [event loop](./reactor.md)** — All state mutation runs on one thread, so everything it touches is confined by construction. Concurrency comes from non-blocking I/O multiplexed around the loop, not from more threads on the data — the model behind Redis's command execution and Node's event loop.
+- **Single-threaded [event loop](./reactor.md)** — All state changes run on one thread, so everything it touches is confined. Concurrency comes from non-blocking I/O multiplexed around the loop, not from more threads on the data; Redis's command execution and Node's event loop work this way. Across an await or callback the loop can run other handlers, so keep each invariant inside one synchronous step.
 - **Sharded / thread-per-core ownership** — Split the dataset into N partitions, each pinned to one thread or core, and route each request to its shard's owner. This scales confinement across many cores while keeping every shard's hot path lock-free — the shape of thread-per-core storage engines.
 - **[Actor model](./actor-model.md) (message passing)** — The shared-nothing idea realized as isolated actors that own their state and communicate only by messages. Cross-partition work becomes an explicit message rather than a shared memory access, which is exactly how confinement handles operations that span owners.
 
@@ -67,10 +67,10 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Races are impossible by construction**, not merely guarded — with nothing shared there is no interleaving to get wrong.
+- **Data races on confined state are impossible**, not merely guarded: with nothing shared there is no interleaving to get wrong, provided every access goes through the owner. One escaped reference restores the race (see the enforcement con).
 - **No locks on the hot path** — no contention, no lock-ordering deadlocks, no CPU parked spinning or context-switching on a mutex.
 - **Each owner is a plain single-threaded program** you can reason about sequentially — far simpler than auditing every possible interleaving.
-- **Scales across cores by adding partitions** — a thread-per-shard design turns more cores into more throughput without more lock contention.
+- **Scales across cores by adding partitions** — a thread-per-shard design turns more cores into more throughput without more lock contention, while keys spread evenly. A hot key caps throughput at one thread (see the load-skew con).
 
 ### Cons
 <!--meta polarity=con-->
@@ -80,6 +80,7 @@ flowchart LR
 - **Load can skew** — a [hot partition](../../hazards/hot-partition.md) pins one thread at full while its peers idle, and the busy owner becomes the bottleneck because no other thread may help with its data.
 - **Only as good as its enforcement** — one thread reaching into another's slice silently brings back every race you removed, and nothing stops it by default.
 - **Trades synchronization complexity for architectural complexity** — the hard part moves from locks to partitioning and routing rather than disappearing.
+- **Message-level races remain** — the owner runs one message at a time, not a read-then-write sequence spanning two, so keep each invariant inside one message.
 
 ## When to use it
 <!--meta block=usage-->
@@ -101,13 +102,14 @@ flowchart LR
 ## Code sketch
 <!--meta block=sketch-->
 
-```typescript summary="TypeScript — a sharded store where each key routes to one owning shard"
-// Each shard is owned by exactly one worker thread — its Map is never
-// shared, so no lock ever guards it.
+```typescript summary="TypeScript — a sharded store where each key routes to one owning shard through its inbox"
+// Each shard is owned by exactly one worker thread. Callers never touch its Map; they post a task to the shard's inbox and the owner runs it.
 class Shard {
-  private readonly data = new Map<string, string>();  // private to this thread
-  get(key: string): string | undefined { return this.data.get(key); }
-  set(key: string, value: string): void { this.data.set(key, value); }
+  private readonly data = new Map<string, string>();  // private to the owner thread
+  private readonly inbox: Array<(data: Map<string, string>) => void> = [];
+  post(task: (data: Map<string, string>) => void): void { this.inbox.push(task); }  // any thread may post
+  // Called only by the owning thread: the single consumer of the inbox.
+  runNext(): void { const task = this.inbox.shift(); if (task) task(this.data); }
 }
 
 class ShardedStore {
@@ -124,8 +126,8 @@ class ShardedStore {
     return this.shards[Math.abs(h) % this.n];
   }
 
-  get(key: string) { return this.ownerOf(key).get(key); }
-  set(key: string, value: string) { this.ownerOf(key).set(key, value); }
+  get(key: string): Promise<string | undefined> { return new Promise(resolve => this.ownerOf(key).post(d => resolve(d.get(key)))); }
+  set(key: string, value: string): void { this.ownerOf(key).post(d => { d.set(key, value); }); }
 }
 
 ```
@@ -198,8 +200,9 @@ class ShardedStore {
 
 - [Monitor Object](./monitor-object.md) — Don't guard shared state with a lock — remove the sharing so no lock is needed
 - [Immutability](../functional/immutability.md) — Keeps mutable state safe by letting only one thread touch it
-- [Active Object](./active-object.md) — Confinement leaves each thread its own data and needs no queue
 - [Mutex](./mutex.md) — Gives each value to one thread, so no lock is needed
+- [Active Object](./active-object.md) — Both confine state to one thread; Active Object adds a method-call proxy, a queue and futures, while confinement only requires one owner
+- [Lock-Free](./lock-free.md) — Share one word without a lock instead of giving it one owner
 
 **Generalizes**
 
@@ -208,6 +211,6 @@ class ShardedStore {
 **Prevents**
 
 - [Race Condition](../../hazards/race-condition.md) — No sharing means no interleaving — the race cannot exist
-- [Deadlock](../../hazards/deadlock.md) — No shared locks to acquire in conflicting orders, so no cycle can form
+- [Deadlock](../../hazards/deadlock.md) — No shared locks, so no lock-order cycle; owners that wait on each other's queues can still deadlock
 
 <!-- relationships:end -->

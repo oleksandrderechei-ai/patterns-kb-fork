@@ -82,10 +82,10 @@ Recovery deserves its own plan, because that is when the herd is largest and the
 
 **Mitigated by**
 
-- [Semaphore](../patterns/concurrency/semaphore.md) — Permits admit a fixed number, and release wakes one waiter
 - [Queue-Based Load Leveling](../patterns/distributed/resilience/load-leveling.md) — A queue absorbs the burst; consumers drain at their own rate
 - [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) — Bounds arrivals when the crowd cannot be gated at the resource
 - [Request Coalescing](../patterns/distributed/resilience/request-coalescing.md) — Let the first arrival do the work and hand its result to everyone who arrived behind it
+- [Semaphore](../patterns/concurrency/semaphore.md) — Permits admit a fixed number, and release wakes one waiter
 
 **Threatens**
 
@@ -94,5 +94,6 @@ Recovery deserves its own plan, because that is when the herd is largest and the
 - [Retry with Backoff](../patterns/distributed/resilience/retry-backoff.md) — Clients that fail together retry together unless the delay is jittered
 - [Lease](../patterns/distributed/coordination/lease.md) — Leases granted together expire together, and the holders all renew in the same instant
 - [Distributed Lock](../patterns/distributed/coordination/distributed-lock.md) — A popular lock freeing wakes every waiter at once and hammers the lock store
+- [Scheduling](../patterns/concurrency/scheduling.md) — Shared schedules such as midnight release the crowd at once
 
 <!-- relationships:end -->

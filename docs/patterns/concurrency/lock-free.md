@@ -28,7 +28,7 @@ Lock-free code changes shared data with an atomic compare-and-swap: you read the
 - **Contention** Under heavy contention retries can lose to a mutex, so measure at your real thread count.
 - **Memory ordering** Ordering bugs appear on only some CPUs; use the language atomics with explicit ordering.
 
-**Example.** Eight threads add to one shared counter in a tight loop. With a mutex, the OS pauses the thread that holds the lock for 10 ms, and the other seven wait the full 10 ms doing nothing. With compare-and-swap, a paused thread holds nothing, so the other seven keep counting. The cost shows in the worst case: if all eight read the same value and swap at once, one wins and seven fail and redo the work, so 7 of every 8 attempts are wasted and the cache line bounces between cores. At that contention a mutex, or one counter per thread added up at the end, can be faster.
+**Example.** Eight threads add to one shared counter in a tight loop. With a mutex, the OS pauses the thread that holds the lock for 10 ms, and the other seven wait the full 10 ms doing nothing. With compare-and-swap, a paused thread holds nothing, so the other seven keep counting. The cost shows in the worst case: if all eight read the same value and swap at once, one wins and seven fail and redo the work, and the cache line bounces between cores. If that repeats every round, most attempts fail. For a plain counter, fetch-and-add does the job with no failures, and so does one counter per thread added up at the end.
 
 ## How it works
 <!--meta block=structure-->
@@ -69,11 +69,11 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Compare-and-swap retry loop** — The general shape: load the current value, compute a replacement from it, swap it in only if the load is still current, and start over on rejection. It closes the read-modify-write [race condition](../../hazards/race-condition.md) without a lock, and every other lock-free structure is a specialisation of it.
+- **Compare-and-swap retry loop** — The general shape: load the current value, compute a replacement from it, swap it in only if the load is still current, and start over on rejection. It closes the read-modify-write [race condition](../../hazards/race-condition.md) without a lock, and most lock-free structures are built from it.
 - **Atomic counters and fetch-and-add** — When the new value depends only on the old one by a fixed amount, the hardware does the whole read-modify-write in one instruction and there is no loop to retry. An atomic increment cannot fail, so contention costs you waiting for the cache line and never recomputation you throw away — reach for it before the general loop whenever the update is plain arithmetic, a bit set, or a bit clear.
 - **Lock-free queues and stacks** — The same swap applied to a link pointer builds whole containers: the Treiber stack points a new node at the current head and swaps the head to it, and the Michael–Scott queue does the equivalent at both ends with a two-step append that any thread can finish on the owner's behalf. That helping step is what keeps the structure moving when a producer stalls mid-insert.
 - **Wait-free, lock-free, obstruction-free** — Three progress guarantees, strongest first. Wait-free means every thread completes in a bounded number of its own steps, so no thread can be starved. Lock-free means some thread always completes, which permits an unlucky thread to retry forever while others make progress. Obstruction-free means only that a thread completes if it eventually runs without interference. Most published algorithms, and most of what a library gives you, are lock-free rather than wait-free — check which one you were sold before you promise a latency bound.
-- **Publish by pointer swap** — Build the new version of a structure off to one side where no other thread can see it, then swap one pointer to make the whole thing visible at once — [Copy-on-Write](./copy-on-write.md) published atomically. Readers need no synchronization, because they only ever see a complete version, old or new, and writers serialize on that single swap. The unsolved half is when the old version becomes safe to free.
+- **Publish by pointer swap** — Build the new version of a structure off to one side where no other thread can see it, then swap one pointer to make the whole thing visible at once — [Copy-on-Write](./copy-on-write.md) published atomically. Readers need no lock, only an acquire load of the pointer, because they only ever see a complete version, old or new, and writers serialize on that single swap. Knowing when the old version is safe to free is the memory reclamation problem.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -103,7 +103,7 @@ sequenceDiagram
 <!--meta polarity=when-->
 
 - **A small piece of shared state** — a counter, a flag, a queue head — is touched by many threads, and profiling puts the time in lock acquisition rather than in the critical section.
-- **No participant may block**: an audio or control loop with a deadline, a signal handler, an interrupt path, or any code that must not call into the scheduler.
+- **No participant may block**: an audio or control loop, a signal handler, an interrupt path, or any code that must not call into the scheduler. A deadline holds only with a wait-free operation or a bounded retry; a plain lock-free loop gives no latency bound.
 - **One slow thread** must not be able to freeze the rest — a pipeline stage that stalls should cost its own work, not everybody's.
 - **A tested library already offers the structure** you need — a concurrent queue, an atomic counter, an atomic reference. Using one is the normal way to adopt this pattern.
 
@@ -111,7 +111,7 @@ sequenceDiagram
 <!--meta polarity=avoid-->
 
 - **Most of the time**. A [Monitor Object](./monitor-object.md) is correct by inspection, reviewable by anyone on the team, and frequently faster — take it unless you can name the reason it fails you.
-- **The update spans more than one location**, or the critical section calls anything that can block or allocate. Neither fits in a single atomic instruction.
+- **The update spans more than one location**, or the critical section calls anything that waits. Neither fits in a single atomic instruction. Allocate a node before the swap, as the Treiber stack does, never inside the retried step.
 - **Contention is heavy and nearly every operation writes**: the losers spin and the cache line ping-pongs between cores, where a lock would have parked them cheaply.
 - **You would be writing the algorithm yourself** for anything past a counter or a flag, without a memory model in your head and a stress test on real hardware. Take the library's version.
 - **The state can be partitioned instead** — [Thread Confinement](./thread-confinement.md) removes the sharing rather than making it cheaper, and unshared state needs no atomics at all.
@@ -173,9 +173,9 @@ func increment() { slot.Add(1) }
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **retry collapse under write contention** — Every attempt pulls the cache line to a different core, so more threads produce more failed swaps rather than more work. Goodput falls as offered concurrency rises, and the profile shows the CPUs busy at full utilisation with nothing completing.
+- **retry collapse under write contention** — Every attempt pulls the cache line to a different core, so more threads produce more failed swaps rather than more work. Throughput falls as you add threads, and the profile shows the CPUs fully busy while completed operations sink well below the single-thread rate.
 - **false sharing** — An unrelated variable sharing the cache line makes an uncontended word behave like a contended one. It looks like inexplicable contention on a value only one thread writes.
-- **reclamation stall** — One thread parked inside a read section pins the epoch or holds a hazard pointer, so nothing behind it can be freed. Memory grows steadily under load and the process is killed for its footprint, not for anything the algorithm did wrong.
+- **reclamation stall** — In an epoch scheme, one thread parked inside a read section pins the epoch, so nothing retired after it can be freed; a held hazard pointer pins only the node it names. Memory grows steadily under load and the process is killed for its footprint, not for anything the algorithm did wrong.
 - **starvation of one thread** — Lock-free guarantees that some thread completes, not that yours does. Under sustained load a slow or unlucky thread can lose every race, which an aggregate throughput number hides completely — watch the tail latency, not the mean.
 
 ### Readiness checklist
@@ -215,6 +215,7 @@ func increment() { slot.Add(1) }
 
 - [Monitor Object](./monitor-object.md) — One lock across the critical section, or no lock and a retry loop
 - [Mutex](./mutex.md) — Updates shared data with atomic operations and no lock, so no caller waits for a lock holder
+- [Thread Confinement](./thread-confinement.md) — Makes the shared word cheap to update; confinement removes the sharing so no atomics are needed
 
 **Often confused with**
 

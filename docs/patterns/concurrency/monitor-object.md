@@ -26,7 +26,7 @@ A monitor ties one lock and its waiting areas to an object, so only one thread a
 - **One lock for all** One lock serializes every method, even those touching separate data; split the object into parts that each have their own monitor.
 - **Wrong thread wakes** Different reasons to wait sharing one waiting area wake the wrong thread; keep one condition per reason.
 - **Nested deadlock** Calling another object monitor while holding your own lock can deadlock; call out after you release.
-- **Spurious wakeups, one process** Recheck the condition in a loop. A monitor covers only one process.
+- **Spurious wakeups** A thread can return from wait() unsignalled, so recheck the condition in a loop, never an if.
 
 **Example.** A buffer holds one item. Consumers C1 and C2 wait on it, empty, in the same waiting area. Producer P1 puts an item and wakes C1. Before C1 runs, P2 tries to put, finds it full and waits in the same area. C1 takes the item and wakes one waiter; if it picks C2, C2 sees an empty buffer and sleeps again, while P2 sleeps with room available. Nobody is left to wake it, so the program stalls with no error. Waking everyone fixes it but runs all threads for every change. One condition for not-full and another for not-empty fixes it at the price of two conditions to maintain.
 
@@ -73,9 +73,9 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Intrinsic vs. explicit locks** — The idea comes from Hoare and Brinch Hansen's monitors in the 1970s, and C#'s `lock` and `Monitor` work the same way as Java's. Java's `synchronized` keyword makes every object a built-in monitor with one implicit lock; `java.util.concurrent.locks.Lock` plus `Condition` externalizes the same idea and allows several condition variables per lock.
-- **Signal vs. broadcast** — `notify()` wakes exactly one waiting thread; `notifyAll()` wakes them all so each can recheck its own condition — cheaper versus safer when several conditions share one wait set.
-- **Signal-and-wait vs. signal-and-continue** — Two disciplines answer the question of who holds the monitor once a thread has been signalled. The original blocking form hands it straight to the thread it woke, so the condition that thread waited for is still true when it resumes. Mainstream runtimes use the nonblocking form instead: the signaller keeps the lock and carries on, and the woken thread merely joins the queue to re-acquire it — by the time it runs, another thread may have taken exactly what it was woken for. That, more than spurious wakeups, is why the wait belongs in a loop that re-tests its condition rather than behind an `if`. The cost is that you cannot reason locally: a signal is a hint that something changed, never a promise about the state you will find.
+- **Intrinsic vs. explicit locks** — Java's `synchronized` makes every object a built-in monitor with one implicit lock; `java.util.concurrent.locks.Lock` plus `Condition` makes the lock and conditions explicit and allows several conditions per lock. The idea comes from Hoare and Brinch Hansen's monitors in the 1970s.
+- **Signal vs. broadcast** — `notify()` wakes exactly one waiting thread; `notifyAll()` wakes them all so each can recheck its own condition. `notify()` is cheaper; `notifyAll()` is safer when several conditions share one wait set.
+- **Signal-and-wait vs. signal-and-continue** — The original blocking form hands the monitor straight to the thread it woke, so its condition is still true when it resumes. Mainstream runtimes use the nonblocking form: the signaller keeps the lock and carries on, and the woken thread must re-acquire it, by which time another thread may have taken what it was woken for. That, more than spurious wakeups, is why the wait belongs in a loop. A signal is a hint, never a promise about the state.
 - **Multiple condition variables** — One lock can guard several named conditions — not full and not empty on a bounded buffer — so producers and consumers don't wake the wrong kind of waiter unnecessarily.
 - **[Read-Write Lock](./rw-lock.md)** — Splits the single exclusive lock into a shared read mode and an exclusive write mode, letting many readers through at once — a finer-grained monitor for read-heavy state.
 
@@ -85,7 +85,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Packages the lock with the state it protects**, so synchronization can't be bypassed by reaching the object directly.
+- **Packages the lock with the state it protects**, so synchronization can't be bypassed as long as the state stays private to the object's guarded methods.
 - **Threads block on a precise condition** instead of busy-polling or backing off and retrying.
 - **Built into mainstream languages** — Java's `synchronized`/`wait`/`notify`, C#'s `lock`/`Monitor` — with no library needed.
 - **Simpler to reason about than raw semaphores**: no separate counting variable to keep in sync with the data.
@@ -97,7 +97,7 @@ sequenceDiagram
 - **Wrong waiter may wake** — `notify()` can do this when several conditions share one wait set; `notifyAll()` trades that bug for wasted wakeups.
 - **Calling another object's monitor method** while holding your own lock invites the nested monitor problem and [deadlock](../../hazards/deadlock.md).
 - **Confined to one process's address space** — doesn't extend across machines or even separate processes.
-- **Every wait must recheck its condition** in a loop, since spurious wakeups are allowed by the model.
+- **Every wait must recheck its condition** in a loop: after a signal another thread may take the state first, and spurious wakeups are also allowed.
 
 ## When to use it
 <!--meta block=usage-->
@@ -121,7 +121,7 @@ sequenceDiagram
 
 ```go summary="Go — a bounded buffer as a monitor"
 
-// BoundedBuffer is a monitor: one lock, two conditions (sync.NewCond(&b.mu)), all guarding items.
+// BoundedBuffer is a monitor: one lock, two conditions, all guarding items. Build both conds with sync.NewCond(&b.mu); a zero value would panic on a nil Cond.
 type BoundedBuffer struct {
 	mu       sync.Mutex
 	notFull  *sync.Cond
@@ -165,21 +165,21 @@ func (b *BoundedBuffer) Take() (item int) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Signaling policy** — Wake one waiter or all: notify()/signal() versus notifyAll()/signalAll(). Signal-one is cheaper but safe only when every waiter is interchangeable on the same condition; otherwise signal-all avoids lost wakeups.
-- **Wait timeout** — Object.wait(ms) and Condition.await(time) bound how long a thread blocks on a condition, turning an indefinite wait into one that can time out and recover.
+- **Signaling policy** — Wake one waiter or all: notify()/signal() versus notifyAll()/signalAll(). Signal-one is cheaper and safe only when every waiter is interchangeable on the same condition; otherwise signal-all avoids wrong-waiter stalls.
+- **Wait timeout** — Object.wait(ms) and Condition.await(time) bound how long a thread blocks on a condition, turning an indefinite wait into one that can time out and recover. Work out the timeout from the caller's deadline minus the expected hold time; on timeout re-test the guard and return an error, never assume the condition holds.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Lock contention** — Time threads spend blocked entering the monitor. High contention turns the guarded section into a serialization bottleneck.
-- **Waiting-thread count** — How many threads are parked on the condition. A queue that never drains points at a missed or too-narrow wakeup.
+- **Lock contention** — Time threads spend blocked entering the monitor. High contention turns the guarded section into a serialization bottleneck. Compare p99 time blocked entering the monitor with the critical-section length; contention is high when waiting exceeds holding.
+- **Waiting-thread count** — How many threads are parked on the condition. A queue that never drains points at a missed or too-narrow wakeup. Alert when waiters stay above zero while the guard is true for longer than the p99 wait.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Lost wakeup** — Calling notify() instead of notifyAll(), or signaling before the waiter waits, can leave a thread parked forever while work is available.
+- **Lost wakeup** — notify() on a wait set shared by several conditions wakes the wrong waiter, or a waiter tests its guard outside the lock, leaving a thread parked while work is available. A guard re-tested in a loop under the lock makes signal-before-wait harmless.
 - **Spurious wakeup** — A thread can return from wait() without being signaled; testing the guard with if instead of a while loop lets it proceed on a false premise.
-- **Nested-monitor deadlock** — Holding one monitor while waiting on another, in inconsistent order across threads, deadlocks the set.
+- **Nested-monitor deadlock** — Holding one monitor while waiting on another, in inconsistent order across threads, deadlocks the set. Confirm with a thread dump showing a cycle of lock holders; fix by consistent lock order or by releasing before the nested call.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -209,8 +209,8 @@ func (b *BoundedBuffer) Take() (item int) {
 
 **Combines with**
 
-- [Read-Write Lock](./rw-lock.md) — A read-write lock is a finer-grained monitor
 - [Producer-Consumer](./producer-consumer.md) — A monitor with not-full and not-empty conditions is the standard in-process bounded buffer
+- [Read-Write Lock](./rw-lock.md) — A monitor can guard its state with a read-write lock, so read-only methods run in parallel
 
 **Alternative to**
 

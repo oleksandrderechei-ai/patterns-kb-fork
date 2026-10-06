@@ -73,7 +73,7 @@ sequenceDiagram
 - **[Producer-Consumer with a bounded queue](./producer-consumer.md)** — The simplest form: the producer blocks (or waits) once the queue hits capacity, and draining it is itself the signal to resume.
 - **Credit / window-based flow control** — The receiver advertises how much it can accept — TCP's window, HTTP/2 and gRPC's flow-control credits — and the sender never exceeds that budget.
 - **Reactive pull (`request(n)`)** — The consumer explicitly asks for `n` items before the producer emits them, inverting push into a demand-driven pull, as in Reactive Streams.
-- **[Load shedding](../distributed/resilience/load-shedding.md) as fallback** — When there's no time to wait for the signal to propagate, drop the oldest or newest items instead of blocking — trades completeness for staying alive.
+- **[Load shedding](../distributed/resilience/load-shedding.md) as fallback** — When there is no time to wait for the signal to propagate, drop the oldest or newest items instead of blocking. This is not backpressure itself, since the sender is never told; it trades completeness for a bounded queue.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -83,16 +83,16 @@ sequenceDiagram
 
 - **Keeps memory bounded** — the producer slows instead of a queue growing without limit.
 - **Surfaces the pipeline's real throughput** instead of hiding it behind a swelling buffer.
-- **Degrades gracefully under sustained load** rather than failing catastrophically later.
+- **Degrades gracefully under sustained load** when every hop propagates the signal and the loop is tuned; see the cons otherwise.
 - **Matches the whole pipeline's pace** to its slowest stage instead of its fastest.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **Only works if every stage** between producer and consumer honors the signal.
-- **Pushing a slowdown upstream** can turn one stage's local hiccup into a system-wide one.
+- **Pushing a slowdown upstream** can turn one stage's local hiccup into a system-wide one, because each blocked stage holds threads, connections or memory while it waits.
 - **Adds latency** — producers now wait or throttle instead of firing and forgetting.
-- **Badly tuned feedback loops can oscillate**, stall, or [deadlock](../../hazards/deadlock.md) across stages.
+- **Badly tuned feedback loops oscillate** between stopped and flooded, and a cycle of full bounded buffers between stages can [deadlock](../../hazards/deadlock.md).
 
 ## When to use it
 <!--meta block=usage-->
@@ -123,8 +123,9 @@ class BoundedChannel<T> {
   constructor(private readonly capacity: number) {}
 
   // Producer blocks once the buffer is full — this IS the backpressure.
+  // Sketch only: no close, cancel or timeout on the wait.
   async send(item: T): Promise<void> {
-    if (this.buffer.length >= this.capacity) {
+    while (this.buffer.length >= this.capacity) {
       await new Promise<void>((resolve) => this.producerWaiters.push(resolve));
     }
     this.buffer.push(item);
@@ -139,7 +140,7 @@ class BoundedChannel<T> {
   private drain(): void {
     while (this.buffer.length > 0 && this.consumers.length > 0) {
       this.consumers.shift()!(this.buffer.shift()!);
-      this.producerWaiters.shift()?.(); // freed a slot, unblock a producer
+      this.producerWaiters.shift()?.(); // freed a slot, unblock a producer: resumes at capacity-1, no hysteresis (the explain example resumes lower)
     }
   }
 }
@@ -181,8 +182,8 @@ class BoundedChannel<T> {
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- Bound every buffer in the pipeline; an unbounded queue anywhere defeats the whole scheme.
-- Verify the signal propagates end to end; the slowest hop that ignores it is where memory grows.
+- Bound every buffer upstream of the slowest stage; an unbounded queue there is where memory grows.
+- Verify the signal propagates end to end: pause the consumer in a load test and confirm producer wait time rises at every upstream stage.
 - Choose an explicit overflow policy (block, drop-oldest, or drop-newest) for when waiting is unacceptable.
 - Instrument queue depth and producer wait time to see backpressure engage before it becomes an OOM.
 
@@ -219,6 +220,7 @@ class BoundedChannel<T> {
 - [Channels](./channels.md) — A bounded channel is one way to apply it
 - [Ring Buffer](./ring-buffer.md) — A bounded ring gives backpressure a visible place to act
 - [Polling Consumer](../messaging/polling-consumer.md) — A consumer that pulls at its own pace is the simplest form of backpressure
+- [Thread Pool](./thread-pool.md) — A pool's full queue is where the slow-down signal fires
 
 **Alternative to**
 
@@ -232,6 +234,10 @@ class BoundedChannel<T> {
 
 - [Unbounded Queue](../../hazards/unbounded-queue.md) — Signal the producer to slow down before the buffer overflows
 - [Noisy Neighbour](../../hazards/noisy-neighbour.md) — Without a slow-down signal a batch job floods a shared pool
+
+**Exposed to**
+
+- [Deadlock](../../hazards/deadlock.md) — Can fall into deadlock when stages joined by full bounded buffers form a cycle and each waits on the other to drain
 
 **Demonstrated by**
 

@@ -21,7 +21,7 @@ Many operations cost about the same whether they carry one item or a hundred, su
 ## Explained
 <!--meta block=explain-->
 
-Batching collects many small operations and sends them together as one, so the fixed cost of a call, such as a network round trip or a commit, is paid once for the whole group. The group goes out when it reaches a size limit or when a short timer, the linger time, runs out, whichever comes first. Choose it over one call per item when that fixed cost is larger than the cost of the data itself, which is usual for database writes, network calls and disk flushes. Gains of ten times are common. At low traffic the trade flips, because items wait for a group that fills slowly, so use an adaptive size if your load spans both ranges.
+Batching collects many small operations and sends them together as one, so the fixed cost of a call, such as a network round trip or a commit, is paid once for the whole group. The group goes out when it reaches a size limit or when a short timer, the linger time, runs out, whichever comes first. Choose it over one call per item when that fixed cost is larger than the cost of the data itself, which is usual for database writes, network calls and disk flushes. The gain is capped near the ratio of fixed cost to per-item cost; the example below gives about 29 times. At low traffic the trade flips, because items wait for a group that fills slowly, so flush at once when idle, or shrink the linger time as arrivals slow, if your load spans both ranges.
 
 - **Items wait** Keep the linger time within a delay you can defend; under load the size limit fires first.
 - **Buffer memory** Cap the buffer in bytes and make producers wait when it is full.
@@ -32,7 +32,7 @@ Batching collects many small operations and sends them together as one, so the f
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Why does one trip beat ten? Step 4 pays the round-trip, the fsync or the kernel launch once for the whole group, and step 3 is what stops an item waiting forever for that group to fill."
+```mermaid caption="Why does one trip beat ten? The flush pays the round-trip, the fsync or the starting of a GPU job once for the whole group, and the linger timer is what stops an item waiting forever for that group to fill."
 flowchart LR
     P["Producers"]:::ext
     subgraph Batcher["One flush pays the fixed cost once"]
@@ -55,6 +55,7 @@ flowchart LR
 - **Micro-batching** — Form very small groups on a tight timer so latency stays bounded while the fixed cost is still amortized across a handful of items. It is the middle ground between one-at-a-time and large batches, common in stream processing.
 - **Client-side vs. server-side** — The caller groups its own requests and sends them to a bulk endpoint, or the server coalesces incoming requests from many callers before doing the work. Client-side needs no server change; server-side batches across independent clients that cannot cooperate.
 - **Dynamic / adaptive batching** — Grow the batch size as load rises and shrink it when the system is idle, so you amortize hard under pressure but do not add latency when there is nothing to amortize.
+- **Opportunistic (group commit)** — Send whatever arrived while the previous call was running, with no timer, so batches grow only under load and an idle system adds no wait.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -65,15 +66,16 @@ flowchart LR
 - **Higher throughput** — the fixed per-operation cost is amortized across the whole group.
 - **Fewer round-trips**, syscalls, and commits for the same amount of work.
 - **Uses bulk-efficient resources well** — DB bulk inserts, GPU kernels, vectorized paths.
-- **Smooths bursty load**: spikes fill larger groups instead of overwhelming the downstream.
+- **Absorbs bursts** into fewer, larger calls while the buffer is bounded; each call is heavier, and past the bound memory grows or producers wait.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Added latency** — items wait for the group to fill before anything happens.
+- **Added latency**: each item waits up to the linger time, and at low arrival rates the timer fires on near-empty groups, so you pay that wait for no throughput gain.
 - **Bigger blast radius** — a single failed group can affect many items at once.
 - **Costs memory** to hold in-flight items until the flush.
 - **Partial-failure handling is harder** — which items in the group succeeded, and which must be retried?
+- **Buffered items are lost** if the process dies before the flush; acknowledge callers only after the flush when loss is unacceptable.
 
 ## When to use it
 <!--meta block=usage-->
@@ -99,30 +101,36 @@ flowchart LR
 
 ```typescript summary="TypeScript — buffer calls, flush on size or a linger timeout"
 class Batcher<In, Out> {
-  private buffer: { item: In; resolve: (o: Out) => void }[] = [];
+  private buffer: { item: In; resolve: (o: Out) => void; reject: (e: unknown) => void }[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
-
   constructor(
     private readonly run: (items: In[]) => Promise<Out[]>,
     private readonly maxSize = 100,
     private readonly lingerMs = 10,
+    private readonly maxBuffered = 1000,
   ) {}
-
   submit(item: In): Promise<Out> {
-    return new Promise<Out>((resolve) => {
-      this.buffer.push({ item, resolve });
+    if (this.buffer.length >= this.maxBuffered)
+      return Promise.reject(new Error("buffer full")); // bound: reject here, or await capacity
+    return new Promise<Out>((resolve, reject) => {
+      this.buffer.push({ item, resolve, reject });
       if (this.buffer.length >= this.maxSize) this.flush();      // size trigger
       else this.timer ??= setTimeout(() => this.flush(), this.lingerMs); // time trigger
     });
   }
-
   private async flush() {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     const group = this.buffer;
     this.buffer = [];
     if (group.length === 0) return;
-    const results = await this.run(group.map((g) => g.item));
-    group.forEach((g, i) => g.resolve(results[i]));  // hand each caller its result
+    // concurrent flushes are not capped here; add a max-in-flight limit if the downstream needs one
+    try {
+      const results = await this.run(group.map((g) => g.item));
+      if (results.length !== group.length) throw new Error("result count mismatch");
+      group.forEach((g, i) => g.resolve(results[i])); // hand each caller its result
+    } catch (e) {
+      group.forEach((g) => g.reject(e)); // per-item isolation or retry would go here
+    }
   }
 }
 
@@ -144,8 +152,8 @@ class Batcher<In, Out> {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **max batch size** — the item or byte ceiling that forces a flush
-- **linger / flush interval** — the maximum time an item waits before the group ships, even under-filled
+- **max batch size** — the item or byte ceiling that forces a flush; raise it until throughput per item stops improving or the downstream per-call limit is reached
+- **linger / flush interval** — the maximum time an item waits before the group ships, even under-filled; keep it within the latency headroom left after the downstream call time, and note that a linger shorter than the gap between arrivals ships single items
 - **buffer bound** — cap on in-flight items or bytes held in memory
 
 ### Signals to watch
@@ -154,13 +162,14 @@ class Batcher<In, Out> {
 - **batch fill ratio** — average items per flush — low means linger is dominating and you are paying latency for little gain
 - **items waiting / queue depth** — how much work is buffered ahead of the next flush
 - **added p99 latency** — the tail latency the wait introduces
+- **flush reason ratio** — share of flushes fired by size versus the linger timer, plus downstream time per batch; shows whether to raise size or linger
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
 - **under-fill at low load** — batches ship half-empty on the linger timer, so you pay latency without the throughput win
 - **memory pressure under bursts** — an unbounded buffer grows without limit when producers outrun the flush
-- **poison item** — one bad record can fail the whole group unless failures are isolated
+- **poison item** — one bad record can fail the whole group unless failures are isolated, for example by splitting a failed group in half and retrying each half, or retrying members singly
 
 ### Readiness checklist
 <!--meta polarity=check-->

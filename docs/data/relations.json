@@ -4049,13 +4049,6 @@
       "note_b": "Under deadlock nobody progresses; under starvation the system progresses fine while one victim never does"
     },
     {
-      "a": "actor-model",
-      "verb": "prevents-hazard",
-      "b": "deadlock",
-      "note_a": "One thread owns the state and messages queue — no shared locks to deadlock on",
-      "note_b": "One owner per state, coordinating by messages — no shared locks left to form a cycle"
-    },
-    {
       "a": "timeout-deadline",
       "verb": "prevents-hazard",
       "b": "deadlock",
@@ -4341,13 +4334,6 @@
       "b": "race-condition",
       "note_a": "No sharing means no interleaving — the race cannot exist",
       "note_b": "Give one owner the state so there's no sharing to race over at all"
-    },
-    {
-      "a": "thread-confinement",
-      "verb": "prevents-hazard",
-      "b": "deadlock",
-      "note_a": "No shared locks to acquire in conflicting orders, so no cycle can form",
-      "note_b": "No shared locks to acquire in conflicting orders, so no cycle can form"
     },
     {
       "a": "minimize-coordination",
@@ -4775,27 +4761,6 @@
       "b": "unbounded-queue",
       "note_a": "A bounded blocking queue makes a fast producer wait instead of growing without limit",
       "note_b": "A bounded blocking queue makes a fast producer wait instead of growing without limit"
-    },
-    {
-      "a": "semaphore",
-      "verb": "prevents-hazard",
-      "b": "unbounded-queue",
-      "note_a": "Permits are a fixed budget — work blocks at the cap instead of piling into memory",
-      "note_b": "Fixed permits cap in-flight work when there's no queue object to bound"
-    },
-    {
-      "a": "semaphore",
-      "verb": "prevents-hazard",
-      "b": "resource-leak",
-      "note_a": "Acquire-with-timeout and guaranteed release keep permits from draining away",
-      "note_b": "Acquire-with-timeout and a guaranteed release keep permits from draining away"
-    },
-    {
-      "a": "semaphore",
-      "verb": "prevents-hazard",
-      "b": "thundering-herd",
-      "note_a": "A counted gate turns a released crowd into a served queue",
-      "note_b": "Permits admit a fixed number, and release wakes one waiter"
     },
     {
       "a": "load-leveling",
@@ -5286,13 +5251,6 @@
       "b": "optimistic-concurrency-control",
       "note_a": "The same read-verify-retry shape, but within one process and over a single word",
       "note_b": "The transactional form of the same optimism, across a whole read-modify-write cycle"
-    },
-    {
-      "a": "monitor-object",
-      "verb": "combines-with",
-      "b": "rw-lock",
-      "note_a": "A read-write lock is a finer-grained monitor",
-      "note_b": "A read-write lock is a finer-grained monitor"
     },
     {
       "a": "monitor-object",
@@ -11133,13 +11091,6 @@
       "note_b": "The monitor makes callers run the method under a lock, where an active object runs it for them"
     },
     {
-      "a": "active-object",
-      "verb": "alternative-to",
-      "b": "thread-confinement",
-      "note_a": "Confines state to one thread and lets callers reach it through a queued request",
-      "note_b": "Confinement leaves each thread its own data and needs no queue"
-    },
-    {
       "a": "channels",
       "verb": "combines-with",
       "b": "producer-consumer",
@@ -13446,6 +13397,111 @@
       "b": "object-storage",
       "note_a": "Large content gets its own store type when an area is split by technology",
       "note_b": "A natural target store when an area's large content is split out"
+    },
+    {
+      "a": "thread-pool",
+      "verb": "exposed-to",
+      "b": "starvation",
+      "note_a": "Can fall into starvation when long or blocking tasks hold every worker",
+      "note_b": "A fixed pool is a common site where long tasks crowd out the rest"
+    },
+    {
+      "a": "backpressure",
+      "verb": "combines-with",
+      "b": "thread-pool",
+      "note_a": "A pool's full queue is where the slow-down signal fires",
+      "note_b": "A bounded queue in front of the pool rejects or parks submitters instead of growing"
+    },
+    {
+      "a": "future-promise",
+      "verb": "often-confused-with",
+      "b": "async-request-reply",
+      "note_a": "A future is the in-process handle; async-request-reply hands back a pollable handle across a network boundary",
+      "note_b": "A future is the in-process handle for a result not yet ready; this pattern is the same handle idea across a network boundary"
+    },
+    {
+      "a": "producer-consumer",
+      "verb": "combines-with",
+      "b": "competing-consumers",
+      "note_a": "Many consumers draining one buffer is this pattern scaled out.",
+      "note_b": "The in-process base shape the competing workers share."
+    },
+    {
+      "a": "actor-model",
+      "verb": "prevents-hazard",
+      "b": "deadlock",
+      "note_a": "Removes lock-ordering deadlocks: no shared locks to take. A cycle of request-reply waits can still stall actors, so put a timeout on every ask",
+      "note_b": "Actors remove lock-ordering deadlocks by giving each piece of state one owner; circular request-reply waits can still stall them, so time out every ask"
+    },
+    {
+      "a": "semaphore",
+      "verb": "prevents-hazard",
+      "b": "unbounded-queue",
+      "note_a": "Bounds in-flight work at the permit count; waiters still queue unless acquire is timed or the caller count is capped",
+      "note_b": "Fixed permits cap in-flight work when there's no queue object to bound"
+    },
+    {
+      "a": "semaphore",
+      "verb": "prevents-hazard",
+      "b": "resource-leak",
+      "note_a": "Only with release in a finally block and a timed acquire; without them a leaked permit drains the semaphore itself",
+      "note_b": "Acquire-with-timeout and a guaranteed release keep permits from draining away"
+    },
+    {
+      "a": "semaphore",
+      "verb": "prevents-hazard",
+      "b": "thundering-herd",
+      "note_a": "Throttles a released crowd to N at a time rather than eliminating it; the rest wait their turn",
+      "note_b": "Permits admit a fixed number, and release wakes one waiter"
+    },
+    {
+      "a": "backpressure",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "Can fall into deadlock when stages joined by full bounded buffers form a cycle and each waits on the other to drain",
+      "note_b": "A cycle of stages with full bounded buffers deadlocks when each waits on the other's slow-down signal"
+    },
+    {
+      "a": "rw-lock",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "Can fall into deadlock when two readers both try to upgrade to the write lock, or a reader re-acquires while a writer waits",
+      "note_b": "Two readers that each try to upgrade a read hold wait on each other forever"
+    },
+    {
+      "a": "monitor-object",
+      "verb": "combines-with",
+      "b": "rw-lock",
+      "note_a": "A monitor can guard its state with a read-write lock, so read-only methods run in parallel",
+      "note_b": "A monitor can guard its state with a read-write lock instead of a mutex, so read-only methods run together"
+    },
+    {
+      "a": "thread-confinement",
+      "verb": "prevents-hazard",
+      "b": "deadlock",
+      "note_a": "No shared locks, so no lock-order cycle; owners that wait on each other's queues can still deadlock",
+      "note_b": "Confinement removes lock-order cycles, but owners blocked on each other's queues can still deadlock"
+    },
+    {
+      "a": "active-object",
+      "verb": "alternative-to",
+      "b": "thread-confinement",
+      "note_a": "Confines state to one thread and lets callers reach it through a queued request",
+      "note_b": "Both confine state to one thread; Active Object adds a method-call proxy, a queue and futures, while confinement only requires one owner"
+    },
+    {
+      "a": "scheduling",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "Many jobs on one cron instant fire together; jitter spreads them",
+      "note_b": "Shared schedules such as midnight release the crowd at once"
+    },
+    {
+      "a": "lock-free",
+      "verb": "alternative-to",
+      "b": "thread-confinement",
+      "note_a": "Makes the shared word cheap to update; confinement removes the sharing so no atomics are needed",
+      "note_b": "Share one word without a lock instead of giving it one owner"
     }
   ],
   "group_order": {

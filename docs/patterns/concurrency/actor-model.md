@@ -20,14 +20,14 @@ Threads and locks need a lock per shared variable and one lock order across the 
 ## Explained
 <!--meta block=explain-->
 
-An actor is a small unit that owns private data and a mailbox, a queue of messages sent to it. It handles one message at a time, and in reply it may send messages, create new actors or choose how it handles the next message. No other actor touches its data, so two threads never change the same value and you need no locks. Carl Hewitt introduced the model in 1973, and Erlang made it a production discipline. Choose it over threads plus locks when you have many independent stateful things, such as user sessions or devices, whose failures should stay local: a supervisor, the actor that watches it, restarts a crashed actor. A send looks like a network call, so the same program runs in one process or a cluster. For stateless bulk work use a thread pool, and for a rule across actors use a saga.
+An actor is a small unit that owns private data and a mailbox, a queue of messages sent to it. It handles one message at a time, and in reply it may send messages, create new actors or choose how it handles the next message. No other actor touches its data, so two threads never change the same value and you need no locks. Carl Hewitt introduced the model in 1973, and Erlang made it a production discipline. Choose it over threads plus locks when you have many independent stateful things, such as user sessions or devices, whose failures should stay local: a supervisor, an actor that watches its children, restarts a crashed one. A send looks like a network call, so the same program runs in one process or a cluster. For stateless bulk work use a thread pool, and for a rule across actors use a saga, a chain of steps with undo actions.
 
-- **Message order is weak.** Order between three parties is not guaranteed, so make handlers safe to run twice.
+- **Message order is weak.** Order across three parties is not guaranteed, and a retry or redelivery can repeat one, so make handlers order-tolerant and idempotent.
 - **Causes spread over mailboxes.** Copy a correlation ID into every message from the first one.
 - **A slow handler stalls its mailbox.** Keep handlers short and give blocking work its own threads.
 - **Unbounded mailboxes.** They end in an out-of-memory kill, so bound every mailbox that takes outside input.
 
-**Example.** A chat server keeps one actor per room, so 10,000 rooms are 10,000 mailboxes. Each handler takes 1 ms, so a room clears 1,000 messages a second. A hot room receives 3,000 a second, so its mailbox grows by 2,000 a second. At 200 bytes a message that is 400 KB a second, about 1.4 GB an hour, until the process is killed and every room goes down with it. With a mailbox bound of 5,000, the hot room fills in 2.5 s and senders are told to slow down, so the damage stays in that room. The cost is that the hot room delays or refuses messages, and senders must cope.
+**Example.** A chat server keeps one actor per room, so 10,000 rooms are 10,000 mailboxes. Each handler takes 1 ms, so a room clears 1,000 messages a second. A hot room receives 3,000 a second, so its mailbox grows by 2,000 a second. At 200 bytes a message that is 400 KB a second, about 1.4 GB an hour, until the process hits its memory limit and is killed, and every room goes down with it. With a mailbox bound of 5,000, the hot room fills in 2.5 s and senders are told to slow down, so the damage stays in that room. The cost is that the hot room delays or refuses messages, and senders must cope.
 
 ## How it works
 <!--meta block=structure-->
@@ -54,7 +54,7 @@ flowchart LR
 
 - **Classical actors (Hewitt/Agha)** — The original formalism — pure message passing, no shared state, every send asynchronous and non-blocking. Every other flavor below specializes this baseline.
 - **Erlang/OTP processes** — Lightweight BEAM processes with no shared heap, linked into supervision trees that restart a crashed process instead of trying to keep it alive — the "let it crash" philosophy.
-- **[Immutability](../functional/immutability.md) of messages** — Messages are copied, not shared, value objects — even two actors in the same process can't alias each other's state through a message, closing the one loophole a naive implementation could leave open.
+- **[Immutability](../functional/immutability.md) of messages** — Messages are immutable values or copies, never shared, so even two actors in one process cannot alias each other's state through a message. Copying large messages has a cost.
 - **[Message Queue](../messaging/message-queue.md)-backed mailboxes** — Back the mailbox with a durable, external broker instead of an in-memory list, so messages survive an actor restart or a node failure and can be replayed.
 - **[Backpressure](./backpressure.md)** — Bound the mailbox and block, drop, or signal the sender once it's full, so a slow actor pushes back on load instead of growing its queue until memory runs out.
 - **Virtual actors (Orleans grains)** — The runtime activates an actor on its first message and deactivates it when idle; you address a logical identity and never place or reap an instance by hand. Location stays transparent to the caller, but the placement policy itself is a knob — random, prefer-local, load-aware, or your own — so locality and hot-actor spread are tunable when they start to matter.
@@ -66,9 +66,9 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **No shared mutable state** inside an actor to lock, so classic data races are structurally impossible there.
-- **The same code runs** whether actors sit in one process or across a cluster — a send already is the network boundary.
+- **The same code runs** in one process or across a cluster, because a send already is the network boundary; handlers must still tolerate remote latency, loss and duplicates.
 - **A crashed actor's damage stays local**, so a supervisor can restart it without corrupting anyone else's state.
-- **Scales down to a handful of actors** on one core and up to millions of lightweight processes.
+- **Scales down to a handful of actors** on one core and up to very many lightweight processes in runtimes built for it, such as Erlang's BEAM.
 
 ### Cons
 <!--meta polarity=con-->
@@ -77,6 +77,7 @@ flowchart LR
 - **Debugging trades a linear call stack** for causality scattered across mailboxes and logs, which is harder to step through.
 - **A message handler that blocks** or runs long stalls every message queued behind it in that actor's mailbox.
 - **Unbounded mailboxes can hide an overload problem** until memory runs out — needs deliberate backpressure design.
+- **A send can be lost** with no error and no ack; reliable delivery means acks, retries and deduplication you build yourself.
 
 ## When to use it
 <!--meta block=usage-->
@@ -103,6 +104,7 @@ flowchart LR
 type Message = { type: string; payload?: unknown };
 
 abstract class Actor {
+  // unbounded here; a real mailbox needs a bound and an overflow policy
   private mailbox: Message[] = [];
   private draining = false;
 
@@ -116,10 +118,15 @@ abstract class Actor {
   private async drain(): Promise<void> {
     if (this.draining) return;         // already processing
     this.draining = true;
-    while (this.mailbox.length > 0) {
-      await this.receive(this.mailbox.shift()!); // one message at a time
+    try {
+      while (this.mailbox.length > 0) {
+        await this.receive(this.mailbox.shift()!); // one message at a time
+      }
+    } catch (err) {
+      console.error("receive failed; a supervisor would restart here", err);
+    } finally {
+      this.draining = false; // a throw no longer wedges the actor
     }
-    this.draining = false;
   }
 }
 
@@ -163,7 +170,7 @@ class Counter extends Actor {
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **hot-actor serialization** — one actor owns the popular entity and processes strictly one message at a time — the whole system's throughput ceiling becomes that single mailbox
+- **hot-actor serialization** — one actor owns the popular entity and processes strictly one message at a time — throughput for that entity is capped at one mailbox's rate; unrelated actors are unaffected unless they wait on it
 - **poison-message restart storm** — a malformed message crashes the handler, the supervisor restarts the actor, the message or its sender retries — a tight loop that burns CPU and floods logs until the intensity cap trips
 - **unbounded mailbox growth** — a slow actor fed by fast producers grows its queue silently; the failure surfaces as an out-of-memory kill far from the actor that caused it
 - **blocking on the shared dispatcher** — one handler making a synchronous I/O call parks a carrier thread; enough of them and every actor on that dispatcher stops, not just the guilty one
@@ -173,7 +180,7 @@ class Counter extends Actor {
 
 - bound the mailboxes fed by external input, and decide the overflow behavior before load decides it for you
 - keep handlers non-blocking; give unavoidable blocking work its own dispatcher or pool
-- make handlers idempotent or park poison messages aside — restarts and redelivery mean a message can arrive twice
+- make handlers idempotent or park poison messages aside: senders that retry, or durable mailboxes that redeliver, can deliver a message twice
 - monitor per-actor mailbox depth and message age, not just aggregate throughput
 - put an explicit timeout on every request-reply interaction and test the timeout path
 
@@ -213,7 +220,7 @@ class Counter extends Actor {
 
 **Prevents**
 
-- [Deadlock](../../hazards/deadlock.md) — One thread owns the state and messages queue — no shared locks to deadlock on
+- [Deadlock](../../hazards/deadlock.md) — Removes lock-ordering deadlocks: no shared locks to take. A cycle of request-reply waits can still stall actors, so put a timeout on every ask
 
 **Demonstrated by**
 
