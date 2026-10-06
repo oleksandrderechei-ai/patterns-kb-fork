@@ -23,7 +23,7 @@ The Model Context Protocol is a standard interface through which a server publis
 
 The Model Context Protocol is a standard interface through which a server publishes tools to call, data to read and prompt templates, and any AI application that speaks the protocol asks the server what it offers instead of being built already knowing. Without it, three assistants and three systems need nine adapters, each with its own login handling and upgrades, a count that grows as the product of the two lists instead of the sum. Adopt it when a capability crosses a team or product boundary; skip it for an application's own fixed set of tools, where a plain function call costs nothing.
 
-- **Context load.** Every tool's name, description and schema is text the model reads first, so use a gateway and load tools on demand.
+- **Context load.** Every tool's name, description and schema is text the model reads first, so load only the tools a task needs.
 - **Untrusted output.** Server output lands next to your instructions, so allow only approved servers and check results before they trigger an action.
 - **Unclear permission.** Whether host or server holds the user's permission is ambiguous, so decide it and pass narrow tokens.
 - **Missed notifications.** Notifications can be missed, so keep polling as the path you trust.
@@ -96,7 +96,7 @@ sequenceDiagram
 - **Turns an N×M integration problem into N+M**: a capability is written once and reached by every conforming application.
 - **The tool list changes without a release**, because the application discovers it rather than declaring it.
 - **Capability teams** and application teams are separated by a contract instead of by a code review.
-- **Local and remote capabilities look** identical to the caller, so a prototype can move to a service without touching the application.
+- **Local and remote servers expose** the same listing and call interface, so a prototype can move to a service with the application's tool code unchanged; authentication, timeouts and outage handling still change.
 - **Available capability can vary per user**, per workspace and per permission, since the listing is a run-time answer.
 
 ### Cons
@@ -104,11 +104,11 @@ sequenceDiagram
 
 - **Every tool's name**, description and schema is spent from the context budget before any work happens. A large federation crowds out the task.
 - **Server output lands in the model's context**, so a compromised or hostile server can inject instructions rather than merely return bad data.
-- **Tool descriptions are model-facing prose**. A server author is writing prompt text whether they realise it or not, and a badly described tool is simply never called.
+- **Tool descriptions are model-facing prose**, so a server author is writing prompt text, and a badly described tool is simply never called.
 - **Best-effort change notifications** mean a client that does not also poll will act on a stale listing.
 - **Consent is decided at the protocol boundary** — deciding which end holds the user's authority is harder than the transport.
 - **The primitive set has already** gained and deprecated members, so both ends negotiate versions rather than assume them.
-- **Statelessness buys horizontal scaling** and charges for it on every message, since version and capability metadata travel with each request.
+- **Where a server keeps no session state** between calls, version and capability metadata travel with every request: horizontal scaling is bought at a per-message cost.
 
 ## When to use it
 <!--meta block=usage-->
@@ -119,7 +119,7 @@ sequenceDiagram
 - **More than one AI application** needs the same data source or tool, or one application needs many.
 - **The set of available capabilities** has to change at run time — per user, per workspace, per permission.
 - **The capability is owned** by a different team than the application, and a stable contract is what separates them.
-- **Swapping prototype for hosted service** — you want to swap a local prototype for a hosted service without changing the caller.
+- **Swapping prototype for hosted service** — a local prototype has to become a hosted service without changing the caller.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -150,11 +150,12 @@ server.tool({
   content: [{ type: "text", text: await search(service, since) }],
 }));
 
-// Client side: discover, then list, then call. Nothing about the tool was compiled in.
+// Client side (schematic calls, not a specific SDK): discover, then list, then call. Nothing about the tool was compiled in.
 const capabilities = await client.discover();          // versions + what this server supports
 if (!capabilities.tools) throw new Error("server offers no tools");
 
-const { tools } = await client.listTools();            // cacheable; re-list on notification
+const { tools } = await client.listTools();            // cacheable; re-list on notification and on a timer, since notifications are best-effort
+// also: set a per-call timeout and pass a scoped token on each request
 registry.add(tools);                                   // these schemas are what the model sees
 
 const result = await client.callTool("incident_search", { service: "checkout" });
@@ -164,7 +165,7 @@ const result = await client.callTool("incident_search", { service: "checkout" })
 ## In the wild
 <!--meta block=wild-->
 
-- **Reference server collection** — The protocol project maintains filesystem, database and search servers as the canonical examples of the three server primitives. {#wild-reference-servers}
+- **Reference server collection** — The protocol project maintains filesystem, database and search servers as canonical examples of servers exposing tools, resources and prompts. {#wild-reference-servers}
 - **MCP Gateway** — A reverse proxy and management layer that fronts many servers with session-aware routing and lifecycle management, so a fleet is administered as one endpoint. {#wild-mcp-gateway}
 - **agentgateway** — An agentic proxy that applies authorization and policy to both tool traffic and cross-agent traffic on the same path. {#wild-agentgateway}
 
@@ -175,7 +176,7 @@ const result = await client.callTool("incident_search", { service: "checkout" })
 <!--meta polarity=knob-->
 
 - **Which servers a workspace may use** — An allowlist, not a discovery free-for-all. Each server is a trust boundary, so this is the security control, not a convenience setting.
-- **Tool-listing budget** — The share of the context window you are willing to spend on schemas before any work starts. It is what forces progressive discovery rather than the union of every server.
+- **Tool-listing budget** — The share of the context window you will spend on schemas before any work starts. Measure tokens per tool (in the example above, 500 each: 60 tools is 30,000, 5 tools is 2,500) and set the share from that. It forces progressive discovery rather than the union of every server.
 - **Listing cache lifetime** — How long a discovered capability or tool list is reused. Long saves round trips; short catches a server whose tools changed.
 - **Per-call timeout** — A server that hangs otherwise holds a turn open for as long as the transport allows.
 - **Transport per server** — Local child process or remote HTTP. It decides the privilege the server runs with and whether authentication is a question at all.
