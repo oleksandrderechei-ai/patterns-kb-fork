@@ -76,11 +76,11 @@ The deeper escape is to **not share the locks at all**: confine each piece of st
 
 **Mitigated by**
 
-- [Actor Model](../patterns/concurrency/actor-model.md) — One owner per state, coordinating by messages — no shared locks left to form a cycle
 - [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) — A lock-acquisition timeout is the backstop that breaks an otherwise indefinite wait
 - [Thread Confinement](../patterns/concurrency/thread-confinement.md) — No shared locks to acquire in conflicting orders, so no cycle can form
 - [Minimize Coordination](../principles/minimize-coordination.md) — Removing shared locks removes the cycle rather than managing it
 - [Lock-Free](../patterns/concurrency/lock-free.md) — Remove the locks entirely and the hold-and-wait precondition disappears
+- [Actor Model](../patterns/concurrency/actor-model.md) — Actors remove lock-ordering deadlocks by giving each piece of state one owner; circular request-reply waits can still stall them, so time out every ask
 
 **Threatens**
 
@@ -88,5 +88,7 @@ The deeper escape is to **not share the locks at all**: confine each piece of st
 - [Pessimistic Locking](../patterns/distributed/coordination/pessimistic-locking.md) — Row locks taken in inconsistent order across transactions form a wait cycle
 - [Monitor Object](../patterns/concurrency/monitor-object.md) — Nested monitor calls take locks in whatever order the call chain dictates
 - [Two-Phase Commit](../patterns/distributed/coordination/two-phase-commit.md) — Participants holding locks while waiting on the coordinator can wait in a cycle
+- [Backpressure](../patterns/concurrency/backpressure.md) — A cycle of stages with full bounded buffers deadlocks when each waits on the other's slow-down signal
+- [Read-Write Lock](../patterns/concurrency/rw-lock.md) — Two readers that each try to upgrade a read hold wait on each other forever
 
 <!-- relationships:end -->

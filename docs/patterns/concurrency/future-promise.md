@@ -28,7 +28,7 @@ A future is a placeholder for a result that is not ready yet. You start the work
 - **Lost stack traces** Traces lose the original caller; log a request id at each step.
 - **One value only** A future settles once; use a stream when you expect many values over time.
 
-**Example.** A page needs three independent calls: user 80 ms, orders 120 ms and recommendations 200 ms. One after another they take 400 ms. Start all three, get three futures, and wait for all of them: the page takes 200 ms, the slowest. If recommendations fail at 30 ms and nothing handles that error, the page may wait forever or show nothing; a handler on that future returns an empty list and the page loads at 120 ms plus rendering. The cost shows when the user leaves at 50 ms: all three calls keep running, because nothing told them to stop.
+**Example.** A page needs three independent calls: user 80 ms, orders 120 ms and recommendations 200 ms. One after another they take 400 ms. Start all three, get three futures, and wait for all of them: the page takes 200 ms, the slowest. If recommendations fail at 30 ms and nothing handles that error, the join rejects at 30 ms and the page shows nothing; a handler on that future returns an empty list and the page loads at 120 ms plus rendering. The cost shows when the user leaves at 50 ms: all three calls keep running, because nothing told them to stop.
 
 ## How it works
 <!--meta block=structure-->
@@ -67,8 +67,8 @@ stateDiagram-v2
 - **Deferred** — An explicit producer/consumer split: a small object exposing `resolve`/`reject` alongside the future itself, for cases where an executor-function style doesn't fit — e.g. resolving from an event handler registered elsewhere.
 - **Eager vs. lazy futures** — JS and Java promises start running the moment they're constructed. Others — C++'s `std::async` with `std::launch::deferred`, effect types in functional libraries — do nothing until something actually asks for the result, trading immediacy for control over when, and how often, the work runs.
 - **Cancellable futures** — A plain `Promise` has no cancel; Java's `Future#cancel` and Guava's `ListenableFuture` expose one, at the cost of the underlying operation cooperating with interruption.
-- **Combinators** — `all`/`any`/`race`/`allSettled` join many futures into one, so independent async work runs concurrently and is gathered without manual counters or bookkeeping.
-- **Split read and write ends** — C++'s `std::future` is the read-only handle a consumer holds, written through the `std::promise` the producer keeps, and .NET pairs a `Task` with a `TaskCompletionSource`. Java's `Future` is the read-only view and `CompletableFuture` is the end the producer completes. JavaScript's `Promise` joins both: the executor function you pass to its constructor is the producer side.
+- **Combinators** — all/any/race/allSettled join many futures into one, so independent work runs concurrently without manual counters. all rejects on the first failure while the other calls keep running; allSettled waits for every outcome; any fulfils with the first success and rejects only when all fail; race settles with the first outcome of either kind.
+- **Split read and write ends** — C++'s `std::future` is the read-only handle a consumer holds, written through the `std::promise` the producer keeps, and .NET pairs a `Task` with a `TaskCompletionSource`. Java's `Future` is the consumer handle (it can get and cancel, but not complete) and `CompletableFuture` is the end the producer completes. JavaScript's `Promise` joins both: the executor function you pass to its constructor is the producer side.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -79,7 +79,7 @@ stateDiagram-v2
 - **Non-blocking** — the caller gets a handle back immediately and keeps its thread free.
 - **Composable**: chain steps with `then`/`map` instead of nesting callbacks.
 - **One channel for outcomes** — success and failure both flow through the same chain.
-- **Combine many async calls into one** — combinators (`all`, `race`, ...) turn many independent async calls into one.
+- **Combine many async calls into one** — combinators (`all`, `race`, ...) join independent async calls into one future.
 
 ### Cons
 <!--meta polarity=con-->
@@ -128,6 +128,8 @@ class Future<T> {
     const next = new Future<R>();
     const run = () => next.resolve(onFulfilled(this.value as T));
     this.state === "fulfilled" ? run() : this.callbacks.push(run);
+    // … no reject path or timeout here: a throwing onFulfilled leaves next pending forever
+    // real Promises queue settled callbacks on the microtask queue; this sketch runs them inline
     return next;
   }
 }
@@ -155,7 +157,7 @@ price.resolve(100);                           // fires the whole chain
 - **where continuations run** — the completer's thread, a captured context, or an explicit executor — defaults differ per runtime (thenApply vs. thenApplyAsync, ConfigureAwait), and the wrong one runs your callback on a thread you did not expect
 - **completion timeout** — the deadline after which a pending future is failed or given a fallback value; without one, a lost response pends forever and quietly leaks everything awaiting it
 - **cancellation propagation** — whether cancelling the handle actually stops the underlying work — most implementations need explicit cooperation (a token, an interrupt check) or the work runs to completion anyway
-- **fan-out width** — how many joined futures are actually in flight at once; all/gather-style combinators start everything eagerly, so the downstream feels the entire collection unless you batch
+- **fan-out width** — how many joined futures are in flight at once; eager futures (JS, Java) start when created, so building one per item fires them all whatever the combinator does, while lazy types start only when awaited; batch, or cap with a semaphore, so the downstream does not feel the whole collection
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -169,7 +171,7 @@ price.resolve(100);                           // fires the whole chain
 
 - **forever-pending future** — one branch of the producer returns without settling — no error, no timeout, just an await that never wakes and a caller that leaks
 - **swallowed rejection** — the future settles with an error but nothing is attached to observe it; the failure vanishes until a last-resort runtime event fires, or never
-- **sync-over-async deadlock** — blocking on the result from the very thread or context the completion needs; single-threaded contexts and small pools lock up instantly under load
+- **sync-over-async deadlock** — blocking on the result from the very thread or context the completion needs; a single-threaded context deadlocks on the first call, and a pool deadlocks once every one of its threads is blocked this way
 - **unbounded fan-out** — joining a future per item of a large collection starts them all at once — the dependency sees the whole burst, and sockets or memory run out before the join completes
 
 ### Readiness checklist
@@ -215,6 +217,7 @@ price.resolve(100);                           // fires the whole chain
 **Often confused with**
 
 - [Observer](../gof/behavioral/observer.md) — A future settles once; an observable keeps pushing values over time
+- [Asynchronous Request-Reply](../distributed/routing/async-request-reply.md) — A future is the in-process handle; async-request-reply hands back a pollable handle across a network boundary
 
 **Prevents**
 

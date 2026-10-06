@@ -21,12 +21,12 @@ Producers and consumers rarely run at the same speed, so work must wait somewher
 ## Explained
 <!--meta block=explain-->
 
-Producer-consumer puts a queue between code that creates work and code that handles it, so each side runs at its own pace and the creator never waits for the handler. Producers add items to the queue, and a set of consumers take them out. Choose it over calling the handler directly when work arrives in bursts, when creating is faster than handling, or when several workers should share one stream.
+Producer-consumer puts a queue between code that creates work and code that handles it, so each side runs at its own pace and the creator does not wait for the handler while the queue has room; a full bounded queue blocks, drops or rejects. Producers add items to the queue, and a set of consumers take them out. Choose it over calling the handler directly when work arrives in bursts, when creating is faster than handling, or when several workers should share one stream.
 
 - **Shared queue** Many threads change it; use a ready-made thread-safe blocking queue instead of writing the locks yourself.
 - **Full-queue decision** A queue with a size limit must block the producer, drop the item or reject it; pick one on purpose.
 - **Hidden growth** A queue without a limit hides growth until memory runs out; set a limit and watch its depth.
-- **Sizing** Size the consumer count from the arrival rate and the time each item takes.
+- **Sizing** Consumers >= arrival rate x seconds per item, plus headroom; at equal capacity a backlog never clears.
 
 **Example.** Uploads normally arrive at 100 a second and each takes a consumer 50 ms, so one consumer does 20 a second. Eight consumers handle 160 a second, so the normal load fits. A burst of 300 a second for 10 s leaves a backlog of (300 - 160) x 10 = 1,400 items, which fits a queue limit of 2,000. After the burst, the 60 a second of spare capacity clears it in about 23 s. The cost is delay: the last item in the burst waits about 1,400 / 160 = 8.75 s. With five consumers, capacity equals the normal load, so the backlog would never clear.
 
@@ -56,8 +56,8 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Bounded vs. [unbounded](../../hazards/unbounded-queue.md) buffer** — A bounded buffer caps memory use and forces a policy for what happens when it fills; an unbounded one defers that decision until the process runs out of memory.
-- **Multiple producers, multiple consumers** — Any number of producers and consumers can share one buffer as long as access is synchronized — the classic bounded-buffer problem scales cleanly in both directions. Dijkstra posed the problem in its bounded-buffer form in 1965, so the literature still calls it the bounded-buffer problem.
-- **[Backpressure](./backpressure.md)** — When the buffer is full, block the producer, drop the newest or oldest item, or reject outright — the full-policy is the pattern's central design decision.
+- **Multiple producers, multiple consumers** — Any number of producers and consumers can share one buffer if access is synchronized; it scales until contention on the buffer's lock or the consumers' downstream dependency becomes the limit. Dijkstra posed this form in 1965, so the literature still calls it the bounded-buffer problem.
+- **[Backpressure](./backpressure.md)** — When the buffer is full, block the producer or reject the insert, which pushes the slowdown back to it; dropping the newest or oldest item is load shedding instead. This choice is the pattern's central design decision.
 - **[Message Queue](../messaging/message-queue.md)** — Swap the in-process buffer for a durable, out-of-process queue and the same shape survives a crash and spans separate services.
 - **The shape inside other patterns** — A thread pool's work queue, an actor's mailbox, an OS pipe and a streaming pipeline's internal channel are all this shape, so you will meet it inside far more specific-looking patterns.
 
@@ -68,9 +68,9 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Decouples producer and consumer rates** — each runs at its own pace.
-- **Smooths bursts**, absorbing spikes instead of dropping or blocking work immediately.
+- **Smooths bursts**: spikes queue up instead of being dropped or blocked, as long as the backlog stays under the queue limit and consumers catch up afterwards.
 - **Scales each side independently**: add consumers to drain faster, add producers without touching consumers.
-- **The buffer's fullness is a built-in backpressure signal**, not something bolted on afterward.
+- **A bounded buffer's fullness is a built-in backpressure signal**; an unbounded one gives none until memory runs out.
 
 ### Cons
 <!--meta polarity=con-->
@@ -79,6 +79,7 @@ flowchart LR
 - **A bounded buffer forces a full-policy decision** (block, drop, reject) that's easy to get wrong or skip entirely.
 - **An unbounded one hides unchecked memory growth** until the process falls over.
 - **Adds a moving part** — buffer size, wakeups, queue depth — that must be sized and monitored.
+- **Queueing adds delay under load** — as the 8.75 s wait in the example shows; watch queue depth and the age of the oldest item.
 
 ## When to use it
 <!--meta block=usage-->
@@ -146,8 +147,8 @@ func main() {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Queue capacity** — The bound on the shared buffer. It sets how far producers may run ahead before they block and caps the memory the backlog can consume.
-- **Consumer pool size** — Number of consumer threads or workers draining the queue. Too few and the queue backs up; too many and they contend or sit idle for work.
+- **Queue capacity** — The bound on the shared buffer. It sets how far producers may run ahead before they block and caps the memory the backlog can consume. Size it to the backlog a burst creates, (burst rate - service rate) x burst duration, within the memory the items can use; start small and watch depth.
+- **Consumer pool size** — Number of consumer threads or workers draining the queue. Too few and the queue backs up; too many and they contend or sit idle for work. Start from arrival rate x seconds per item, plus headroom, and confirm against consumer idle time.
 - **Full-queue policy** — What an insert does when the buffer is full: block (ArrayBlockingQueue.put), time out (offer with a timeout), or reject the item.
 - **Batch / prefetch size** — How many items a consumer takes per wakeup. Batching amortizes lock and wakeup cost against added latency.
 
@@ -162,14 +163,14 @@ func main() {
 <!--meta polarity=failure-->
 
 - **Unbounded queue to OOM** — An unbounded buffer, such as a LinkedBlockingQueue with no capacity, lets a fast producer grow it until the process runs out of memory.
-- **Deadlock on shutdown** — Consumers blocked on take() never learn that producers are done unless a shutdown or poison-pill protocol wakes them.
-- **Consumer starvation** — If every consumer blocks on a downstream dependency while producers keep filling the queue, the whole pipeline stalls.
+- **Deadlock on shutdown** — Consumers blocked on take() never learn that producers are done unless a shutdown or poison-pill protocol wakes them. With N consumers send N pills or close the channel, and drain pending items first.
+- **Consumer starvation** — If every consumer blocks on a downstream dependency while producers keep filling the queue, the whole pipeline stalls. Time-box downstream calls so a stalled dependency frees the consumer.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - Bound the queue; an unbounded buffer only defers the failure to an OOM.
-- Size the consumer pool to the consumer service rate, not the producer rate.
+- Size the pool so consumer capacity exceeds the normal arrival rate, with headroom; equal capacity never clears a backlog.
 - Define an explicit shutdown or drain protocol (poison pills or channel close) so blocked consumers exit.
 - Instrument queue depth to see which side is the bottleneck.
 
@@ -200,6 +201,7 @@ func main() {
 - [Scheduling](./scheduling.md) — A scheduler feeds timed work into the queue the consumers pull from
 - [Monitor Object](./monitor-object.md) — In one process the shared buffer is usually a monitor whose conditions gate full and empty
 - [Channels](./channels.md) — The pattern is what a channel implements for in-process use
+- [Competing Consumers](../messaging/competing-consumers.md) — Many consumers draining one buffer is this pattern scaled out.
 
 **Generalizes**
 

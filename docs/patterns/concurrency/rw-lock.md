@@ -24,10 +24,10 @@ A plain mutex lets one thread in at a time, so threads that only read, and canno
 A read-write lock lets any number of readers hold it at the same time, but lets a writer hold it only alone. Readers do not exclude each other, so a read-heavy structure can serve many threads in parallel, while a writer still sees nothing half-changed. Choose it over a plain mutex when reads far outnumber writes and each read holds the lock long enough that serializing them hurts.
 
 - **Slower acquire** Tracking readers costs more than a mutex; for a few-instruction critical section or half reads and half writes, a plain mutex wins.
-- **Starved writers** Constant readers can keep a writer waiting forever; use a fair lock where new readers queue once a writer waits.
+- **Starved writers** Under reader preference, constant readers can keep a writer waiting forever; use a fair lock where new readers queue once a writer waits.
 - **No in-place upgrade** Upgrading a read hold deadlocks; release the read, take the write lock, and recheck the data.
 
-**Example.** A cache scan takes 2 ms and 8 threads scan at once. A mutex makes them take turns, so the last one waits 16 ms. A read-write lock lets all 8 run together and finish in about 2 ms. A writer arrives once a second and holds the lock for 5 ms. If the lock prefers readers and scans overlap with no gap, the writer waits forever. A fair lock makes new readers wait once the writer is queued, so the writer waits at most 2 ms for scans already running. The cost is that those readers pause for the writer's 5 ms.
+**Example.** A cache scan takes 2 ms and 8 threads scan at once. A mutex makes them take turns, so the last one finishes at 16 ms. With 8 free cores, a read-write lock lets all 8 run together and finish in about 2 ms. A writer arrives once a second and holds the lock for 5 ms. If the lock prefers readers and scans overlap with no gap, the writer waits forever. A fair lock makes new readers wait once the writer is queued, so the writer waits at most 2 ms for scans already running. The cost is that those readers pause for the writer's 5 ms.
 
 ## How it works
 <!--meta block=structure-->
@@ -82,7 +82,7 @@ sequenceDiagram
 
 - **Reader-preference vs. writer-preference** — Decide who wins when both roles are waiting. Naive reader-preference lets a steady stream of readers starve a writer indefinitely; writer-preference flips the risk onto readers instead.
 - **Fair / ticket-queued** — Queue read and write requests in arrival order so neither role starves the other, at the cost of extra bookkeeping and slightly lower peak read throughput.
-- **Upgradeable read lock** — Lets a thread already holding a read lock promote to a write lock without releasing it first, closing the gap where another writer could sneak in between release and re-acquire.
+- **Upgradeable read lock** — Lets a thread already holding a read lock promote to a write lock without releasing it first, closing the gap where another writer could sneak in between release and re-acquire. Such locks usually admit only one upgrader at a time, and the Java lock named under wild supports no upgrade.
 - **Recursive (reentrant) read-write lock** — Allows the same thread to re-acquire a mode it already holds — needed when locked code calls other locked code — but doubles the accounting and can [deadlock](../../hazards/deadlock.md) if reentry rules aren't precise.
 
 ## Trade-offs
@@ -91,7 +91,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Concurrent readers scale with core count** instead of serializing behind one another.
+- **Concurrent readers run in parallel** instead of queuing behind one another, when each read holds the lock long enough to outweigh the acquire cost.
 - **Writes stay fully exclusive**, so invariants hold exactly as they would under a plain mutex.
 - **Natural drop-in for read-heavy data** — data that's read far more often than it's written, such as caches, config, routing tables.
 - **Separates read and write contention**, making which one is the bottleneck visible and tunable.
@@ -112,7 +112,7 @@ sequenceDiagram
 
 - **Reads vastly outnumber writes** on the same shared structure.
 - **Read operations hold the lock long enough** that serializing them under a plain mutex would bottleneck throughput.
-- **Correctness only requires writers see a consistent snapshot**, not a specific interleaving with reads.
+- **Readers need only a consistent view of the data**, and no read has to be ordered against one particular write.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -133,6 +133,7 @@ type Cache struct {
 }
 
 // Get takes the shared mode: any number of readers hold it at once.
+// Never call it while holding RLock: a queued writer blocks the second RLock.
 func (c *Cache) Get(key string) (int, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -150,7 +151,7 @@ func (c *Cache) GetOrLoad(key string, load func() int) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, ok := c.data[key]; !ok { // the recheck
-		c.data[key] = load()
+		c.data[key] = load() // runs under the write lock and blocks every reader: keep it fast
 	}
 	return c.data[key]
 }
@@ -176,8 +177,8 @@ func (c *Cache) GetOrLoad(key string, load func() int) int {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Read/write ratio** — The fraction of acquisitions that are writes. A read-write lock only pays off when reads dominate and critical sections are non-trivial.
-- **Writer wait time** — How long writers block behind active readers. Growing values mean readers are starving writers.
+- **Read/write ratio** — The fraction of acquisitions that are writes; count read and write acquisitions per interval. A read-write lock only pays off when reads dominate and critical sections are non-trivial; the break-even depends on hold time, so benchmark both locks under the real mix.
+- **Writer wait time** — How long writers block behind active readers. Growing values point to starvation, long read holds or queued writers; compare with lock hold time.
 - **Lock hold time** — How long critical sections hold the lock and how long threads sit queued behind it.
 
 ### Failure modes under load
@@ -215,7 +216,7 @@ func (c *Cache) GetOrLoad(key string, load func() int) int {
 
 **Combines with**
 
-- [Monitor Object](./monitor-object.md) — A read-write lock is a finer-grained monitor
+- [Monitor Object](./monitor-object.md) — A monitor can guard its state with a read-write lock instead of a mutex, so read-only methods run together
 
 **Alternative to**
 
@@ -233,6 +234,7 @@ func (c *Cache) GetOrLoad(key string, load func() int) int {
 
 - [Starvation](../../hazards/starvation.md) — Can fall into starvation when a stream of readers can keep a writer out indefinitely
 - [Priority Inversion](../../hazards/priority-inversion.md) — Can fall into priority inversion when a low-priority reader or writer holding the lock blocks a high-priority task
+- [Deadlock](../../hazards/deadlock.md) — Can fall into deadlock when two readers both try to upgrade to the write lock, or a reader re-acquires while a writer waits
 
 **Demonstrated by**
 

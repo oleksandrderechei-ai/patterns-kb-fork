@@ -721,7 +721,7 @@
       "definition": "Accept the work, hand back a handle, and let the caller collect the result later",
       "route": "/patterns/distributed/routing/async-request-reply.html",
       "requires": [],
-      "related": ["workflow-orchestration", "idempotency", "load-leveling", "claim-check", "correlation-identifier", "a2a", "web-queue-worker"]
+      "related": ["workflow-orchestration", "idempotency", "load-leveling", "claim-check", "correlation-identifier", "a2a", "web-queue-worker", "future-promise"]
     },
     {
       "id": "service-discovery",
@@ -1201,7 +1201,7 @@
       "definition": "Decouples generating work from processing it",
       "route": "/patterns/concurrency/producer-consumer.html",
       "requires": [],
-      "related": ["pipe-filter", "pubsub", "message-queue", "thread-pool", "backpressure", "scheduling", "monitor-object", "channels"]
+      "related": ["pipe-filter", "pubsub", "message-queue", "thread-pool", "backpressure", "scheduling", "monitor-object", "channels", "competing-consumers"]
     },
     {
       "id": "thread-pool",
@@ -1217,7 +1217,7 @@
       "definition": "A placeholder for a result that isn't ready yet",
       "route": "/patterns/concurrency/future-promise.html",
       "requires": [],
-      "related": ["thread-pool", "reactor", "observer", "fan-in", "active-object", "fork-join", "proactor"]
+      "related": ["thread-pool", "reactor", "observer", "fan-in", "active-object", "fork-join", "proactor", "async-request-reply"]
     },
     {
       "id": "actor-model",
@@ -1241,7 +1241,7 @@
       "definition": "Synchronizes access to an object's own methods",
       "route": "/patterns/concurrency/monitor-object.html",
       "requires": [],
-      "related": ["actor-model", "rw-lock", "thread-confinement", "lock-free", "semaphore", "producer-consumer", "active-object"]
+      "related": ["actor-model", "thread-confinement", "lock-free", "semaphore", "producer-consumer", "active-object", "rw-lock"]
     },
     {
       "id": "rw-lock",
@@ -1481,7 +1481,7 @@
       "definition": "Many consumers pull from one channel to share load",
       "route": "/patterns/messaging/competing-consumers.html",
       "requires": ["message-queue"],
-      "related": ["load-leveling", "pubsub", "idempotency", "fan-out", "dead-letter-channel", "scale-out", "priority-queue", "sequential-convoy", "resequencer", "polling-consumer", "web-queue-worker"]
+      "related": ["load-leveling", "pubsub", "idempotency", "fan-out", "dead-letter-channel", "scale-out", "priority-queue", "sequential-convoy", "resequencer", "polling-consumer", "web-queue-worker", "producer-consumer"]
     },
     {
       "id": "sequential-convoy",

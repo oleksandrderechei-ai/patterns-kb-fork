@@ -67,7 +67,7 @@ flowchart TB
 <!--meta block=variations-->
 
 - **Counting semaphore** — The general form: N permits let up to N threads hold a resource at once. This is the default you reach for when the cap is greater than one — throttling concurrent operations without dedicating a worker per slot. Dijkstra invented the primitive in the early 1960s and named the two operations P and V, which POSIX spells `sem_wait` and `sem_post`.
-- **Binary semaphore (N = 1)** — A single permit makes it behave like a lock. The difference from a mutex is ownership: a semaphore records no holder, so any thread may release it — useful for signalling between threads (one waits, another posts), but wrong as a mutual-exclusion lock, where you want the acquirer to be the only releaser.
+- **Binary semaphore (N = 1)** — A single permit makes it behave like a lock. The difference from a mutex is ownership: a semaphore records no holder, so any thread may release it — useful for signalling between threads (one waits, another posts), but a poor fit for mutual exclusion, where you want only the acquirer to release and want reentrancy.
 - **Permits as a budget** — Instead of one-permit-per-caller, one permit represents one unit of a divisible resource — a megabyte, a byte of bandwidth, a token. A caller acquires as many permits as it will use and releases exactly that many, so aggregate consumption is bounded even though each operation's size varies.
 - **Timed / try-acquire** — Rather than block forever, acquire with a timeout (or a non-blocking attempt) and fail when no permit arrives in time. Essential on request paths: it converts an indefinite hang into a fast, visible rejection the caller can turn into a 503 or a retry.
 - **Fair vs. barging** — When a permit frees, does the longest-waiting thread get it (FIFO (first in, first out) fairness) or may a newly arriving thread barge in ahead of the queue? Barging gives higher throughput; strict fairness prevents a waiter from being starved indefinitely under heavy contention, at some cost in throughput.
@@ -89,7 +89,7 @@ flowchart TB
 - **A leaked permit never comes back** — miss the release on an exception and the ceiling ratchets down until the semaphore deadlocks at zero.
 - **A bare acquire blocks forever** — on a request path a starved caller waits indefinitely, so users see timeouts while monitoring shows no errors; a timed acquire is needed to [fail fast](../../principles/fail-fast.md).
 - **It grants permission**, not objects — a semaphore says "there is room" but hands out no connection or buffer; when callers need the actual resource you still need a pool behind it.
-- **No ownership or reentrancy** — unlike a mutex, any thread can release a permit it never took, so a double-release or a wrong initial count silently lifts the real ceiling above the intended one.
+- **No ownership or reentrancy** (a thread re-taking what it already holds) — unlike a mutex, any thread can release a permit it never took, so a double-release or a wrong initial count silently lifts the real ceiling above the intended one.
 - **Counting is manual for variable-size budgets** — the caller must acquire and release exactly the right number of permits, and an off-by-one in that arithmetic is a slow [resource leak](../../hazards/resource-leak.md).
 
 ## When to use it
@@ -108,6 +108,7 @@ flowchart TB
 - **The limit is one** and you want plain mutual exclusion — a lock or monitor states that intent more clearly and gives you ownership and reentrancy.
 - **Callers need the actual resource object**, not just permission — a connection, a GPU handle — where a blocking-queue resource pool that dispenses the objects fits better.
 - **You need to wait until a specific state** holds, not merely for a free slot — that is condition-variable territory, handled by a [monitor object](./monitor-object.md).
+- **The real limit is a rate, not concurrency** — a semaphore caps calls in flight, so throughput is permits divided by latency; for calls per second use a [rate limiter](../distributed/resilience/rate-limiter.md), and to isolate one downstream from another a [bulkhead](../distributed/resilience/bulkhead.md).
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -131,6 +132,8 @@ func (s Semaphore) Acquire(timeout time.Duration) error {
 	}
 }
 
+// A surplus Release blocks forever on the empty channel; Java and Python
+// semaphores instead silently raise the count, except BoundedSemaphore.
 func (s Semaphore) Release() { <-s }
 
 // Cap calls to a fragile downstream at 5 at a time.
@@ -158,9 +161,9 @@ func callDownstream() error {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **permit count** — the ceiling itself — how many callers may hold a permit at once; size it to what the protected resource absorbs, not to how many threads might ask
+- **permit count** — the ceiling itself — how many callers may hold a permit at once; size it to what the protected resource absorbs, not to how many threads might ask; start from the downstream's documented concurrency limit, else call rate x call latency (the explain example's 10 / 0.2), then load-test until shed or error rate rises
 - **fairness mode** — FIFO queueing versus barging — fair ordering stops long waiters being overtaken, barging gives higher throughput under contention; java.util.concurrent.Semaphore takes it as a constructor flag
-- **acquire timeout** — how long a caller waits before giving up — an untimed acquire waits forever, a timed try-acquire turns a saturated resource into a fast, visible failure the caller can handle
+- **acquire timeout** — how long a caller waits before giving up — an untimed acquire waits forever, a timed try-acquire turns a saturated resource into a fast, visible failure the caller can handle; keep it below the caller's own deadline (the sketch uses 1 s)
 - **permits per operation** — when a permit is a unit of a divisible budget rather than a slot, how many units one operation claims — the unit sets the granularity of the cap and how much it over- or under-counts
 
 ### Signals to watch
@@ -170,15 +173,15 @@ func callDownstream() error {
 - **waiters parked** — how many callers are blocked in acquire right now — a queue that never empties is demand the ceiling is refusing
 - **acquire wait time** — the wait before a permit is granted, as a distribution — the tail is what users feel, the mean hides it
 - **acquire timeout rate** — how often a timed acquire gives up empty-handed — this is the load the cap is shedding, and it belongs on a dashboard
-- **permits available at idle** — once traffic goes quiet the count should return to its initial value; anything lower is a leak, and it only goes one way
+- **permits available at idle** — once traffic goes quiet the count should equal its initial value; lower is a leaked permit, higher is a double release or miscount
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
 - **permit leak** — a release missed on an exception path ratchets the ceiling down over time until every acquire blocks — it presents as a slow hang, not as an error
 - **unbounded queueing** — under saturation an untimed acquire parks callers indefinitely: users see client-side timeouts while the service itself reports no failures at all
-- **a ceiling that protects nothing** — set above what the downstream tolerates, the cap admits load that gets shed anyway — the dial looks configured and changes nothing
-- **waiter starvation** — with barging, a steady stream of new arrivals can keep earlier waiters parked — mean acquire time stays flat while the tail grows without limit
+- **a ceiling that protects nothing** — set above what the downstream tolerates, the cap admits load that gets shed anyway — the dial looks configured and changes nothing; the count is per process, so N replicas multiply the ceiling on the downstream by N: divide the downstream's capacity by the instance count
+- **waiter starvation** — with barging, a steady stream of new arrivals can keep earlier waiters parked — mean acquire time moves little while the p99 and max wait grow far beyond it
 - **budget arithmetic drift** — in budget mode, claiming fewer permits than an operation consumes lets real usage exceed the budget; releasing fewer than claimed leaks capacity a little at a time
 
 ### Readiness checklist
@@ -220,9 +223,9 @@ func callDownstream() error {
 
 **Prevents**
 
-- [Unbounded Queue](../../hazards/unbounded-queue.md) — Permits are a fixed budget — work blocks at the cap instead of piling into memory
-- [Resource Leak](../../hazards/resource-leak.md) — Acquire-with-timeout and guaranteed release keep permits from draining away
-- [Thundering Herd](../../hazards/thundering-herd.md) — A counted gate turns a released crowd into a served queue
+- [Unbounded Queue](../../hazards/unbounded-queue.md) — Bounds in-flight work at the permit count; waiters still queue unless acquire is timed or the caller count is capped
+- [Resource Leak](../../hazards/resource-leak.md) — Only with release in a finally block and a timed acquire; without them a leaked permit drains the semaphore itself
+- [Thundering Herd](../../hazards/thundering-herd.md) — Throttles a released crowd to N at a time rather than eliminating it; the rest wait their turn
 
 **Exposed to**
 

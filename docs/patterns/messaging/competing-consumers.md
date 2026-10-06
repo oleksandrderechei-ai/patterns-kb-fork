@@ -227,6 +227,7 @@ for (let i = 0; i < workerCount; i++) runConsumer(taskQueue, runKycStep);
 - [Resequencer](./resequencer.md) — Competing consumers give up message order, which a resequencer can rebuild afterwards
 - [Polling Consumer](./polling-consumer.md) — Competing consumers often poll, so each worker takes work only when it has capacity
 - [Web-Queue-Worker](../architecture/web-queue-worker.md) — The worker tier is the usual home for this: one queue, many identical consumers.
+- [Producer-Consumer](../concurrency/producer-consumer.md) — The in-process base shape the competing workers share.
 
 **Requires**
 

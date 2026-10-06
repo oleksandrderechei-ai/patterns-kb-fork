@@ -75,10 +75,10 @@ A bounded queue also gives you **backpressure** for free: when the buffer is ful
 
 - [Backpressure](../patterns/concurrency/backpressure.md) — Signal the producer to slow down before the buffer can overflow
 - [Producer-Consumer](../patterns/concurrency/producer-consumer.md) — A bounded blocking queue makes a fast producer wait instead of growing without limit
-- [Semaphore](../patterns/concurrency/semaphore.md) — Fixed permits cap in-flight work when there's no queue object to bound
 - [Token Bucket](../patterns/distributed/resilience/token-bucket.md) — Rate-limit intake so the backlog can't outrun the consumer indefinitely
 - [Fail Fast](../principles/fail-fast.md) — Rejecting at the cap is failing fast instead of buffering forever
 - [Ring Buffer](../patterns/concurrency/ring-buffer.md) — A ring buffer is one way to bound the queue
+- [Semaphore](../patterns/concurrency/semaphore.md) — Fixed permits cap in-flight work when there's no queue object to bound
 
 **Threatens**
 
