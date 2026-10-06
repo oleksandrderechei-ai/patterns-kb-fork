@@ -21,13 +21,13 @@ Updating a B-tree in place means seeking to scattered pages, which makes a write
 ## Explained
 <!--meta block=explain-->
 
-An LSM tree is a storage engine that turns many small random writes into a few big sequential ones. Each write is logged for safety, then put in a sorted in-memory table. When that table fills, it is written to disk in one pass as a sorted, never-changed file, and deletes are stored as markers that hide the old value. Choose it over a B-tree, which updates pages in place and finds any key in one lookup, when writes far outnumber reads and slower, more variable reads are acceptable. Cassandra, RocksDB and LevelDB use it.
+An LSM tree is a storage engine that turns many small random writes into a few big sequential ones. Each write is logged for safety, then put in a sorted in-memory table. When that table fills, it is written to disk in one pass as a sorted, never-changed file, and deletes are stored as markers that hide the old value. Choose it over a B-tree, which updates pages in place and finds any key in a few page reads, when writes far outnumber reads and slower, more variable reads are acceptable. Cassandra, RocksDB and LevelDB use it.
 
 - **Reads check many files.** A key may sit in several files. Keep a \[Bloom filter\](bloom-filter.md) and an index per file to skip most.
 - **Compaction rewrites data.** Background merging rewrites bytes several times and needs free disk. Leave headroom, and watch file count so reads do not slow.
 - **Resurrected deletes.** Markers dropped before reaching every copy bring deleted data back. Keep them longer than your repair interval.
 
-**Example.** A store takes 50,000 writes a second of 200 bytes, which is 10 MB a second. A 64 MB memtable fills every 6.4 s and is flushed as one sequential file. Merging 4 files into 256 MB, then 4 of those into 1 GB, writes each byte 3 times, so the disk takes about 30 MB a second, not 10. The final merge holds its 1 GB of inputs and 1 GB of output at once, so you need at least 2 GB free. If compaction slows, a read may check ten files instead of three.
+**Example.** A store takes 50,000 writes a second of 200 bytes, which is 10 MB a second. A 64 MB memtable fills every 6.4 s and is flushed as one sequential file. Merging 4 files into 256 MB, then 4 of those into 1 GB, writes each byte 3 times, which is 30 MB a second. The log adds 10 MB a second, so the disk takes about 40 MB a second, not 10. The final merge writes 1 GB of output while its 1 GB of inputs stay until it finishes, so keep at least 1 GB free beyond the live data. If compaction slows, a read may check ten files instead of three.
 
 ## How it works
 <!--meta block=structure-->
@@ -57,9 +57,10 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Size-tiered vs. leveled compaction** — Size-tiered compaction merges SSTables of similar size into one larger table — cheap writes, but a key can sit in many overlapping tables, so reads and space suffer. Leveled compaction keeps non-overlapping tables within each level, so a key is in at most one table per level — steadier read latency and lower space amplification, at the cost of more write amplification. The right choice follows the read/write mix.
-- **[Bloom filter](./bloom-filter.md) and sparse block index** — Each SSTable carries a Bloom filter over its keys and a sparse index of block offsets. A point read consults the filter first and skips any file that "definitely" lacks the key with zero disk I/O — turning a scan of every SSTable into a read of the one or two that might hold it.
+- **[Bloom filter](./bloom-filter.md) and sparse block index** — Each SSTable carries a Bloom filter over its keys and a sparse index of block offsets. A point read consults the filter first and skips any file that definitely lacks the key, with no disk I/O. False positives still cost a read, and range scans get no help from the filter.
 - **Tombstones for deletes** — A delete does not remove data; it writes a tombstone that shadows older values. The bytes are reclaimed only when compaction reconciles the tombstone with the values it covers, and the marker must survive long enough to reach every replica before it can be dropped — otherwise a deleted key can resurface.
 - **Key/value separation** — For large values, some engines store the value in a separate log and keep only a pointer in the LSM tree, so compaction rewrites small keys instead of big payloads — cutting write amplification at the cost of an extra lookup on read. RocksDB's BlobDB and the WiscKey design work this way.
+- **Time-window or FIFO compaction** — For time-series and TTL data, group files by time window or by age and drop whole expired files, so expiry needs no rewrite and no tombstone scan.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -68,7 +69,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Turns random writes into large sequential ones** — sustained write throughput far above an in-place B-tree.
-- **Writes never block on reads**: they land in the memtable while compaction reorganizes older data in the background.
+- **Writes do not wait on reads**: they land in the memtable while compaction reorganizes older data in the background, though writes stall if compaction falls behind (see the compaction-stall con below).
 - **Immutable SSTables are simple to cache**, replicate, and back up — there is no in-place mutation to coordinate.
 - **Sorted, batched**, write-once files compress well, so on-disk footprint per record is often smaller than a B-tree's.
 
@@ -88,7 +89,7 @@ flowchart LR
 
 - **Writes vastly outnumber reads** — ingest-heavy workloads such as metrics, logs, events, or time series.
 - **You need sustained high write** throughput that an in-place B-tree cannot match.
-- **Reads are mostly point lookups** or range scans over sorted keys, and slightly higher, more variable read latency is acceptable.
+- **Reads are mostly point lookups**, or range scans that you accept will merge every overlapping file, and higher, more variable read latency is acceptable.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -146,7 +147,7 @@ class LsmTree {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Memtable size / flush threshold** — How large the memtable grows before it flushes to an SSTable. Bigger memtables mean fewer, larger sequential flushes and less write amplification, but more memory and more write-ahead log to replay after a crash.
+- **Memtable size / flush threshold** — How large the memtable grows before it flushes to an SSTable. Bigger memtables mean fewer, larger sequential flushes and, when keys are overwritten before the flush, less write amplification, but more memory and more write-ahead log to replay after a crash. Start near 64 MB, as in the explain example, then raise it while crash recovery stays inside your recovery-time target.
 - **Compaction strategy** — Size-tiered vs. leveled (Cassandra), or leveled vs. universal (RocksDB). The lever that trades write amplification against read and space amplification — pick it for the workload's read/write mix.
 - **Bloom filter bits per key** — More bits per key lower the false-positive rate (around 10 bits/key gives roughly a 1% rate) and cut wasted SSTable reads, at the cost of memory held per table.
 - **SSTable data block size** — The unit read from disk and covered by the sparse index. Larger blocks compress better and shrink the index, but read more bytes per point lookup.
@@ -155,7 +156,7 @@ class LsmTree {
 <!--meta polarity=signal-->
 
 - **Read amplification** — SSTables consulted per read; a rising count means compaction is behind or Bloom filters are undersized
-- **Compaction backlog** — Pending compaction work — RocksDB pending-compaction bytes, Cassandra pending compactions; sustained growth precedes read degradation and write stalls
+- **Compaction backlog** — Pending compaction work: RocksDB pending-compaction bytes, Cassandra pending compactions; sustained growth precedes read degradation and write stalls. Alert when the backlog stays above a multiple of its healthy baseline, before the engine's own stall trigger fires.
 - **Write stalls / throttling** — Time writes are slowed or paused because flush or compaction cannot keep up
 - **Space amplification** — On-disk bytes versus live data bytes; spikes during compaction and with tombstone or overwrite buildup
 - **p99 read latency** — Tail read latency, which climbs as SSTable count and compaction backlog grow
@@ -164,7 +165,7 @@ class LsmTree {
 <!--meta polarity=failure-->
 
 - **Compaction cannot keep up** — Write bursts outpace compaction, SSTable count climbs, reads touch more files, and the engine eventually throttles or stalls writes to let it catch up
-- **Space blowup during compaction** — A large merge needs room for both input and output files at once; without free headroom it can fill the volume and halt writes
+- **Space blowup during compaction** — A merge holds its input files until its output is written, so it needs free space equal to the output; on a full volume, writes halt.
 - **Tombstone buildup** — Many deletes or time to live (TTL) expiries leave tombstones that reads must scan past until compaction reclaims them, and range scans over a tombstone-heavy region slow sharply
 - **Large un-flushed memtable** — A big memtable means more write-ahead log to replay, lengthening crash recovery
 

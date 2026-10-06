@@ -129,6 +129,25 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   state store). Needs a source: starting values for most `production` knobs and alert
   thresholds the readers asked for across the area (lease term, lock TTL, refresh interval,
   task timeout, probe periods, sweep interval).
+- Left from the 2026-10-06 kb-improve run over `distributed-data` (edits a page groom may not
+  make, or that need a source): theme `decide` rows — `scaling-reads` has no Inverted Index
+  row for keyword search, `spike-handling` no Sliding Window row for the boundary-burst case,
+  `proximity-search` no Trie row for typeahead, and the `inbox` rows in
+  `consistency-and-replication` and `multi-step-processes` to re-check; edges with both notes
+  drafted but over the cap: `inbox` and `outbox` combines-with `change-data-capture`,
+  `outbox` combines-with `write-ahead-log`, `replication` combines-with `leader-election`
+  and `change-data-capture`, `merkle-tree` alternative-to `change-data-capture`,
+  `crdt` exposed-to `clock-skew`, `unique-id-generation` combines-with `lease` and
+  exposed-to `hot-partition`, `inverted-index` exposed-to `dual-write-inconsistency` and
+  often-confused-with `index-table`, `index-table` to `inverted-index`, `count-min-sketch`
+  implemented-by `databases`; edge notes to reword by unlink+link: "an log-structured" and
+  "an log" typos in `relations.json` (`write-ahead-log`, `lsm-tree` to `metrics-monitoring`,
+  `tinder`, `databases`), the camelcamelcamel note on `change-data-capture`, the Outbox
+  "database (DB)'s" note, `materialized-view` notes to `cache-aside`, `n-plus-1` and `cqrs`;
+  facts that need a source: Postgres `full_page_writes` on `write-ahead-log`, the Redis
+  `hll-sparse-max-bytes` default on `hyperloglog`, a sharded-search local-statistics caveat
+  on `inverted-index`, the restart high-water-mark con on `unique-id-generation`, an FST
+  variation on `trie`, a third `inbox` sketch for the deferred mode.
 
 - Left from the 2026-10-06 kb-improve run over `distributed-scale` (edits a page groom may
   not make, or that need a source): a `performance` theme decide row routing to

@@ -56,8 +56,8 @@ flowchart LR
 
 - **Single-leader (primary-replica)** — One node accepts every write and ships an ordered log to followers. Simple to reason about; followers can lag behind, and a leader failure needs a handover.
 - **Multi-leader** — Several nodes accept writes independently and replicate to each other — useful across datacenters, but concurrent writes to the same key can conflict and need reconciling.
-- **[Leaderless (quorum-based)](./quorum-consensus.md)** — Any replica accepts reads and writes; overlapping read and write quorums are what force the copies to converge instead of a single leader ordering them.
-- **Cascading (chained) topology** — A follower can re-serve the log onward to further followers instead of every copy streaming from the leader. The leader then pays for one connection rather than N, and a distant site pulls a single stream across the wide area network (WAN) and fans it out locally — the usual way to add replicas, or a whole second region, without adding load at the source. Every relay adds a lag hop, and the relayed leg is normally asynchronous, so a copy two hops out is further behind than the leader's own replication numbers suggest, and the chain below a failed intermediate stops receiving anything until it is repointed.
+- **[Leaderless (quorum-based)](./quorum-consensus.md)** — Any replica accepts reads and writes; overlapping read and write quorums make a read meet a replica holding the latest acknowledged write, with no single leader ordering them, and read repair or background anti-entropy converges the rest.
+- **Cascading (chained) topology** — A follower re-serves the log onward to further followers instead of every copy streaming from the leader. The leader pays for one connection rather than N, and a distant site pulls one wide area network (WAN) stream and fans it out locally, which adds replicas or a whole second region without more load at the source. Every relay adds a lag hop and the relayed leg is normally asynchronous, so a copy two hops out trails more than the leader's own numbers suggest. The chain below a failed intermediate receives nothing until it is repointed.
 - **Synchronous vs. asynchronous** — Synchronous replication waits for a replica's acknowledgment before confirming a write — safer, slower, less available under a partition. Asynchronous confirms immediately and risks losing the most recent writes on failover.
 
 ## Trade-offs
@@ -66,10 +66,10 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Survives node**, disk, or availability-zone failure without losing data or access to it.
+- **Survives node, disk, or availability-zone failure**; with synchronous acknowledgment no acknowledged write is lost, with async the newest writes can be.
 - **Scales read traffic horizontally** by fanning reads out across replicas.
-- **Lets you place a copy** near each population of readers, cutting latency.
-- **A live standby can take** over immediately if the leader fails.
+- **Lets you place a copy near each population of readers**, cutting read latency; writes still travel to the leader.
+- **A live standby can be promoted in seconds**, once the old leader is fenced, instead of restoring from backup.
 
 ### Cons
 <!--meta polarity=con-->
@@ -85,7 +85,7 @@ flowchart LR
 ### Reach for it when
 <!--meta polarity=when-->
 
-- **Survive losing one node** — losing a single node must never mean losing the data.
+- **Survive losing one node** — losing one node must not lose acknowledged data; that needs synchronous acknowledgment.
 - **Reads outgrow one node** — read traffic outstrips what one node's disk and CPU can serve.
 - **Readers are geographically spread** and latency to a single copy matters.
 
@@ -100,9 +100,13 @@ flowchart LR
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — a single writer shipping its flow log to a synchronous standby"
-// A flow's state transition is one log entry. The writer acknowledges
-// it only after the in-region standby has it, so promoting the standby
-// never loses a transition the caller was already told had committed.
+// A flow's state transition is one log entry. While the standby is up, the
+// writer acknowledges only after the standby has it, so promoting that standby
+// never loses a transition the caller was told had committed.
+// Sketch limits: no ack timeout, so a down standby blocks writes; a failed
+// standby ack leaves the entry in the primary log; attach must not run while
+// a write is pending, or the replayed entry makes apply throw "gap in log";
+// `void` drops a throwing async reader's rejection.
 interface LogEntry { seq: number; flowId: string; state: string }
 
 class Primary {
@@ -154,7 +158,7 @@ class Replica {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **replication lag per replica** — in bytes or seconds — the one number that is both the staleness of follower reads and the size of your data-loss window on failover
+- **replication lag per replica** — in bytes or seconds — the one number that is both the staleness of follower reads and, under async replication, the size of your data-loss window on failover
 - **in-sync replica count** — how many copies are currently keeping up; when it drops to the acknowledgment threshold, the next failure either blocks writes or loses them
 - **retained log size on the leader** — grows when a follower falls behind or dies with a retention slot open; watch it before the disk does
 - **leader elections per day** — elections should be rare events you can explain; unexplained ones mean a flapping network or an overloaded leader

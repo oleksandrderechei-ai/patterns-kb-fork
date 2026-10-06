@@ -89,5 +89,7 @@ Where you must use real time, bound it. Keep clocks synced with a time service y
 - [Lease](../patterns/distributed/coordination/lease.md) — Skew and drift between nodes are what make a lease expire early or late.
 - [Conditional Write](../patterns/distributed/coordination/conditional-write.md) — Picking the winner by timestamp (last-write-wins) silently drops the newer update
 - [Event Sourcing](../patterns/architecture/event-sourcing.md) — Ordering events from many hosts by wall-clock time scrambles the stream
+- [Sliding Window](../patterns/distributed/coordination/sliding-window.md) — Wall-clock windows move their edge by the skew, so two hosts count different events.
+- [Unique ID Generation](../patterns/distributed/coordination/unique-id-generation.md) — Ids ordered by wall clock mislead when node clocks disagree.
 
 <!-- relationships:end -->

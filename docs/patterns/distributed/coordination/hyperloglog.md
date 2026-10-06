@@ -27,7 +27,7 @@ HyperLogLog estimates how many different items have passed through a stream, usi
 - **Counts only.** It cannot say which items it counted or whether one was present.
 - **Poor overlaps.** Merging by register maximum is lossless for totals, but overlap of two sets compounds two errors. Count totals only.
 
-**Example.** You count unique daily visitors, about 1 billion ids. An exact set of 8-byte ids needs about 8 GB. A sketch with 16,384 registers takes 12 KB and is off by about 0.81%, which is 8.1 million on 1 billion, so you read it as roughly 1 billion plus or minus 8 million. You keep one sketch per day and merge 30 of them by taking the larger value in each register. That gives monthly uniques from 360 KB of sketches. But you cannot get the count of visitors who came on both Monday and Tuesday without compounding two errors of that size.
+**Example.** You count unique daily visitors, about 1 billion ids. An exact set of 8-byte ids needs about 8 GB. A sketch with 16,384 registers and a 64-bit hash takes 12 KB. Its standard error is 0.81%, 8.1 million on 1 billion: about two runs in three land within 8 million of the truth, nearly all within 16 million. You keep one sketch per day and merge 30 by taking the larger value in each register, giving monthly uniques from 360 KB. You cannot count visitors who came on both Monday and Tuesday without compounding two errors of that size.
 
 ## How it works
 <!--meta block=structure-->
@@ -76,7 +76,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Tiny, fixed memory** — roughly 12KB of registers estimates cardinalities into the billions, versus gigabytes for an exact set of the same keys.
-- **Bounded, predictable error** — the standard error is about 1.04/√m, so more registers buy tighter accuracy on a known curve.
+- **Predictable error** — the standard error is about 1.04/√m, so more registers tighten the typical error by a formula you can compute in advance; single runs can exceed it.
 - **Sketches merge losslessly by element-wise maximum** — union per-shard or per-day sketches into a grand total without double-counting or re-reading events.
 - **Insert is O(1): one hash**, then a single max against one register.
 
@@ -85,8 +85,9 @@ flowchart LR
 
 - **Estimates only cardinality** — it cannot tell you whether a specific item is present, how often it appeared, or list what it counted.
 - **Always approximate**: a small percentage error is inherent, so it is wrong for exact billing, dedup, or anything that must reconcile to the unit.
-- **Overkill for small sets** — its fixed footprint and correction terms are not justified below a few thousand distinct items, where a plain hash set is smaller and exact.
+- **Overkill for small sets** — its fixed footprint and correction terms are not justified below a few thousand distinct items, where a plain hash set is smaller and exact. Sparse encoding and linear counting narrow the gap, but a plain hash set is still exact and simpler at that size.
 - **Intersections are hard** — union is exact via max, but estimating the overlap of two sets by inclusion-exclusion compounds the error badly.
+- **No removal or windowing** — a sketch cannot forget an item, so a sliding-window distinct count needs one sketch per window, and the estimate assumes a well-mixed hash.
 
 ## When to use it
 <!--meta block=usage-->
@@ -110,6 +111,7 @@ flowchart LR
 
 ```typescript summary="TypeScript — a minimal estimator"
 class HyperLogLog {
+  // Uint8Array spends 16 KB at p = 14; packing 6-bit registers gives the 12 KB figure
   private readonly registers: Uint8Array;
 
   // p bucket bits → m = 2^p registers; p = 14 gives ~0.81% standard error
@@ -118,19 +120,34 @@ class HyperLogLog {
   }
 
   add(key: string): void {
-    const h = hash32(key);                    // a 32-bit hash
-    const bucket = h >>> (32 - this.p);         // top p bits pick the register
+    // hash32: any well-mixed 32-bit hash; every writer must use the same function and seed
+    const h = hash32(key);
+    const bucket = h >>> (32 - this.p);               // top p bits pick the register
     const rest = (h << this.p) | (1 << (this.p - 1)); // remaining bits, with a tail guard
-    const rank = Math.clz32(rest) + 1;        // position of the leftmost 1-bit
+    const rank = Math.clz32(rest) + 1;                // position of the leftmost 1-bit
     if (rank > this.registers[bucket]) this.registers[bucket] = rank;
   }
 
   count(): number {
     const m = this.registers.length;
     let sum = 0;
-    for (const r of this.registers) sum += 2 ** -r;   // harmonic-mean denominator
+    let zeros = 0;
+    for (const r of this.registers) {
+      sum += 2 ** -r;                                 // harmonic-mean denominator
+      if (r === 0) zeros++;
+    }
     const alpha = 0.7213 / (1 + 1.079 / m);           // bias constant
-    return (alpha * m * m) / sum;                     // raw estimate, before range corrections
+    const raw = (alpha * m * m) / sum;
+    if (raw <= 2.5 * m && zeros > 0) return m * Math.log(m / zeros); // small range: linear counting
+    return raw;                                       // 32-bit hash, no large-range correction: not for billions
+  }
+
+  // union: element-wise maximum; both sketches need the same p and hash
+  merge(other: HyperLogLog): void {
+    if (other.p !== this.p) throw new Error("precision mismatch");
+    for (let i = 0; i < this.registers.length; i++) {
+      if (other.registers[i] > this.registers[i]) this.registers[i] = other.registers[i];
+    }
   }
 }
 ```
@@ -157,7 +174,7 @@ class HyperLogLog {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Measured relative error** — The estimate against an exact distinct count computed on a bounded window or a sample — the only way to know the error you actually deployed, and it should sit inside the 1.04/√m band you chose
+- **Measured relative error** — the estimate against an exact distinct count on a bounded window or a sample. Readings should fall within about two standard errors (2 × 1.04/√m); persistent bias is the alarm.
 - **Total sketch storage** — Live sketch count × bytes per sketch. Each sketch is capped, so this number grows through the count, not the size — it is the real memory story
 - **Per-sketch size distribution** — Bytes per stored sketch shows how many are still in the sparse encoding versus paying the full dense register array, which is what predicts the next step up in storage
 - **Rollup latency versus sketches unioned** — Time to answer a rolled-up count, plotted against how many sketches the union touches; it rises with that count, so a widening query is the cause before the data is
@@ -170,7 +187,7 @@ class HyperLogLog {
 - **Slow rollup over many sketches** — A month-from-days or global-from-shards answer unions every constituent sketch at read time, so latency grows with the number merged. The sketches stay small, but there are thousands of them and the union runs on every query
 - **Bulk sparse-to-dense transition** — A traffic spike pushes a whole population of near-empty sketches past the sparse threshold at once, and memory steps up to the full register array for all of them together rather than gradually
 - **Collisions near the hash ceiling** — With a 32-bit hash, once true cardinality reaches into the billions distinct items begin sharing hashes and the estimate flattens below the truth. It surfaces as a plausible number that has quietly stopped growing, not as an error
-- **Compounded error on intersections and subtraction** — Union is exact by element-wise maximum, but overlap computed by inclusion-exclusion subtracts two approximations. When the two sets are similar in size the errors dominate the difference, and the answer can come out nonsensical — including negative
+- **Compounded error on intersections and subtraction** — Union is lossless by element-wise maximum (the merged sketch equals the sketch of the union, error unchanged), but overlap computed by inclusion-exclusion subtracts two approximations. When the two sets are similar in size the errors dominate the difference, and the answer can come out nonsensical — including negative
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -204,6 +221,7 @@ class HyperLogLog {
 **Combines with**
 
 - [MapReduce](./mapreduce.md) — Per-split sketches merge in the reduce stage by element-wise maximum
+- [CRDT](./crdt.md) — Per-register maximum is an order-free, repeat-safe merge, so replicas can union sketches without coordination.
 
 **Often confused with**
 

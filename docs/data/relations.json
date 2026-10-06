@@ -13371,6 +13371,41 @@
       "note_b": "Fronts agent-to-agent calls as well as service calls."
     },
     {
+      "a": "sliding-window",
+      "verb": "exposed-to",
+      "b": "clock-skew",
+      "note_a": "Hosts disagree about when an event leaves, so the effective window wobbles by the drift.",
+      "note_b": "Wall-clock windows move their edge by the skew, so two hosts count different events."
+    },
+    {
+      "a": "materialized-view",
+      "verb": "alternative-to",
+      "b": "sliding-window",
+      "note_a": "A standing rollup replaces a hand-kept window when every event is stored anyway.",
+      "note_b": "Precompute the windowed rollup instead of keeping a second copy of the recent past."
+    },
+    {
+      "a": "crdt",
+      "verb": "combines-with",
+      "b": "hyperloglog",
+      "note_a": "A cardinality sketch is one such mergeable state.",
+      "note_b": "Per-register maximum is an order-free, repeat-safe merge, so replicas can union sketches without coordination."
+    },
+    {
+      "a": "mapreduce",
+      "verb": "exposed-to",
+      "b": "hot-partition",
+      "note_a": "Falls into it when one hot key sends most values to a single reducer.",
+      "note_b": "A reducer owning a skewed key is the batch form of one overloaded shard."
+    },
+    {
+      "a": "unique-id-generation",
+      "verb": "exposed-to",
+      "b": "clock-skew",
+      "note_a": "A backwards or disagreeing clock can repeat or misorder an id, so the generator must refuse or wait.",
+      "note_b": "Ids ordered by wall clock mislead when node clocks disagree."
+    },
+    {
       "a": "compute-resource-consolidation",
       "verb": "exposed-to",
       "b": "noisy-neighbour",

@@ -21,13 +21,13 @@ Updating a data structure in place means scattered disk writes, and a crash mid-
 ## Explained
 <!--meta block=explain-->
 
-A write-ahead log is a file you only append to, where each change is written and flushed to disk before you apply it to the real data structure. Once the record is safely on disk, you can apply the change lazily, or lose it from memory, because the log can rebuild it. A crash during an in-place page write can leave a half-written page that corrupts the structure for good. Appending a record is one sequential write that lands whole or not at all. Choose it when a crash must not lose or corrupt committed data and the main structure is too costly to update in place.
+A write-ahead log is a file you only append to, where each change is written and flushed to disk before you apply it to the real data structure. Once the record is safely on disk, you can apply the change lazily, or lose it from memory, because the log can rebuild it. A crash during an in-place page write can leave a half-written page that corrupts the structure for good. Appending is one cheap sequential write, though a crash can still tear the last record, so each record carries a checksum. Choose it when a crash must not lose or corrupt committed data and the main structure is too costly to update in place.
 
 - **Flush on every commit.** Batch many commits per flush, or accept that acknowledging early loses recent writes in a power cut.
 - **Torn log writes.** The log itself must survive a partial write, so use checksums and length prefixes.
 - **Unbounded growth.** An untrimmed log slows recovery and eats disk, so checkpoint and truncate on a schedule.
 
-**Example.** A database commits 10,000 transactions a second, each logging 100 bytes, so the log grows 1 MB a second. A flush takes 1 ms, so flushing each commit alone caps you near 1,000 commits a second. Flushing 50 commits together lifts that to 50,000. With a checkpoint every 5 minutes, a crash replays at most 300 MB, which at 100 MB/s takes 3 s. With no checkpoint for a day the log is 86.4 GB and replay takes about 14 minutes. The cost of waiting for the flush is the added millisecond on every commit.
+**Example.** A database commits 10,000 transactions a second, each logging 100 bytes, so the log grows 1 MB a second. A flush takes 1 ms, so flushing each commit alone caps you near 1,000 commits a second. Flushing 50 commits together lifts that to 50,000. With a checkpoint every 5 minutes, a crash replays at most about 300 MB, roughly 3 s at 100 MB/s if replay keeps pace with disk reads. With no checkpoint for a day the log is 86.4 GB and replay takes about 14 minutes. Group commit trades latency for throughput: a commit waits for its batch to fill (about 5 ms at 10,000 a second) plus the 1 ms flush.
 
 ## How it works
 <!--meta block=structure-->
@@ -74,7 +74,7 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Physical vs. logical logging** — Physical records capture the exact bytes changed on a page, redone by copying; logical records capture the operation performed. Physical is simple and deterministic to replay; logical is more compact but replay must be idempotent.
+- **Physical vs. logical logging** — Physical records capture the exact bytes changed on a page, redone by copying; logical records capture the operation performed. Physical is simple to replay; logical is more compact. Either can be replayed after partial application, so replay must be idempotent.
 - **Redo-only vs. redo/undo** — A redo-only log lets recovery replay forward to the last durable state. A redo/undo log also records the before-image, so an in-flight transaction can be rolled back as cleanly as a committed one is replayed.
 - **Checkpointing** — Periodically flush the state the log implies into the data structure itself, then truncate everything before that point — bounding how far recovery ever has to replay.
 - **[Group commit](../../concurrency/batching.md)** — Batch several concurrent appends into one fsync instead of one per writer, trading a little added latency per write for far higher durable throughput.
@@ -95,9 +95,9 @@ sequenceDiagram
 <!--meta polarity=con-->
 
 - **The log itself must be crash-safe** — a torn write there defeats the whole scheme, so entries need checksums and length prefixes.
-- **Unbounded logs slow recovery and burn disk**; checkpointing and truncation are mandatory, not optional.
+- **An untrimmed log slows recovery** and burns disk, so checkpoint and truncate on a schedule.
 - **A durable commit waits on an fsync**, and batching only amortises it. The one way under that floor is to acknowledge before the log is flushed, which buys latency with a window of recent commits that a power cut erases.
-- **Doubles the conceptual write path**, log now, apply later, adding a second place logic can drift out of sync.
+- **Writes take two steps**, log now and apply later, so the two can drift out of sync.
 
 ## When to use it
 <!--meta block=usage-->
@@ -124,10 +124,13 @@ interface LogEntry { seq: number; key: string; value: string; }
 
 class WriteAheadLog {
   private seq = 0;
+  // On restart, replay() below recovers seq from the last good entry. Real logs also
+  // give each entry a checksum and length prefix, omitted here.
   private readonly fd: number;
   constructor(private readonly path: string) { this.fd = fs.openSync(path, "a"); }
 
-  // Durable before the caller is told the write succeeded.
+  // Durable before the caller is told the write succeeded. One fsync per commit
+  // is the latency floor; group commit batches many commits per fsync.
   append(key: string, value: string): number {
     const entry: LogEntry = { seq: ++this.seq, key, value };
     fs.writeSync(this.fd, JSON.stringify(entry) + "\n");
@@ -138,7 +141,12 @@ class WriteAheadLog {
   *replay(): Generator<LogEntry> {
     const text = fs.readFileSync(this.path, "utf8");
     for (const line of text.split("\n")) {
-      if (line) yield JSON.parse(line) as LogEntry;
+      if (!line) continue;
+      let entry: LogEntry;
+      try { entry = JSON.parse(line) as LogEntry; }
+      catch { break; }                 // torn tail: stop here and discard it
+      this.seq = entry.seq;
+      yield entry;
     }
   }
 }
@@ -184,13 +192,13 @@ for (const entry of wal.replay()) store.set(entry.key, entry.value);
 - **WAL fills the disk** — Log is generated faster than checkpointing recycles it or archiving drains it; the volume fills and the database halts writes rather than lose durability. Free space on the log device is the thing to watch.
 - **Checkpoint I/O storm** — A checkpoint flushes a large backlog of dirty pages at once, spiking disk I/O and stalling foreground commits — the classic sawtooth when checkpoints are too infrequent.
 - **fsync latency spike** — The log device slows and, because every commit waits on its fsync, commit latency across the whole system rises together — the durability floor moving up under load.
-- **Slow recovery after crash** — A large un-checkpointed log means a long replay before the system accepts traffic again; recovery time is bounded by the checkpoint interval, not by how the crash happened.
+- **Slow recovery after crash** — A large un-checkpointed log means a long replay before the system accepts traffic again; recovery time is bounded by the checkpoint interval plus any undo work for in-flight transactions.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - Log entries are checksummed and length-prefixed so a torn write is detected, not replayed as truth
-- Checkpointing and truncation are configured — an unbounded log is mandatory to prevent, not optional
+- Checkpointing and truncation are configured, so the log cannot grow without bound
 - The log lives on storage whose fsync is honored, not a write-back cache that lies about durability
 - Recovery time is bounded by the checkpoint interval and has been tested with a real crash-and-replay
 - WAL disk free space and replication lag are monitored with alerts before the volume fills
