@@ -65,7 +65,7 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Hot/cold column split** — The everyday form: fields read on nearly every request in one partition, everything else in another, keyed identically. It is the version to reach for first because the benefit is measurable before you build it — profile the top queries, count the bytes they read and never use. Keep both partitions in the same store, where a local transaction still covers a write that touches both.
-- **Read-rate versus write-rate split** — The columns are grouped by how often they change rather than how often they are read. Slow-moving descriptive fields become safe to cache aggressively, because the counter that updates on every order no longer invalidates the page they share. It is the split that makes an in-memory cache in front of the entity worth having at all.
+- **Read-rate versus write-rate split** — The columns are grouped by how often they change rather than how often they are read. Slow-moving descriptive fields become safe to cache aggressively, because the counter that updates on every order no longer invalidates the page they share. It makes caching the slow half worthwhile when the counter's churn was the main source of invalidations.
 - **Sensitive-field split** — Regulated or confidential fields move to their own partition with their own access controls, encryption and audit trail. It shrinks the surface that needs the strict handling, so the ordinary query path stops carrying compliance weight it does not need. The cost is that any operation genuinely needing both halves now crosses a security boundary on purpose, which is the point.
 - **Large payload to [object storage](./object-storage.md)** — The cold partition is not a table at all: images, documents and blobs move to object storage and the hot row keeps only a reference. The database stops paying to store and back up bytes it can never query, and the payload can be served directly to the client. You have crossed a store boundary, so there is no transaction covering both — orphaned objects and dangling references are now real, and a [sweeper](../coordination/sweeper.md) is part of the design.
 - **Column families in a wide-column store** — The split is expressed as a physical grouping inside one logical table, and the engine reads only the families a query names. There is no second object, so integrity and joins are unaffected, and the layout can be tuned per family. It requires a store built for it, and the grouping is close enough to permanent that changing it later means rewriting the data.
@@ -85,11 +85,11 @@ sequenceDiagram
 ### Cons
 <!--meta polarity=con-->
 
-- **One entity becomes two objects**, and nothing in the store guarantees they stay consistent with each other.
+- **One entity becomes two objects**, and nothing forces a detail row to exist or match the hot row; a foreign key guards only the key, so the rest is your transaction.
 - **Any query wanting both halves** is now a join you write and maintain, and it is slower than the read it replaced.
 - **The split encodes today's access** pattern into the schema, and changing it later means migrating data rather than editing a query.
 - **A write touching both partitions** needs a transaction scoped over both, or a compensation for the half that failed.
-- **No transaction across stores** — across a store boundary there is no transaction at all, so orphaned payloads and dangling references become a reaper you have to run.
+- **No transaction across stores** covers both halves, so orphaned payloads and dangling references need a reaper you run.
 
 ## When to use it
 <!--meta block=usage-->
@@ -115,7 +115,7 @@ sequenceDiagram
 
 ```sql summary="SQL — one entity split by access pattern, with the write kept atomic"
 -- HOT: what the listing and search read. Narrow on purpose: more rows per
--- page, higher cache hit rate, and the index covers the query.
+-- page and a higher cache hit rate.
 CREATE TABLE product (
   id           bigint PRIMARY KEY,
   name         text        NOT NULL,
@@ -149,9 +149,9 @@ COMMIT;
 ## In the wild
 <!--meta block=wild-->
 
-- **Apache Cassandra** — A table is defined as a set of columns physically grouped and read together, so a query reads only what it names. The split is a layout decision inside one table rather than a second object, which is why the integrity cost of vertical partitioning largely disappears here. {#wild-cassandra}
-- **Apache HBase** — Column families are stored in separate files and can be configured independently — different compression, different block size, different in-memory setting — so hot and cold groups of a wide row are tuned separately. {#wild-hbase}
-- **PostgreSQL TOAST** — The engine already does a version of this without being asked: an oversized field is moved out of the main row into a side table and fetched only when the query references it, which is why a wide row can still have a fast index-only scan. {#wild-toast}
+- **Apache Cassandra** — A query can name just the columns it needs, so a wide row is not returned whole. The layout is one table rather than a second object, so the integrity cost of vertical partitioning largely disappears here. {#wild-cassandra}
+- **Apache HBase** — Column families are stored in separate files and can be configured independently: different compression, block size and in-memory setting, so hot and cold groups of a wide row are tuned separately. {#wild-hbase}
+- **PostgreSQL TOAST** — The engine already does a version of this without being asked: an oversized field is moved out of the main row into a side table and fetched only when the query references it, so scans of the main table read narrower rows. {#wild-toast}
 
 ## In production
 <!--meta block=production-->
@@ -162,7 +162,7 @@ COMMIT;
 - **Which columns are hot** — The cut line itself. Base it on profiling the top queries rather than on how the entity reads on a whiteboard, and expect to revisit it when the access pattern shifts.
 - **Store boundary** — Whether both partitions live in one store or the cold half moves elsewhere. Inside one store a local transaction still covers a write to both; across stores it does not, and that is the single biggest consequence of the split.
 - **Denormalised columns** — Cold fields copied back into the hot partition because a query wants them together often. Each copy removes a join and adds a value that can go stale.
-- **Fill factor and row width** — How many rows a page holds after the split. It is the mechanism the whole pattern rests on, so measure it rather than assume the narrowing worked.
+- **Row width and rows per page** — How many rows a page holds after the split, read from the table's average row size. The pattern works only if this number rises, so measure it. Fill factor is a separate setting that reserves update headroom, so it is not this number.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -175,7 +175,7 @@ COMMIT;
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **The split made things slower** — The cold columns turn out to be needed by the hot query after all, so every read is now two reads and a join. It shows up immediately in latency and is a straightforward revert if you measured before.
+- **The split made things slower** — The cold columns turn out to be needed by the hot query after all, so every read is now two reads and a join. It shows up as extra latency once load is realistic. Reverting means merging the tables back, a data migration, so measure before splitting.
 - **Partitions drift out of step** — A write updates one partition and fails on the other, leaving an entity that is internally inconsistent. The store enforces nothing, so nothing raises an error at the time.
 - **Orphaned payloads across a store boundary** — An entity is deleted and its object-storage content is not, or the reverse. Storage cost grows quietly and a reference eventually resolves to nothing.
 - **Access pattern moves and the schema does not** — A field promoted to the hot path stays in the cold partition, so the flagship query silently pays for a join nobody remembers adding.

@@ -26,7 +26,7 @@ A geohash turns a latitude and longitude into one short string, so that places c
 - **Cell edges.** Close points can straddle an edge and get different prefixes, so scan the cell and its 8 neighbours, then filter by exact distance.
 - **Uneven cells.** Cells ignore density and shrink toward the poles, so choose the prefix length by how crowded the area is.
 
-**Example.** A ride app tracks 100,000 drivers who each report every 4 s, so 25,000 single-key writes a second. It stores each driver under a 6-character geohash, a cell about 1.2 km by 0.6 km. A rider asks for drivers within 1 km. Scanning only the rider's cell would miss a driver 30 m away across the cell edge, so the app scans 9 cells. If a city cell holds about 20 drivers, that is 180 candidates, which the app narrows with exact distance. The cost is that extra scan and filter on every query.
+**Example.** A ride app tracks 100,000 drivers who each report every 4 s, so 25,000 single-key writes a second. It stores each driver under a 6-character geohash, a cell about 1.2 km by 0.6 km. A rider asks for drivers within 500 m, under the 0.6 km cell height, so a ring of 9 cells always covers the radius. Scanning only the rider's cell would miss a driver 30 m away across the edge, so the app scans all 9. If a city cell holds about 20 drivers, that is 180 candidates, which the app narrows with exact distance. The cost is that extra scan and filter on every query.
 
 ## How it works
 <!--meta block=structure-->
@@ -52,7 +52,7 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **String vs. integer encoding** — Each base-32 character is five bits, so the same value is either text (a `LIKE 'dr5ru%'` prefix scan on a B-tree) or an interleaved integer (a numeric range scan). They index identically; Redis keeps it as a 52-bit integer on a sorted-set score, Postgres can keep it as text.
+- **String vs. integer encoding** — Each base-32 character is five bits, so the same value is either text (a `LIKE 'dr5ru%'` prefix scan on a B-tree) or an interleaved integer (a numeric range scan). Both keep nearby points adjacent in sort order, but key width and precision differ, so lengths do not map one to one. Redis keeps a 52-bit integer on a sorted-set score and Postgres can keep text; Redis's integer is its own variant, so do not mix its values with standard geohash strings.
 - **Precision by prefix length** — Cell size shrinks with each added character — roughly 5 km at five characters, a few metres at nine. Choose a length that matches your search radius so the neighbour ring stays small and the candidate set stays cheap to post-filter.
 - **S2 (Google) — spherical cells on a Hilbert curve** — Geohash treats latitude and longitude as a flat rectangle, so its cells distort by latitude (wide near the equator, narrow near the poles). S2 projects the sphere onto the six faces of a cube and threads a Hilbert space-filling curve through them, giving cells of roughly uniform area anywhere on Earth and 64-bit hierarchical ids that truncate to a parent cell. It also models the sphere, so it handles shapes that cross the antimeridian.
 - **H3 (Uber) — a hexagonal grid** — Uses hexagonal cells instead of squares: a hexagon has six neighbours all at roughly equal distance, which is cleaner for "N rings out" queries and heatmap analytics than a square's mix of edge and corner neighbours. Its 64-bit ids are not laid out along a space-filling curve, so instead of a range scan you call grid-math functions to compute the ring of neighbour cell ids and look them up explicitly with an `IN` list. Hexagons also cannot tile hierarchically: a finer cell is not wholly inside the coarser one it names as its parent, so counts rolled up across resolutions are approximate. That is the price H3 pays for the even neighbour distances.
@@ -64,8 +64,8 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Reuses the B-tree** or sorted-set index every database already ships — no dedicated spatial extension to install and operate.
-- **Cheap location updates** — an update is a single short key write, so it absorbs very high update rates from constantly moving points.
-- **A shared prefix guarantees spatial nearness**, so "nearby" is a cheap prefix or range scan rather than a full-table distance computation.
+- **Cheap location updates** — with the hash in the key, an update is one short key write while the point stays in its cell. A move into a new cell is a delete plus an insert, so moving points still cost more than static ones.
+- **A shared prefix means the same bounded cell**, so "nearby" is a cheap prefix or range scan over a few cells rather than a full-table distance computation; close points can still differ in prefix (see the first con).
 - **Prefix length tunes precision on the fly** — coarser or finer cells without rebuilding any structure.
 
 ### Cons
@@ -73,7 +73,7 @@ flowchart LR
 
 - **Cell boundaries break naive queries**: two close points can differ in prefix, so a correct search must scan the cell plus its eight neighbours and post-filter by exact distance.
 - **It encodes points only** — it cannot represent a line or a polygon, so containment and intersection questions need a real spatial tree instead.
-- **The flat latitude/longitude grid distorts** cell area toward the poles, which is why uniform-area systems like S2 and H3 exist.
+- **The flat latitude/longitude grid distorts** cell area toward the poles, so S2 and H3 trade this for near-uniform cell area at other costs (see variations).
 - **A fixed grid ignores density** — a cell in a dense city holds far more candidates than a rural one, so you post-filter more where data is thickest.
 
 ## When to use it
@@ -98,13 +98,14 @@ flowchart LR
 <!--meta block=sketch-->
 
 ```sql summary="SQL — a \"nearby\" query is a prefix scan over the 3×3 ring"
--- Each row stores its point's geohash once, written at insert time.
+-- Each row stores its point's geohash once, written at insert time,
+-- plus geohash6, its first 6 characters, under a plain B-tree index.
 -- Nearby points share a prefix, so proximity becomes a string match.
 -- :cells is the caller's own cell plus the 8 around it, at precision 6.
 
 SELECT id, lat, lon
 FROM places
-WHERE substr(geohash, 1, 6) IN (:cells)   -- index range scan, not a table scan
+WHERE geohash6 IN (:cells)   -- one index lookup per cell, not a table scan
 
 -- Then drop rows whose real haversine distance exceeds the radius:
 -- the index gives candidates, exact distance gives answers.
@@ -154,10 +155,10 @@ function geohash(lat: number, lon: number, precision = 9): string {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Prefix length (precision)** — How many characters of the hash you index and match on — each added character subdivides the cell into 32, so roughly 5 km at five characters and a few metres at nine. Set it from the search radius you actually serve.
+- **Prefix length (precision)** — How many characters of the hash you index and match on; each added character subdivides the cell into 32. Pick the longest prefix whose smaller cell side is at least your radius: a 6-character cell is about 1.2 km by 0.6 km, so one ring serves radii up to about 0.6 km.
 - **Encoding: string or integer** — The same value indexes either as text for a prefix scan or as the interleaved bits read as a number for a numeric range scan — pick whichever matches the index the store already runs.
 - **Neighbour ring width** — How many rings of surrounding cells a query scans. One ring — the cell plus its eight neighbours — is the standard correction for the boundary problem; a radius large relative to the cell needs more.
-- **Candidate cap per query** — A bound on how many rows the scan may return before the exact-distance post-filter runs, so a dense cell cannot hand the post-filter an unbounded candidate set.
+- **Candidate cap per query** — A bound on how many rows the scan may return before the exact-distance post-filter runs, so a dense cell cannot hand the post-filter an unbounded candidate set. A cap that trips drops true matches and returns wrong answers, so prefer a longer prefix or a paged scan, and count every truncation.
 
 ### Signals to watch
 <!--meta polarity=signal-->

@@ -231,6 +231,7 @@ if (!limiterFor(`resend:${flowId}`, 3, 3 / 3600).tryConsume()) throw new Error("
 - [Priority Queue](../../messaging/priority-queue.md) — Prefer high-value callers when deciding whose requests to turn away
 - [Sliding Window](../coordination/sliding-window.md) — A sliding window closes the fixed-window boundary gap, at the cost of extra state per caller
 - [Leaky Bucket](./leaky-bucket.md) — A limiter can use a leaky bucket when the target cannot take any burst.
+- [Multi-Tenancy](../routing/multi-tenancy.md) — Keyed by tenant id, it is the pool model's fairness control.
 
 **Alternative to**
 

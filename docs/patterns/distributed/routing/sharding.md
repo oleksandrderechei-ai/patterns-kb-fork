@@ -16,12 +16,12 @@ Splits a dataset across many independent nodes by a partition key, so each shard
 ## What it is
 <!--meta block=description-->
 
-Sharding splits a dataset into disjoint subsets, called shards, and places each on a different node, chosen by a key taken from each record such as a user, tenant or order ID. It resolves the single-node ceiling: a dataset outgrowing one disk, or writes outgrowing one primary. Adding a node adds both storage and write capacity, at the price of cross-shard queries and a key choice that is hard to undo.
+Sharding splits a dataset into disjoint subsets, called shards, and places each on a different node, chosen by a key taken from each record such as a user, tenant or order ID. It resolves the single-node ceiling: a dataset outgrowing one disk, or writes outgrowing one primary. Adding a node adds storage and write capacity, provided the key spreads load evenly, at the price of cross-shard queries and a key choice that is hard to undo.
 
 ## Explained
 <!--meta block=explain-->
 
-Sharding splits one big dataset into pieces, called shards, and puts each piece on a different machine, chosen by a key taken from each record such as a user ID. No machine holds everything, and every record lives on exactly one. You need it when the data outgrows one disk or the writes outgrow one primary database (the copy that accepts writes), because a bigger machine always hits a wall and costs more at each step. Adding a machine adds both storage and write capacity. Choose it over [replication](../coordination/replication.md) when writes are the problem, since replication copies the same data everywhere and only adds read capacity.
+Sharding splits one big dataset into pieces, called shards, and puts each piece on a different machine, chosen by a key taken from each record such as a user ID. No machine holds everything, and every record lives on exactly one, small lookup tables aside. You need it when the data outgrows one disk or the writes outgrow one primary database (the copy that accepts writes), because a bigger machine always hits a wall and costs more at each step. Adding a machine adds both storage and write capacity. Choose it over [replication](../coordination/replication.md) when writes are the problem, since replication copies the same data everywhere and only adds read capacity.
 
 - **Scattered queries.** A query across many keys hits every shard and a cross-shard transaction turns distributed, so design queries around one key.
 - **Key choice.** A bad key makes one shard hot and changing it moves live data, so pick a key with many evenly used values.
@@ -54,9 +54,9 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Range-based sharding** — Each shard owns a contiguous range of key values. Cheap range scans, but keys clustered in time (e.g. sequential IDs, timestamps) pile onto the newest shard.
-- **Hash-based sharding** — A hash function scatters keys evenly across shards regardless of their natural order. Kills hotspots and range scans alike — a query for "all of last week" now hits every shard.
+- **Hash-based sharding** — A hash function scatters keys evenly across shards regardless of their natural order. This removes range-clustering hotspots but not a single hot key, which still sits on one shard. Range scans are lost: a query for "all of last week" now hits every shard.
 - **[Consistent hashing](./consistent-hashing.md)** — Places shards and keys on the same hash ring so adding or removing a shard remaps only its neighbors' keys, not the whole dataset.
-- **Directory-based (lookup service)** — An explicit key-to-shard mapping table, looked up on every routing decision. Flexible and rebalance-friendly, but the directory itself becomes a critical, must-scale dependency.
+- **Directory-based (lookup service)** — An explicit key-to-shard mapping table, looked up on every routing decision. Flexible and rebalance-friendly, but every request depends on the directory, so it must scale and stay available as the data grows.
 - **Entity / tenant sharding** — Shard by tenant ID or account ID so one customer's data never crosses shard boundaries — simplifies isolation, backup, and per-tenant data residency.
 
 ## Trade-offs
@@ -66,7 +66,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Scales storage** and write throughput horizontally by adding more shards.
-- **Each shard is smaller**, so its working set and indexes fit in memory and queries stay local and fast.
+- **Each shard is smaller**, so its working set and indexes fit in memory, and queries that carry the shard key stay local and fast; queries without it fan out (see the cons).
 - **A failure or maintenance window** on one shard affects only its slice of the data, not the whole dataset.
 - **Lets data** be placed by geography or tenant to satisfy residency and isolation requirements.
 
@@ -75,9 +75,10 @@ flowchart LR
 
 - **Cross-shard joins**, aggregations, and transactions become distributed and slow, if they're possible at all.
 - **Rebalancing an unevenly loaded key** space means moving live data between nodes without downtime.
-- **The shard key is hard to change later** — a poor early choice creates a permanently hot shard.
+- **The shard key is hard to change later**, and a poor early choice leaves one shard hot.
 - **Adds a routing layer** and more nodes to provision, monitor, back up, and upgrade.
 - **Small lookup tables the shard** key doesn't cover get copied onto every shard to keep queries single-shard, and each copy is briefly stale while an update propagates.
+- **Unique constraints, auto-increment IDs** and secondary indexes on non-key columns cannot be enforced by one shard alone, so they need generated IDs or a separate index.
 
 ## When to use it
 <!--meta block=usage-->
@@ -112,6 +113,7 @@ class ShardRouter<T> {
   }
 
   connectionFor(key: string): T {
+    // Modulo remaps most keys when the shard count changes; production uses consistent hashing or a directory.
     const index = this.hash(key) % this.shards.length;
     return this.shards[index];
   }

@@ -9152,13 +9152,6 @@
       "note_b": "Chooses the node by proximity and health, since every node can serve every request"
     },
     {
-      "a": "distributed-tracing",
-      "verb": "combines-with",
-      "b": "geode",
-      "note_a": "Without it, a fully decoupled multi-region topology is effectively opaque",
-      "note_b": "One request runs asynchronously across instances in several regions, so tracing is a prerequisite rather than an improvement"
-    },
-    {
       "a": "load-balancer",
       "verb": "combines-with",
       "b": "service-discovery",
@@ -13322,6 +13315,48 @@
       "b": "clock-skew",
       "note_a": "A backwards or disagreeing clock can repeat or misorder an id, so the generator must refuse or wait.",
       "note_b": "Ids ordered by wall clock mislead when node clocks disagree."
+    },
+    {
+      "a": "compute-resource-consolidation",
+      "verb": "exposed-to",
+      "b": "noisy-neighbour",
+      "note_a": "Colocated tasks share one unit's CPU, memory and I/O, so a heavy one starves its neighbours.",
+      "note_b": "Consolidation is the deliberate choice that creates the exposure."
+    },
+    {
+      "a": "compute-resource-consolidation",
+      "verb": "combines-with",
+      "b": "sidecar",
+      "note_a": "Moving per-service helpers to one agent per node is the same trade in miniature.",
+      "note_b": "Consolidating sidecars trades per-service isolation for less duplicated overhead."
+    },
+    {
+      "a": "rate-limiter",
+      "verb": "combines-with",
+      "b": "multi-tenancy",
+      "note_a": "Keyed by tenant id, it is the pool model's fairness control.",
+      "note_b": "A per-tenant limit caps what one tenant takes from a shared part."
+    },
+    {
+      "a": "bulkhead",
+      "verb": "combines-with",
+      "b": "multi-tenancy",
+      "note_a": "Compartments per tenant keep one tenant's load from spending another's capacity.",
+      "note_b": "Separate pools per tenant class give the silo and bridge tiers their runtime isolation."
+    },
+    {
+      "a": "geode",
+      "verb": "prerequisite",
+      "b": "distributed-tracing",
+      "note_a": "One request runs asynchronously across instances in several regions, so tracing is a prerequisite rather than an improvement",
+      "note_b": "Asynchronous multi-region request paths cannot be followed without it"
+    },
+    {
+      "a": "functional-partitioning",
+      "verb": "combines-with",
+      "b": "object-storage",
+      "note_a": "Large content gets its own store type when an area is split by technology",
+      "note_b": "A natural target store when an area's large content is split out"
     }
   ],
   "group_order": {

@@ -27,7 +27,7 @@ Consistent hashing decides which node stores a key in a way that moves only a sm
 - **Shared view.** Two nodes with different views of the circle disagree on an owner, so spread membership changes reliably.
 - **Hot keys.** One very popular key still overloads its single owner, so copy or split hot keys.
 
-**Example.** A cache of 1,000,000 keys runs on 10 nodes and grows to 11. With mod N, a key stays only if its hash gives the same answer mod 10 and mod 11, which is about 1 key in 11, so roughly 909,000 keys move and the cache goes cold. With the circle, only the new node's slice moves, about 1 in 11, so roughly 91,000 keys. With 100 points per node the circle holds 1,100 points, and each lookup is a binary search of about 10 steps instead of one mod. That is the cost.
+**Example.** A cache of 1,000,000 keys runs on 10 nodes and grows to 11. With mod N, a key stays only if its hash gives the same answer mod 10 and mod 11, about 1 key in 11, so roughly 909,000 keys move and the cache goes cold. With the circle, only the new node's slice moves, so roughly 91,000 keys, provided the slices are even. With 100 points per node they are close to even, the circle holds 1,100 points, and each lookup is a binary search of about 10 steps instead of one mod. With one point each, the new node's slice could be far larger or smaller. That is the cost.
 
 ## How it works
 <!--meta block=structure-->
@@ -54,7 +54,7 @@ flowchart LR
 
 - **Virtual nodes (vnodes)** — Each physical node is hashed to dozens or hundreds of ring points instead of one, spreading its load across many neighbors and bounding the blast radius of any single node's churn.
 - **Bounded-load consistent hashing** — Caps any node at roughly (1 + ε) times the average load; requests that would push it past the cap fall through to the next node on the ring, trading a pure single-hash lookup for a fairness guarantee.
-- **Rendezvous (highest random weight) hashing** — Skips the ring entirely: compute a weight per node per key and take the max. No sorted structure to maintain, and membership changes remap just as few keys — but every lookup weighs the key against every member, so the cost grows with the cluster instead of staying logarithmic, unless you layer a hierarchy over it.
+- **Rendezvous (highest random weight) hashing** — Skips the ring entirely: compute a weight per node per key and take the highest. No sorted structure to maintain, and membership changes remap just as few keys. But every lookup weighs the key against every member, so the cost grows with the cluster instead of staying logarithmic, unless you layer a hierarchy over it.
 - **Jump consistent hash** — A tiny, allocation-free function that maps a key to a bucket index in O(log n) time with no stored ring — at the cost of only supporting removal from the end of the bucket list, not from the middle.
 
 ## Trade-offs
@@ -63,19 +63,19 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Adding or removing a node** remaps only about 1/N of keys, not the whole keyspace.
+- **With an even spread, one node joining or leaving** remaps about 1/N of keys, not the whole keyspace.
 - **Lets a cluster scale horizontally** without a coordinated full re-shard.
 - **Underpins distributed caches**, DHTs (distributed hash tables), and sharded databases at large scale.
-- **With virtual nodes**, load stays even even as membership keeps changing.
+- **With enough virtual nodes**, load spreads far more evenly than with one point per node, though not perfectly.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **One ring point per node gives uneven load**; fixing it with vnodes adds memory and lookup cost.
-- **Ring lookup** is O(log n) against a sorted structure, slower than O(1) modulo hashing.
+- **Ring lookup** is O(log n) against a sorted structure, slower than O(1) modulo hashing, and each membership change rebuilds that structure.
 - **Every node needs a consistent** view of ring membership — a stale view means two nodes disagree about who owns a key.
 - **Doesn't fix hot-key skew**: one very popular key still overloads whichever single node owns it.
-- **More vnodes per machine means more ring neighbours**, so the same number of simultaneous node failures leaves more ranges unavailable and ring-wide repair grows with the token count — production rings keep the count modest and place tokens deliberately.
+- **More vnodes per machine means more ring neighbours.** The same number of simultaneous node failures then leaves more ranges unavailable, and ring-wide repair grows with the token count. Production rings keep the count modest and place tokens deliberately.
 
 ## When to use it
 <!--meta block=usage-->
@@ -85,7 +85,7 @@ flowchart LR
 
 - **Nodes come and go** — scaling, failures, rolling deploys — and you need placement to survive that.
 - **Minimizing data movement** or cache invalidation on membership change matters.
-- **Building a cache, DHT, store or balancer** — you're building a [distributed cache](../../caching/distributed-cache.md), a DHT, a sharded store, or a load balancer that should stick clients to backends.
+- **Building a [distributed cache](../../caching/distributed-cache.md), a DHT, a sharded store, or a load balancer** that should stick clients to backends.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -142,9 +142,9 @@ class HashRing {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Virtual nodes per physical node** — How many ring points (tokens) each node owns; more evens out load but adds ring metadata and lookup cost.
-- **Replication factor** — How many consecutive nodes clockwise around the ring hold a copy of each key.
-- **Bounded-load factor** — If using the bounded-load variant, the cap of (1 + epsilon) times average load before a node overflows to the next on the ring.
+- **Virtual nodes per physical node** — How many ring points (tokens) each node owns; more evens out load but adds ring metadata and lookup cost. Tune against the ratio of maximum to mean per-node load: raise the count only until that ratio meets your target.
+- **Replication factor** — How many distinct physical nodes, found by walking clockwise and skipping points of a node already chosen, hold a copy of each key. Pick it from the failures you must survive.
+- **Bounded-load factor** — If using the bounded-load variant, the cap of (1 + epsilon) times average load before a node overflows to the next on the ring. A smaller epsilon evens load more but sends more requests to overflow nodes; watch the ratio of maximum to mean load.
 - **Hash function** — The function mapping keys and nodes onto the ring; it must spread inputs uniformly or the ring is skewed from the start.
 
 ### Signals to watch

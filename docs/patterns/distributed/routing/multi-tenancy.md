@@ -26,7 +26,7 @@ Multi-tenancy is one deployment of a product serving many customers, called tena
 - **Data leaks.** A missed filter in shared tables leaks data, so enforce the tenant key below the application with a database row policy.
 - **Noisy neighbour.** One heavy tenant slows the rest, so cap each tenant's use of shared resources.
 
-**Example.** A product has 2,000 small tenants and 3 large ones. The small ones share one database, every row keyed by tenant id, with a row policy that filters each session to its tenant. The 3 large ones each get their own database, listed in a tenant catalog, so a request looks up its tenant and goes to the right place. One small tenant starts a report that reads 40 percent of the shared disk, so a per-tenant limit of 100 requests a second cuts it off. Cost: the team runs 4 databases, 3 restore plans and a catalog, not 2,003 databases.
+**Example.** A product has 2,000 small tenants and 3 large ones. The small ones share one database, every row keyed by tenant id, with a row policy that filters each session to its tenant. The 3 large ones each get their own database, listed in a tenant catalog, so a request looks up its tenant and goes to the right place. One small tenant starts a report that reads 40 percent of the shared disk, so a per-tenant cap on database time cuts it off; a request-rate limit alone would miss one long query. Cost: the team runs 4 databases, 3 restore plans and a catalog, not 2,003 databases.
 
 ## How it works
 <!--meta block=structure-->
@@ -68,15 +68,15 @@ The walk has four parts:
 
 1. **Identify** the tenant at the edge, from a token or host name, and treat that value as trusted only after it is verified. Every later layer reads it from the request context and never from a parameter a client could change.
 2. **Place** the tenant. A catalog maps each tenant to where its data and compute live, so you can move a tenant between models without a client change.
-3. **Isolate** the data. In the shared model the tenant key is on every row and enforced below the application, for example by a database row policy, so one forgotten `WHERE` clause cannot leak rows. In the other models the boundary is a schema, a database or a stamp.
+3. **Isolate** the data. In the shared model the tenant key is on every row and enforced below the application, for example by a database row policy, so one forgotten `WHERE` clause cannot leak rows. In the other models the boundary is a schema, a database or a stamp. The application must connect as a role that does not own the tables or bypass row policies, or the policy is not applied.
 4. **Limit** the resources. A per-tenant quota or rate limit on the shared parts stops one tenant from using more than its share.
 
 ## Variations
 <!--meta block=variations-->
 
-- **Shared everything (pool)** — all tenants share tables and compute, and a tenant key on each row separates them. It is the cheapest per tenant and the easiest to run as one fleet. One missed filter leaks data, and one heavy tenant slows the rest.
+- **Shared everything (pool)** — all tenants share tables and compute, and a tenant key on each row separates them. It is the cheapest per tenant and needs the fewest databases to run, but it needs per-tenant limits and metrics. One missed filter leaks data, and one heavy tenant slows the rest.
 - **Schema per tenant (bridge)** — one database, one schema for each tenant. It gives a cleaner boundary and per-tenant changes to structure. A migration must run once per schema, so thousands of tenants make deploys slow.
-- **Database per tenant (silo)** — each tenant gets a database, and often its own compute. Backups, restores and encryption keys are per tenant, and a noisy tenant harms only itself. Cost and connection counts rise with the tenant count.
+- **Database per tenant (silo)** — each tenant gets a database, and often its own compute. Backups, restores and encryption keys are per tenant. With its own compute a noisy tenant harms only itself; on a shared server it still competes. Cost and connection counts rise with the tenant count.
 - **[Deployment stamp](./deployment-stamp.md) per tenant** — a full copy of the stack for a tenant, or a group of them. It gives the strongest isolation and the blast radius of one stamp. It costs a whole stack for each unit, so it is used for large or regulated tenants.
 - **Tiered mix** — small tenants share a pool and large or regulated ones get silos or stamps, with a catalog that records where each lives. It fits most products, and you pay for the catalog and for running more than one model.
 - **Sharded pool** — the shared database is split by tenant key across several nodes, as in [sharding](./sharding.md), so the pool scales past one machine and the largest tenant can be moved to its own shard.
@@ -90,7 +90,7 @@ The walk has four parts:
 - **Low cost per tenant** — shared compute and storage mean a small customer costs a fraction of a dedicated stack.
 - **One fleet to run** — you deploy, patch and monitor one product, so a release reaches every tenant at once.
 - **Isolation is a dial** — you can raise it for one tenant by moving it to a silo or stamp, without changing the product.
-- **Capacity pooled across tenants** — their peaks rarely coincide, so shared capacity serves more tenants than separate stacks would.
+- **Capacity pooled across tenants** — when tenants' peaks are uncorrelated, shared capacity serves more tenants than separate stacks would; tenants in one timezone or one sales event peak together.
 
 ### Cons
 <!--meta polarity=con-->
@@ -114,7 +114,7 @@ The walk has four parts:
 <!--meta polarity=avoid-->
 
 - **Each customer has a hard legal or contract need** for dedicated infrastructure or its own region — give each a [deployment stamp](./deployment-stamp.md).
-- **One tenant dominates the load** — split it out by [sharding](./sharding.md) on the tenant key, or give it a silo.
+- **One tenant dominates the load** — move it to its own shard or give it a silo, since [sharding](./sharding.md) on the tenant key alone leaves its rows on one shard.
 - **You have a single customer** — a tenant key is pure overhead; add it when the second one signs.
 
 ## Code sketch
@@ -126,7 +126,9 @@ const catalog = new Map<string, Placement>([
   ["t1", { model: "pool", dsn: "postgres://shared" }],
   ["t2", { model: "silo", dsn: "postgres://t2-db" }],
 ]);
-const used = new Map<string, number>();     // per tenant; reset every second elsewhere
+// per tenant, per process; a fixed window or token bucket in a shared store resets it.
+// Bounds request rate only: a heavy query needs a statement timeout or IO cap.
+const used = new Map<string, number>();
 const LIMIT = 100;                          // per-tenant cap on shared parts
 
 async function handle(tenantId: string, sql: string, run: Run) {
@@ -137,9 +139,15 @@ async function handle(tenantId: string, sql: string, run: Run) {
   if (place.model === "pool" && n > LIMIT) throw new Error("tenant over limit");
   // In the pool, set the tenant for the session: a row policy filters every
   // query to this tenant, so a forgotten WHERE cannot leak another's rows.
+  // Both statements share one transaction on one connection, since the setting
+  // is transaction-local. The row policy (CREATE POLICY ... USING
+  // (tenant = current_setting('app.tenant'))) must exist, and the app role
+  // must not own the tables.
   return run(place.dsn, [
+    ["begin", []],
     ["select set_config('app.tenant', $1, true)", [tenantId]],
     [sql, []],
+    ["commit", []],
   ]);
 }
 type Run = (dsn: string, stmts: [string, unknown[]][]) => Promise<unknown>;
@@ -168,7 +176,7 @@ type Run = (dsn: string, stmts: [string, unknown[]][]) => Promise<unknown>;
 
 - **latency and error rate per tenant** — Aggregates hide the one tenant being hurt, so break every key metric down by tenant.
 - **share of shared resource by tenant** — Top tenants by database time, IO and connections; it shows a noisy neighbour before the victims complain.
-- **queries run without a tenant context** — Any count above zero is a leak waiting to happen.
+- **queries run without a tenant context** — Any such query outside a named admin or migration path may return another tenant's rows; investigate each.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -209,6 +217,8 @@ type Run = (dsn: string, stmts: [string, unknown[]][]) => Promise<unknown>;
 - [Deployment Stamp](./deployment-stamp.md) — A stamp per tenant is the strongest isolation model.
 - [Sharding](./sharding.md) — A shared pool can be sharded by the tenant key.
 - [Defense in Depth](../../../principles/defense-in-depth.md) — Tenant isolation needs layers: edge identity, application context and a database row policy.
+- [Rate Limiter](../resilience/rate-limiter.md) — A per-tenant limit caps what one tenant takes from a shared part.
+- [Bulkhead](../resilience/bulkhead.md) — Separate pools per tenant class give the silo and bridge tiers their runtime isolation.
 
 **Prevents**
 

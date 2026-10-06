@@ -16,7 +16,7 @@ Watches load in real time, adding instances as demand climbs and removing them a
 ## What it is
 <!--meta block=description-->
 
-**Autoscaling** watches a signal such as CPU use, requests a second or queue depth, and adds or removes instances to keep it near a target. A fixed fleet size is a bet against variable demand: size for the average and a spike overwhelms you, size for the peak and you pay for idle machines. A policy resizes the fleet in a loop instead.
+**Autoscaling** watches a signal such as CPU use, requests a second or queue depth, and adds or removes instances to keep it near a target, so capacity follows demand instead of a size fixed in advance.
 
 ## Explained
 <!--meta block=explain-->
@@ -28,7 +28,7 @@ Autoscaling watches a signal such as CPU use, requests a second or queue length,
 - **Flapping.** Bad thresholds or a short cooldown add and remove instances every few minutes, so set the cooldown longer than a boot.
 - **State.** Stateful parts cannot be added freely, so keep state outside the instances.
 
-**Example.** A fleet of 10 instances runs at 60% CPU, which is its target. Traffic rises 50%, so CPU reaches 90%, and the loop asks for 15 instances. New ones take 3 minutes to boot, so for 3 minutes the fleet runs at 90%, slow but alive. Had the target been 90%, the same rise would put CPU at 135%, so requests would queue and fail for those 3 minutes. The cost of the 60% target is money: after the rise the load fits on 10 instances at 90% but needs 15 at 60%, so the headroom costs 5 more.
+**Example.** A fleet of 10 instances runs at 60% CPU, which is its target. Traffic rises 50%, so CPU reaches 90%, and the loop asks for 15 instances. New ones take 3 minutes to boot, so for 3 minutes the fleet runs at 90%, slow but alive. Had the target been 90%, the same rise would ask 135% of what 10 instances can serve, so requests would queue and fail for those 3 minutes. The cost of the 60% target is money: after the rise the load fits on 10 instances at 90% but needs 15 at 60%, so the headroom costs 5 more.
 
 ## How it works
 <!--meta block=structure-->
@@ -66,8 +66,8 @@ flowchart TB
 <!--meta block=variations-->
 
 - **Threshold (step) scaling** — Add or remove a fixed number of instances when a metric crosses a hard boundary, e.g. CPU above 70% for five minutes. Simple to reason about, but coarse and prone to oscillating right around the line.
-- **Target tracking** — Continuously compute how many instances would hold a metric at a chosen target, like a thermostat, instead of firing discrete steps. Smoother and self-correcting; the default behavior in most managed autoscalers.
-- **Scheduled scaling** — Raise and lower the group's bounds at clock times you choose, against a daily or seasonal curve you already know. The capacity is up before the traffic is, which covers the lag between demand rising and new instances coming online.
+- **Target tracking** — Continuously compute how many instances would hold a metric at a chosen target, like a thermostat, instead of firing discrete steps. Smoother than steps, and it corrects itself as load moves.
+- **Scheduled scaling** — Raise and lower the group's bounds at clock times you choose, against a daily or seasonal curve you already know. The capacity is up before the traffic is, which covers the lag between demand rising and new instances coming online. An off-schedule spike still meets the full lag.
 - **Predictive scaling** — Forecast the coming interval from past traffic and size the fleet to the forecast rather than to the current metric. It earns its keep where a spike arrives faster than an instance can boot, and it is only as good as the resemblance between the next day and the last ones.
 - **Custom-metric scaling** — Scale on an application signal — queue depth, requests-per-instance, tail latency — instead of CPU, for workloads where CPU doesn't reflect the real bottleneck.
 
@@ -78,7 +78,7 @@ flowchart TB
 <!--meta polarity=pro-->
 
 - **Capacity tracks real demand**, so you're not paying for a peak-sized fleet around the clock.
-- **Absorbs traffic spikes** without an engineer paging in to resize anything by hand.
+- **Absorbs spikes** that headroom or a queue can carry through the boot lag, without an engineer paging in to resize by hand.
 - **Replaces lost** or unhealthy instances as a side effect of maintaining the target count.
 - **Turns fleet size into a metric-driven**, tunable, observable knob instead of a one-off decision.
 
@@ -123,6 +123,7 @@ function desiredInstances(m: Metrics, targetCpu = 60, min = 2, max = 20): number
 class Autoscaler {
   private lastScaledAt = 0;
   constructor(private readonly cooldownMs = 5 * 60_000) {}
+  // Simplified: one cooldown for both directions, no drain before scaleIn, no step cap (see production-knob-3, -4).
 
   async tick(pool: InstancePool, metrics: Metrics): Promise<void> {
     if (Date.now() - this.lastScaledAt < this.cooldownMs) return; // still cooling down
@@ -153,7 +154,7 @@ class Autoscaler {
 
 - **Min and max instance count** — The floor that protects baseline availability and the ceiling that caps cost and protects downstream dependencies.
 - **Target metric value** — The setpoint the loop holds — target CPU utilization, requests per instance, or queue depth per instance.
-- **Cooldown and stabilization window** — How long to wait after a scaling action, often separate for scale-out and scale-in, before acting again, to damp flapping.
+- **Cooldown and stabilization window** — How long to wait after a scaling action before acting again, often separate for scale-out and scale-in, to damp flapping. Set the scale-out cooldown at least the measured scale-out lag (production-signal-3), and keep scale-in longer, since scale-in is the riskier direction.
 - **Scale-in and scale-out rate** — How many instances a single decision may add or remove, bounding how fast the fleet swings.
 - **Metric evaluation period** — The window over which the signal is averaged before it is compared to the target.
 
@@ -171,7 +172,7 @@ class Autoscaler {
 - **Flapping** — Cooldown too short or thresholds too tight, so the fleet scales out and back in every few minutes, thrashing caches and connections.
 - **Scale-out lag** — Instances boot too slowly to catch a spike, so the metric stays breached and requests queue or drop while capacity is still coming online.
 - **Botched scale-in** — Terminating instances without draining connections or in-flight work drops requests.
-- **Ceiling or capacity limit hit** — The max is reached, or the provider has no spare capacity, and excess load is shed with no more room to grow.
+- **Ceiling or capacity limit hit** — The max is reached, or the provider has no spare capacity, so excess load queues or fails unless shedding or backpressure is in place. Alert when the count sits at max.
 
 ### Readiness checklist
 <!--meta polarity=check-->

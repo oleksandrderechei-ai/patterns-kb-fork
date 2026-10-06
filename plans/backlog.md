@@ -129,6 +129,17 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   on `inverted-index`, the restart high-water-mark con on `unique-id-generation`, an FST
   variation on `trie`, a third `inbox` sketch for the deferred mode.
 
+- Left from the 2026-10-06 kb-improve run over `distributed-scale` (edits a page groom may
+  not make, or that need a source): a `performance` theme decide row routing to
+  `vertical-partitioning` and a `scalability` row routing to `functional-partitioning`; a
+  `rendezvous-hashing` page and a hazard page for stale ring membership; a Maglev hashing
+  variation and the Cassandra `num_tokens` default on `consistent-hashing`, both needing a
+  source. Candidate edges to judge on their own: `consistent-hashing`→`sticky-session`,
+  `sharding`→`scatter-gather`, `object-storage`→`immutability`,
+  `vertical-partitioning`→`sweeper`, `load-balancer`→`failover`, `cdn` often-confused-with
+  `reverse-proxy`, `stateless-service`→`distributed-cache`, and `deployment-stamp` to
+  `sharding` and `autoscaling`.
+
 ## Questions
 
 Each may be a page gap. The ids after each question are the top `kb.mjs find` hits, the
