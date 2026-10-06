@@ -21,13 +21,13 @@ Autocomplete over a sorted list of 10 million phrases needs a binary search for 
 ## Explained
 <!--meta block=explain-->
 
-A trie stores strings as paths of characters, one edge per character, so every string that starts the same way shares the same first nodes. To find completions you walk one node per typed character, which costs the prefix length and not the size of the data, then read what sits below that node. Choose it over a sorted list with binary search when you answer a query on every keystroke, because the list still has to read every match under the prefix, while the trie has them gathered under one node. Choose a hash map when you only ever look up whole keys. To keep suggestions fast, store the few best completions at each node and rebuild them offline from query counts.
+A trie stores strings as paths of characters, one edge per character, so every string that starts the same way shares the same first nodes. To find completions you walk one node per typed character, which costs the prefix length and not the size of the data, then read what sits below that node. Choose it over a sorted list with binary search when you answer a query on every keystroke. Both must read every match under the prefix unless each node caches its top completions, and the trie makes that cache a one-node read. Choose a hash map when you only ever look up whole keys. To keep suggestions fast, store the few best completions at each node and rebuild them offline from query counts.
 
-- **Memory.** One node per character costs far more than the text, so merge single-child chains into radix edges.
-- **Stale ranks.** Cached top results change only on rebuild, so rebuild on a schedule and swap the copy in.
+- **Memory.** One node per character costs far more than the text, so merge single-child chains into one string-labelled edge (a radix trie).
+- **Stale ranks.** Counts shift between rebuilds, so a new query surfaces only after the next swap.
 - **Prefix only.** It cannot find a word in the middle of a string, so pair it with an inverted index.
 
-**Example.** A search box suggests queries from 10 million past phrases averaging 20 characters. A sorted list needs about 23 comparisons to find the prefix "ca", then reads every phrase under it, perhaps 400,000, to rank them. A trie walks 2 nodes and reads the 5 suggestions cached on the second one, so the lookup takes microseconds. The price is memory: 10 million phrases of 20 characters can reach 200 million nodes at tens of bytes each, several gigabytes, until radix compression shrinks it. A nightly job rebuilds counts and swaps the new trie in.
+**Example.** A search box suggests queries from 10 million past phrases averaging 20 characters. A sorted list needs about 23 comparisons to find the prefix "ca", then reads every phrase under it, perhaps 400,000, to rank them. A trie walks 2 nodes and reads the 5 suggestions cached on the second one, so the lookup is 2 node reads plus one cached list, with no scan of the 400,000 matches. The price is memory: at most 200 million nodes (no shared prefixes) at an assumed 30 bytes each is about 6 GB, before prefix sharing and radix compression shrink it. A nightly job rebuilds counts and swaps the new trie in.
 
 ## How it works
 <!--meta block=structure-->
@@ -79,16 +79,16 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Lookup cost is the prefix length** — it does not depend on how many strings are stored, so latency holds at tens of millions of entries.
-- **Prefix queries are one walk** — everything under the prefix sits below one node, with no scan and no sort.
+- **Lookup cost is the prefix length** — it does not depend on how many strings are stored, so reaching the prefix node takes the same walk at any entry count; reading completions stays constant only with top-k cached per node.
+- **Prefix queries are one walk** — everything under the prefix sits below one node, with no scan and no sort. Without cached top-k, ranking still reads the subtree; caching top-k per node removes that.
 - **Shared prefixes share storage** — many phrases that start alike store their common start once.
 - **Longest-prefix match is natural** — you keep the last matching node while walking, which is what routing and URL matching need.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Memory per node is large** — pointers per child dwarf one byte of text, so use radix edges or compact arrays and measure at your real scale.
-- **Rankings go stale** — cached top-k lists change only on rebuild, so rebuild from counts on a schedule and swap the copy atomically.
+- **Memory per node is large** — a pointer per child dwarfs one byte of text, so merge chains into radix edges and compare resident memory on a sample of your real keys.
+- **Rankings go stale** — cached top-k lists change only on rebuild, so rebuild from counts on a schedule, swap the copy atomically, set the interval by how fast new queries must show up, and alert on rebuild age.
 - **Only prefixes match** — "phone case" will not be found by typing "case". Pair it with an [inverted index](inverted-index.md) for word-level search.
 - **Typos break the walk** — one wrong early character leads to the wrong subtree, so add fuzzy matching or a spell-corrector in front.
 - **Updates under load are awkward** — locking nodes slows readers, so prefer a read-only trie rebuilt offline over live mutation.
@@ -109,6 +109,7 @@ sequenceDiagram
 - **You match words anywhere in the text**; an [inverted index](inverted-index.md) is the right structure.
 - **The set is small**, a few thousand strings, where a sorted array and binary search is simpler.
 - **Memory is tight and keys are long and unrelated**, so there is little prefix sharing to exploit.
+- **Rankings must update within seconds**, or memory stays over budget after radix compression; an inverted index is the better fit.
 
 ## Code sketch
 <!--meta block=sketch-->
