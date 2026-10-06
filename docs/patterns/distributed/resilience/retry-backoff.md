@@ -246,6 +246,7 @@ const claim = `SELECT * FROM task WHERE status = 'pending' AND run_after <= now(
 - [Load Shedding](./load-shedding.md) — Honour the Retry-After on a shed request, or the rejection becomes a retry storm
 - [Design for Self-Healing](../../../principles/self-healing.md) — Retry is the cheapest healing there is, right up until it is unbounded
 - [Fault Injection](./fault-injection.md) — Backoff and jitter settings are only confirmed by a fault that triggers them
+- [Optimistic Concurrency Control](../coordination/optimistic-concurrency-control.md) — The retried operation can be a version-checked write, where a loss means reload and redo, not blind repeat.
 
 **Alternative to**
 

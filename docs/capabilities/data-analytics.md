@@ -132,7 +132,7 @@ Do not buy the model layer as a separate thing. Training features come out of th
 - [Agent Memory](../patterns/ml/agent-memory.md) — Managed memory stores and recalls what an agent learned across sessions.
 - [Agent Sandboxing](../patterns/security/agent-sandboxing.md) — An isolated session runs the code an agent writes, away from your hosts.
 - [Model Context Protocol](../patterns/distributed/routing/mcp.md) — A managed gateway exposes your APIs as MCP tools, with authentication in front.
-- [Agent2Agent](../patterns/distributed/coordination/a2a.md) — The managed agent runtimes host and call agents over the A2A protocol.
 - [Inverted Index](../patterns/distributed/coordination/inverted-index.md) — Every managed search engine keeps an inverted index; you rent it with the service.
+- [Agent2Agent](../patterns/distributed/coordination/a2a.md) — The managed agent runtimes host and call agents over the A2A protocol.
 
 <!-- relationships:end -->

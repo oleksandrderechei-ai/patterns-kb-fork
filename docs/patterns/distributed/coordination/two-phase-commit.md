@@ -27,7 +27,7 @@ Two-phase commit makes a change that touches several databases land in all of th
 - **Slow commits.** Each commit waits for the slowest participant plus two message rounds, so keep participants few and close.
 - **Lower availability.** Every participant must be up to commit, so use a saga when you cross teams.
 
-**Example.** A transfer moves 100 from ledger A to ledger B. The coordinator sends prepare to both. Each locks its row, logs the change and votes yes within 5 ms. The coordinator logs commit and sends commit, and both finish in about 20 ms in all. Now suppose the coordinator crashes right after the votes. A and B each hold a row lock and cannot commit or abort alone, because the other might have voted no. Every payment that touches those two accounts waits until the coordinator restarts and replays its log, which can take minutes. That wait is the price of the all-or-nothing guarantee.
+**Example.** A transfer moves 100 from ledger A to ledger B. The coordinator sends prepare to both. With both ledgers in one data centre, each locks its row, logs the change and votes yes within a few milliseconds. The coordinator logs commit and sends commit, and both finish within tens of milliseconds. Now suppose the coordinator crashes right after the votes. A and B each hold a row lock and cannot commit or abort alone, because the other might have voted no. Every payment that touches those two accounts waits until the coordinator restarts and replays its log, which can take seconds to minutes.
 
 ## How it works
 <!--meta block=structure-->
@@ -76,7 +76,7 @@ A participant that restarts while prepared must ask the coordinator for the outc
 
 - **Three-phase commit** — Adds a pre-commit round between the vote and the commit, so a participant that loses the coordinator can decide by itself from what it saw. It avoids blocking only when the network never partitions and delays stay bounded, so in practice it is rarely used.
 - **Presumed abort** — The coordinator does not log or acknowledge aborts, and a participant that asks about a transaction the coordinator has no record of is told to abort. It saves log writes and messages on the common abort path.
-- **Consensus-backed coordinator** — The coordinator's decision is stored on several machines with [Quorum & Consensus](./quorum-consensus.md), so losing one machine does not leave participants waiting. Gray and Lamport call this Paxos Commit, and Google Spanner runs two-phase commit across groups of replicas in the same spirit.
+- **Consensus-backed coordinator** — The coordinator's decision is stored on several machines with [Quorum & Consensus](./quorum-consensus.md), so losing one machine does not leave participants waiting. Gray and Lamport call this Paxos Commit. Google Spanner runs two-phase commit across groups of replicas, and each group is itself replicated with Paxos.
 - **XA transaction manager** — The X/Open XA standard defines how a transaction manager drives resource managers such as databases and message brokers through prepare and commit. Java's transaction API and many application servers use it, so an application can span two systems without writing the protocol.
 
 ## Trade-offs
@@ -85,9 +85,9 @@ A participant that restarts while prepared must ask the coordinator for the outc
 ### Pros
 <!--meta polarity=pro-->
 
-- **All or nothing across stores** — every participant commits or none does, so no reader sees one side of a transfer without the other.
+- **All or nothing across stores** — every participant commits or none does, though a reader that takes no locks can briefly see one side before the other, so use lock-taking reads or a timestamp scheme where atomic visibility matters.
 - **No undo code to write** — each participant rolls back with its own transaction machinery, where a saga needs a hand-written compensation for every step.
-- **Ordinary isolation holds** — locks stay in place until the decision, so a concurrent transaction waits and does not read half a change.
+- **Ordinary isolation holds** — locks stay in place until the decision, so a concurrent writer or lock-based reader waits and does not read half a change; snapshot readers do not wait, and global serializability needs more than this protocol.
 - **A standard that products implement** — XA and prepared transactions are built into common databases, so you configure it and write no protocol.
 
 ### Cons
@@ -95,8 +95,9 @@ A participant that restarts while prepared must ask the coordinator for the outc
 
 - **A coordinator crash blocks participants** — prepared participants hold locks until it returns, so replicate its decision log with [Quorum & Consensus](./quorum-consensus.md) and alert on prepared transactions that stay open.
 - **Locks are held across network round trips** — each commit waits for the slowest participant plus two message rounds and two forced log writes, so keep participants few and close together.
-- **Availability multiplies** — every participant must be up for the commit to succeed, so three stores at 99.9% each give about 99.7% together, and a participant you do not own is a risk you cannot manage.
+- **Availability multiplies** — every participant must be up for the commit to succeed, so three stores at 99.9% each give about 99.7% together, assuming independent failures and counting only participant downtime, and a participant you do not own is a risk you cannot manage.
 - **Contention grows with the wait** — a hot row locked through the vote queues every other writer behind the slowest participant, so keep the work between prepare and commit short.
+- **Orphaned prepared transactions need manual resolution** — a participant left prepared holds locks until someone resolves it, and an operator's heuristic commit or rollback can leave the stores disagreeing, so audit in-doubt transactions and set timeouts.
 
 ## When to use it
 <!--meta block=usage-->
@@ -134,8 +135,9 @@ async function twoPhaseCommit(tx: string, parts: Participant[], log: DecisionLog
   // The decision exists only once it is durable; a restart replays it from here.
   await log.write(tx, decision);
 
-  // Phase 2: retry until each participant acknowledges, because a prepared
-  // participant cannot give up and is blocked until it hears the outcome.
+  // Phase 2: a production version retries each call until the participant
+  // acknowledges, because a prepared participant cannot give up and is blocked
+  // until it hears the outcome.
   await Promise.all(parts.map(p => decision === "commit" ? p.commit(tx) : p.abort(tx)));
   return decision;
 }
@@ -155,9 +157,9 @@ async function twoPhaseCommit(tx: string, parts: Participant[], log: DecisionLog
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **prepare timeout** — how long the coordinator waits for votes before it decides abort; too short aborts healthy slow participants, too long holds every lock longer
+- **prepare timeout** — how long the coordinator waits for votes before it decides abort; start a little above the participants' p99 prepare time (read it from commit latency p99), and keep it below what other writers can wait on locks; too short aborts healthy slow participants, too long holds every lock longer
 - **commit retry interval** — how often the coordinator resends commit or abort to a participant that has not acknowledged; a prepared participant cannot give up, so retry until it answers
-- **max prepared transactions** — the cap on transactions a participant may hold in the prepared state, such as PostgreSQL's max_prepared_transactions, sized to the number of coordinators and their concurrency
+- **max prepared transactions** — the cap on transactions a participant may hold in the prepared state, such as PostgreSQL's max_prepared_transactions, which defaults to 0 and so disables prepared transactions until you set it; size it to peak concurrent transactions across all coordinators plus headroom for in-doubt ones
 - **participant count** — how many stores one transaction may touch; every added participant lowers availability and raises the wait for the slowest vote
 
 ### Signals to watch
@@ -171,7 +173,7 @@ async function twoPhaseCommit(tx: string, parts: Participant[], log: DecisionLog
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **coordinator crash after the votes** — every prepared participant holds its locks and everything touching those rows waits until recovery
+- **coordinator crash after the votes** — every prepared participant holds its locks and everything touching those rows waits until recovery; find the stuck transactions through the in-doubt signal and finish each as the decision log says
 - **slow participant** — one slow vote stalls the whole transaction and every lock it holds, so latency follows the worst store
 - **lost decision log** — the coordinator cannot say what it decided, so an operator must resolve prepared transactions by hand and may guess wrong
 - **lock pile-up on hot rows** — writers queue behind prepared transactions and a small stall grows into a backlog
@@ -182,7 +184,7 @@ async function twoPhaseCommit(tx: string, parts: Participant[], log: DecisionLog
 - Write the coordinator's decision to a durable, replicated log before sending phase two
 - Run a recovery job that replays the log and finishes in-doubt transactions after a restart
 - Make commit and abort idempotent so retries are safe
-- Alert on prepared transactions older than a few minutes
+- Alert on prepared transactions older than a small multiple of the commit latency p99; page in seconds, not minutes, because a healthy transaction holds its locks for milliseconds
 - Keep the number of participants and the work between prepare and commit small
 
 ## Where it shows up

@@ -27,9 +27,9 @@ A sweeper is a small job that runs every minute or so and asks one question: whi
 - **Falls behind when busy.** Cap rows per run and let a backlog drain over several runs.
 - **Silent death.** Record a heartbeat after each run and alert when it stops.
 - **The limit is a bind.** Too short kills slow work, too long strands resources. Compute it from measured worker time.
-- **Races live workers.** Guard updates with a conditional write and make sweeps safe to repeat, so it never steals from a live worker.
+- **Races live workers.** Guard writes conditionally and keep sweeps repeatable, so a renewing worker keeps its task. A worker that never renews is still reclaimed.
 
-**Example.** Workers claim jobs by setting locked_at, and the p99 job takes 90 s. You set the limit at 5 minutes and the sweeper runs every 60 s. A worker dies at 10:00:00 holding job 41. The sweeper first sees it past the limit at 10:05:00 to 10:06:00 and runs UPDATE ... WHERE locked_by = the worker it saw, which changes 1 row, so another worker takes the job. The customer waits up to 6 minutes, the cost of the limit. A limit of 60 s would have stolen jobs from healthy workers that were only slow.
+**Example.** Workers claim jobs by setting locked_at, and the p99 job takes 90 s. You set the limit at 5 minutes and the sweeper runs every 60 s. A worker dies at 10:00:00 holding job 41. The sweeper first sees it past the limit at 10:05:00 to 10:06:00 and runs UPDATE ... WHERE locked_by = the worker it saw AND locked_at = the value it saw, which changes 1 row, so another worker takes the job. The customer waits up to 6 minutes, the cost of the limit. A limit of 60 s would have stolen jobs from healthy workers that were only slow.
 
 ## How it works
 <!--meta block=structure-->
@@ -73,7 +73,7 @@ flowchart LR
 - **Retry exhaustion** — Find work whose attempts exceeded budget and park it in a dead state — inspectable, re-runnable once the cause is fixed, never silently dropped. This is the [dead-letter channel](../../messaging/dead-letter-channel.md) implemented as a table plus a sweep, for systems with no broker to provide one.
 - **Orphan collection** — Find records whose counterpart never arrived: an upload row with no blob, a blob with no row, a reservation whose payment never came. Usually a two-sided query with a grace period long enough that in-flight work is never mistaken for an orphan.
 - **Lazy expiry instead of a sweep** — No job at all: store the expiry timestamp, and treat the record as expired the next time anything reads it. Correctness stops depending on a job running on time, and the cost moves into every read path. The right default when nothing needs to happen at the moment of expiry — but it leaves the resource nominally held until someone looks, so it cannot free capacity on its own.
-- **Self-expiring records** — Let the store do it: a TTL on the key, a visibility timeout on the message, a session-bound ephemeral node. Zero code and no timing dependency, at the cost of needing a store that offers it and giving up any hook at the moment of expiry — nobody is told, nothing is escalated.
+- **Self-expiring records** — Let the store do it: a TTL on the key, a visibility timeout on the message, a session-bound ephemeral node. Zero code and no timing dependency, at the cost of needing a store that offers it and giving up any hook at the moment of expiry: with a TTL or a visibility timeout nobody is told and nothing is escalated.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -81,10 +81,10 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Catches the one failure class nothing else reports** — the crash, the abandonment, the callback that never came. Without it those records sit forever.
+- **Catches the one failure class nothing else reports** — the crash, the abandonment, the callback that never came, when the store cannot expire the record itself or something must happen at the deadline. Without it those records sit.
 - **One place owns** "what should have happened by now", instead of a timer scattered into every component that could stall.
 - **Its resolutions can be actions** — notify the customer, page an operator, release a hundred rows at once — which a passive expiry check can never do.
-- **Needs no new infrastructure**: an indexed query on a schedule, running against data the system already stores.
+- **Needs little new infrastructure**: an indexed query on a schedule, running against data the system already stores, plus a leader lock and a heartbeat alert.
 - **Inspectable and reusable** — the query that finds stuck work is the same one support runs to answer "why is this stuck?", and it doubles as an alerting signal.
 
 ### Cons
@@ -93,8 +93,8 @@ flowchart LR
 - **Correctness starts depending** on a job running on time — a lagging or dead sweep leaves resources held, and sweeps fall behind exactly when the system is busiest.
 - **It races the live workers it inspects**: without a guarded, idempotent update it will steal a task from a slow-but-healthy holder, or escalate the same record twice.
 - **Polling cost scales with table size**, not with the amount of stuck work — an unindexed predicate turns into a full scan on a timer.
-- **It is usually a singleton**, so it needs a lock or [leader election](./leader-election.md) to avoid running N times — and a sweeper that dies quietly fails silently, which raises the question of who sweeps the sweeper.
-- **The staleness threshold is a tuning bind**: too aggressive kills work that was merely slow, too lax leaves resources stranded past the point anyone cares — compute it from measured worker duration at the p99, and let a live worker renew its lease rather than race the clock.
+- **It is usually run as a singleton**, but a lock or [leader election](./leader-election.md) only saves duplicate runs, because conditional updates keep concurrent sweepers safe. A sweeper that dies quietly fails silently, so something must watch it.
+- **The staleness threshold is a tuning bind**: too aggressive kills work that was merely slow, too lax leaves resources stranded past the point anyone cares. Compute it from measured worker duration at the p99. Let a live worker renew its lease rather than race the clock.
 
 ## When to use it
 <!--meta block=usage-->
@@ -130,8 +130,8 @@ async function sweepOnce() {
   });
 
   for (const task of stale) {
-    // Hands it back only if nothing changed since we read it — so a slow
-    // worker that is still alive keeps the task it is working on.
+    // Hands it back only if the row is unchanged since we read it,
+    // so a holder that renewed or finished keeps it.
     await tasks.releaseIfUnchanged(task);
   }
 }
@@ -143,6 +143,8 @@ setInterval(sweepOnce, 30_000);
 const LEASE_MS = 60_000, MAX_ATTEMPTS = 5; // a claim unrenewed for LEASE_MS is presumed dead
 
 async function sweepOnce(db: Db, notify: Notifier): Promise<void> {
+  // Cap each statement at ROWS_PER_TICK rows (a LIMIT, or a bounded id
+  // subselect for the UPDATEs) so a backlog drains over several ticks.
   // 1 · Reclaim expired leases. The guard is `locked_at = seen`: if the holder
   //     renewed since this row was selected, the update hits 0 rows and the
   //     healthy worker keeps its task.
@@ -206,7 +208,7 @@ setInterval(() => withLeaderLock('sweeper', () => sweepOnce(db, notify)), 30_000
 
 - **the sweep falls behind when it matters most** — the scan and its writes take longest exactly when the table is largest and the database busiest, so ticks queue or overlap and leases expire unreclaimed — the pattern degrades in proportion to the damage
 - **unindexed predicate turns into a scan** — cost tracks table size rather than the amount of stuck work; a tick that was free at ten thousand rows saturates the database at ten million and competes with the very workers it is meant to unblock
-- **mass false reclaim** — under load healthy workers slow past the staleness threshold, and one tick returns a wave of live tasks to the pending pool; guarded writes stop the theft, but the duplicate work and the re-queued rows still land mid-incident
+- **mass false reclaim** — under load healthy workers slow past the staleness threshold, and one tick returns a wave of live tasks to the pending pool; guarded writes stop only holders that renewed or finished since the read, so slow workers that did not renew still lose their tasks, and the duplicate work and re-queued rows land mid-incident
 - **backlog flush after downtime** — the first tick after the sweeper was stopped for an hour matches everything that piled up at once — one oversized transaction, a wave of dead-lettering, and an escalation storm to customers or an on-call operator in a single burst
 - **silent death** — the sweeper stops and nothing reports it, because noticing non-events is precisely the job it was doing; the symptoms surface hours later as stuck records and capacity nobody released
 

@@ -28,7 +28,7 @@ A container orchestrator lets you write down the cluster you want, such as three
 - **Resource requests** Wrong memory requests strand paid capacity or get processes evicted; measure them from real load.
 - **Stateful services** Databases with stable identity need extra setup: grant them stable names and attached storage explicitly.
 
-**Example.** You declare 3 copies of checkout, each with a readiness check every 5 s that fails after 2 misses and calls the payment database. A machine dies, and within about 30 s the loop starts a replacement, so you page nobody. Later the database slows to 10 s per answer. All 3 copies fail 2 checks in a row, so after 10 s the loop removes every one from traffic, though each was only waiting. Checkout is down for as long as the database stays slow. The fix is a readiness check that tests only the copy itself, and a separate, slower check that restarts it.
+**Example.** You declare 3 copies of checkout, each with a readiness check every 5 s that fails after 2 misses and calls the payment database. A machine dies, and once this setup's 30 s failure timeout has passed, the loop starts a replacement, so you page nobody. Later the database slows to 10 s per answer. All 3 copies fail 2 checks in a row, so after 10 s the loop removes every one from traffic, though each was only waiting. Checkout is down for as long as the database stays slow. The fix is a readiness check that tests only the copy itself, and a separate, slower check that restarts it.
 
 ## How it works
 <!--meta block=structure-->
@@ -98,23 +98,24 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **An instance that dies** is replaced in seconds with nobody paged, because replacing it is the same act as creating it.
+- **An instance that dies** is replaced with nobody paged, in seconds for a crashed process and after the failure-detection timeout for a lost machine, because replacing it is the same act as creating it.
 - **Callers reach a stable service** name rather than an address, so instances can move, restart and change in number without a caller changing.
 - **Releases become an edit to the declaration**: roll forward, roll back, or run two versions side by side, through the mechanism you already use to deploy.
 - **Instance count can follow load automatically**, which is where [Autoscaling](../routing/autoscaling.md) plugs in — it moves the declared number and the same loop does the rest.
 - **Many services share machines under enforced limits**, so utilization rises and several teams deploy onto the same capacity without negotiating for it.
-- **Operating ten containers and ten** thousand is the same work, because the effort is in writing the declaration rather than in carrying it out.
+- **Per-service effort stays roughly flat** as instance count grows, because the work is in writing the declaration rather than carrying it out; platform operations and debugging still scale with fleet size.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **The loop enforces a wrong** declaration as faithfully as a right one, and just as fast: a bad configuration reaches every machine in the time a good one would.
-- **It is a large piece** of infrastructure with its own failure modes, upgrade cadence and expertise bill. Three services on two machines will never repay it.
+- **It is a large piece** of infrastructure with its own failure modes, upgrade cadence and staffing cost. Three services on two machines rarely repay it.
 - **Health checks steer the loop**, so a wrong one makes the orchestrator the cause of the outage — restarting healthy instances, or leaving broken ones in rotation.
 - **Resource requests wrong in either direction** cost real money or real reliability: too high strands capacity you paid for, too low gets processes evicted under pressure.
 - **The declaration becomes a second source of truth**, and it drifts from what the team believes is running the first time somebody fixes production by hand.
 - **Stateful services fight the model**, because an instance the loop may move at any moment is awkward when identity and attached storage matter.
 - **Debugging crosses a new layer**: an application symptom now has a scheduling, networking or eviction explanation too, and telling them apart needs someone who knows the platform.
+- **The control plane is a shared dependency**, and while it is down, running instances keep serving but nothing is rescheduled, scaled or rolled out.
 
 ## When to use it
 <!--meta block=usage-->
@@ -145,9 +146,10 @@ sequenceDiagram
 type Desired = { service: string; replicas: number; image: string };
 type Running = { id: string; service: string; image: string; ready: boolean };
 
-// Nothing here knows WHY the numbers differ — a first deploy, a crashed
-// node and a scale-up look identical, so there is one path and no event
-// to miss.
+// Simplification: unready instances are not counted, so a slow start is
+// started again on every pass. A real controller counts starting instances
+// and applies a surge limit and crash-loop backoff. Nothing here knows WHY
+// the numbers differ, so there is one path and no event to miss.
 function reconcile(want: Desired, have: Running[], engine: Engine): void {
   const ready = have.filter((i) => i.service === want.service && i.ready);
   const current = ready.filter((i) => i.image === want.image);
@@ -246,6 +248,8 @@ setInterval(() => reconcile(readDeclaration(), observeCluster(), engine), 5_000)
 - [Sidecar](../routing/sidecar.md) — Co-scheduling the helper with the service, on one lifecycle, is what makes the sidecar shape practical.
 - [Microservices](../../architecture/microservices.md) — The orchestrator earns its complexity at many services and many nodes, which is where this style puts you.
 - [Compute Resource Consolidation](../routing/compute-resource-consolidation.md) — The scheduler is what places colocated workloads by their declared resource needs
+- [Blue-Green Deployment](../routing/blue-green-deployment.md) — The stable name moves between two full sets; the orchestrator holds both and flips the name.
+- [Canary Release](../routing/canary-release.md) — Replica share gives a coarse canary for free; finer slices need proxy weighting.
 
 **Requires**
 

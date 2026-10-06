@@ -24,7 +24,7 @@ A distributed lock lets only one process in a whole fleet run a critical section
 A distributed lock is a small record in a store every server can reach, saying who holds the lock and until when, so only one server in a fleet runs a critical job at a time. A server takes it with a create-only-if-absent write, deletes it when done, and the record expires after a set time, so a holder that crashes does not block everyone forever. Choose it over a database row lock or a [conditional write](conditional-write.md) when exclusivity must span many stateless servers and outlive a single transaction, such as a run-once job or a multi-minute seat hold.
 
 - **Not airtight.** A stalled holder loses the lock unaware. Give each grant a rising \[fencing token\](fencing-token.md) and reject older ones at the resource.
-- **Expiry is a guess.** Too short risks double grants, too long lets a crash block everyone. Set it above your worst pause.
+- **Expiry is a guess.** Too short risks double grants, too long blocks everyone after a crash. Exceed your longest pause, and still fence.
 - **Stampede on release.** Waiting servers all retry at once. Retry with random delays.
 - **New failure point.** The lock store can fail. Alert on locks that expired while held.
 
@@ -76,9 +76,9 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Single-instance Redis lock** — `SET key owner NX EX ttl` creates a self-expiring key in one atomic command; a small Lua script does the owner-checked release. Fast and simple, but the single node is a point of failure, and it offers no correctness guarantee across the TTL boundary — good for soft reservations, not for guarding data a double grant would corrupt.
+- **Single-instance Redis lock** — `SET key owner NX EX ttl` creates a self-expiring key in one atomic command; a small Lua script does the owner-checked release. Fast and simple, but the single node is a point of failure. With a replica, asynchronous replication means a failover can drop the key and grant a second holder before any TTL expiry. It offers no correctness guarantee across the TTL boundary: good for soft reservations, not for guarding data a double grant would corrupt.
 - **Redlock (multi-node Redis)** — Acquire the same lock on a majority of independent Redis nodes to survive one node failing. Genuinely contested for correctness — Martin Kleppmann argues it still cannot guarantee mutual exclusion under GC pauses or clock skew — so reserve it for reservations, not for a resource that a double grant would corrupt.
-- **Ephemeral-node locks (ZooKeeper / etcd)** — The lock is tied to a client session. ZooKeeper uses ephemeral sequential znodes, and each waiter watches only the node just ahead of it, so a holder's crash ends its session, auto-deletes its node, and wakes exactly the next waiter. Strongly consistent through partitions, at the cost of running a coordination cluster; not built for very high acquisition rates.
+- **Ephemeral-node locks (ZooKeeper / etcd)** — ZooKeeper ties the lock to a client session with ephemeral sequential znodes; each waiter watches only the node just ahead of it, so a holder's crash ends its session, auto-deletes its node, and wakes exactly the next waiter. etcd instead ties the key to a lease the client keeps alive. Both keep the store's own state consistent on the majority side of a partition, but a stalled holder is still double-granted without a fencing token (etcd key revision, ZooKeeper sequence). Cost: a coordination cluster, and not built for very high acquisition rates.
 - **Database-column lease** — Two columns — `locked_by`, `locked_until` — and a conditional `UPDATE` that succeeds only if the row is free or the lease has expired. No new infrastructure and the same durability as your data, but the lock row becomes a write hotspot and DB writes are slower than a cache.
 
 ## Trade-offs
@@ -123,8 +123,8 @@ sequenceDiagram
 ## Code sketch
 <!--meta block=sketch-->
 
-```typescript summary="TypeScript — Redis SET NX EX to acquire, Lua check-and-delete to release"
-// Acquire with SET NX EX: the value is a unique owner token, so only
+```typescript summary="TypeScript — Redis SET NX PX to acquire, Lua check-and-delete to release"
+// Acquire with SET NX PX: the value is a unique owner token, so only
 // the real holder can release. NX = create only if absent; PX = TTL.
 async function acquire(redis: Redis, key: string, ttlMs: number) {
   const token = crypto.randomUUID();
@@ -143,16 +143,19 @@ async function release(redis: Redis, key: string, token: string) {
 }
 
 // This bounds a crash, not a stall. If the holder pauses past the TTL,
-// a second caller can acquire — so the protected resource must still
-// reject any write stamped with a stale fencing token.
+// a second caller can acquire, so the protected resource must still
+// reject any write stamped with a stale fencing token. The UUID above
+// proves ownership only and is not a fencing token: Redis SET cannot
+// mint a rising number, so take it from an etcd revision or ZooKeeper
+// sequence.
 
 ```
 
 ## In the wild
 <!--meta block=wild-->
 
-- **Redis** — The canonical single-instance lock: SET key owner NX EX ttl creates a self-expiring key in one atomic command, and a small Lua script does the owner-checked release. Redis also documents the multi-node Redlock algorithm, which is contested for correctness — Martin Kleppmann argued it cannot guarantee mutual exclusion under GC pauses or clock skew, and Redis has no built-in fencing tokens — so it best suits soft reservations rather than data a double grant would corrupt. {#wild-redis}
-- **Apache ZooKeeper** — Ephemeral sequential znodes implement a lock where the lowest sequence number holds it and each waiter watches only the node just ahead of it; a holder crash ends its session, auto-deletes its node, and wakes the next waiter. Strongly consistent, but not built for high-frequency (hundreds per second) locking. {#wild-zookeeper}
+- **Redis** — Redis documents the single-instance SET NX lock and the multi-node Redlock algorithm, which Martin Kleppmann argued cannot guarantee mutual exclusion under GC pauses or clock skew. Redis has no built-in fencing tokens, so it suits soft reservations rather than data a double grant would corrupt. {#wild-redis}
+- **Apache ZooKeeper** — Ephemeral sequential znodes implement a lock where the lowest sequence number holds it and each waiter watches only the node just ahead of it. Strongly consistent, but not built for very high acquisition rates. {#wild-zookeeper}
 - **etcd** — A Lease with a TTL the client keeps alive, plus a transactional compare-and-swap (Txn on the key create-revision), gives an atomic acquire; the key mod-revision is a natural monotonically increasing fencing token. Its clientv3 concurrency package packages this as a Mutex recipe. {#wild-etcd}
 
 ## In production
@@ -161,10 +164,10 @@ async function release(redis: Redis, key: string, token: string) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **lease TTL** — how long the lock lives before it self-expires — too short risks a double grant when the holder stalls, too long makes a crashed holder block everyone for that duration
+- **lease TTL** — how long a lease lasts without renewal; set it above the longest holder pause and critical section you measure, since too short risks a double grant and too long blocks everyone after a crash
 - **renewal / heartbeat interval** — how often the holder extends its lease or keeps its session alive (etcd lease keep-alive, ZooKeeper session heartbeat); it must sit well under the TTL so ordinary jitter does not cost the lock
 - **acquire retry & backoff** — how a waiter that fails to acquire retries — fixed interval, capped exponential backoff, or blocking on a watch; jitter avoids a thundering herd the instant the lock frees
-- **fencing-token issuance** — the monotonically increasing number handed out on each grant (etcd key revision, ZooKeeper zxid or sequence) that the resource checks — the surface that makes the lock safe rather than merely likely-correct
+- **fencing-token issuance** — the monotonically increasing number handed out on each grant (etcd key revision, ZooKeeper zxid or sequence) that the resource checks
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -236,12 +239,13 @@ async function release(redis: Redis, key: string, token: string) {
 
 **Prevents**
 
-- [Split-Brain](../../../hazards/split-brain.md) — An unfenced lease survives a partition and two holders write
+- [Split-Brain](../../../hazards/split-brain.md) — Leases a single owner that must stop at expiry, so a partitioned old holder is refused once a fencing token is checked at the resource
 
 **Exposed to**
 
 - [Clock Skew](../../../hazards/clock-skew.md) — A lease expiry depends on clocks, so skew can give two holders.
 - [Race Condition](../../../hazards/race-condition.md) — Can fall into race condition when a lock whose expiry races with a slow holder admits two holders
+- [Thundering Herd](../../../hazards/thundering-herd.md) — Can fall into thundering herd when a popular lock frees and every waiter retries at once, unless retries are jittered or watch-based
 
 **Demonstrated by**
 

@@ -489,7 +489,7 @@
       "definition": "Retries transient failures with a growing delay",
       "route": "/patterns/distributed/resilience/retry-backoff.html",
       "requires": ["idempotency", "timeout-deadline"],
-      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request"]
+      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control"]
     },
     {
       "id": "bulkhead",
@@ -537,7 +537,7 @@
       "definition": "Caps how long a call may take before giving up",
       "route": "/patterns/distributed/resilience/timeout-deadline.html",
       "requires": [],
-      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request", "bulkhead"]
+      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request", "heartbeat", "bulkhead"]
     },
     {
       "id": "hedged-request",
@@ -601,7 +601,7 @@
       "definition": "Single entry point that routes to backing services",
       "route": "/patterns/distributed/routing/api-gateway.html",
       "requires": [],
-      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session", "service-discovery"]
+      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session", "service-discovery", "a2a"]
     },
     {
       "id": "bff",
@@ -681,7 +681,7 @@
       "definition": "Stand the new version up beside the old, then move traffic across",
       "route": "/patterns/distributed/routing/blue-green-deployment.html",
       "requires": [],
-      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "containerization", "deployment-stamp", "web-queue-worker", "rolling-deployment"]
+      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "containerization", "deployment-stamp", "web-queue-worker", "rolling-deployment", "container-orchestration"]
     },
     {
       "id": "canary-release",
@@ -689,7 +689,7 @@
       "definition": "Send a small slice of traffic to the new version and watch before widening",
       "route": "/patterns/distributed/routing/canary-release.html",
       "requires": ["load-balancer"],
-      "related": ["blue-green-deployment", "feature-flag", "health-endpoint", "deployment-stamp", "quarantine", "strangler-fig", "rolling-deployment", "api-routing"]
+      "related": ["blue-green-deployment", "feature-flag", "health-endpoint", "deployment-stamp", "quarantine", "strangler-fig", "rolling-deployment", "api-routing", "container-orchestration"]
     },
     {
       "id": "feature-flag",
@@ -905,7 +905,7 @@
       "definition": "Exactly one node coordinates, and the group agrees who",
       "route": "/patterns/distributed/coordination/leader-election.html",
       "requires": ["quorum-consensus", "heartbeat"],
-      "related": ["distributed-lock", "gossip-protocol", "minimize-coordination", "scheduling", "sweeper", "redundancy", "failover", "lease"]
+      "related": ["distributed-lock", "gossip-protocol", "minimize-coordination", "scheduling", "sweeper", "redundancy", "failover", "lease", "fencing-token", "vector-clock"]
     },
     {
       "id": "failover",
@@ -913,7 +913,7 @@
       "definition": "Promote a standby to take over when the primary fails, then redirect clients, so service resumes in seconds with no one waking up to repair it.",
       "route": "/patterns/distributed/coordination/failover.html",
       "requires": ["replication"],
-      "related": ["fallback", "leader-election", "heartbeat", "fencing-token", "health-endpoint"]
+      "related": ["fallback", "leader-election", "heartbeat", "fencing-token", "health-endpoint", "quorum-consensus"]
     },
     {
       "id": "quorum-consensus",
@@ -921,7 +921,7 @@
       "definition": "A majority of nodes must agree before a write counts",
       "route": "/patterns/distributed/coordination/quorum-consensus.html",
       "requires": ["replication"],
-      "related": ["gossip-protocol", "write-ahead-log", "distributed-lock", "redundancy", "vector-clock", "crdt", "merkle-tree", "two-phase-commit"]
+      "related": ["gossip-protocol", "write-ahead-log", "distributed-lock", "redundancy", "vector-clock", "crdt", "merkle-tree", "two-phase-commit", "failover", "fencing-token"]
     },
     {
       "id": "vector-clock",
@@ -929,7 +929,7 @@
       "definition": "Per-replica counters on each version, so a store can tell an older write from a concurrent one",
       "route": "/patterns/distributed/coordination/vector-clock.html",
       "requires": ["replication"],
-      "related": ["quorum-consensus", "optimistic-concurrency-control", "crdt", "merkle-tree"]
+      "related": ["quorum-consensus", "optimistic-concurrency-control", "crdt", "merkle-tree", "leader-election"]
     },
     {
       "id": "gossip-protocol",
@@ -945,7 +945,7 @@
       "definition": "Each node sends a small alive signal on a timer, and a failure detector suspects any node whose signal stops for longer than a timeout.",
       "route": "/patterns/distributed/coordination/heartbeat.html",
       "requires": [],
-      "related": ["failover", "gossip-protocol", "health-endpoint", "lease"]
+      "related": ["failover", "health-endpoint", "lease", "timeout-deadline", "gossip-protocol"]
     },
     {
       "id": "federated-identity",
@@ -961,7 +961,7 @@
       "definition": "Make a write happen only if the store still matches a predicate",
       "route": "/patterns/distributed/coordination/conditional-write.html",
       "requires": [],
-      "related": ["lock-free", "sweeper", "idempotency", "fencing-token"]
+      "related": ["lock-free", "sweeper", "idempotency", "fencing-token", "pessimistic-locking"]
     },
     {
       "id": "optimistic-concurrency-control",
@@ -969,7 +969,7 @@
       "definition": "Detect write conflicts with a version check and retry, instead of locking",
       "route": "/patterns/distributed/coordination/optimistic-concurrency-control.html",
       "requires": [],
-      "related": ["lock-free", "pessimistic-locking", "unit-of-work", "minimize-coordination", "distributed-lock", "vector-clock", "identity-map", "fencing-token"]
+      "related": ["lock-free", "pessimistic-locking", "unit-of-work", "minimize-coordination", "distributed-lock", "vector-clock", "identity-map", "fencing-token", "retry-backoff"]
     },
     {
       "id": "pessimistic-locking",
@@ -977,7 +977,7 @@
       "definition": "Lock the row up front so no one else can touch it until you're done",
       "route": "/patterns/distributed/coordination/pessimistic-locking.html",
       "requires": [],
-      "related": ["optimistic-concurrency-control", "distributed-lock", "two-phase-commit", "lease"]
+      "related": ["optimistic-concurrency-control", "distributed-lock", "two-phase-commit", "lease", "conditional-write", "fencing-token"]
     },
     {
       "id": "distributed-lock",
@@ -1001,7 +1001,7 @@
       "definition": "A number that rises with each lock grant and is checked by the resource, so a holder that lost its lock without noticing cannot overwrite newer work.",
       "route": "/patterns/distributed/coordination/fencing-token.html",
       "requires": ["distributed-lock"],
-      "related": ["failover", "lease", "optimistic-concurrency-control", "conditional-write"]
+      "related": ["failover", "lease", "optimistic-concurrency-control", "conditional-write", "leader-election", "pessimistic-locking", "quorum-consensus", "idempotency"]
     },
     {
       "id": "workflow-orchestration",
@@ -1025,7 +1025,7 @@
       "definition": "Declare the cluster you want; a control loop keeps it that way",
       "route": "/patterns/distributed/coordination/container-orchestration.html",
       "requires": ["containerization"],
-      "related": ["workflow-orchestration", "health-endpoint", "stateless-service", "autoscaling", "sidecar", "microservices", "compute-resource-consolidation"]
+      "related": ["workflow-orchestration", "health-endpoint", "stateless-service", "autoscaling", "sidecar", "microservices", "compute-resource-consolidation", "blue-green-deployment", "canary-release"]
     },
     {
       "id": "external-configuration-store",
@@ -1049,7 +1049,7 @@
       "definition": "Delegate a stateful task to an agent you did not build",
       "route": "/patterns/distributed/coordination/a2a.html",
       "requires": ["ai-agent"],
-      "related": ["mcp", "async-request-reply", "service-discovery", "acp"]
+      "related": ["mcp", "async-request-reply", "service-discovery", "acp", "api-gateway"]
     },
     {
       "id": "outbox",
@@ -1545,7 +1545,7 @@
       "definition": "The same request applied twice has the same effect as once",
       "route": "/patterns/messaging/idempotency.html",
       "requires": [],
-      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer"]
+      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer", "fencing-token"]
     },
     {
       "id": "fan-in",

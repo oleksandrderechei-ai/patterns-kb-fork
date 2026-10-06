@@ -24,10 +24,10 @@ A gossip protocol spreads membership and state changes through a large cluster w
 In a gossip protocol, every node regularly picks a few random peers and swaps what it knows with them, so news spreads through the cluster like a rumour with no central broadcaster. Each node merges what it hears and passes it on in its next round, so the work spreads evenly, nodes can join or die mid-round, and an update reaches everyone in rounds that grow with the logarithm of the cluster size. Choose it over one node telling all N peers, or an N-squared mesh of links, when membership changes fast and a view a few rounds stale is acceptable.
 
 - **No guarantees.** A slow node can lag by rounds and conflicts need a merge rule you supply.
-- **Constant chatter.** Messages never stop. Keep peer count and round interval just high enough for your target spread time.
+- **Constant chatter.** Anti-entropy rounds send even when nothing changed. Keep fanout and interval just high enough.
 - **Flapping.** A failure timeout below the longest pause makes healthy nodes look dead. Set it above that pause.
 
-**Example.** A cluster has 1,000 nodes, each telling 1 random peer per second. One node learns that node 42 left. The informed set roughly doubles each round, so about 10 seconds later most nodes know, and a few stragglers take several more rounds. Telling 3 peers a round cuts the spread to about 5 rounds. Every node sends 1 message a second even when nothing changed, so the cluster carries 1,000 messages a second as steady chatter. A node paused for 8 s by garbage collection, against a 5 s failure timeout, is declared dead and then returns, so set the timeout above 8 s.
+**Example.** A cluster has 1,000 nodes, each pushing to 1 random peer per second. One node learns that node 42 left. The informed set roughly doubles each round, so about 10 seconds later most nodes know, and a few stragglers take several more rounds. Telling 3 peers a round cuts the spread to about 5 rounds. Push-pull converges faster. Every node sends 1 message a second even when nothing changed, so the cluster carries 1,000 messages a second as steady chatter. A node paused for 8 s by garbage collection, against a 5 s failure timeout, is declared dead and then returns, so set the timeout above 8 s.
 
 ## How it works
 <!--meta block=structure-->
@@ -64,17 +64,18 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Scales to large**, dynamic clusters without a coordinator or an all-to-all broadcast.
-- **Degrades gracefully** — no single node's failure stalls dissemination.
-- **Spreads load evenly**; no node ever becomes the bottleneck for the whole cluster.
-- **Membership tracking and failure detection** fall out of the same mechanism, for free.
+- **Degrades gracefully**, since no single node's failure stalls dissemination.
+- **Spreads load roughly evenly**, since peers are chosen at random; no fixed coordinator carries the whole cluster.
+- **Membership tracking and failure detection** run on the same exchanges, though a usable detector still needs tuning.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **Only eventually consistent** — a node can act on stale state for several rounds after an update.
 - **Convergence is probabilistic**; a worst-case node can lag noticeably behind the rest.
-- **Continuous anti-entropy chatter costs steady** background bandwidth even when nothing changed.
+- **Heartbeat and anti-entropy rounds** cost steady background bandwidth even when nothing changed; rumor-mongering alone goes quiet.
 - **Concurrent conflicting updates need a merge strategy** of their own — gossip doesn't order anything.
+- **Deletions need tombstones** kept longer than the worst-case spread time, or a lagging peer re-introduces the removed entry.
 
 ## When to use it
 <!--meta block=usage-->
@@ -113,6 +114,7 @@ class GossipNode {
     }
   }
 
+  // Only the owner of an entry bumps its version; peers only copy newer ones.
   private merge(incoming: Digest) {
     for (const [id, remote] of incoming) {
       const local = this.state.get(id);
@@ -124,7 +126,12 @@ class GossipNode {
 }
 
 function pickRandom<T>(xs: T[], n: number): T[] {
-  return [...xs].sort(() => Math.random() - 0.5).slice(0, n);
+  const a = [...xs];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, n);
 }
 ```
 
@@ -141,8 +148,8 @@ function pickRandom<T>(xs: T[], n: number): T[] {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **fanout** — the number of random peers each node exchanges with per round; higher fanout converges in fewer rounds but multiplies per-round bandwidth, and convergence scales as O(log N) so a large cluster needs surprisingly little
-- **gossip interval** — how often a round fires; shorter intervals cut convergence time and raise steady background chatter — the two costs you are always trading against each other
+- **fanout** — the number of random peers each node exchanges with per round; higher fanout converges in fewer rounds but multiplies per-round bandwidth
+- **gossip interval** — how often a round fires; shorter intervals cut convergence time and raise steady background chatter
 - **failure-detection timeout** — how long a peer may be silent or unreachable before it is suspected and then declared dead (a probe timeout in SWIM-style protocols, the phi threshold in phi-accrual detectors); set it above the worst-case GC pause and network jitter or healthy nodes flap
 - **indirect-probe count / suspicion timeout** — in SWIM, how many other members are asked to probe a silent peer before it is convicted, and how long it stays merely suspect first; more indirect probes cut false positives from a single bad link at some extra traffic
 
@@ -150,7 +157,7 @@ function pickRandom<T>(xs: T[], n: number): T[] {
 <!--meta polarity=signal-->
 
 - **convergence time** — how long a fresh update takes to reach the whole cluster; it should track O(log N) rounds, and a steady climb means fanout or interval no longer suits the current cluster size
-- **per-node gossip bandwidth** — bytes per second of gossip traffic on each node — the steady background cost of anti-entropy, which grows with membership size and message payload
+- **per-node gossip bandwidth** — bytes per second of gossip traffic on each node; the steady cost of anti-entropy, which grows with membership size and message payload
 - **membership flap rate** — how often nodes transition up and down in the membership view; repeated flapping on a node that is actually alive means the failure detector is firing false positives
 - **membership view divergence** — disagreement between nodes about who is currently alive; a persistent gap means some nodes are not converging and are acting on stale membership
 
@@ -197,7 +204,7 @@ function pickRandom<T>(xs: T[], n: number): T[] {
 - [Replication](./replication.md) — Anti-entropy rounds reconcile divergent copies between peers over time
 - [CRDT](./crdt.md) — Gossip can carry conflict-free replicated data type (CRDT) state because the merge absorbs repeats and any order.
 - [Merkle Tree](./merkle-tree.md) — Dissemination is probabilistic, so a tree-based repair catches what it missed.
-- [Heartbeat](./heartbeat.md) — A gossip protocol carries failure-detection heartbeats between members.
+- [Heartbeat](./heartbeat.md) — Gossip carries heartbeat counters and suspicions, so no node watches all the others.
 
 **Alternative to**
 

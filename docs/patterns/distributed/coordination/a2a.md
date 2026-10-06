@@ -23,7 +23,7 @@ Calling an agent built by another team as a plain HTTP endpoint breaks when the 
 
 Agent2Agent lets one AI agent hand a long job to another agent that a different team built, without either side seeing the other's prompts, tools or model. The job becomes a task with an id and a visible state: submitted, working, waiting for input, then finished, failed or cancelled. Either side can send more messages on that task, so the peer can come back with a question instead of guessing. The peer is found by reading a card it publishes at a fixed web address, which lists its skills, its endpoint and how to log in. Choose it only across a boundary you do not control: inside one application a function call is right, and for reaching your own tools a tool protocol needs far less machinery.
 
-- **Opacity** You can reject a bad result but never diagnose it; check every returned file and record the card version with each task.
+- **Opacity** You can reject a bad result but usually cannot see why; check every returned file and record the card version and an artifact hash.
 - **Stalled tasks** A peer that dies leaves a task that never finishes; run a sweeper that cancels stalled tasks.
 - **Public callback** The callback address the peer posts to is public; authenticate it and rate-limit it.
 - **Untrusted output** Whatever comes back is untrusted text; validate it before your model reads it.
@@ -33,7 +33,7 @@ Agent2Agent lets one AI agent hand a long job to another agent that a different 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="How does one agent give work to another it cannot see inside? The card at step 1 carries everything needed to call — skills, endpoint, auth scheme — so nothing about the peer is configured ahead of time. Steps 5 to 7 are the reason this is a task and not a request: the work outlives any connection either side is willing to hold open."
+```mermaid caption="How does one agent give work to another it cannot see inside? The card at step 1 carries everything needed to call: skills, endpoint and auth scheme, so nothing about the peer is configured ahead of time. Steps 5 to 7 are the reason this is a task and not a request: the work outlives any connection either side is willing to hold open."
 flowchart LR
     A["Calling agent"]
     Card[("Capability card, well-known path")]
@@ -50,7 +50,7 @@ flowchart LR
     classDef ext stroke-dasharray:4 4
 ```
 
-```mermaid caption="Four non-terminal states and four terminal ones, which is what makes the delegation resumable. The webhook branch inverts the trust direction — the remote agent now calls into your network — so that endpoint needs its own authentication and abuse limits."
+```mermaid caption="Four non-terminal states are drawn: submitted, working, input-required and auth-required. Completed ends the task, and failed or cancelled end it too, which is what makes the delegation resumable. The webhook branch inverts the trust direction, because the remote agent now calls into your network, so that endpoint needs its own authentication and abuse limits."
 sequenceDiagram
     autonumber
     participant A as Calling agent
@@ -89,7 +89,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Capability you do not have to build** — it reaches capability nobody in your organisation has to build, and keeps the peer free to change everything behind its card.
+- **Reaches capability nobody in your organisation has to build**, and keeps the peer free to change everything behind its card.
 - **Survives work that outlives a connection**, because state lives in the task rather than in the socket.
 - **Stays interactive**: the waiting-on-input state lets a long delegation come back for an answer instead of guessing.
 - **Cancellation is defined rather than improvised**, so a caller that changes its mind has somewhere to say so.
@@ -123,7 +123,7 @@ sequenceDiagram
 - **You are connecting an application** to its own tools and data. That is what the [tool protocol](../routing/mcp.md) is for, and it is far less machinery.
 - **Both agents are yours, in one deployment**. Call the function.
 - **The traffic is high-volume and latency-sensitive**. This shape is conversational, not transactional.
-- **You cannot price a wrong answer** — you cannot state what a wrong answer from the peer costs you, because you will have no way to bound it afterwards.
+- **You cannot price a wrong answer from the peer**, because you will have no way to bound it afterwards.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -139,13 +139,17 @@ const auth = await credentialsFor(card.securitySchemes);   // obtained out of ba
 let task = await rpc(card.url, "message/send", {
   message: { role: "user", parts: [{ type: "text", text: brief }] },
 }, auth);
+const deadline = Date.now() + TASK_TIMEOUT_MS;   // bound the wait; a silent peer must not hold the task open
+await saveTask(task.id, card.version);           // durable record: task id and the card version it ran against
 
 // 3. Follow it. The peer may need something only the caller can supply.
 while (!TERMINAL.has(task.status.state)) {
+  if (Date.now() > deadline) { await rpc(card.url, "tasks/cancel", { id: task.id }, auth); return reject(task); }
   if (task.status.state === "input-required") {
     const answer = await askTheUser(task.status.message);
     task = await rpc(card.url, "message/send", { taskId: task.id, message: answer }, auth);
   } else {
+    await sleep(POLL_MS);
     task = await rpc(card.url, "tasks/get", { id: task.id }, auth);   // or subscribe to the stream
   }
 }
@@ -167,9 +171,9 @@ return task.artifacts;    // untrusted content — validate before it reaches yo
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Card refresh interval** — How often a peer’s capability card is re-fetched. Too long and you authenticate against a scheme it has retired; too short and you fetch on every call.
-- **Task timeout and cancellation policy** — How long you wait before cancelling. Without one, a peer that stops responding leaves tasks open forever.
-- **Update channel per task** — Streamed events or a registered webhook. Pick by expected duration, not by convenience — a stream cannot survive an hour.
+- **Card refresh interval** — How often a peer’s capability card is re-fetched. Too long and you authenticate against a scheme it has retired; too short and you fetch on every call. Refresh on a fixed TTL, and refetch at once when an auth attempt fails.
+- **Task timeout and cancellation policy** — How long you wait before cancelling. Without one, a peer that stops responding leaves tasks open forever. Compute it per peer from the observed p99 time to terminal state (production-signal-2) plus a margin.
+- **Update channel per task** — Streamed events or a registered webhook. Pick by expected duration, not by convenience. A held stream rarely survives an hour of drops even with resubscribe, so use a webhook for long work.
 - **Webhook authentication** — How the remote agent proves it is the one posting to your callback. This endpoint is public by construction.
 - **Token scope for delegation** — What authority the peer receives on the user’s behalf, and for how long. Ambient credentials here are the whole problem.
 
@@ -199,7 +203,7 @@ return task.artifacts;    // untrusted content — validate before it reaches yo
 - The callback endpoint is authenticated and rate-limited like any other public surface.
 - Delegated authority is a scoped, expiring token — never the caller’s own credentials.
 - Returned artifacts pass your own acceptance check before they reach a model or a user.
-- The peer’s card and protocol version are recorded with each task, so a behaviour change is diagnosable.
+- The peer’s card and protocol version are recorded with each task, plus a hash of each accepted artifact and a canary task per peer, so a silent change can be bounded to a window.
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -223,6 +227,7 @@ return task.artifacts;    // untrusted content — validate before it reaches yo
 
 - [Asynchronous Request-Reply](../routing/async-request-reply.md) — The task handle, the polling and the callback are the same shape this pattern names
 - [Service Discovery](../routing/service-discovery.md) — The capability card at a well-known path is a self-describing registry entry
+- [API Gateway](../routing/api-gateway.md) — A gateway in the path applies one authorization and quota policy to delegated traffic across many peers.
 
 **Requires**
 
@@ -235,6 +240,6 @@ return task.artifacts;    // untrusted content — validate before it reaches yo
 
 **Implemented by**
 
-- [Data & Analytics](../../../capabilities/data-analytics.md) — Each cloud's managed agent runtime speaks A2A, so a hosted agent can call another.
+- [Data & Analytics](../../../capabilities/data-analytics.md) — Managed agent runtimes on some clouds can host and call A2A agents, so a hosted agent can call another.
 
 <!-- relationships:end -->

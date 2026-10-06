@@ -27,7 +27,7 @@ The strangler fig replaces a legacy system one capability at a time, named for t
 - **Two systems, shared data.** Keeping data consistent is harder than moving code. Decide which store owns each piece before you move it.
 - **Stalls halfway.** A migration with no end date leaves a two-headed system. Set a switch-off date and delete the seam.
 
-**Example.** A shop has 40 endpoints on a legacy monolith. You put a router in front, still sending 100% to legacy. You rebuild search and route 5% of search traffic to it, then 50%. At 50% you find a ranking bug and route search back to legacy in minutes. You fix it and reach 100%. The new search index is fed from the legacy database with about 2 s of lag, which is the data cost. After 3 months only 4 of 40 endpoints have moved, so you set a date for the rest or you will run both for years.
+**Example.** A shop has 40 endpoints on a legacy monolith. You put a router in front, still sending 100% to legacy. You rebuild search and route 5% of search traffic to it, then 50%. At 50% you find a ranking bug and route search back to legacy in minutes. You fix it and reach 100%. Search only reads, so rollback loses nothing; a slice that writes must mirror its writes back first. The new search index is fed from the legacy database with about 2 s of lag, which is the data cost. After 3 months only 4 of 40 endpoints have moved, so you set a date for the rest or you will run both for years.
 
 ## How it works
 <!--meta block=structure-->
@@ -58,7 +58,7 @@ flowchart LR
 - **[API Gateway](../routing/api-gateway.md) routing** — An edge router dispatches each request to old or new backend by path or feature flag — the most common way to build the facade at the network boundary.
 - **Database strangling** — Migrate the data layer slice by slice too, using dual writes or change-data-capture to keep old and new stores consistent during the transition.
 - **[Anti-Corruption Layer](../../ddd/acl.md) facade** — The routing seam also translates models, so the new system is built against a clean domain and never coupled to the legacy schema.
-- **Edge-first ordering** — Which slice to carve out first is its own decision, and the cheap answer is the one with the fewest inbound dependencies. A notification module that everything calls but that calls nothing back can leave as a standalone service the day you extract it; the old system just starts calling the new one. Start at the core instead and the first slice drags half the system out with it. Ordering by dependency count buys early wins that prove the seam works before you spend credibility on the hard extractions.
+- **Edge-first ordering** — Which slice to carve out first is its own decision: the cheap answer is the one with the fewest inbound dependencies. A notification module that everything calls but that calls nothing back can leave as a standalone service the day you extract it. Start at the core instead and the first slice drags half the system out with it. Ordering by dependency count gives early wins that prove the seam works before the hard extractions, at the cost of leaving the core, where the risk sits, for last.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -68,17 +68,17 @@ flowchart LR
 
 - **The business keeps shipping** — no long feature freeze while a rewrite catches up.
 - **Risk is spread across many** small cutovers instead of one irreversible big-bang release.
-- **Each slice can be rolled** back independently by pointing the router back at legacy.
+- **Each slice can be rolled** back independently by pointing the router back at legacy, provided writes made on the new path were also mirrored to legacy.
 - **The legacy system remains** a working safety net until the new one has proven itself.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **The routing facade becomes a new**, mission-critical piece of infrastructure to get right.
-- **Running two systems** — and often two data stores — in parallel costs double the operational overhead, sometimes for years.
+- **Running two systems**, often with two data stores, in parallel adds operational overhead, sometimes for years.
 - **Keeping shared data consistent across** old and new is usually harder than the code migration itself.
 - **A migration with no firm** end date can stall halfway, leaving a permanent two-headed system.
-- **Much effort buys nothing permanent** — a real share of the effort is the seam, the dual paths, the sync jobs, all written to be deleted, so the migration ends when that plumbing goes, not when legacy switches off.
+- **A real share of the effort** goes into the seam, the dual paths and the sync jobs, all written to be deleted, so the migration ends when that plumbing goes, not when legacy switches off.
 
 ## When to use it
 <!--meta block=usage-->
@@ -105,27 +105,32 @@ Prevents the smell of a stalled or ever-growing rewrite calcifying into a [Big B
 ```typescript summary="TypeScript — a minimal routing facade"
 type Handler = (req: Request) => Promise<Response>;
 
-// Capabilities that have been rebuilt and verified on the new system.
-const migrated = new Set<string>(["/api/users", "/api/orders"]);
+// Capability prefix -> share of traffic (0..1) sent to the new system.
+const weights = new Map<string, number>([
+  ["/api/users", 1],
+  ["/api/orders", 0.05],
+]);
 
 class StranglerFacade {
   constructor(
     private readonly legacy: Handler,
     private readonly modern: Handler,
+    private readonly timeoutMs = 500,
   ) {}
 
   async handle(req: Request): Promise<Response> {
-    const route = new URL(req.url).pathname;
-    // Route by capability, not by request content — the seam is explicit.
-    return migrated.has(route)
-      ? this.modern(req)
-      : this.legacy(req);
+    const path = new URL(req.url).pathname;
+    const prefix = [...weights.keys()].find((p) => path.startsWith(p));
+    if (!prefix || Math.random() >= weights.get(prefix)!) return this.legacy(req);
+    const timeout = new Promise<Response>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), this.timeoutMs));
+    try {
+      return await Promise.race([this.modern(req.clone()), timeout]);
+    } catch {
+      return this.legacy(req); // safe only while legacy holds current data
+    }
   }
 }
-
-// As each capability is rebuilt, add its route here.
-// The legacy handler never sees that route again.
-migrated.add("/api/invoices");
 ```
 
 ## In the wild
@@ -143,7 +148,7 @@ migrated.add("/api/invoices");
 - **Per-capability routing rule** — The map from route (or feature flag) to legacy-vs-new backend, and the percentage of traffic sent to the new path. A weighted rollout lets a slice ramp from canary to full before the legacy path is cut off.
 - **Traffic mirroring / shadowing** — Whether requests are duplicated to the new backend without serving its response, so its output can be compared against legacy under real load before any user depends on it.
 - **Data-sync mechanism and lag tolerance** — How old and new stores are kept consistent during the dual-run — dual writes or change-data-capture — and how much replication lag is acceptable before the new path is trusted for reads.
-- **Facade timeout and legacy fallback** — How long the facade waits on the new backend before it fails or falls back to the legacy path, bounding the blast radius of a bad slice.
+- **Facade timeout and legacy fallback** — How long the facade waits on the new backend before it fails or falls back to the legacy path, bounding the blast radius of a bad slice. Fallback is safe only while legacy still holds current data for that slice.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -158,7 +163,7 @@ migrated.add("/api/invoices");
 
 - **Facade becomes a single point of failure** — Every call now flows through the routing seam; if it saturates or crashes, both legacy and new paths go dark at once. It has to be as available as the systems behind it.
 - **Data drift between stores** — Dual writes or CDC fall behind or lose an update, and old and new stores diverge; a request served by whichever backend gives a different answer than the other.
-- **Stalled migration** — With no firm end date the migration halts halfway, leaving a permanent two-headed system paying double operational cost indefinitely.
+- **Stalled migration** — With no firm end date the migration halts halfway, leaving a two-headed system whose parallel running cost keeps accruing until it is finished or abandoned.
 - **Irreversible slice cutover** — The new path writes data that was never mirrored back to legacy, so pointing the route back at the old system silently loses those writes — the rollback is no longer clean.
 
 ### Readiness checklist

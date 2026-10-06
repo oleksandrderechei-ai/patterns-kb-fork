@@ -21,7 +21,7 @@ Reading a value, deciding in your code, then writing leaves a gap where another 
 ## Explained
 <!--meta block=explain-->
 
-A conditional write sends the store the change and the rule for allowing it in one statement, so the store checks and writes as a single step. For example, UPDATE seats SET taken = true WHERE id = 7 AND taken = false changes the seat only if it is still free. Without it, you read a value, decide in your code, then write, and between the read and the write another request can change what you read: two buyers both see one seat left and both get it. Choose it over a lock when the whole safety rule fits in one condition on the row you write, because it holds no lock, makes no second round trip and needs no coordination service.
+A conditional write sends the store the change and the rule for allowing it in one statement, so the store checks and writes as a single step. For example, UPDATE seats SET taken = true WHERE id = 7 AND taken = false changes the seat only if it is still free. Without it, you read a value, decide in your code, then write, and between the read and the write another request can change what you read: two buyers both see one seat left and both get it. Choose it over a lock when the whole safety rule fits in one condition on the row you write, because it holds no lock across your read-decide-write cycle, makes no second round trip and needs no coordination service.
 
 - **Silent loss** A losing write changes zero rows without an error; always check the affected-row count before anything that follows.
 - **Guard the real row** Guard the row actually contended, not a stand-in such as a bare counter, or two winners can land on one item.
@@ -69,7 +69,7 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Status / claim guard** — The predicate names a specific row's state — `WHERE seat_number='A15' AND status='available'`. Guarding the actual contended thing, not a proxy for it, is the safe form: it flips exactly the row it checked.
-- **Counter floor** — The predicate is a threshold on an aggregate — `WHERE available_seats > 0`. Cheap and correct for pure supply, but it proves a unit exists, not which; with several units free two writers can both pass and both land on the same specific item. Guard the real row when identity matters.
+- **Counter floor** — The predicate is a threshold on an aggregate: `WHERE available_seats > 0`. The decrement alone never oversells, but it proves a unit exists, not which; when a separate read picks the specific item first and several units are free, two writers can both pass and land on the same item. Guard the real row when identity matters.
 - **Set-if-absent** — The condition is "the key does not exist yet" — Redis `SET key val NX`, SQL `INSERT ... ON CONFLICT DO NOTHING`, Cassandra `IF NOT EXISTS`. This is conditional create, and it is exactly how a lease or lock is acquired: whoever writes the row first owns it.
 - **[Version compare](./optimistic-concurrency-control.md)** — The condition is that a version or revision still equals what you last read — `WHERE version = 42`. Generalising the guard to a monotonic token rather than a business value is what turns a single conditional write into optimistic concurrency control across a whole read-modify-write cycle.
 - **Guarded multi-write** — When one atomic statement is not enough — decrement the counter and insert a ticket row — a bare `INSERT` after an `UPDATE` that matched zero rows still creates a "ticket with no seat", because a zero-row update is not an error. Make the second write depend on the first's affected-row count (a `WITH ... RETURNING` common table expression (CTE) feeding `INSERT ... SELECT`, or an explicit affected-rows check inside a transaction).
@@ -80,9 +80,9 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **One atomic statement** — no lock is held, no second round-trip, no coordination service to run.
-- **Closes the read-then-write race completely**: the check and the write cannot be interleaved because they are the same operation.
-- **Rides the serialization the store** already gives a single row, so it scales as far as the store does.
+- **One atomic statement** — no application lock is held across a read-decide-write cycle, no second round-trip, no coordination service to run. The store still takes a brief row lock for the statement.
+- **Closes the read-then-write race on the guarded row**: the check and the write are one operation, so they cannot interleave. Other rows, ABA and write skew need other guards.
+- **Rides the single-row serialization the store already gives**, so it scales with the store across many rows; one hot row is capped (see the retry-storm failure mode below).
 - **The same idea travels across engines** — SQL `WHERE`, DynamoDB `ConditionExpression`, Redis `NX`, Cassandra `IF`, HTTP `If-Match`.
 
 ### Cons
@@ -92,7 +92,7 @@ sequenceDiagram
 - **A losing write matches zero rows**, which is not an error — forget to check the affected-row count and the failure is silent.
 - **Guarding a proxy such** as a bare counter can still let two writers collide on the same specific item; the predicate must protect the real contended thing.
 - **An equality predicate is blind** to the ABA problem — a value that leaves and returns looks unchanged. Guard a version that only ever increments.
-- **Loss behaviour depends on isolation level**: silent zero-rows at common defaults, but a serialization error the app must catch and retry at stricter ones.
+- **Loss behaviour depends on isolation level**: silent zero-rows at common defaults, but at stricter levels some engines raise a serialization error the app must catch and retry. Behaviour differs by engine, so check yours.
 
 ## When to use it
 <!--meta block=usage-->
@@ -103,7 +103,7 @@ sequenceDiagram
 - **Safety rule is a row predicate** — the rule is a predicate on the row you are writing: a status flag, a claim, a counter floor.
 - **You want to decrement**, claim, or flip a single row atomically without holding a lock across the operation.
 - **You are acquiring a lease with set-if-absent**, or writing a version-checked update — both are conditional writes underneath.
-- **It should be the first thing you try**; escalate to locking or a version loop only once a plain conditional write proves insufficient.
+- **Try it first when the rule is a predicate on the one row you write**; escalate to locking or a version loop only once a plain conditional write proves insufficient.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -223,6 +223,7 @@ async function sellTicket(db: Db, concertId: string, userId: string) {
 **Alternative to**
 
 - [Sweeper](./sweeper.md) — a guarded write that checks expiry at read time removes the need for a background sweep — until an expiry has to notify someone
+- [Pessimistic Locking](./pessimistic-locking.md) — Fold check and write into one statement with no application lock held; lock up front once the decision needs app code or the row is hot.
 
 **Generalizes**
 

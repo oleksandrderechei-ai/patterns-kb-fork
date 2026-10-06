@@ -4630,13 +4630,6 @@
       "note_b": "Election with terms and fencing stops a stale leader writing"
     },
     {
-      "a": "distributed-lock",
-      "verb": "prevents-hazard",
-      "b": "split-brain",
-      "note_a": "An unfenced lease survives a partition and two holders write",
-      "note_b": "A fencing token gets a resumed leader's writes rejected"
-    },
-    {
       "a": "write-through",
       "verb": "prevents-hazard",
       "b": "stale-cache",
@@ -10811,13 +10804,6 @@
       "note_b": "A failing health check can be the signal that triggers promotion of a standby."
     },
     {
-      "a": "gossip-protocol",
-      "verb": "combines-with",
-      "b": "heartbeat",
-      "note_a": "A gossip protocol carries failure-detection heartbeats between members.",
-      "note_b": "Gossip spreads heartbeat counters and suspicions so no node watches all the others."
-    },
-    {
       "a": "heartbeat",
       "verb": "often-confused-with",
       "b": "health-endpoint",
@@ -10832,13 +10818,6 @@
       "note_b": "The renewal stream of a lease doubles as the liveness signal for its holder."
     },
     {
-      "a": "heartbeat",
-      "verb": "prevents-hazard",
-      "b": "split-brain",
-      "note_a": "A detector that waits for repeated misses and confirmers avoids declaring a live node dead and promoting a second leader.",
-      "note_b": "Careful failure detection keeps a pause from being read as a death that splits the cluster."
-    },
-    {
       "a": "leader-election",
       "verb": "combines-with",
       "b": "lease",
@@ -10851,13 +10830,6 @@
       "b": "pessimistic-locking",
       "note_a": "A lease excludes other servers across machines and time, with no database transaction held open.",
       "note_b": "Row locks live inside one transaction, where a lease reaches across servers and survives a crashed holder."
-    },
-    {
-      "a": "lease",
-      "verb": "prevents-hazard",
-      "b": "split-brain",
-      "note_a": "A holder that must stop at its deadline cannot keep acting as the sole owner while another holds the grant.",
-      "note_b": "Time-bound ownership narrows the window in which two nodes both claim to lead."
     },
     {
       "a": "fencing-token",
@@ -12668,15 +12640,6 @@
     {
       "a": "data-analytics",
       "verb": "implements",
-      "b": "a2a",
-      "note_a": "The managed agent runtimes host and call agents over the A2A protocol.",
-      "note_b": "Each cloud's managed agent runtime speaks A2A, so a hosted agent can call another.",
-      "maps_a": "mapping-row-16",
-      "maps_label_a": "Managed agent runtime"
-    },
-    {
-      "a": "data-analytics",
-      "verb": "implements",
       "b": "inverted-index",
       "note_a": "Every managed search engine keeps an inverted index; you rent it with the service.",
       "note_b": "Managed search is an inverted index you rent rather than build.",
@@ -13163,6 +13126,62 @@
       "note_b": "Shared atoms and molecules put a repeated UI part in one file, so one change lands once"
     },
     {
+      "a": "failover",
+      "verb": "alternative-to",
+      "b": "quorum-consensus",
+      "note_a": "When the old primary cannot be fenced, let a majority decide the leader instead of promoting one standby automatically.",
+      "note_b": "When one standby must be promoted and the old primary can be fenced, failover does it without a vote."
+    },
+    {
+      "a": "fencing-token",
+      "verb": "combines-with",
+      "b": "leader-election",
+      "note_a": "Leader election is where the rising token comes from: each new leader takes the next term.",
+      "note_b": "Election grants the role; a rising fencing token makes a deposed leader's late writes fail."
+    },
+    {
+      "a": "leader-election",
+      "verb": "alternative-to",
+      "b": "vector-clock",
+      "note_a": "Where there is no single leader, a vector clock tells concurrent writes apart.",
+      "note_b": "A leader gives one write order, so no clock is needed; a vector clock serves replicas with no leader."
+    },
+    {
+      "a": "heartbeat",
+      "verb": "prevents-hazard",
+      "b": "split-brain",
+      "note_a": "Only a tuned detector, with a long timeout and confirmers, avoids declaring a live node dead and promoting a second leader; a naive one causes the split, and fencing is still needed.",
+      "note_b": "Careful failure detection keeps a pause from being read as a death that splits the cluster."
+    },
+    {
+      "a": "heartbeat",
+      "verb": "alternative-to",
+      "b": "timeout-deadline",
+      "note_a": "A call deadline reveals a failure only while a request waits; a heartbeat covers the idle node.",
+      "note_b": "When a request is in flight a deadline suffices, so no heartbeat is needed."
+    },
+    {
+      "a": "gossip-protocol",
+      "verb": "combines-with",
+      "b": "heartbeat",
+      "note_a": "Gossip carries heartbeat counters and suspicions, so no node watches all the others.",
+      "note_b": "Gossip spreads heartbeat counters and suspicions so no node watches all the others."
+    },
+    {
+      "a": "optimistic-concurrency-control",
+      "verb": "combines-with",
+      "b": "retry-backoff",
+      "note_a": "A loser's wait between reload and rewrite is capped, jittered backoff, so a hot row does not collapse into lockstep retries.",
+      "note_b": "The retried operation can be a version-checked write, where a loss means reload and redo, not blind repeat."
+    },
+    {
+      "a": "conditional-write",
+      "verb": "alternative-to",
+      "b": "pessimistic-locking",
+      "note_a": "Fold check and write into one statement with no application lock held; lock up front once the decision needs app code or the row is hot.",
+      "note_b": "Locking holds the row while your code decides; a conditional write skips the lock when the rule fits one predicate."
+    },
+    {
       "a": "api-gateway",
       "verb": "combines-with",
       "b": "sticky-session",
@@ -13280,6 +13299,76 @@
       "b": "retry-storm",
       "note_a": "Retrying a failed undo against a service that is already down adds load; cap compensation retries and back them off.",
       "note_b": "Compensation retries against a service that is already down add to the retry load; this pattern's undos need a cap and backoff."
+    },
+    {
+      "a": "lease",
+      "verb": "prevents-hazard",
+      "b": "split-brain",
+      "note_a": "Narrows split-brain to the pause case: a holder that checks its own clock stops at its deadline, but a paused one still needs a Fencing Token.",
+      "note_b": "A lease stops a holder that can see its own clock, but a paused holder still acts, so add a fencing token checked at the resource."
+    },
+    {
+      "a": "distributed-lock",
+      "verb": "prevents-hazard",
+      "b": "split-brain",
+      "note_a": "Leases a single owner that must stop at expiry, so a partitioned old holder is refused once a fencing token is checked at the resource",
+      "note_b": "A fencing token gets a resumed leader's writes rejected"
+    },
+    {
+      "a": "distributed-lock",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "Can fall into thundering herd when a popular lock frees and every waiter retries at once, unless retries are jittered or watch-based",
+      "note_b": "A popular lock freeing wakes every waiter at once and hammers the lock store"
+    },
+    {
+      "a": "fencing-token",
+      "verb": "alternative-to",
+      "b": "pessimistic-locking",
+      "note_a": "A row lock holds inside one transaction on one store; a token is for a lock that spans servers where the holder can pause.",
+      "note_b": "Where the lock spans servers and the holder can pause, a fencing token refuses the stale write that a row lock cannot see."
+    },
+    {
+      "a": "fencing-token",
+      "verb": "combines-with",
+      "b": "quorum-consensus",
+      "note_a": "A consensus group issues each leader a term, and storage rejects any lower term, which is the token.",
+      "note_b": "The term a consensus group issues serves as a fencing token when storage rejects a lower one."
+    },
+    {
+      "a": "fencing-token",
+      "verb": "combines-with",
+      "b": "idempotency",
+      "note_a": "Where the resource cannot compare a token, make the write safe to replay instead.",
+      "note_b": "Where a resource can compare a token, fencing refuses the stale write that replay-safety would only absorb."
+    },
+    {
+      "a": "container-orchestration",
+      "verb": "combines-with",
+      "b": "blue-green-deployment",
+      "note_a": "The stable name moves between two full sets; the orchestrator holds both and flips the name.",
+      "note_b": "Managed or in-cluster, the orchestrator is where the switch is declared."
+    },
+    {
+      "a": "container-orchestration",
+      "verb": "combines-with",
+      "b": "canary-release",
+      "note_a": "Replica share gives a coarse canary for free; finer slices need proxy weighting.",
+      "note_b": "The orchestrator supplies the replica-share split; weighted slices come from the proxy layer."
+    },
+    {
+      "a": "data-analytics",
+      "verb": "implements",
+      "b": "a2a",
+      "note_a": "The managed agent runtimes host and call agents over the A2A protocol.",
+      "note_b": "Managed agent runtimes on some clouds can host and call A2A agents, so a hosted agent can call another."
+    },
+    {
+      "a": "a2a",
+      "verb": "combines-with",
+      "b": "api-gateway",
+      "note_a": "A gateway in the path applies one authorization and quota policy to delegated traffic across many peers.",
+      "note_b": "Fronts agent-to-agent calls as well as service calls."
     },
     {
       "a": "sliding-window",

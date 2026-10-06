@@ -24,10 +24,10 @@ Two people editing the same row can silently overwrite each other, and locking t
 Optimistic concurrency control lets you read a row with its version number, do your work holding no lock, and write back only if the version is still the one you read. If someone else wrote first, zero rows change, you know you lost, and you reload and try again. The check is a [conditional write](conditional-write.md) on the version. Choose it over [locking the row](pessimistic-locking.md) when two writers rarely hit the same row and the time between read and write is long or human, such as an open edit form, because nothing is held while you think and no reader queues behind a writer.
 
 - **You own the retry loop.** The work must replay on changed data. Redo it from fresh state rather than patching the old result.
-- **Retry storms.** On one hot row losers redo work again and again, costing more than a lock. Cap retries and back off.
+- **Retry storms.** On one hot row with many writers, losers redo work and can cost more than a lock. Cap retries and back off.
 - **Fooled by ABA.** An equality check misses a value that changes and changes back. Use a version that only ever increases.
 
-**Example.** Alice and Bob both open document 7 at version 12 and each spends 2 minutes editing. A lock would have frozen the document for 2 minutes. Alice saves first with WHERE version = 12, the update changes 1 row, and the version becomes 13. Bob saves with version 12, changes 0 rows, and sees a conflict, so his editor reloads version 13 and asks him to merge. Now 10 writers hit one counter row at once. One wins per round, so the attempts are 10 + 9 + ... + 1 = 55, where a lock would make 10. That is 5.5 times the work.
+**Example.** Alice and Bob both open document 7 at version 12 and each spends 2 minutes editing. A lock would have frozen the document for 2 minutes. Alice saves first with WHERE version = 12, the update changes 1 row, and the version becomes 13. Bob saves with version 12, changes 0 rows, and sees a conflict, so his editor reloads version 13 and asks him to merge. Now 10 writers hit one counter row at once and every loser retries immediately with no backoff. One wins per round, so the attempts are 10 + 9 + ... + 1 = 55, where a lock would make 10. That is 5.5 times the work, a worst case.
 
 ## How it works
 <!--meta block=structure-->
@@ -91,7 +91,7 @@ sequenceDiagram
 <!--meta polarity=con-->
 
 - **Thrashes under high contention**: many writers on one hot row means most of them lose, retry, and lose again — a [retry storm](../../../hazards/retry-storm.md) that does more work than a lock would.
-- **The loser's work is discarded and redone**; without bounded retries and backoff, contention can turn into livelock.
+- **The loser's work is discarded and redone**; without bounded retries and backoff, contention can starve slow writers and waste capacity.
 - **An equality version check** is blind to the ABA problem unless the token strictly increments on every write.
 - **The caller owns the reload-and-retry loop**; skip it and a conflict becomes a silent lost update instead of a caught one.
 - **Retries assume the work can simply replay** — awkward when the read-modify-write had visible side effects between the read and the failed commit.
@@ -102,7 +102,7 @@ sequenceDiagram
 ### Reach for it when
 <!--meta polarity=when-->
 
-- **Conflicts are the exception and reads dominate writes** — most e-commerce, admin edits, collaborative work spread across distinct records.
+- **Conflicts are the exception and reads dominate writes** — such as admin edits or work spread across distinct records.
 - **A read-modify-write cycle needs application** logic between the read and the write, so a single conditional write is not enough.
 - **You must not hold** a database lock across a user's think-time or an external call.
 - **The coordination must span stateless** servers or a stateless protocol where no shared lock exists — a version attribute or an `ETag` travels with the data.
@@ -138,8 +138,8 @@ async function updateWithOcc(
     );
     if (rowCount === 1) return next; // our version was still current — we won
 
-    // Lost the race. Back off a little, then reload the fresh state and retry.
-    await sleep(2 ** attempt * 10);
+    // Lost the race. Wait a random time up to the exponential delay (jitter), so losers do not return in lockstep, then reload and retry.
+    if (attempt < maxAttempts - 1) await sleep(Math.random() * 2 ** attempt * 10);
   }
   throw new Error(`OCC gave up after ${maxAttempts} conflicting attempts`);
 }
@@ -152,7 +152,7 @@ async function updateWithOcc(
 - **Elasticsearch optimistic concurrency** — Every document carries a \_seq_no and \_primary_term; an index or update request can supply if_seq_no and if_primary_term, and Elasticsearch applies the write only if the document still matches those values, returning 409 Conflict otherwise. It is Elasticsearch's built-in optimistic concurrency control. {#wild-elasticsearch-occ}
 - **DynamoDB conditional update on a version attribute** — The common OCC recipe on DynamoDB: keep a numeric version attribute on the item and issue UpdateItem with a ConditionExpression like version = :expected while setting version = version + 1; a concurrent writer working from a stale version fails with ConditionalCheckFailedException and retries. {#wild-dynamodb-version}
 - **PostgreSQL** — Application-level OCC adds an explicit version column checked and incremented in the UPDATE ... WHERE id = ? AND version = ?; an affected-row count of zero signals a conflict. Postgres also exposes the xmin system column, the row-version left by multi-version concurrency control (MVCC), which can serve as the token without a hand-rolled column. {#wild-postgres-version}
-- **HTTP ETag + If-Match** — A resource is served with an ETag validator; a later PUT or PATCH sends If-Match with that ETag, and the origin applies the change only if the resource still carries it, replying 412 Precondition Failed (or 409 Conflict) on a stale write — optimistic concurrency across a stateless protocol with no lock to hold. {#wild-http-etag-ifmatch}
+- **HTTP ETag + If-Match** — A resource is served with an ETag validator; a later PUT or PATCH sends If-Match with that ETag, and the origin applies the change only if the resource still carries it, replying 412 Precondition Failed on a stale write (409 Conflict is an API's own convention, not the status HTTP defines for a failed If-Match) — optimistic concurrency across a stateless protocol with no lock to hold. {#wild-http-etag-ifmatch}
 
 ## In production
 <!--meta block=production-->
@@ -162,7 +162,7 @@ async function updateWithOcc(
 
 - **Retry budget** — The cap on attempts, or a wall-clock deadline, after which a conflict is surfaced as an error instead of retried. Too low turns ordinary contention into user-visible failures; too high lets one hot key soak up capacity redoing work it will lose again.
 - **Backoff and jitter between attempts** — The delay curve a loser waits before reloading and re-writing — fixed interval, capped exponential, or randomized. Randomization is the part that matters: without it every loser wakes at the same instant and collides again in lockstep.
-- **The precondition — what the write is checked against** — A dedicated version column, an existing business value, the whole prior row in the WHERE clause, or a token the store hands you at read time (a PostgreSQL xmin, an Elasticsearch \_seq_no/\_primary_term pair, an HTTP ETag). Only a token that strictly increases on every write is safe against a value that leaves and returns.
+- **The precondition — what the write is checked against** — A dedicated version column, an existing business value, the whole prior row in the WHERE clause, or a token the store hands you at read time (a PostgreSQL xmin, an Elasticsearch \_seq_no/\_primary_term pair, an HTTP ETag). Only a token that strictly increases on every write is safe against a value that leaves and returns. xmin is a transaction id, not a counter, and an ETag is often a content hash, so treat both as equality tokens and mind xmin wraparound.
 - **Versioning granularity** — Whether one token covers a whole record or a narrower part of it. A coarse token rejects edits that never actually overlapped, inflating the conflict rate; a fine one cuts conflicts but stops protecting any invariant that spans the fields it no longer covers.
 - **Where the retry loop lives** — Retry server-side and hide the conflict from the caller, or return a conflict status (409, or 412 on a failed If-Match) and let the client reload and resubmit. Client-side is the only honest choice when the merge needs a human decision rather than a blind replay.
 
@@ -178,7 +178,7 @@ async function updateWithOcc(
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Retry storm on a hot key** — Concurrency on one row outruns the rate at which winners commit, so most writers lose, immediately re-read and re-write — and those retries are themselves load. Conflict rate on that key climbs toward total, latency and CPU rise, and useful throughput on the key falls while the rest of the keyspace looks healthy.
+- **Retry storm on a hot key** — Concurrency on one row outruns the rate at which winners commit, so most writers lose and re-read, and those retries are themselves load. Conflict rate on that key climbs toward (n-1)/n for n concurrent writers, latency and CPU rise, and useful throughput on the key falls while the rest of the keyspace looks healthy.
 - **Lockstep retries** — Losers that back off by the same fixed amount return at the same instant and collide again. Throughput oscillates in waves instead of degrading smoothly, and adding capacity does not help because the collisions are synchronized, not saturated.
 - **Starvation of the slow writer** — The longer a caller holds a version before committing, the likelier it is to lose. Under load the writers with long think-time or heavy work never win while quick writers sail through — a fairness failure that an aggregate success rate hides completely.
 - **Side effects replayed on retry** — Work done between the read and the failed commit that was not confined to the store — a message sent, an external call made, an event published — happens again on every attempt. A rising conflict rate turns what was a rare duplicate into a routine one.
@@ -220,6 +220,7 @@ async function updateWithOcc(
 - [Minimize Coordination](../../../principles/minimize-coordination.md) — Checking at commit replaces a lock held for the whole transaction
 - [Identity Map](../../enterprise/identity-map.md) — The map makes stale reads likely inside a long unit, so version checks guard the save.
 - [Fencing Token](./fencing-token.md) — A version check guards writers by what they read, and a fencing token guards them by the lock they held.
+- [Retry with Backoff](../resilience/retry-backoff.md) — A loser's wait between reload and rewrite is capped, jittered backoff, so a hot row does not collapse into lockstep retries.
 
 **Alternative to**
 

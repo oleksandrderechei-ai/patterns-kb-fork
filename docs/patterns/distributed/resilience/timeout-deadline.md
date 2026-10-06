@@ -226,6 +226,10 @@ await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
 - [Hedged Request](./hedged-request.md) — A hedge turns a slow call into a fast one before the timeout turns it into an error.
 - [Bulkhead](./bulkhead.md) — Bounds how long a call holds its compartment's permit
 
+**Alternative to**
+
+- [Heartbeat](../coordination/heartbeat.md) — When a request is in flight a deadline suffices, so no heartbeat is needed.
+
 **Enables**
 
 - [Circuit Breaker](./circuit-breaker.md) — You can't trip on slowness without timeouts

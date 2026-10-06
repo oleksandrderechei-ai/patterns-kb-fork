@@ -21,11 +21,11 @@ A node that crashes sends nothing, and silence looks the same as a quiet system.
 ## Explained
 <!--meta block=explain-->
 
-A heartbeat is a small message each node sends on a fixed timer, so others learn it is alive without asking it anything. A failure detector, the code on the receiving side, records when each message arrived and suspects any node whose silence runs past a timeout. Systems then act on that suspicion by starting a [leader election](leader-election.md) or a [failover](failover.md). Choose it over waiting for a request to fail when nothing is waiting on the node, as with an idle worker, a lease holder or a cluster member.
+A heartbeat is a small message each node sends on a fixed timer, so others learn it is alive without asking it anything. A failure detector, the code on the receiving side, records when each message arrived and suspects any node whose silence runs past a timeout. Systems then act on that suspicion by starting a leader election or a failover. Choose it over waiting for a request to fail when nothing is waiting on the node, as with an idle worker, a lease holder or a cluster member.
 
-- **Silence is ambiguous.** Set the timeout above your longest measured pause, and ask other nodes to confirm before a drastic action.
+- **Silence is ambiguous.** A pause longer than any you measured still looks like a crash, so ask other nodes to confirm before a drastic action.
 - **Beats can lie.** A timer thread keeps beating while the work is stuck. Send the beat from the work path.
-- **Quadratic traffic.** Every node watching every other grows with the square of the cluster. Watch a few neighbours or use gossip.
+- **Quadratic traffic.** Every node watching every other grows with the square of the cluster, so a thousand nodes send a million beats per interval.
 
 **Example.** Ten workers each send a beat every 1 s, and the detector's timeout is 5 s. Worker 7 dies just after its beat at 12 s, so the detector suspects it at 17 s. Its 40 jobs return to the pool within that 5 s window, plus one check interval. Now worker 3 stalls in an 8 s garbage-collection pause. It is suspected after 5 s of silence and its jobs are handed out again, then it wakes up and finishes them too. A 10 s timeout avoids that false alarm and slows real detection to 10 s.
 
@@ -79,9 +79,9 @@ The timeout is a multiple of the interval, commonly several beats, so one lost m
 ### Pros
 <!--meta polarity=pro-->
 
-- **Failure is noticed without a request in flight** — an idle worker, a lease holder or a cluster member is detected within one timeout.
-- **Detection time is bounded and known** — it is at most the timeout plus one interval, which you can put in a recovery target.
-- **Tiny cost per node** — one small message a second, or a piggyback on traffic that already flows, so a thousand nodes add little load.
+- **Failure is noticed without a request in flight** — an idle worker, a lease holder or a cluster member is detected within one timeout plus one check interval.
+- **Detection time is bounded and known for a real crash** — it is at most the timeout plus one check interval of the detector, which you can put in a recovery target. A pause longer than the timeout is a false alarm, not a detection.
+- **Tiny cost per node** — one small message a second per watched link, or a piggyback on traffic that already flows, so with a few neighbours or piggybacked beats a thousand nodes add little load; all-to-all does not, as the quadratic con shows.
 - **A simple building block** — leader election, failover, job reclaiming and membership all rest on the same signal.
 
 ### Cons
@@ -100,7 +100,7 @@ The timeout is a multiple of the interval, commonly several beats, so one lost m
 
 - **A silent failure costs you** — a worker holds a job, a node holds a lease or a leader holds a role, and the others must take over when it vanishes.
 - **No request would reveal the failure** — the node is idle or only sends one-way, so an ordinary call timeout never fires.
-- **You need detection faster than a connection timeout** — the system should react in seconds, not in the minutes a dead TCP connection can take to show.
+- **You need detection faster than a connection timeout** — the system should react in seconds, not in the time an unprobed dead TCP connection can take to fail, which depends on keepalive settings.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -203,8 +203,12 @@ class FailureDetector {
 **Combines with**
 
 - [Failover](./failover.md) — A failure detector's suspicion is what starts a failover.
-- [Gossip Protocol](./gossip-protocol.md) — Gossip spreads heartbeat counters and suspicions so no node watches all the others.
 - [Lease](./lease.md) — A lease renewal is itself a heartbeat, and its expiry is the timeout.
+- [Gossip Protocol](./gossip-protocol.md) — Gossip spreads heartbeat counters and suspicions so no node watches all the others.
+
+**Alternative to**
+
+- [Timeout / Deadline](../resilience/timeout-deadline.md) — A call deadline reveals a failure only while a request waits; a heartbeat covers the idle node.
 
 **Enables**
 
@@ -216,6 +220,6 @@ class FailureDetector {
 
 **Prevents**
 
-- [Split-Brain](../../../hazards/split-brain.md) — A detector that waits for repeated misses and confirmers avoids declaring a live node dead and promoting a second leader.
+- [Split-Brain](../../../hazards/split-brain.md) — Only a tuned detector, with a long timeout and confirmers, avoids declaring a live node dead and promoting a second leader; a naive one causes the split, and fencing is still needed.
 
 <!-- relationships:end -->

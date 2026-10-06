@@ -109,6 +109,26 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   cost on `micro-frontends` variations-item-4. Data edits: `atomic-design` fluency label in
   `learning-paths.json` should carry the routing condition; its `solves` should catch
   "rebrand means editing dozens of files", which routes to `shotgun-surgery` first today.
+- Left from the 2026-10-06 kb-improve run over `distributed-coordination` (edges and blocks
+  over the cap, or that need a source): edges with both notes drafted:
+  `workflow-orchestration` alternative-to `message-queue`, `sweeper` combines-with `lease`,
+  `distributed-lock` combines-with `heartbeat`, `container-orchestration` combines-with
+  `rolling-deployment`, `containerization` combines-with `quarantine`, `a2a` combines-with
+  `agent-sandboxing`, `federated-identity` alternative-to `valet-key`,
+  `optimistic-concurrency-control` exposed-to `retry-storm`, `saga` combines-with
+  `retry-backoff`; edge notes to reword by unlink+link: `workflow-orchestration` / `ai-agent`
+  ("whenever"), `external-configuration-store` / `persona-identification` ("last cached
+  version"), `pessimistic-locking` / `lease` and / `two-phase-commit`; theme row:
+  `long-running-tasks` has no Sweeper decide row. Blocks: presumed-commit and read-only
+  variations on `two-phase-commit`, read-repair on `quorum-consensus`, interval tree clocks
+  on `vector-clock`, the Raft leader heartbeat and a jitter knob on `heartbeat`, a
+  replication con on `conditional-write`, an engine-validated variation on
+  `optimistic-concurrency-control`, child workflows on `workflow-orchestration`, a hardened
+  runtime variation on `containerization`, a grantor-restart step on `lease`. Wording first
+  in line: `external-configuration-store` wild (Consul "widely used", etcd is Kubernetes'
+  state store). Needs a source: starting values for most `production` knobs and alert
+  thresholds the readers asked for across the area (lease term, lock TTL, refresh interval,
+  task timeout, probe periods, sweep interval).
 - Left from the 2026-10-06 kb-improve run over `distributed-data` (edits a page groom may not
   make, or that need a source): theme `decide` rows — `scaling-reads` has no Inverted Index
   row for keyword search, `spike-handling` no Sliding Window row for the boundary-burst case,

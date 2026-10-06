@@ -21,7 +21,7 @@ A lock with an expiry cannot stop a slow holder from acting: after a long pause 
 ## Explained
 <!--meta block=explain-->
 
-A fencing token is a number that rises with every grant of a lock, and the protected resource uses it to refuse writes from a holder that lost the lock. The lock service gives each holder the next number, the holder attaches it to every write, and the resource keeps the highest number it has accepted and rejects any write below it. Choose it over a longer expiry when pauses, clock drift or slow retries can outlast any timeout you pick, because the expiry only shrinks the chance of two holders and the token removes the damage. The same number guards [leader election](leader-election.md), where it is called a term or an epoch.
+A fencing token is a number that rises with every grant of a lock, and the protected resource uses it to refuse writes from a holder that lost the lock. The lock service gives each holder the next number, the holder attaches it to every write, and the resource keeps the highest number it has accepted and rejects any write below it. Choose it over a longer expiry when pauses, clock drift or slow retries can outlast any timeout you pick, because the expiry only shrinks the chance of two holders and the token refuses a stale holder's writes at the resource, though not its other side effects. The same number guards leader election, where it is called a term or an epoch.
 
 - **Resource must check.** It stores the number and compares it in the same atomic step as the write. Use a conditional update.
 - **Counter must not go back.** Keep it in a durable or replicated store that survives restarts.
@@ -77,7 +77,7 @@ A rejection carries information: it tells the writer its lock is gone. A well-be
 - **Counter from the lock service** — The service hands out a per-lock counter, such as a revision number in an etcd key or a sequence from ZooKeeper. The counter must survive a restart of the service and never go backwards, so a plain in-memory counter that resets is a bug.
 - **Epoch or term number** — A consensus protocol gives each leader a term, and every follower and storage node rejects messages from a lower one. This is the fencing token built into [Leader Election](./leader-election.md) and [Quorum & Consensus](./quorum-consensus.md).
 - **Guarded column** — The token is stored in a column and each write is a [Conditional Write](./conditional-write.md) such as `UPDATE … SET value = ?, fence = ? WHERE key = ? AND fence <= ?`. It needs no new service and makes the check and the apply one atomic statement.
-- **Signed sequencer** — The lock service returns a signed string that names the lock, the mode and a generation number, and the resource verifies it before it acts. Chubby calls this a sequencer, and it lets a resource check a grant without storing a counter for every lock.
+- **Signed sequencer** — The lock service returns a signed string that names the lock, the mode and a generation number, and the resource verifies it before it acts. Chubby calls this a sequencer; the resource still needs the latest generation it has seen, or a call back to the lock service, to reject a stale one.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -85,7 +85,7 @@ A rejection carries information: it tells the writer its lock is gone. A well-be
 ### Pros
 <!--meta polarity=pro-->
 
-- **Safe whatever the clocks and pauses do** — a stale holder's write is refused by comparison, so correctness no longer depends on the term being long enough.
+- **Safe against clock drift and pauses** — once the resource checks atomically and the counter stays monotonic: a stale holder's write is refused by comparison, so correctness does not depend on the term being long enough.
 - **One cheap comparison per write** — the cost is a stored number and an integer check, which a conditional write already pays for.
 - **Works with any grant scheme** — a lease, a lock, an election or a manual promotion can all issue the number.
 - **A rejection tells the holder it lost** — the writer learns its lock is gone at the first refused write and can stop, not at the end of its work.
@@ -97,6 +97,7 @@ A rejection carries information: it tells the writer its lock is gone. A well-be
 - **The counter must never go backwards** — a lock service that restarts and resets it makes a stale holder look new, so back it with a replicated or durable store.
 - **The resource keeps state per lock** — it stores the highest number and updates it atomically with the write, which adds a column or a record to every guarded item.
 - **It protects writes, not reads** — a stale holder can still read old data and act on it elsewhere, so keep its other side effects idempotent or check the token there too.
+- **Ordering, not exclusion** — a stale write that reaches the resource before the newer holder's first write is accepted, and a lock covering several resources is fenced only where each one checks.
 
 ## When to use it
 <!--meta block=usage-->
@@ -111,7 +112,7 @@ A rejection carries information: it tells the writer its lock is gone. A well-be
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The resource cannot check a number** — a lock in front of it cannot be made safe, so make the work idempotent or add a gateway that fences for it, and use [Optimistic Concurrency Control](./optimistic-concurrency-control.md) wherever the store supports a version check.
+- **The resource cannot check a number** — the lock alone cannot make it safe, so add a gateway that fences for it, which helps only if it is the sole path to the resource, or make the work idempotent, and use [Optimistic Concurrency Control](./optimistic-concurrency-control.md) wherever the store supports a version check.
 - **One database transaction covers the work** — a row lock with [Pessimistic Locking](./pessimistic-locking.md) or a [Conditional Write](./conditional-write.md) needs no token.
 - **A rare double grant is harmless** — a soft reservation or a duplicate-safe job does not need the extra state on every write.
 
@@ -207,6 +208,13 @@ store.write("report", "from A", 33); // false: A woke up after its lock expired
 - [Lease](./lease.md) — A fencing token backs a lease, so a holder that lost it to expiry cannot still write.
 - [Optimistic Concurrency Control](./optimistic-concurrency-control.md) — Compares a number issued at grant time, where optimistic control compares a version read from the row.
 - [Conditional Write](./conditional-write.md) — The guard is usually a conditional write that checks the token and applies the value in one atomic step.
+- [Leader Election](./leader-election.md) — Leader election is where the rising token comes from: each new leader takes the next term.
+- [Quorum & Consensus](./quorum-consensus.md) — A consensus group issues each leader a term, and storage rejects any lower term, which is the token.
+- [Idempotency](../../messaging/idempotency.md) — Where the resource cannot compare a token, make the write safe to replay instead.
+
+**Alternative to**
+
+- [Pessimistic Locking](./pessimistic-locking.md) — A row lock holds inside one transaction on one store; a token is for a lock that spans servers where the holder can pause.
 
 **Requires**
 

@@ -24,7 +24,7 @@ A business process that spans several services has no single transaction to roll
 
 A saga splits a business process that crosses several services into a chain of small local transactions, each committed on its own, and gives every step an undo. Services coordinate either by reacting to each other's events or through a coordinator that commands each step. If a later step fails for a real reason, you run the undos of the steps already done, in reverse order, so nobody stays charged for an order that will never ship. Choose it over a single cross-service transaction, which would hold locks until the slowest service answers, when you cannot couple their availability. You pay with isolation: while the saga runs, other readers see half-done state.
 
-- **Undo is a business decision.** A refund is not an un-charge. Agree each reversal with the owner; put the step that cannot be undone last.
+- **Undo is a business decision.** A refund is not an un-charge. Agree each reversal with its owner; place the irreversible step as late as possible.
 - **Replays.** Key steps and undos by saga id and make them safe to repeat.
 - **Two writes per step.** Saving and announcing can fail apart. Announce through an \[outbox\](outbox.md).
 - **Readers see the middle.** Mark the order provisional until the saga finishes.
@@ -79,10 +79,10 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **[Orchestration](./workflow-orchestration.md)** — A saga execution coordinator issues each step as a command and persists the saga's progress as a state machine — the transaction logic lives in one visible place instead of scattered across services. It suits many participants and keeps them loosely coupled, at the price of a coordinator that is a single point of failure for the whole flow.
+- **[Orchestration](./workflow-orchestration.md)** — A saga execution coordinator issues each step as a command and persists the saga's progress as a state machine. The transaction logic lives in one visible place instead of scattered across services. It suits many participants and keeps them loosely coupled, at the price of a coordinator that must itself be durable and highly available, or the whole flow stalls.
 - **Choreography** — Each service publishes a [Domain Event](../../ddd/domain-event.md) when its step completes, and downstream services subscribe and react on their own. No central coordinator and no single point of failure, which suits a handful of participants; add more and the dependencies between them get hard to trace, because the flow is implicit across every participant's code.
 - **Forward vs. backward recovery** — A failed step does not automatically mean undo. A platform-level failure — a timeout, a dropped connection, an instance that died — takes forward recovery: retry the local transaction and continue the sequence. An application-level failure — the payment was declined, the item is out of stock — takes backward recovery: compensate the steps that already committed. Classify the failure before choosing a direction, or a transient blip unwinds a saga that needed nothing but a retry.
-- **[Compensating Transaction](../resilience/compensating-transaction.md)** — Not every failure needs undoing — idempotent retries absorb transient errors, while a [Compensating Transaction](../resilience/compensating-transaction.md) only runs for a step that fully committed and must be semantically reversed.
+- **[Compensating Transaction](../resilience/compensating-transaction.md)** — The undo for one committed step. It runs only for a step that fully committed and must be reversed in business terms; idempotent retries absorb transient errors and need no compensation.
 - **Semantic lock** — Mark an entity provisional or pending while its saga is in flight, so concurrent readers and writers can detect the in-progress state instead of treating it as final.
 - **Pivot step** — Place the one step that cannot be undone deliberately: everything before it stays compensable, and everything after it is driven forward on repeat — idempotent retries toward completion — rather than reversed. Once the pivot commits, the saga's only direction is through.
 
@@ -104,7 +104,7 @@ flowchart LR
 - **Every step needs a compensation designed for it**, including ones that feel irreversible.
 - **A failure now spans several services** — tracing and debugging needs distributed context.
 - **Compensations must themselves be idempotent and retry-safe**, and nothing compensates a compensation — route the ones that exhaust their retries to a dead-letter queue with an operator behind it.
-- **Choreography hides the whole flow** — choreographed, the flow exists only as the sum of every participant's subscriptions, so nobody can say where an order is — thread a [Correlation Identifier](../../messaging/correlation-identifier.md) through every step, or move the sequence into an orchestrator that persists it.
+- **Choreography hides the whole flow** — the flow exists only as the sum of every participant's subscriptions, so nobody can say where an order is. Thread a [Correlation Identifier](../../messaging/correlation-identifier.md) through every step, or move the sequence into an orchestrator that persists it.
 
 ## When to use it
 <!--meta block=usage-->
@@ -145,8 +145,9 @@ async function runSaga(orderId: string): Promise<void> {
       await step.run(orderId);       // one service, one local transaction
       committed.push(step);
     } catch (err) {
-      // Undo the steps that already committed, newest first, then give up.
-      for (const done of committed.reverse()) await done.undo(orderId);
+      // Toy: in-memory list, no retry, no saga-id key, no dead-letter. Production needs
+      // a durable step log and per-undo retry (see tradeoffs, con 4).
+      for (const done of [...committed].reverse()) await done.undo(orderId);
       throw err;
     }
   }
@@ -187,7 +188,7 @@ async function runFlow(flowId: string, personaId: string): Promise<void> {
 ## In the wild
 <!--meta block=wild-->
 
-- **Temporal** — A durable workflow engine: a workflow orchestrates activities and, on failure, runs the compensation handlers it accumulated — the orchestrated saga made explicit in code. Per-activity RetryPolicy (maximum attempts, backoff coefficient) and start-to-close timeouts are the retry and timeout knobs, and workflow state survives worker crashes. {#wild-temporal}
+- **Temporal** — A durable workflow engine: a workflow orchestrates activities, and your workflow code registers and runs the compensations on failure, so the orchestrated saga is explicit in code. Per-activity RetryPolicy (maximum attempts, backoff coefficient) and start-to-close timeouts are the retry and timeout knobs, and workflow state survives worker crashes. {#wild-temporal}
 - **AWS Step Functions** — State machines whose Retry and Catch fields, with a rollback branch, are the way AWS documents implementing sagas: each state invokes a step, a Catch routes failures to compensating states, and TimeoutSeconds bounds how long a step may hang. {#wild-step-functions}
 - **Axon Framework** — Ships a first-class SagaManager on the Java virtual machine (JVM): a @Saga class uses @SagaEventHandler methods correlated by an association property to drive event-choreographed sagas, tracking each saga instance's state and firing compensations as later events arrive. {#wild-axon}
 - **NServiceBus** — Models a saga as a message-driven state machine: the handler is woken by each correlated message, its state is persisted between them, and timeouts are themselves messages the saga schedules for itself. {#wild-nservicebus}
@@ -199,7 +200,7 @@ async function runFlow(flowId: string, personaId: string): Promise<void> {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Step retry policy** — Max attempts and backoff before a transient step failure is treated as fatal and turns the saga around. Size it from the participant's observed recovery time, since every attempt past that point is a compensation you paid to avoid.
+- **Step retry policy** — Max attempts and backoff before a transient step failure is treated as fatal and turns the saga around. Size it from the participant's observed recovery time, since every attempt past that point is a compensation you paid to avoid. Take p99 recovery from past incidents or per-step latency, set the backoff budget just above it, and cap attempts so the retries fit inside the step timeout.
 - **Step and saga timeouts** — How long one step, and the whole flow, may stay open before it is abandoned. The saga timeout doubles as the bound on how long provisional state stays visible to everyone else.
 - **Failure classification** — Which error codes count as a business rejection and which as a platform failure. The mapping decides whether a failed step is driven forward or unwound, so keep it somewhere a domain expert can read and change.
 - **Compensation retry and escalation** — How many times a failed compensation is retried, and where it lands when the retries run out. Nothing compensates a compensation, so the landing spot has to be explicit.
@@ -208,7 +209,7 @@ async function runFlow(flowId: string, personaId: string): Promise<void> {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Open saga count and age** — How many sagas are in flight and how old the oldest is. A growing tail of long-lived sagas means steps are stalling and compensations are not firing.
+- **Open saga count and age** — How many sagas are in flight and how old the oldest is. A growing tail of long-lived sagas often means steps are stalling or compensations are not firing; check per-step failure rate to tell which. Alert when the oldest saga's age passes the saga timeout.
 - **Compensation / rollback rate** — Fraction of sagas that end in compensation rather than completion. A spike points at a specific failing step dragging whole transactions into rollback.
 - **Per-step failure rate** — Failures attributed to each participant. Isolates which service is forcing sagas to unwind, since a failure now spans several services.
 - **Saga duration p99** — End-to-end time from first step to final commit or compensation — the window during which partial, un-isolated state is visible to everyone else.
