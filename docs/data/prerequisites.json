@@ -625,7 +625,7 @@
       "definition": "Attaches a helper process alongside the main one",
       "route": "/patterns/distributed/routing/sidecar.html",
       "requires": [],
-      "related": ["ambassador", "reverse-proxy", "design-for-operations", "distributed-tracing", "container-orchestration", "service-discovery"]
+      "related": ["ambassador", "reverse-proxy", "design-for-operations", "distributed-tracing", "container-orchestration", "service-discovery", "compute-resource-consolidation"]
     },
     {
       "id": "gatekeeper",
@@ -833,7 +833,7 @@
       "definition": "Packs compatible tasks onto one unit so you stop paying for idle",
       "route": "/patterns/distributed/routing/compute-resource-consolidation.html",
       "requires": [],
-      "related": ["bulkhead", "container-orchestration", "autoscaling"]
+      "related": ["bulkhead", "container-orchestration", "autoscaling", "sidecar"]
     },
     {
       "id": "deployment-stamp",

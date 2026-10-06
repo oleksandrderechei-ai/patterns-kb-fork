@@ -85,10 +85,10 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Utilisation rises directly**, and so does the return on capacity you are already reserving — the saving is the idle time you stop paying for.
+- **Utilisation rises**, and so does the return on capacity you already reserve, provided peaks do not coincide. The saving is the idle time you stop paying for.
 - **The platform gets more homogeneous**, which cuts the tooling, dashboards and runbooks needed to operate it.
-- **Colocated tasks communicate faster**, because calls between them no longer cross the network.
-- **Fewer units means less to deploy**, patch and observe, which is often a bigger saving than the compute bill.
+- **Where colocated tasks call each other in one process or on one host**, those calls no longer cross the network. Tasks grouped only by profile rarely gain this.
+- **Fewer units means less to deploy**, patch and observe. Count that saving only once you have measured it.
 
 ### Cons
 <!--meta polarity=con-->
@@ -100,6 +100,7 @@ sequenceDiagram
 - **Contention appears exactly when you are busiest**, which is when the tasks all want the same resource at the same moment.
 - **The unit's code gets harder to test**, debug and maintain, because several unrelated concerns now live in one process boundary.
 - **It needs production evidence** to do correctly and ongoing monitoring to stay correct — a grouping made from last quarter's heat map quietly stops being the right one.
+- **Scaling couples**. The unit scales for its busiest task, so quiet neighbours are replicated with it and part of the saving is lost.
 
 ## When to use it
 <!--meta block=usage-->
@@ -131,17 +132,19 @@ type Profile = {
   meanUtilisation: number                      // measured, not estimated
 }
 
-const IDLE_THRESHOLD = 0.25
+const IDLE_THRESHOLD = 0.25   // illustrative; set it from your own heat map
 
 // Two tasks may share a unit only if they scale together and starve on
 // different resources. Both halves are required — matching one alone is how
 // consolidation turns into contention or into wasted scale-out.
+// Sketch limit: with three bottleneck values, pairwise-different caps a unit at three tasks.
 function canShare(a: Profile, b: Profile): boolean {
   return a.scaleProfile === b.scaleProfile && a.bottleneck !== b.bottleneck
 }
 
 function groupIntoUnits(profiles: Profile[]): Profile[][] {
-  // Only busy-enough-to-matter savings are worth the isolation you give up.
+  // Only tasks idle enough to gain from sharing are candidates; busier tasks keep their own unit.
+  // Mean utilisation hides peaks, so real packing also checks summed peak load against unit capacity.
   const candidates = profiles.filter((p) => p.meanUtilisation < IDLE_THRESHOLD)
 
   return candidates.reduce<Profile[][]>((units, task) => {
@@ -166,8 +169,8 @@ function groupIntoUnits(profiles: Profile[]): Profile[][] {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Requests and limits per task** — What the scheduler packs against. Requests too low invites contention; too high recreates the idle capacity you were removing.
-- **Tasks per unit** — The density dial, and the direct trade against blast radius.
+- **Requests and limits per task** — What the scheduler packs against. Start from each task's observed peak usage, not its mean, and recheck after each heat-map recompute. Requests too low invites contention; too high recreates the idle capacity you were removing.
+- **Tasks per unit** — The density dial, and the direct trade against blast radius. Cap it by the share of work you can lose when one unit restarts, and by the summed peaks of its tasks staying under the unit's capacity.
 - **Node pool shapes** — Grouping machines by CPU-heavy or memory-heavy profile is how the contrasting-profile rule gets enforced by the scheduler.
 - **Checkpoint interval for long-running tasks** — A platform recycle stops everything in the unit, so this bounds how much work is lost.
 
@@ -175,17 +178,17 @@ function groupIntoUnits(profiles: Profile[]): Profile[][] {
 <!--meta polarity=signal-->
 
 - **Utilisation per unit, CPU and memory separately** — The heat map the grouping decision is made from — and re-made from, since the workload mix drifts.
-- **Contention indicators: CPU throttling and memory pressure** — Rising throttling means two tasks that were meant to want different resources actually want the same one.
+- **Contention indicators: CPU throttling and memory pressure** — Rising throttling means two tasks that were meant to want different resources actually want the same one. Sustained throttling means split the pair into separate units.
 - **Unit restart count and cause** — Restarts attributable to one task are the shared-fate cost showing up as a number.
 - **Cost per unit against work completed** — Confirms the consolidation actually saved money rather than moving it.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **One task fails to start and the unit does not come up** — Startup is the sharpest shared-fate case, because a neighbours initialisation bug stops tasks that were perfectly healthy.
+- **One task fails to start and the unit does not come up** — Startup is the sharpest shared-fate case, because a neighbour's initialisation bug stops tasks that were perfectly healthy.
 - **Contention appears only at peak** — Tasks coexist happily at low load and fight for the same resource exactly when you are busiest.
 - **Scale-out multiplies a task that did not need it** — Conflicting scale profiles in one unit mean scaling for the bursty task also replicates the idle one.
-- **A neighbours deploy restarts everything** — Coupled release cadence turns one team routine change into a restart for every colocated task.
+- **A neighbour's deploy restarts everything** — Coupled release cadence turns one team's routine change into a restart for every colocated task.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -195,7 +198,7 @@ function groupIntoUnits(profiles: Profile[]): Profile[][] {
 - Nothing critical, fault-tolerant or handling sensitive data was colocated.
 - Long-running tasks checkpoint, because the platform recycles the unit underneath them.
 - Requests and limits are set per task so one cannot starve its neighbours.
-- The grouping is recomputed on a schedule, since last quarter heat map stops describing this quarter workload.
+- The grouping is recomputed on a schedule, since last quarter's heat map stops describing this quarter's workload.
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -219,10 +222,15 @@ function groupIntoUnits(profiles: Profile[]): Profile[][] {
 
 - [Container Orchestration](../coordination/container-orchestration.md) — Node pools grouped by central processing unit (CPU) or memory requirement are how the packing rule gets applied mechanically
 - [Autoscaling](./autoscaling.md) — A unit scales as a unit, which is why only matching scale profiles may share one
+- [Sidecar](./sidecar.md) — Moving per-service helpers to one agent per node is the same trade in miniature.
 
 **Alternative to**
 
 - [Bulkhead](../resilience/bulkhead.md) — The opposite trade: consolidation spends the isolation a bulkhead buys, for utilisation
+
+**Exposed to**
+
+- [Noisy Neighbour](../../../hazards/noisy-neighbour.md) — Colocated tasks share one unit's CPU, memory and I/O, so a heavy one starves its neighbours.
 
 **Implemented by**
 
