@@ -27,12 +27,12 @@ A materialized view stores the result of an expensive query as its own table or 
 - **Silent drift.** Incremental refresh can diverge from the source. Compare with a full recompute now and then, and keep a rebuild path.
 - **Refresh falls behind.** A refresh longer than its interval never catches up. Alert on duration against the interval.
 
-**Example.** A dashboard shows sales by region, and the live query over 200 million orders takes 40 s. With 50 views a minute, that is 2,000 s of query work each minute, about 33 cores busy on the primary. You store the result in a 6-row table refreshed every 5 minutes. The refresh costs 40 s per 5 minutes, about 8 s of work a minute, and each view reads 6 rows in milliseconds. The cost is that sales can be 5 minutes old. If the data grows until the refresh takes 6 minutes, it never catches up, which is why you alert when duration nears the interval.
+**Example.** A dashboard shows sales by region, and the live query over 200 million orders takes 40 s. With 50 views a minute, that is 2,000 s of query work each minute, about 33 cores busy on the primary, one per query. You store the result in a 6-row table refreshed every 5 minutes. The refresh costs 40 s per 5 minutes, about 8 s of work a minute, and each view reads 6 rows in milliseconds. The cost is that sales can be up to 5 min 40 s old, interval plus refresh. If the data grows until the refresh takes 6 minutes, it never catches up, which is why you alert when duration nears the interval.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Where does the expensive join or aggregate get computed? On the refresh path at steps 2 and 3, never on the read at step 4 — so a read is a lookup and the source store never sees the query."
+```mermaid caption="Where does the expensive join or aggregate get computed? On the refresh path at steps 2 and 3, never on the read at step 4 — so a read is a lookup and the source runs the query once per refresh, not once per read."
 flowchart LR
     App["Write path"]
     subgraph SoT["Source of truth"]
@@ -50,7 +50,7 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Database-native materialized view** — Postgres, Oracle, and others support it as a first-class object, refreshed with `REFRESH MATERIALIZED VIEW` or a continuous-refresh mode. What the engine hands you is the object and the refresh command, not a freshness guarantee: in Postgres you schedule the refresh and track the lag yourself, while Oracle's `ON COMMIT` views and SQL Server's indexed views maintain themselves as the sources change.
+- **Database-native materialized view** — Postgres, Oracle, and others support it as a first-class object. The engine gives the object and a refresh command, not a freshness guarantee: in Postgres you run `REFRESH MATERIALIZED VIEW` on your own schedule and track the lag yourself, while Oracle's `ON COMMIT` views and SQL Server's indexed views maintain themselves as the sources change.
 - **Full vs. incremental refresh** — Recompute the whole view from scratch each time — simple and correct, but expensive at scale — or apply only the delta of changed source rows, which is faster but harder to get right.
 - **[Event Sourcing](../../architecture/event-sourcing.md) projection** — The view is built or incrementally updated by folding an event stream, so it's just another subscriber to history rather than a snapshot of current state.
 - **[Command query responsibility segregation (CQRS)](../../architecture/cqrs.md) read model** — The view is the query side of a write/read split — denormalized and shaped specifically for the queries callers actually make.
@@ -65,7 +65,7 @@ flowchart LR
 - **Reads become cheap** — a direct lookup instead of a live join or aggregation.
 - **Decouples the read shape from the write/storage shape**; the view is built for the query.
 - **Shields the source-of-truth store from repeated**, expensive analytical queries.
-- **Refresh cost is paid once** and amortized across every read that follows.
+- **Refresh cost is paid once per interval, not once per read**, so it wins only when reads outnumber refreshes.
 
 ### Cons
 <!--meta polarity=con-->
@@ -117,12 +117,15 @@ interface OrderPlaced {
   amountCents: number;
 }
 
-// Full rebuild — e.g. after a schema change or a corrupted view.
+// Full rebuild, e.g. after a schema change or a corrupted view.
+// Builds a fresh view, so the corrupted one is discarded, not added to.
+// apply() assumes exactly-once delivery: replaying an event double-counts.
 async function rebuild(
-  view: OrderTotalsView,
   events: AsyncIterable<OrderPlaced>,
-): Promise<void> {
-  for await (const event of events) view.apply(event);
+): Promise<OrderTotalsView> {
+  const fresh = new OrderTotalsView();
+  for await (const event of events) fresh.apply(event);
+  return fresh;
 }
 ```
 
@@ -140,7 +143,7 @@ async function rebuild(
 <!--meta polarity=knob-->
 
 - **refresh strategy** — full recompute versus incremental delta: full is simple and always correct but pays for the whole view each time, incremental applies only changed rows and is far cheaper at scale but much harder to keep correct
-- **refresh cadence** — how often the view is recomputed — on a schedule, on demand, or driven by upstream change events; it directly sets the staleness ceiling callers will see
+- **refresh cadence** — how often the view is recomputed: on a schedule, on demand, or on upstream change events. Staleness can reach interval plus refresh duration, so set the interval no longer than the staleness bound allows, and longer than the refresh takes.
 - **refresh concurrency** — whether a refresh blocks readers or runs alongside them; a plain rebuild can take an exclusive lock, while a non-blocking mode (for example PostgreSQL's REFRESH MATERIALIZED VIEW CONCURRENTLY, which requires a unique index) keeps the old view readable until the new one is ready
 - **staleness bound** — the maximum lag the read side is allowed to show behind the source — the freshness service-level agreement (SLA) that decides how aggressive the cadence has to be
 
@@ -155,7 +158,7 @@ async function rebuild(
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **refresh falls behind** — a full refresh that takes longer than its interval; runs pile up or overlap and the view drifts permanently further behind the source instead of catching up
+- **refresh falls behind** — a refresh longer than its interval never catches up; runs queue or overlap, depending on engine and scheduler, and staleness grows without bound. Skip a tick while a run is in progress, and alert on skipped runs.
 - **refresh locks out readers** — a blocking rebuild takes an exclusive lock on the view, so every read stalls for the whole recompute — a read outage that arrives on a schedule unless a concurrent refresh mode is used
 - **incremental drift** — a bug in the delta logic — a missed change, a wrong ordering, a bad replay — leaves the view quietly disagreeing with the source, and nothing surfaces it until someone reconciles against a full rebuild
 - **stale reads taken as fresh** — callers act on aggregates that lag reality because the view exposes no freshness signal; the data looks authoritative right up until a decision is made on numbers that were already out of date
@@ -164,7 +167,7 @@ async function rebuild(
 <!--meta polarity=check-->
 
 - Decide and document the staleness SLA, and expose a last-refreshed timestamp so reads can tell how current the view is
-- Use a non-blocking refresh so a rebuild does not lock readers out of the view
+- Use a non-blocking refresh where the engine offers one, so a rebuild does not lock readers out; it needs a unique index in PostgreSQL and typically refreshes more slowly.
 - Keep the source of truth and be able to fully rebuild the view from it after corruption or a schema change
 - Monitor refresh duration against the cadence and alert when it approaches or exceeds the interval
 - Reconcile an incremental view against a full rebuild periodically to catch silent drift
@@ -198,6 +201,10 @@ async function rebuild(
 - [Big Data](../../architecture/big-data.md) — Analytical serving is one of the largest uses of a precomputed view.
 - [Retrieval-Augmented Generation](../../ml/rag.md) — A vector index over documents is one of these, rebuilt by an embedding job rather than a query
 - [Change Data Capture](./change-data-capture.md) — A change-data-capture stream is one way to keep the view fed as the source changes
+
+**Alternative to**
+
+- [Sliding Window](./sliding-window.md) — A standing rollup replaces a hand-kept window when every event is stored anyway.
 
 **Part of**
 

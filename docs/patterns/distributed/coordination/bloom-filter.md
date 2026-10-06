@@ -64,8 +64,8 @@ flowchart LR
 
 - **Uses a fraction** of the memory an exact set of the same keys would need. Burton Bloom described it in 1970 for hyphenating text against a word list too large for memory, where most words break by rule and only a minority needed the expensive lookup.
 - **Lookup and insert are O(k)** — constant time no matter how many keys are stored.
-- **No false negatives, ever**: "absent" is always correct and safe to act on.
-- **Two same-sized filters merge** with a plain bitwise OR — trivial to shard and combine.
+- **No false negatives in the plain filter**: "absent" is always correct and safe to act on. Delete-capable variants keep that only if you remove keys that were actually inserted.
+- **Filters with the same size, k and hashes merge** with a bitwise OR, so you can build shards separately and combine them.
 
 ### Cons
 <!--meta polarity=con-->
@@ -74,6 +74,7 @@ flowchart LR
 - **Cannot enumerate, retrieve, or identify which key matched** — only yes/no per query.
 - **The plain filter can't delete a key**, since its bits are shared with others.
 - **Must be sized** for the expected key count upfront; resizing means rebuilding from scratch.
+- **A lookup touches k scattered bit positions**, so a large filter costs several cache misses; the blocked variant cuts this.
 
 ## When to use it
 <!--meta block=usage-->
@@ -96,6 +97,8 @@ flowchart LR
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — a minimal filter"
+// fnv1a: any 32-bit string hash, assumed. 1<<20 bits holds about 100k keys at
+// about 1%: size = n x bits per key, k = (size / n) x ln 2.
 class BloomFilter {
   private bits: Uint8Array;
 
@@ -104,7 +107,7 @@ class BloomFilter {
   }
 
   private *hashes(key: string): Generator<number> {
-    const h1 = fnv1a(key), h2 = fnv1a(key + "x");
+    const h1 = fnv1a(key), h2 = fnv1a(key + "x") | 1; // odd stride
     for (let i = 0; i < this.k; i++) yield (h1 + i * h2) % this.size;
   }
 
@@ -134,16 +137,16 @@ class BloomFilter {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **target false-positive rate** — the primary design knob (Cassandra's bloom_filter_fp_chance, the effective target behind RocksDB's bits_per_key): a lower rate costs more bits per key. Pick it from the cost ratio of a wasted real lookup against the memory saved, not by reflex
+- **target false-positive rate** — the primary design knob (Cassandra sets it as bloom_filter_fp_chance; RocksDB sets bits_per_key, which implies a rate). A lower rate costs more bits per key. Pick it from the cost ratio of a wasted real lookup against the memory saved, not by reflex
 - **expected element count (n)** — the filter is sized for a key count you commit to upfront; load it past that n and the realized false-positive rate climbs above target, since m and k were fixed for the smaller set
-- **bits per key (m/n)** — memory footprint per key, which together with the target rate fixes the array size m; the optimal number of hash functions k follows from it as roughly (m/n)ln2 and is usually computed, not tuned by hand
+- **bits per key (m/n)** — memory footprint per key, which together with the target rate fixes the array size m. About 10 bits per key gives roughly 1% and about 14 gives roughly 0.1%, from m/n = -ln(p)/(ln 2)^2. The optimal hash count k is roughly (m/n)ln2 and is usually computed, not tuned by hand
 - **deletion strategy** — a plain filter cannot forget a key, so decide up front: periodically rebuild from the current source, or adopt a counting or cuckoo variant that supports removal at extra cost
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **realized false-positive rate** — the fraction of filter positives that turn out absent on the real lookup — the only number that tells you the deployed filter still meets its design target rather than the target you sized for
-- **fill ratio** — the fraction of bits set to 1; it rises toward saturation as inserts accumulate, and a filter well past half its bits set has drifted above its designed false-positive rate
+- **realized false-positive rate** — wasted real lookups divided by all queries for absent keys, the figure the 0.8% in the explain example uses. It shows whether the deployed filter meets its target
+- **fill ratio** — the fraction of bits set to 1. It rises toward saturation as inserts accumulate; at the optimal k it is about 50% at design load, so a filter well past half full has drifted above its designed false-positive rate. Alert there and rebuild at a larger n
 - **filter memory footprint** — bytes resident for the array — the cost side of the trade, and what grows if you rebuild larger to hold more keys
 
 ### Failure modes under load

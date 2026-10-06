@@ -88,4 +88,8 @@ Make per-partition utilisation a first-class signal before you need it, and alar
 - [Consistent Hashing](../patterns/distributed/routing/consistent-hashing.md) — Virtual nodes even placement; single-value skew still needs salting
 - [Partition Around Limits](../principles/partition-around-limits.md) — Choosing the key against the limit is what stops one partition carrying everything
 
+**Threatens**
+
+- [MapReduce](../patterns/distributed/coordination/mapreduce.md) — A reducer owning a skewed key is the batch form of one overloaded shard.
+
 <!-- relationships:end -->

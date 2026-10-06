@@ -1073,7 +1073,7 @@
       "definition": "Precomputes a query's result so reads don't recompute it",
       "route": "/patterns/distributed/coordination/materialized-view.html",
       "requires": [],
-      "related": ["cqrs", "event-sourcing", "cache-aside", "index-table", "big-data", "rag", "change-data-capture"]
+      "related": ["cqrs", "event-sourcing", "cache-aside", "index-table", "big-data", "rag", "change-data-capture", "sliding-window"]
     },
     {
       "id": "index-table",
@@ -1113,7 +1113,7 @@
       "definition": "Data types whose replicas merge in any order, with repeats, and still converge, with no coordination",
       "route": "/patterns/distributed/coordination/crdt.html",
       "requires": ["replication"],
-      "related": ["vector-clock", "quorum-consensus", "gossip-protocol"]
+      "related": ["vector-clock", "quorum-consensus", "gossip-protocol", "hyperloglog"]
     },
     {
       "id": "merkle-tree",
@@ -1153,7 +1153,7 @@
       "definition": "Estimate the number of distinct items in a stream in ~kilobytes",
       "route": "/patterns/distributed/coordination/hyperloglog.html",
       "requires": [],
-      "related": ["count-min-sketch", "bloom-filter", "mapreduce"]
+      "related": ["count-min-sketch", "bloom-filter", "mapreduce", "crdt"]
     },
     {
       "id": "mapreduce",
@@ -1169,7 +1169,7 @@
       "definition": "Aggregates the recent past in bounded state, aging events out instead of resetting",
       "route": "/patterns/distributed/coordination/sliding-window.html",
       "requires": [],
-      "related": ["token-bucket", "rate-limiter", "count-min-sketch", "aggregator"]
+      "related": ["token-bucket", "rate-limiter", "count-min-sketch", "aggregator", "materialized-view"]
     },
     {
       "id": "unique-id-generation",

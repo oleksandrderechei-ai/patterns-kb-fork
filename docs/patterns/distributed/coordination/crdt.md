@@ -16,12 +16,12 @@ A data type built so that its replicas can be changed independently and merged i
 ## What it is
 <!--meta block=description-->
 
-A conflict-free replicated data type (CRDT) is a data type that several replicas change on their own and merge in any order, with repeats, and still end on the same value. It removes the lost update and the manual repair after a partition, with no leader or agreement step. It cannot enforce a rule across replicas, such as a balance above zero.
+A conflict-free replicated data type (CRDT) is a data type that several replicas change on their own and merge in any order, with repeats, and still end on the same value. For types that keep both sides, such as counters and sets, it removes the lost update and the manual repair after a partition, with no leader or agreement step except to compact metadata. It cannot enforce a rule across replicas, such as a balance above zero.
 
 ## Explained
 <!--meta block=explain-->
 
-A conflict-free replicated data type, or CRDT, is a data structure with a built-in merge that gives the same answer whatever order its inputs arrive in, however they are grouped, and however often one repeats. Those three properties are called commutative, associative and idempotent. Because of them, replicas can take writes alone, swap state in any order over any network, and still agree once they have seen the same updates. A counter keeps one slot per replica and merges by taking the larger value per slot. A set tags each add so a remove deletes only what it saw. Choose a CRDT over a leader or [quorum](quorum-consensus.md) when replicas must keep writing while cut off.
+A conflict-free replicated data type, or CRDT, is a data structure with a built-in merge. The merge gives the same answer in any order, in any grouping and with repeats: it is commutative, associative and idempotent. Because of that, replicas can take writes alone, swap state in any order over a lossy network (state-based types), and still agree once they have seen the same updates. A counter keeps one slot per replica and merges by taking the larger value per slot. A set tags each add so a remove deletes only what it saw. Choose a CRDT over a leader or [quorum](quorum-consensus.md) when replicas must keep writing while cut off.
 
 - **No cross-replica rules.** A CRDT cannot keep a stock level above zero. Keep such rules on a consensus path.
 - **Growing metadata.** Tombstones and per-replica counters pile up. Compact them on a schedule every replica agrees to.
@@ -68,8 +68,8 @@ Sets need more care, because an add and a remove can be concurrent. The **OR-Set
 <!--meta block=variations-->
 
 - **State-based (convergent)** — each replica sends its whole state, or a delta of it, and the receiver merges. Delivery can be late, lost, reordered or repeated, because the merge absorbs all four. The cost is size: you ship state, not the change.
-- **Operation-based (commutative)** — replicas send each operation, such as "add x with tag t2". The messages are small, but the network must deliver every operation to every replica, once, and in causal order. That promise is the price of the small messages.
-- **Delta-state** — send only the part of the state that changed since the last exchange, and merge it with the same function. It keeps the forgiving delivery of state-based types at close to the message size of operation-based ones.
+- **Operation-based (commutative)** — replicas send each operation, such as "add x with tag t2". The messages are small, but the network must deliver every operation to every replica without loss, in causal order, and deduplicated unless the operations are idempotent.
+- **Delta-state** — send only the part of the state that changed since the last exchange, and merge it with the same function. Messages are usually far smaller than full state, nearer operation-based size when updates are sparse between exchanges. Deltas still need causal ordering, or a fallback to full state after a gap.
 - **Counters, registers and sets** — a G-Counter only goes up, a PN-Counter goes up and down, a last-write-wins register keeps the value with the higher timestamp (see [Clock Skew](../../../hazards/clock-skew.md) for its risk), and an OR-Set lets items be added and removed.
 - **Sequence CRDTs for text** — each character or run of characters gets an identifier that fixes its place between its neighbours. This is the CRDT answer to the editing problem the [Google Docs](../../../designs/google-docs.md) design solves with a central server.
 
@@ -81,7 +81,7 @@ Sets need more care, because an add and a remove can be concurrent. The **OR-Set
 
 - **No coordination on write** — each replica applies updates locally and stays available through a partition or offline.
 - **Merges never conflict** — the type decides the result, so no user or app code resolves a clash.
-- **Forgives bad delivery** — state-based types survive duplicate, late and reordered messages, so the sync layer can be as simple as gossip.
+- **Forgives bad delivery** — state-based types survive duplicate, late and reordered messages, and a lost one heals as long as each replica's state eventually reaches the others, so the sync layer can be as simple as gossip.
 - **Peer-to-peer works** — with no central server, devices can sync directly or through any relay.
 
 ### Cons
@@ -157,7 +157,7 @@ function mergeSet(a: ORSet, b: ORSet): ORSet {
 <!--meta polarity=signal-->
 
 - **metadata size per object** — Tombstones, tags and per-replica entries as a share of live data; a steady rise means nothing is compacting.
-- **replica divergence** — The count of updates a replica has not yet merged from its peers; it is the staleness a reader can see.
+- **replica divergence** — The age or version gap between a replica's last merged state and each peer's latest; it is the staleness a reader can see.
 - **merge time** — How long a merge takes on a large object; it rises with metadata and delays sync.
 
 ### Failure modes under load
@@ -165,7 +165,7 @@ function mergeSet(a: ORSet, b: ORSet): ORSet {
 
 - **unbounded growth** — A long-lived document or set keeps every tombstone, so memory and load time grow with its history, not its size.
 - **violated invariant** — Two replicas each accept a change that is valid alone, and the merged result breaks a rule such as a limit or a unique key.
-- **replica that never returns** — A device gone for good blocks compaction that waits for every replica to confirm.
+- **replica that never returns** — A device gone for good blocks compaction that waits for every replica to confirm. Set a timeout after which the replica leaves the confirm set, and resync it from full state if it returns.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -196,6 +196,7 @@ function mergeSet(a: ORSet, b: ORSet): ORSet {
 **Combines with**
 
 - [Gossip Protocol](./gossip-protocol.md) — State-based conflict-free replicated data types (CRDTs) spread by gossip and tolerate its duplicates and reordering.
+- [HyperLogLog](./hyperloglog.md) — A cardinality sketch is one such mergeable state.
 
 **Alternative to**
 

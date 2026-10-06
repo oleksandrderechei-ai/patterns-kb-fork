@@ -16,7 +16,7 @@ A compact grid of counters that answers "about how many times has this key appea
 ## What it is
 <!--meta block=description-->
 
-A count-min sketch is a fixed grid of counters with one hash function per row. Recording a key bumps one counter per row, and estimating it reads those counters and takes the minimum, which is an upper bound, never an undercount. It counts per-item frequency over a stream whose distinct keys are too many for an exact counter each, in memory that does not grow. It stores no keys, so pair it with a structure that holds candidates.
+A count-min sketch is a fixed grid of counters with one hash function per row. Recording a key bumps one counter per row, and estimating it reads those counters and takes the minimum, which is an upper bound while counters only grow. It counts per-item frequency over a stream whose distinct keys are too many for an exact counter each, in memory that does not grow. It stores no keys, so pair it with a structure that holds candidates.
 
 ## Explained
 <!--meta block=explain-->
@@ -24,10 +24,10 @@ A count-min sketch is a fixed grid of counters with one hash function per row. R
 A count-min sketch estimates how often each item appeared in a huge stream using a small grid of counters whose size never grows. Each item is scrambled by one hash function per row (a formula that maps it to a column), and every occurrence adds one to its cell in each row. To ask for a count, you read that item's cells and take the smallest, because other items sharing a cell can only inflate it, so the answer is never too low. Choose it over an exact table of counters when the distinct items, such as every search term or URL, are too many to hold, and an over-count is harmless.
 
 - **Noisy tail.** Busy items inflate their neighbours, so trust the head of the distribution, treat rare items as noise, or widen the grid.
-- **Fixed shape.** Grids merge only when dimensions match, so fix width and depth before the first shard counts.
+- **Fixed shape.** Grids merge only when width, depth and hash seeds all match, so fix them before the first shard counts.
 - **No keys.** You cannot list frequent items from it, so pair it with a small heap of candidate keys; add decay for recent counts.
 
-**Example.** You count 10 million search queries in a grid of 4 rows by 2,000 columns, 8,000 counters, about 32 KB. Each estimate can be too high by about 0.14% of the stream, which is up to 13,600, with 98% confidence. A trending term searched 300,000 times reads at most 313,600, a 4.5% over-count that does not change its rank. A term searched 50 times may read as high as 13,650, so the tail is useless. Doubling the width to 4,000 halves that error to 6,800 and doubles the memory to 64 KB.
+**Example.** You count 10 million search queries in a grid of 4 rows by 2,000 columns, 8,000 counters, about 32 KB. Each estimate can be too high by about 0.14% of the stream, which is up to 13,600, with 98% confidence for any one query. A trending term searched 300,000 times reads at most 313,600, a 4.5% over-count; only terms within 13,600 of each other can swap order. A term searched 50 times may read as high as 13,650, so the tail is useless. Doubling the width to 4,000 halves that error to 6,800 and doubles the memory to 64 KB.
 
 ## How it works
 <!--meta block=structure-->
@@ -70,13 +70,13 @@ flowchart LR
 
 - **Fixed memory**, independent of the number of distinct keys — w×d counters whether you track thousands of keys or billions.
 - **Insert and query are O(d)** — a handful of hashes and increments, constant no matter how long the stream or how many keys.
-- **Never undercounts**: the estimate is a guaranteed upper bound, so a key's true frequency is always at or below what the sketch reports.
+- **Never undercounts while every update is non-negative** and counters never wrap, saturate or age: the estimate is then an upper bound, so a key's true frequency is at or below what the sketch reports. Decay, reset, deletion and median variants lose the bound.
 - **Two sketches of the same dimensions add cell-by-cell** — combine per-shard sketches into a global one, so counting parallelizes across a cluster.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Over-estimates by design**, and the inflation grows with total volume and skew — heavy hitters spill onto everything that collides with them.
+- **Over-estimates by design**, and the bound grows with total volume; skew decides which keys absorb the error, as heavy hitters spill onto everything that collides with them.
 - **Cannot enumerate or recover keys** — it stores counts against hashed cells, not the keys, so it needs a companion structure that already knows the candidates.
 - **Accurate for the heavy hitters**, noisy for the long tail — a rare key's small true count is easily swamped by a frequent key sharing one of its cells.
 - **Width and depth are sized** upfront for an assumed volume and error target; a stream far larger or more skewed than planned drifts past the bound.
@@ -143,8 +143,8 @@ class CountMinSketch {
 <!--meta polarity=knob-->
 
 - **Sketch width (w) — columns per row** — The accuracy dial: error is bounded by about e/w of the total counted volume, so doubling the width halves the over-estimate and doubles the memory.
-- **Sketch depth (d) — rows and independent hashes** — How many independent hashes each key gets, and therefore how many chances it has to land on a lightly-loaded cell. Depth buys confidence that the error stays inside the width's bound — roughly ln(1/delta) rows for failure probability delta — and it sets the per-operation cost, since insert and query are both O(d).
-- **Counter width in bits** — Bits per cell, from 4-bit nibbles up to 64-bit integers. Narrow counters shrink the sketch by an order of magnitude and let you spend the savings on more width, but they saturate on hot keys, so they only work paired with a decay scheme that pulls values back down.
+- **Sketch depth (d) — rows and independent hashes** — How many independent hashes each key gets, and so how many chances to land on a lightly loaded cell. Roughly ln(1/delta) rows give failure probability delta that the error exceeds the width's bound. Depth also sets per-operation cost, since insert and query are both O(d).
+- **Counter width in bits** — Bits per cell, from 4-bit nibbles up to 64-bit integers. Narrow counters shrink the sketch by up to 8x versus 32-bit counters and let you spend the savings on more width, but they saturate on hot keys, so they only work paired with a decay scheme that pulls values back down.
 - **Update rule — plain vs conservative** — Plain update increments all d counters; conservative update raises only the counters currently sitting at the key's minimum, which markedly cuts the over-estimate on skewed streams. The price is that the sketch can no longer be decremented, so deletions and any subtractive aging are off the table.
 - **Aging policy — reset, decay or window rotation** — The error bound is relative to everything counted since the sketch was last cleared, so an unaged sketch degrades monotonically. Choose one: zero it on a schedule, periodically halve every counter, or keep per-window sketches and drop the oldest. The interval is what defines the window over which “frequent” is meant.
 
@@ -161,9 +161,9 @@ class CountMinSketch {
 <!--meta polarity=failure-->
 
 - **Error grows with the stream, not with the sketch** — An unaged sketch keeps getting worse the longer it runs, at constant width and depth. Rare keys drift into plausible-but-wrong non-zero counts long before anything alerts.
-- **Heavy hitters swamp the tail** — Every counter is shared, and the minimum only rescues a key if at least one of its d cells stayed clean. Once traffic skews hard enough that a key collides with a heavy hitter in all d rows, its estimate is dominated by someone else's volume — so the sketch stays accurate exactly where it is already obvious and fails where you needed help.
+- **Heavy hitters swamp the tail** — Every counter is shared, and the minimum only rescues a key if at least one of its d cells stayed clean. Once traffic skews hard enough that a key collides with a heavy hitter in all d rows, its estimate is dominated by someone else's volume, so the sketch is accurate for heavy hitters you already know about and wrong for rare keys.
 - **Counter saturation on hot keys** — With narrow counters, a burst pins the hottest keys at the maximum value. They all then compare equal, so any ranking or admission decision built on the sketch loses its ordering precisely during the load spike it was meant to handle.
-- **Merge fails on mismatched sketches** — Cell-by-cell addition is only valid between sketches with identical width, depth, hash functions and seeds. A rolling deploy that retunes the dimensions produces per-shard sketches that either refuse to merge or, if the code is careless enough to add them anyway, silently produce nonsense.
+- **Merge fails on mismatched sketches** — Cell-by-cell addition is only valid between sketches with identical width, depth, hash functions and seeds. A rolling deploy that retunes the dimensions produces per-shard sketches that either refuse to merge or, if the code adds them anyway, silently return wrong counts.
 - **Discontinuity at the reset boundary** — Clearing the sketch to fight drift throws away all history at once, so every key reads as cold immediately afterwards. Anything downstream that admits, evicts or throttles on frequency flips behaviour at that instant — which is why decay-by-halving is usually preferred over a hard zero.
 
 ### Readiness checklist

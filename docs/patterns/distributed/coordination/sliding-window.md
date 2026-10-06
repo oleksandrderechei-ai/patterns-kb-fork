@@ -76,7 +76,8 @@ sequenceDiagram
 - **Sliding log** — Keep one timestamp per event, drop everything older than the window on each touch, and count what remains. It is exact at every instant and answers questions a counter cannot, such as when the allowance next frees up. Memory grows with the events inside the window, so at fleet rates the log is the whole bill.
 - **Sliding counter (weighted approximation)** — Hold two totals per key — the previous window and the current one — and prorate the previous by the fraction of it still inside the window. State is two numbers per key whatever the traffic, which is why this is the form most limiters actually deploy. The estimate assumes arrivals inside the previous window were evenly spread, so a burst clustered at its far edge is counted a little high or a little low; the error is bounded by that one window's total.
 - **Session window** — Let the data define the length: the window stays open while events keep arriving and closes after a gap of inactivity. It is how a user's activity is grouped into sessions when no fixed interval means anything. Per-key state lives until the gap timer fires, so an abandoned key holds memory for the length of the gap, and a key that never goes quiet never closes.
-- **Decayed / exponential window** — Evict nothing; instead scale every count down on a schedule, so old events fade rather than fall off a cliff. There is no edge to get wrong and no per-event state at all, which makes it the cheapest recency signal available. What you give up is a defensible answer to "how many in the last T" — the number is a weight, not a count, so it ranks well and audits badly.
+- **Decayed / exponential window** — Evict nothing; instead scale every count down on a schedule or on each touch, so old events fade rather than fall off a cliff. There is no edge to get wrong and no per-event state, so it costs less than any windowed count. The number is a weight, not a count: it ranks well but you cannot audit it.
+- **Sliding bucket window** — Split the window into N sub-interval counters per key and retire the oldest as the clock advances. State is N numbers per key whatever the traffic, the edge error is one bucket's traffic, and per-shard counters on the same alignment add position by position.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -84,7 +85,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **A burst cannot be split** across a boundary and admitted twice, because the window always measures back from now.
+- **A burst cannot be split** across a boundary and admitted twice, because the window always measures back from now. That is exact for the log; the weighted counter and bucketed windows leak at most one window total or one bucket.
 - **State is bounded** by the window length rather than by the age of the stream — everything older is evicted, so a counter that has run for a year costs what one that started this morning costs.
 - **The window length is a single dial** with an honest meaning: shorten it and the aggregate reacts faster, lengthen it and it smooths, and nothing else in the design has to change.
 - **Recency is explicit**, so yesterday's spike cannot dominate today's ranking — which is what makes "trending" mean anything.
@@ -98,7 +99,7 @@ sequenceDiagram
 - **Eviction is work the arrival** path did not have before. Amortize it on read and write, because a timer that sweeps every key at once turns steady cost into a periodic latency spike.
 - **A window that holds across** a fleet needs shared state, so the store's round trip joins every request and its unavailability needs a fail-open or fail-closed answer decided in advance.
 - **Windows keyed to wall-clock time inherit clock skew**: two hosts disagree about when an event leaves, and the effective window wobbles by however far their clocks drift.
-- **Subtracting an event** as it exits means retaining it for a full window length, so a sliding total over 30 days keeps fine-grained data for 30 days — the running number is cheap, the tail that feeds it is not.
+- **Subtracting an event** as it exits means retaining it for a full window length, so a sliding total over 30 days keeps fine-grained data for 30 days; the running number is cheap, the tail that feeds it is not. This holds for sums and counts; a max or min cannot be subtracted, so it needs per-bucket partials or a monotonic queue of candidates.
 
 ## When to use it
 <!--meta block=usage-->
@@ -149,9 +150,10 @@ class SlidingWindowCounter {
     this.current += 1; return true;
   }
 }
-// new SlidingWindowCounter(60_000).tryAdd(100): 100 arrivals at 10:00:59 leave the
-// previous window ~98% inside the sliding one a second later, so a burst at
-// 10:01:00 is refused, not forgiven.
+// new SlidingWindowCounter(60_000).tryAdd(100): 100 arrivals at 10:00:59 still
+// count as 100 at 10:01:00 (previous window fully inside) and about 98 at
+// 10:01:01, so a burst there is refused after only 2 more are admitted, not
+// forgiven.
 ```
 
 ## In the wild
@@ -196,7 +198,7 @@ class SlidingWindowCounter {
 <!--meta polarity=check-->
 
 - The window length is written down as a product statement — what the number means to whoever reads it — before it is tuned as a memory setting
-- Per-key state is bounded by an idle expiry, and the key cardinality that fits in memory is a figure someone computed rather than assumed
+- Per-key state is bounded by an idle expiry, and the key cardinality that fits in memory is a figure someone computed (bytes per key times active keys: two numbers for the counter, one timestamp per event for the log) rather than assumed
 - The edge error of the chosen granularity was calculated against the limit or threshold it feeds, so the approximation is a decision and not a surprise
 - A load test drove a burst straight across the window boundary and the admitted volume matched the intended one
 - The behaviour when a shared window store is unreachable was chosen deliberately and exercised with the store switched off
@@ -229,6 +231,11 @@ class SlidingWindowCounter {
 **Alternative to**
 
 - [Token Bucket](../resilience/token-bucket.md) — Two shapes of the same allowance: remember arrivals, or refill credit
+- [Materialized View](./materialized-view.md) — Precompute the windowed rollup instead of keeping a second copy of the recent past.
+
+**Exposed to**
+
+- [Clock Skew](../../../hazards/clock-skew.md) — Hosts disagree about when an event leaves, so the effective window wobbles by the drift.
 
 **Demonstrated by**
 

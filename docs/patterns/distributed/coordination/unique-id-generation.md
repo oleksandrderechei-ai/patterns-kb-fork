@@ -21,18 +21,18 @@ Giving every machine its own ids with no central counter is easy with random bit
 ## Explained
 <!--meta block=explain-->
 
-Unique id generation lets every machine issue its own ids without asking a central counter, by joining three parts: a clock reading in the highest bits, the machine's own number, and a counter for ids made in the same millisecond. Ids then sort roughly by creation time, so inserts land at the end of an index instead of scattering across it. A fully random key sends every insert to a different page, which forces page splits and wastes cache. Choose it only when one database sequence (a counter the database hands out) cannot keep up, because a sequence is smaller, denser and simpler.
+Unique id generation lets every machine issue its own ids without asking a central counter, by joining three parts: a clock reading in the highest bits, the machine's own number, and a counter for ids made in the same millisecond. Ids then sort roughly by creation time, so inserts land at the end of an index instead of scattering across it. A fully random key sends every insert to a different page, which forces page splits (a full index page cut in two) and wastes cache. Choose it when one database sequence (a counter the database hands out) cannot serve every writer, because of throughput, several independent writers or offline writes. Otherwise a sequence is smaller, denser and simpler.
 
 - **Clock steps back.** A clock that moves backwards can repeat an id, so refuse to issue ids until it catches up.
 - **Hot index tail.** At extreme rates the newest end of the index is hot, so put a shard or tenant prefix before the timestamp.
 - **The id leaks.** It shows creation time and fleet size, so expose an opaque random id at your API boundary.
 
-**Example.** A 64-bit layout holds 41 bits of milliseconds, 10 bits of machine number and 12 bits of counter, so 1,024 machines can each make 4,096 ids per millisecond, about 4.1 million a second per machine. The 41-bit clock lasts about 69 years from its chosen start date. Machine 7 last issued an id at millisecond 1,000, and its clock now reads 970 after a correction. It refuses to issue for 30 ms and raises an alert, rather than risk repeating an id. That 30 ms stall is the price of the guarantee. The 4,097th request inside one millisecond waits for the next.
+**Example.** A 64-bit layout holds 41 bits of milliseconds, 10 bits of machine number and 12 bits of counter, so 1,024 machines can each make 4,096 ids per millisecond, about 4.1 million a second per machine. The 41-bit clock lasts about 69 years from its chosen start date. Machine 7 last issued an id at millisecond 1,000, and its clock now reads 970 after a correction. It refuses to issue for 30 ms and raises an alert, rather than risk repeating an id. The 4,097th request inside one millisecond waits for the next.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Why does the node id sit below the timestamp and not above it? Because step 3 depends on it: with time highest, ids from both generators interleave into the same tail page. Swap the two fields and each node gets its own region of the index, which is what you actually want once that tail page becomes the write hot spot."
+```mermaid caption="The timestamp sits highest, so ids sort by time and inserts land at the index tail. Put the node id above the timestamp instead and each node gets its own region of the index, which spreads a hot tail page but gives up time order."
 flowchart LR
     subgraph G1["Generator, node id 5"]
         A1["assemble: time | 5 | seq"]
@@ -60,7 +60,7 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Fully random 128-bit identifier** — No clock, no node id, no coordination — and no ordering. The right answer when the identifier is public and should reveal nothing, and the wrong one when it is also the primary key of a large indexed table.
-- **Time-ordered 128-bit identifier** — A millisecond timestamp prefix, then randomness. Standardized as version 7 in RFC 9562 (RFC = Request for Comments, an internet standard): 48 bits of Unix milliseconds, a version marker, 12 bits of sub-millisecond sequence, a variant marker, then 62 random bits. Most languages have it built in and nothing needs administering. The default choice for a new system.
+- **Time-ordered 128-bit identifier** — A millisecond timestamp prefix, then randomness. Standardized as version 7 in RFC 9562 (RFC = Request for Comments, an internet standard): 48 bits of Unix milliseconds, a version marker, 12 bits that may hold sub-millisecond precision, a counter or random bits, a variant marker, then 62 random bits. Many libraries provide it and nothing needs administering. The default choice for a new system.
 - **Compact 64-bit time, node and sequence** — Half the width of the standard form, which shows up in every index and foreign key on a large table. The price is assigning each generator a distinct node id and keeping that assignment correct as the fleet changes.
 - **Sortable text encoding** — The same time-ordered bits rendered in a case-insensitive base32 alphabet, so the string sorts the same way the bytes do. Useful when the id travels through systems that only handle text, such as object keys or log lines.
 - **Range allocation from a coordinator** — A coordinator hands each node a block of numbers, and the node issues ids from it locally until the block is exhausted. Keeps ids small and dense at the cost of a dependency and one round trip per block — the middle ground between a shared sequence and pure local generation.
@@ -74,7 +74,7 @@ flowchart LR
 
 - **Any node generates a key** with no round trip, so the write path has no central allocator to queue behind or lose.
 - **A time-ordered key keeps inserts** at the index tail, so pages fill densely and the hot pages stay cached.
-- **Writers can be partitioned**, offline or in different regions and still produce keys that never collide.
+- **Writers can be partitioned**, offline or in different regions and still produce keys that do not collide, provided each writer holds a distinct node id.
 - **The key doubles as a rough creation timestamp**, which makes range scans and retention windows cheap.
 
 ### Cons
@@ -158,6 +158,7 @@ class IdGenerator {
 - **Node-id assignment source** — Where a generator learns its own id — static config, a coordination service lease, or computed from the instance address. Determines what happens when the fleet is replaced.
 - **Clock-regression policy** — Whether a backwards clock step blocks id generation, throws, or is absorbed by a monotonic counter that ignores the wall clock until it catches up.
 - **Key width at rest** — 64-bit integer versus 128-bit value, which propagates into every index and foreign key that references the row.
+- **Backwards-skew tolerance** — The largest backwards clock step the generator waits out before it throws and alerts. Set it from the clock offset you observe against a reference (see the clock offset signal), so a small correction waits and a large one stops.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -165,7 +166,7 @@ class IdGenerator {
 - **Index page splits and write amplification** — Splits per second and bytes written to the log per row inserted. The direct measure of whether keys are arriving in order.
 - **Sequence exhaustion events** — How often a generator uses its whole per-tick sequence and has to wait. Tells you the current headroom against burst write rate.
 - **Clock offset against a reference** — How far each generator drifts from a trusted time source. Correctness rests on this, and nothing else reports it.
-- **Duplicate-key rejection rate** — Unique-constraint violations on the primary key. Should be exactly zero; anything else means two generators share a node id.
+- **Duplicate-key rejection rate** — Unique-constraint violations on the primary key. Should be zero; a nonzero count points first to two generators sharing a node id, then to clock regression or retried inserts.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -179,7 +180,7 @@ class IdGenerator {
 <!--meta polarity=check-->
 
 - Node ids are unique by construction — leased or computed, not hand-assigned in config where a copy-paste reuses one.
-- A backwards clock step blocks id generation and raises an alert, rather than being allowed to reissue an id.
+- A backwards clock step stops id generation (the sketch throws, and a caller may retry or wait) and raises an alert, rather than being allowed to reissue an id.
 - The key width and the epoch are recorded as decisions, since neither can be changed later without rewriting every stored id.
 - Sequence exhaustion is measured, so the per-tick ceiling is known against real burst rates rather than assumed.
 - Any identifier exposed publicly is opaque, so the internal sortable key does not leak creation time or fleet size.
@@ -212,5 +213,9 @@ class IdGenerator {
 **Often confused with**
 
 - [Correlation Identifier](../../messaging/correlation-identifier.md) — This generates primary keys; a correlation id tags related messages and is never a key
+
+**Exposed to**
+
+- [Clock Skew](../../../hazards/clock-skew.md) — A backwards or disagreeing clock can repeat or misorder an id, so the generator must refuse or wait.
 
 <!-- relationships:end -->

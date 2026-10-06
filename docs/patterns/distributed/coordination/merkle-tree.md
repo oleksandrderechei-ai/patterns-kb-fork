@@ -21,12 +21,12 @@ Two replicas holding millions of items drift apart, and comparing every key move
 ## Explained
 <!--meta block=explain-->
 
-A Merkle tree is a tree of hashes over a dataset. You cut the key space into ranges, hash the keys and values in each range, and then hash those hashes in pairs up to one root hash. Two replicas compare roots. If they match, all the data matches and the check cost one message. If not, they compare the two child hashes, descend only into the child that differs, and stop at the one range that is out of step, where they swap the keys and keep the newer version. Choose it over a full scan when replicas hold millions of items that mostly agree. This background repair is called anti-entropy.
+A Merkle tree is a tree of hashes over a dataset. You cut the key space into ranges, hash the keys and values in each range, and then hash those hashes in pairs up to one root hash. Two replicas compare roots. If they match, the data matches as of the moment each tree was built, and the check cost one message. If not, they compare the two child hashes, descend only into the child that differs, and stop at the one range that is out of step, where they swap the keys and keep the newer version. Choose it over a full scan when replicas hold millions of items that mostly agree. This background repair is called anti-entropy.
 
 - **Build cost.** Building the tree means reading the data. Build it off-peak or update it as you write.
 - **Same ranges needed.** Both sides must cut ranges the same way. Rebuild after nodes join or leave.
 
-**Example.** Two replicas each hold 1,048,576 keys in 1,024 ranges of about 1,024 keys, a tree 10 levels deep. Nine keys on one range are missing on B. The roots differ. At each of the 10 levels the replicas exchange two hashes, so about 20 hashes cross the network and one range is found. They then swap the 1,024 keys of that range and B gains its nine. Comparing every key would have moved over a million entries. The cost is the build: hashing all 1,048,576 keys means one pass over the disk on each node, repeated whenever the data has moved on.
+**Example.** Two replicas each hold 1,048,576 keys in 1,024 ranges of about 1,024 keys, a tree 10 levels deep. Nine keys on one range are missing on B. The roots differ. At each of the 10 levels the replicas exchange two hashes, so about 20 hashes cross the network and one range is found. They then swap the 1,024 keys of that range and B gains its nine. Comparing every key would have meant checking over a million keys to find nine. The cost is the build: hashing all 1,048,576 keys means one pass over the disk on each node, repeated whenever the data changes.
 
 ## How it works
 <!--meta block=structure-->
@@ -69,7 +69,7 @@ Comparing then runs top down. Equal hashes mean equal data below, so you skip th
 ## Variations
 <!--meta block=variations-->
 
-- **Anti-entropy repair between replicas** — each node keeps a tree per key range it holds and trades hashes with a peer on a schedule. This is the use in Dynamo-style stores, and it works alongside the faster paths, such as reads that repair what they find, which only catch keys someone reads.
+- **Anti-entropy repair between replicas** — each node keeps a tree per key range it holds and trades hashes with a peer on a schedule. Dynamo-style stores use this. It runs beside read repair, which only fixes keys someone reads.
 - **Tree built on demand** — the tree is computed when a repair starts, by scanning the data, so nothing is stored between runs. It costs a scan of disk each time, and the tree reflects the data at scan time.
 - **Tree kept up to date** — the tree is updated as writes arrive, so a comparison is cheap at any moment. It costs extra work on every write and extra space.
 - **Branching factor and depth** — a wider tree means fewer levels and more hashes per message; a deeper binary tree sends less per round and needs more rounds. The number of leaves sets how many keys you copy for one difference.
@@ -81,10 +81,10 @@ Comparing then runs top down. Equal hashes mean equal data below, so you skip th
 ### Pros
 <!--meta polarity=pro-->
 
-- **A match costs one message** — two healthy replicas confirm they agree by exchanging one root hash, so repair on a clean cluster is nearly free.
-- **Work scales with the differences, not the data** — a handful of drifted keys costs about as many comparisons as the tree is deep.
+- **A match costs one message** — when trees are kept up to date, two healthy replicas confirm they agree by exchanging one root hash, so repair on a clean cluster is nearly free; with on-demand builds the scan, not the message, is the cost.
+- **Work scales with the differences, not the data** — one differing range costs about as many comparisons as the tree is deep, so k scattered ranges cost about k times that and scattered drift erodes the saving.
 - **Finds drift nobody reads** — keys that stay cold and never trigger a read repair still get checked.
-- **Needs no ordering or clocks** — the tree only says where two copies differ and leaves the choice of winner to the version rule.
+- **Needs no clocks to find drift** — the tree only says where two copies differ; picking the winner is left to a version rule you still supply.
 
 ### Cons
 <!--meta polarity=con-->
@@ -151,15 +151,15 @@ function diff(a: Node, b: Node): number[] {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **number of leaf ranges** — More leaves mean fewer keys copied for one difference and a larger tree to hold and send; fewer leaves mean the reverse.
-- **repair schedule** — How often replicas compare trees; it bounds how long drift can last before it is found.
+- **number of leaf ranges** — More leaves mean fewer keys copied for one difference and a larger tree to hold and send; fewer leaves mean the reverse. Size it as total keys divided by the keys you accept copying per difference: the explain example is 1,048,576 keys in 1,024 ranges, so 1,024 keys copied per difference. Check it against bytes streamed per repair.
+- **repair schedule** — How often replicas compare trees; it bounds how long drift can last before it is found. Set the interval shorter than the time you can tolerate one lost copy, and check it against ranges found different per run.
 - **build mode** — Build the tree on demand by scanning, or keep it updated on each write; the first costs disk reads per run and the second costs work per write.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **tree build time and disk read load** — The cost of a repair run on a busy node, and the number to watch when it competes with live traffic.
-- **ranges found different per run** — A steady rise means writes are being missed in normal operation.
+- **ranges found different per run** — A steady rise outside outages and topology changes means writes are being missed in normal operation. Alert when a run exceeds its own recent average.
 - **bytes streamed per repair** — The data actually copied, which should track the real differences.
 
 ### Failure modes under load
