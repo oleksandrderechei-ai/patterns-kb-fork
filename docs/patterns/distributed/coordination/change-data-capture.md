@@ -26,7 +26,7 @@ Change data capture reads a database's own log of committed row changes and deli
 - **Raw events** Events are before-and-after row values, not business events; each consumer rebuilds the meaning, and an upstream column change can break them.
 - **Repeats** Delivery is at least once, so a restart can repeat an event; make every consumer safe to run twice.
 - **Another system** The pipeline is one more thing to run; monitor its lag.
-- **Pinned log** A stopped consumer makes the database keep unread log; alert on retained log size and drop a lost bookmark.
+- **Pinned log** A stopped consumer makes the database keep unread log; alert on retained log size, and re-snapshot if its bookmark is lost.
 
 **Example.** An orders table takes 500 writes a second, and each change event is about 1 KB, so the log grows 0.5 MB a second. The search-index consumer crashes at 02:00, and the database keeps all the log it has not read. After one hour that is 1.8 GB, after two hours 3.6 GB. The primary has 20 GB of free disk, so it fills in about 11 hours, and the page would arrive as a database outage instead of a stale search index. An alert on 2 GB of retained log fires at about 03:07, in time to restart the consumer or drop its bookmark.
 
@@ -57,9 +57,9 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Log-based vs. query-based** — Log-based CDC tails the database's replication log (Postgres's write-ahead log, MySQL's binlog, MongoDB's oplog), so it captures every committed change — including deletes — in order, with no load on the primary. Query-based CDC instead polls for rows whose `updated_at` changed since last time: simpler and needing no log access, but it misses deletes, misses intermediate states between polls, and adds query load. Prefer log-based when the source database supports it.
+- **Log-based vs. query-based** — Log-based CDC tails the database's replication log (Postgres's write-ahead log, MySQL's binlog, MongoDB's oplog). It captures every committed change, deletes included, in order, with no polling queries against the primary. Query-based CDC instead polls for rows whose `updated_at` changed since last time: simpler and needing no log access, but it misses deletes, misses intermediate states between polls, and adds query load. Prefer log-based when the source database supports it.
 - **Trigger-based capture** — Database triggers fire on insert/update/delete and write change rows to an audit or event table that a consumer then reads. It works without log access and captures deletes, but the triggers run inside every write transaction, adding latency and coupling to the schema.
-- **Snapshot then stream** — For an initial load, take a consistent snapshot of existing rows, record the log position it corresponds to, then switch to tailing the log from there — so a new consumer gets the full current state before it starts receiving live changes, with no gap and no double-count at the handoff.
+- **Snapshot then stream** — For an initial load, take a consistent snapshot of existing rows, record the log position it corresponds to, then switch to tailing the log from there. A new consumer gets the full current state before it receives live changes, and no change is lost at the handoff; a change near the switch may arrive twice, so consumers stay idempotent.
 - **CDC vs. the [transactional outbox](./outbox.md)** — The [outbox](./outbox.md) has the application write an explicit events table in the same transaction as the business change, giving it full control over event shape at the cost of a table and relay to maintain. CDC reads the log the database already keeps, needing neither — but the events mirror raw row changes rather than domain intent. Debezium's outbox router blends the two: CDC that reads an outbox table.
 
 ## Trade-offs
@@ -69,18 +69,19 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **No dual writes**: the application only touches its database, so downstream stores cannot silently diverge from a half-completed multi-system write.
-- **Log-based capture cannot miss** a committed change and adds no query load to the primary the way polling would.
-- **Changes arrive in commit order**, and with before/after images available — enough to rebuild indexes, caches, and warehouses from the same feed.
+- **Log-based capture sees every committed change** while the consumer stays within log retention, and sends the primary no polling queries; wider row images cost it write-side overhead (see con-5), and past retention the consumer must re-snapshot.
+- **Changes arrive in commit order**, and when the source is set to record before and after images, they carry enough to rebuild indexes, caches and warehouses.
 - **New consumers attach** to the existing stream without any change to the application or its write path.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **Delivery is at-least-once** — a restart can redeliver a change — so every consumer must be idempotent.
-- **A stalled or slow consumer** pins the replication slot, and the database retains WAL it cannot recycle — bloating disk until it runs out.
+- **A stalled or slow consumer** pins its replication slot (the database's marker of the last change that consumer read). The database cannot recycle the write-ahead log (WAL) past that point, so the disk fills.
 - **Source schema changes** (a dropped column, a type change) can break the stream or downstream consumers if not handled deliberately.
 - **Events mirror raw row changes, not domain intent**; consumers must reconstruct meaning, and the CDC pipeline is one more thing to run and monitor.
 - **How much prior state** an event carries depends on how the source table is configured: by default an update or delete may show only its key columns, and widening that costs extra write-side overhead on the primary.
+- **Order holds on a single stream**; once events are partitioned by key it holds per key only, and one transaction's changes can arrive separately, so consumers must not assume cross-row atomicity.
 
 ## When to use it
 <!--meta block=usage-->
@@ -140,7 +141,7 @@ async function consume(
 
 - **Debezium** — An open-source CDC platform, usually run as Kafka Connect source connectors. It tails Postgres logical replication (pgoutput/decoderbufs), the MySQL binlog, and the MongoDB change stream/oplog among others, emitting each row change as a record with before/after state. Its Outbox Event Router turns an outbox table's inserts into routed events. {#wild-debezium}
 - **Amazon DynamoDB Streams** — A built-in change feed: each item-level insert, modify, or remove is published as an ordered stream record with a configurable view (keys only, new image, or old and new images), consumed by Lambda or through the Kinesis adapter — commonly used to keep an OpenSearch index or analytics pipeline in sync. {#wild-dynamodb-streams}
-- **PostgreSQL logical replication** — Postgres exposes committed changes through logical decoding: a replication slot streams row changes in commit order via an output plugin such as the built-in pgoutput or wal2json. The slot retains WAL until the consumer acknowledges it, guaranteeing no change is skipped. {#wild-postgres-logical-replication}
+- **PostgreSQL logical replication** — Postgres exposes committed changes through logical decoding: a replication slot streams row changes in commit order via an output plugin such as the built-in pgoutput or wal2json. The slot retains WAL until the consumer acknowledges it, so no change is skipped while the slot exists, at the cost of disk that grows if the consumer stalls. {#wild-postgres-logical-replication}
 - **MySQL binary log (binlog)** — MySQL's row-based binary log records every committed change and is the foundation of its native replication. CDC tools tail the binlog from a saved position or GTID to reconstruct inserts, updates, and deletes as an ordered change stream. {#wild-mysql-binlog}
 
 ## In production
