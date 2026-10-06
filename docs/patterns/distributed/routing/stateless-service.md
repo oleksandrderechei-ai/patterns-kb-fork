@@ -22,7 +22,7 @@ A stateless service keeps no client-specific state in its own memory between req
 
 A stateless service keeps nothing about a client in its own memory between requests, so any copy of it can answer any request. What a request needs, such as who the caller is or what is in the cart, travels with the request in a token or is read from a shared store and written back. Without that, a server holding a session in memory forces the client to return to the same copy, called a [sticky session](sticky-session.md), and when that copy dies the session dies with it. That blocks scaling out, makes rolling deploys drop sessions and turns removing a copy into a data move. Choose it over sticky sessions when you will run several copies behind a load balancer or add and remove them automatically. The state does not vanish: it moves somewhere shared and lasting.
 
-- **Store round trip.** Every request pays a trip to the store, so cache values that rarely change.
+- **Store round trip.** Every request pays a store trip, so cache only rarely changing values and treat the cache as disposable, never the only copy.
 - **Shared dependency.** The store becomes a bottleneck and a single point of failure, so replicate it and watch its latency.
 - **Heavy tokens.** Big tokens bloat every request and hit cookie size limits, so carry an ID and keep the rest in the store.
 - **Poor fit.** Long-lived connections and large in-memory data do not fit, so keep those as separate stateful parts.
@@ -57,7 +57,7 @@ flowchart LR
 
 - **Externalized session store** — Session state moves to a shared store (a database, Redis, a [distributed cache](../../caching/distributed-cache.md)) that every instance reads and writes, so sessions survive an instance dying while the service itself stays stateless.
 - **Token-carried state** — The request carries its own context in a signed token (such as a JWT (JSON Web Token)), so a handler needs no store lookup on the hot path — at the cost of token size and harder revocation.
-- **[Sticky sessions](./sticky-session.md) (the compromise)** — A load balancer pins each client to one instance so in-memory state still works. It is the affinity that statelessness removes — a partial retreat used when externalizing state is impractical.
+- **[Sticky sessions](./sticky-session.md) (the compromise)** — A load balancer pins each client to one instance, so in-memory state still works. This is the affinity statelessness removes, kept only as a stopgap when externalizing state is impractical.
 - **Stateless compute over managed storage** — The compute tier is fully disposable and all state is delegated to managed backing services — the shape behind serverless functions and twelve-factor processes.
 
 ## Trade-offs
@@ -67,9 +67,9 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Any instance serves any request**, so scaling out is just adding instances behind a load balancer.
-- **Losing an instance loses no session state**; the load balancer routes around it and users never notice.
-- **Rolling deploys**, blue-green, and autoscaling become trivial because instances are disposable.
-- **No sticky-session routing needed** — a plain round-robin balancer is enough.
+- **Losing an instance loses no session state**: once health checks eject it the load balancer routes around it, though requests in flight on it fail, so keep handlers idempotent and retry.
+- **Rolling deploys**, blue-green and autoscaling get much simpler because instances are disposable, once draining and readiness gating are in place.
+- **No sticky-session routing needed**: round-robin or least-connections works, since any instance can serve any request.
 
 ### Cons
 <!--meta polarity=con-->
@@ -78,6 +78,7 @@ flowchart LR
 - **That shared store** becomes a common dependency and a new bottleneck or single point of failure.
 - **Carrying large state** in tokens bloats every request and can hit header or cookie size limits.
 - **Inherently stateful workloads** — long-lived connections, big in-memory working sets — do not fit cleanly.
+- **Concurrent writes to one session**: any instance can write the same session at once, so concurrent updates need versioning or atomic store operations.
 
 ## When to use it
 <!--meta block=usage-->
@@ -104,23 +105,26 @@ flowchart LR
 // Session state lives in a shared store, so a load balancer may route
 // each request to any instance interchangeably.
 
-type Cart = { items: string[] };
+type Cart = { items: string[]; version: number };
 
 interface SessionStore {
   get(id: string): Promise<Cart | null>;
-  put(id: string, cart: Cart): Promise<void>;
+  put(id: string, cart: Cart, expectedVersion: number): Promise<boolean>; // false = stale write
 }
 
 // A pure function of (request, shared store): nothing is remembered in
 // this process, so restarting or replacing the instance loses nothing.
+// Any instance may write this session, so writes are versioned.
 async function addToCart(
   req: { sessionId: string; item: string },
   store: SessionStore,
 ): Promise<Cart> {
-  const current = (await store.get(req.sessionId)) ?? { items: [] };
-  const updated: Cart = { items: [...current.items, req.item] }; // new object
-  await store.put(req.sessionId, updated);                        // write it back out
-  return updated;
+  for (;;) {
+    const current = (await store.get(req.sessionId)) ?? { items: [], version: 0 };
+    const updated: Cart = { items: [...current.items, req.item], version: current.version + 1 }; // new object
+    if (await store.put(req.sessionId, updated, current.version)) return updated;
+    // another instance wrote first: reread and retry
+  }
 }
 
 // DON'T: an in-memory map ties the client to this one instance —
@@ -144,10 +148,10 @@ async function addToCart(
 <!--meta polarity=knob-->
 
 - **Replica / instance count** — How many interchangeable instances run behind the load balancer — the primary dial for scaling a stateless tier (replicas, desiredCount).
-- **Session store and its time to live (TTL)** — Where externalized state lives and how long entries survive; a shorter TTL cuts store size and staleness but raises the miss rate.
+- **Session store and its time to live (TTL)** — Where externalized state lives and how long entries survive; a shorter TTL ends idle sessions sooner and forces re-login but cuts store size, a longer one grows the store. Start from the idle timeout your product already promises users.
 - **Token vs. store lookup** — Whether request context travels in a signed token or is fetched per request — trading token size and revocation lag against a store round-trip on every call.
 - **Load-balancer routing policy** — Round-robin or least-connections instead of session affinity; statelessness is what lets you turn sticky sessions off.
-- **State-store connection pool size** — Max connections each instance opens to the shared store — N instances multiply concurrent load on it (max_connections, pool size).
+- **State-store connection pool size** — Max connections each instance opens to the shared store; N instances multiply concurrent load on it, so set pool size to the store's max_connections divided by peak instance count, minus headroom (max_connections, pool size).
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -160,7 +164,7 @@ async function addToCart(
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **The state store becomes the bottleneck** — Pushing all state into one shared store concentrates load there; it saturates before the stateless tier does and turns into the real scaling limit and a single point of failure.
+- **The state store becomes the bottleneck** — Pushing all state into one shared store concentrates load there; unless it is sized for the aggregate request rate, it saturates before the stateless tier does and becomes the real scaling limit and a single point of failure.
 - **Accidental in-memory state** — A cache, counter, or session quietly kept in instance memory breaks the moment a request lands on a different instance — invisible on one box, corrupt once you scale out.
 - **Fat-token bloat** — Carrying too much state in tokens inflates every request and can exceed header or cookie size limits, or simply waste bandwidth.
 - **Cold-cache thundering herd** — After a deploy or scale-up, fresh instances hold no warm cache and hammer the store in unison until it fills.
@@ -173,6 +177,7 @@ async function addToCart(
 - Turn off sticky sessions / session affinity at the load balancer once state is external.
 - Size the state store's capacity and connection pools for peak instance count, not today's.
 - Confirm instances start clean and can serve traffic without a warm-up dependency, or gate readiness until warm.
+- Drain in-flight requests on shutdown before the instance leaves the pool.
 
 ## Where it shows up
 <!--meta block=fluency-->
