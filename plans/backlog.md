@@ -16,6 +16,14 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   - an owner call on whether `alternative-to` may record a rejected option, which three
     drafted `bitly` edges wait on (`refresh-ahead`, `sweeper`, `idempotency`);
   - the first run of `.claude/workflows/kb-improve-batch.mjs`, on two pages.
+- From the kb-improve run on the Testing area (its pull request lists every dropped finding):
+  - a `testing` theme decide row that routes "no tests, output too large to assert" to
+    `golden-master`, which no row reaches today;
+  - pages readers wanted to send people to but the KB lacks: Object Mother, property-based
+    testing, integration testing;
+  - edges drafted but over the cap: `dummy-object` often-confused-with `fake-object` and
+    `test-spy`, `page-object` combines-with `lazy-initialization`, `test-stub` combines-with
+    `dependency-injection`.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 
