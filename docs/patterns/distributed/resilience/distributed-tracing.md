@@ -238,8 +238,8 @@ async function onMessage(msg: Message) {
 
 **Prevents**
 
-- [Leaky Abstraction](../../../hazards/leaky-abstraction.md) — Reveals the cost an abstraction's interface never mentions
 - [Premature Optimization](../../../hazards/premature-optimization.md) — Shows which call actually takes the time, so effort goes to the measured bottleneck
+- [Leaky Abstraction](../../../hazards/leaky-abstraction.md) — Reveals the cost an abstraction's interface never mentions
 
 **Implemented by**
 

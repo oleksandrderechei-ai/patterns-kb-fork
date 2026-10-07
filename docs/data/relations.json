@@ -4874,13 +4874,6 @@
       "note_b": "Surfacing the substrate's failure beats a generic error the caller cannot act on"
     },
     {
-      "a": "distributed-tracing",
-      "verb": "prevents-hazard",
-      "b": "leaky-abstraction",
-      "note_a": "Reveals the cost an abstraction's interface never mentions",
-      "note_b": "Where the leak is a cost model, measuring at the boundary is the only defence left"
-    },
-    {
       "a": "ai-agent",
       "verb": "combines-with",
       "b": "mcp",
@@ -10593,13 +10586,6 @@
       "note_b": "Sharing one fetch per key keeps a cold cache from sending every read to the database."
     },
     {
-      "a": "cache-stampede",
-      "verb": "often-confused-with",
-      "b": "metastable-failure",
-      "note_a": "A stampede that keeps the cache from refilling can become a metastable failure.",
-      "note_b": "A cold cache is one trigger and one sustaining effect among several."
-    },
-    {
       "a": "priority-queue",
       "verb": "prevents-hazard",
       "b": "head-of-line-blocking",
@@ -11473,13 +11459,6 @@
       "b": "lava-flow",
       "note_a": "Does not build for needs that may never come, so less speculative code is left to cool",
       "note_b": "Code written for an unproven need is what turns into lava when the need never comes"
-    },
-    {
-      "a": "boat-anchor",
-      "verb": "combines-with",
-      "b": "lava-flow",
-      "note_a": "A component built for a future that never arrives and is kept anyway becomes lava flow",
-      "note_b": "Dead code that stays because nobody dares delete it"
     },
     {
       "a": "big-ball-of-mud",
@@ -13964,6 +13943,48 @@
       "b": "golden-hammer",
       "note_a": "Ports your own code owns keep one tool's vocabulary out of callers, so swapping the tool is one adapter",
       "note_b": "A port owned by your code means replacing the favourite tool is one adapter, not a rewrite"
+    },
+    {
+      "a": "cache-stampede",
+      "verb": "often-confused-with",
+      "b": "hot-key",
+      "note_a": "A stampede is a hot entry vanishing and every reader rebuilding it; a hot key is that entry overloading its node",
+      "note_b": "A hot key is a popular entry overloading one node; a stampede is that entry expiring so every reader rebuilds it"
+    },
+    {
+      "a": "cache-stampede",
+      "verb": "often-confused-with",
+      "b": "metastable-failure",
+      "note_a": "A stampede that saturates the source can keep the cache from refilling, so the overload outlives its trigger",
+      "note_b": "A cold cache is one trigger and one sustaining effect among several."
+    },
+    {
+      "a": "acl",
+      "verb": "prevents-hazard",
+      "b": "leaky-abstraction",
+      "note_a": "Contains the leak in one reviewed boundary instead of spreading it through the domain",
+      "note_b": "An abstraction over something hostile leaks by construction; the layer keeps the leak in one reviewed place"
+    },
+    {
+      "a": "golden-hammer",
+      "verb": "combines-with",
+      "b": "leaky-abstraction",
+      "note_a": "A hammer applied to a new workload shows its substrate through",
+      "note_b": "Reaching for one abstraction beyond its range creates a leak"
+    },
+    {
+      "a": "distributed-tracing",
+      "verb": "prevents-hazard",
+      "b": "leaky-abstraction",
+      "note_a": "Reveals the cost an abstraction's interface never mentions",
+      "note_b": "Where the leak is a cost model, per-request time and call counts across layers find it; they do not prevent it"
+    },
+    {
+      "a": "boat-anchor",
+      "verb": "combines-with",
+      "b": "lava-flow",
+      "note_a": "Both are dead code kept out of fear; a boat anchor was built on purpose and never removed, lava flow is accidental residue nobody can explain. Often found together.",
+      "note_b": "Both are dead code kept out of fear; lava flow is residue of unknown purpose, a boat anchor was built on purpose and left in. Often found together."
     }
   ],
   "group_order": {

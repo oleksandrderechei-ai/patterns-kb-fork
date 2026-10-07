@@ -67,6 +67,7 @@ The fix is to stop routing all of the hot key's traffic to one place. **Replicat
 **Often confused with**
 
 - [Hot Partition](./hot-partition.md) — The storage-tier cousin: a whole shard saturates, not one entry
+- [Cache Stampede](./cache-stampede.md) — A hot key is a popular entry overloading one node; a stampede is that entry expiring so every reader rebuilds it
 
 **Mitigated by**
 

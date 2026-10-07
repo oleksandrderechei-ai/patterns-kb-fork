@@ -2084,6 +2084,14 @@
       "related": ["transaction-script", "primitive-obsession"]
     },
     {
+      "id": "golden-hammer",
+      "label": "Golden Hammer",
+      "definition": "One familiar tool applied to every problem",
+      "route": "/hazards/golden-hammer.html",
+      "requires": [],
+      "related": ["leaky-abstraction"]
+    },
+    {
       "id": "boat-anchor",
       "label": "Boat Anchor",
       "definition": "Dead code or hardware kept around unused",
@@ -2092,12 +2100,20 @@
       "related": ["lava-flow"]
     },
     {
+      "id": "leaky-abstraction",
+      "label": "Leaky Abstraction",
+      "definition": "The abstraction's promise breaks, and the substrate it hid shows through",
+      "route": "/hazards/leaky-abstraction.html",
+      "requires": [],
+      "related": ["golden-hammer"]
+    },
+    {
       "id": "cache-stampede",
       "label": "Cache Stampede",
       "definition": "A popular key expires and a herd of misses hits the source at once",
       "route": "/hazards/cache-stampede.html",
       "requires": [],
-      "related": ["thundering-herd", "metastable-failure"]
+      "related": ["thundering-herd", "hot-key", "metastable-failure"]
     },
     {
       "id": "hot-key",
@@ -2105,7 +2121,7 @@
       "definition": "One key draws so much traffic it overloads the single node that owns it",
       "route": "/hazards/hot-key.html",
       "requires": [],
-      "related": ["hot-partition"]
+      "related": ["hot-partition", "cache-stampede"]
     },
     {
       "id": "hot-partition",
@@ -2217,7 +2233,7 @@
       "definition": "An outage that outlasts its trigger because the system's own retries, cold caches and late answers keep the overload going",
       "route": "/hazards/metastable-failure.html",
       "requires": [],
-      "related": ["cascading-failure", "cache-stampede", "retry-storm"]
+      "related": ["cascading-failure", "retry-storm", "cache-stampede"]
     },
     {
       "id": "head-of-line-blocking",
@@ -2249,7 +2265,7 @@
       "definition": "Dead or unexplained code kept in place because nobody dares remove it",
       "route": "/hazards/lava-flow.html",
       "requires": [],
-      "related": ["boat-anchor", "big-ball-of-mud"]
+      "related": ["big-ball-of-mud", "boat-anchor"]
     },
     {
       "id": "premature-optimization",

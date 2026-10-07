@@ -69,8 +69,8 @@ Stop new lava from forming. Give every module an owner, delete a feature flag in
 
 **Combines with**
 
-- [Boat Anchor](./boat-anchor.md) — Dead code that stays because nobody dares delete it
 - [Big Ball of Mud](./big-ball-of-mud.md) — Unowned code nobody dares remove keeps piling up
+- [Boat Anchor](./boat-anchor.md) — Both are dead code kept out of fear; lava flow is residue of unknown purpose, a boat anchor was built on purpose and left in. Often found together.
 
 **Mitigated by**
 
