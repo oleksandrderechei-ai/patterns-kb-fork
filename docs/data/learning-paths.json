@@ -1180,7 +1180,7 @@
       },
       "microservices-design": {
         "role": "Keep a local read copy of another service's data",
-        "tour": "When a service needs data another service owns, calling across on every read is chatty and ties your availability to theirs. Subscribe to the owner's published events instead and maintain a local view shaped for the query you actually run — explicitly a copy, explicitly behind, with the owner remaining the single source of truth. Publish a schema for those events so serialization is generated rather than hand-written, store only the fields your context needs, and aggregate or batch at high volume, where the event flow itself becomes the bottleneck. Inside one service, the same read-model split is [CQRS](../patterns/architecture/cqrs.md).",
+        "tour": "When a service needs data another service owns, calling across on every read is chatty and ties your availability to theirs. Subscribe to the owner's published events instead and maintain a local view shaped for the query you actually run: a copy that is behind the owner, which remains the single source of truth. Keep a version or sequence number per key and drop any event older than the one applied, so a late event cannot overwrite newer state. To seed or rebuild the view, replay the owner's events or load a snapshot from the owner. Publish a schema for those events so serialization is generated rather than hand-written, store only the fields your context needs, and aggregate or batch at high volume, where the event flow itself becomes the bottleneck. Inside one service, the same read-model split is [CQRS](../patterns/architecture/cqrs.md).",
         "fluency": "Keep a local read copy of another service's data"
       },
       "event-modeling": {
@@ -1214,7 +1214,7 @@
       },
       "microservices-design": {
         "role": "Commit the state change and its event together",
-        "tour": "A service that changes its own state and announces the change does two writes with no shared transaction between them. If the row commits and the publish fails, downstream services never learn; if the publish succeeds and the row rolls back, they act on something that did not happen. Write the event into an outbox table inside the same local commit, and let a relay publish it afterwards — turning two writes into one.",
+        "tour": "A service that changes its own state and announces the change does two writes with no shared transaction between them. If the row commits and the publish fails, downstream services never learn; if the publish succeeds and the row rolls back, they act on something that did not happen. Write the event into an outbox table inside the same local commit, and let a relay publish it afterwards, so the one local commit is the only write that must succeed. The relay can crash after publishing and before marking the row sent, so it delivers at least once and consumers still need idempotency.",
         "fluency": "Commit the state change and its event together",
         "heading": "Transactional Outbox"
       },
@@ -2200,7 +2200,7 @@
       },
       "microservices-design": {
         "role": "Make a repeated call apply once",
-        "tour": "A retry is safe only when applying the operation twice has the effect of applying it once, which is why blindly retrying a POST or a PATCH is not safe: the original call may have succeeded with the caller never seeing the response. Have each service build a key from the correlation identifier plus a service-specific qualifier, store the key before processing, and on a retry find it and skip. Because each service builds its own key from the one shared id, retries are safe across the whole transaction with no separate key-generation mechanism, and a service whose earlier attempt failed before storing its key still processes the retry correctly.",
+        "tour": "A retry is safe only when applying the operation twice has the effect of applying it once, which is why blindly retrying a POST or a PATCH is not safe: the original call may have succeeded with the caller never seeing the response. Have each service build a key from the correlation identifier plus a service-specific qualifier, store the key before processing, and on a retry find it and skip. Because each service builds its own key from the one shared id, retries are safe across the whole transaction with no separate key-generation mechanism, provided the id stays the same when a client retries. Store the key and apply the effect in one local transaction, because a crash between the two would make the retry skip work that never ran. The correlation identifier is assigned when a request enters the system, so a client that retries a timed-out call needs a client-supplied idempotency key, or the edge must reuse the original id on replay; otherwise the duplicate gets a new id and runs again.",
         "fluency": "Make a repeated call apply once"
       },
       "workload-composition": {
