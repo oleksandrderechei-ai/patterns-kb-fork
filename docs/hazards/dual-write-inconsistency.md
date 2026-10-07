@@ -103,5 +103,6 @@ Where the second system is outside your reach (a payment provider, a partner API
 - [Cache-Aside](../patterns/caching/cache-aside.md) — The app updates the store and then the cache with separate calls, so a failed second call leaves a stale entry
 - [Write-Through](../patterns/caching/write-through.md) — The cache and store are written by two calls with no shared transaction
 - [Event-Driven Architecture](../patterns/architecture/eda.md) — An event-driven flow publishes the event and writes the state separately, so one can land without the other
+- [Robinhood](../designs/robinhood.md) — an order store, an exchange and a KV index are written by separate calls with no shared transaction
 
 <!-- relationships:end -->

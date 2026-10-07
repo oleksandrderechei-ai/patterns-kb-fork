@@ -105,5 +105,6 @@ Size the window from the resource's rate. In the example, 100 at a time with 0.5
 - [Instagram](../designs/instagram.md) — A design where one celebrity post fires a burst of fan-out writes that arrive together.
 - [Web Crawler](../designs/web-crawler.md) — A crawler's per-domain rate limit releases all waiting fetchers at once when its window resets.
 - [YouTube](../designs/youtube.md) — a viral clip's first minute is the shape at CDN scale
+- [Persona Identification & Sanction Check (V2)](../designs/persona-identification-v2.md) — a design that meets it: retry timing jittered per task and breaker state shared across workers
 
 <!-- relationships:end -->

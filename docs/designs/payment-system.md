@@ -50,7 +50,7 @@ Out of scope, and named to keep the design narrow: refunds, saved payment method
 
 **Throughput.** Peak is ~10,000 transactions/sec. Every charge is a write, so the operational store must absorb roughly **10k writes/sec** — right at the edge of a single well-tuned relational instance, and the reason the write path gets its own scaling story below.
 
-**Event volume.** Each committed write also becomes one change event. A single Kafka partition comfortably sustains ~5,000–10,000 messages/sec, so **3–5 partitions** at a replication factor of 3 cover 10k TPS with fault-tolerant headroom.
+**Event volume.** Each charge produces about three change events: the intent create, the attempt record written before the network call, and the outcome update. At 10,000 charges/sec that is ~30,000 events/sec. A single Kafka partition comfortably sustains ~5,000–10,000 messages/sec, so **3–6 partitions** at a replication factor of 3 cover it with fault-tolerant headroom.
 
 **Storage.** A transaction row is ~500 bytes. 10,000 rows/sec × 500 bytes ≈ 5&nbsp;MB/sec ≈ 430&nbsp;GB/day ≈ **160&nbsp;TB/year**. That figure, not the request rate, is what forces a retention-and-archival plan: hot data stays in the operational DB, anything past a few months moves to cold storage.
 
@@ -74,6 +74,8 @@ POST /payment-intents
 → 200 { "paymentIntentId": "pi_123" }
 
 POST /payment-intents/{paymentIntentId}/transactions
+Idempotency-Key: k1
+# a retry with the same key returns the existing charge; a timeout reads as processing
 { "type": "charge", "card": { ... } }   # illustrative only — see note
 
 GET /payment-intents/{paymentIntentId}
@@ -113,9 +115,9 @@ flowchart TB
 
 "Be secure" hides two questions: is the caller really this merchant, and is the customer's card data safe.
 
-A static API key sent on every request is a good-not-great answer — sniff it once and it replays forever, and keys have a habit of ending up hard-coded in a client repo. The stronger scheme keeps a public key for identity and a private secret that never leaves the merchant's server, and signs each request: an HMAC (hash-based message authentication code)-SHA256 over the method, path, body, a timestamp and a nonce, carried in headers. The [API gateway](../patterns/distributed/routing/api-gateway.md) is the single [authenticated](../patterns/security/authentication-enforcer.md) entry point — it recomputes the signature and rejects a mismatch, rejects a timestamp outside a 5–15 minute window, and rejects a nonce it has seen before. That buys authenticity and integrity and closes the replay window.
+A static API key sent on every request is a weak answer — sniff it once and it replays forever, and keys have a habit of ending up hard-coded in a client repo. The stronger scheme gives the merchant a public key id for identity and a shared secret that both sides hold, never sent on the wire; the gateway keeps its copy encrypted in the hardware security module. The merchant signs each request: an HMAC (hash-based message authentication code)-SHA256 over the method, path, body, a timestamp and a nonce, carried in headers. The [API gateway](../patterns/distributed/routing/api-gateway.md) is the single [authenticated](../patterns/security/authentication-enforcer.md) entry point — it recomputes the signature and rejects a mismatch, rejects a timestamp outside a 5–15 minute window, and rejects a nonce it has seen before, holding each nonce only for the timestamp window. That buys authenticity and integrity and closes the replay window.
 
-Card data should never touch the merchant's servers — that is a PCI-DSS requirement, not a nicety, and every server it touches becomes an attack surface the merchant is liable for. An iframe served from our own domain collects the card directly, so the browser's same-origin policy keeps merchant JavaScript out of it. Better still, the SDK encrypts the card with our public key the moment it is entered, before it leaves the device; the matching private key lives in a hardware security module server-side, and HTTPS then carries data that is already encrypted. The layers are the point — a single compromised iframe still does not expose the number.
+Card data should never touch the merchant's servers — keeping it off them takes those servers out of most PCI-DSS audit scope, and every server it touches becomes an attack surface the merchant is liable for. An iframe served from our own domain collects the card directly, so the browser's same-origin policy keeps merchant JavaScript out of it. Better still, the SDK encrypts the card with our public key the moment it is entered, before it leaves the device; the matching private key lives in a hardware security module server-side, and HTTPS then carries data that is already encrypted. A single compromised iframe still does not expose the number.
 
 The gateway's three rejections, in the order a request meets them:
 
@@ -150,11 +152,11 @@ The durable answer moves capture below the application. [Change data capture](..
 
 The payment network is an external system with its own retries, queues and batch windows. A "timed out" charge might still be mid-flight; a "success" might be lost on the way back. Treating a [timeout](../patterns/distributed/resilience/timeout-deadline.md) as a failure is precisely how a customer gets charged twice — the bank debited $200, the response was lost, we said "failed", the merchant asked the customer to retry, and now there are two $200 charges for one order.
 
-Two mechanisms fix it. First, [idempotency](../patterns/messaging/idempotency.md): a unique constraint on `(merchant_id, idempotency_key)` means a retried request returns the existing charge instead of creating a second one. Second, a timeout becomes its own state rather than a verdict. Before calling the network the system writes an attempt record — which itself becomes a change event — then branches on the outcome: success and explicit decline update the record, while a timeout writes a `pending` state that the reconciliation consumer picks up and resolves by querying the network with the recorded reference id, falling back to the network's daily batch files as the definitive record. The design target is [eventual consistency](../themes/consistency-and-replication.md), not a fight against asynchrony: whenever the network's answer arrives, that is the truth, and the durability spine already tracks every attempt on the way there.
+Two mechanisms fix it. First, [idempotency](../patterns/messaging/idempotency.md): a unique constraint on `(merchant_id, idempotency_key)` means a retried request returns the existing charge instead of creating a second one. Second, a timeout becomes its own state rather than a verdict. Before calling the network the system writes an attempt record — which itself becomes a change event — then branches on the outcome: success and explicit decline update the record, while a timeout writes a `pending` state that the reconciliation consumer picks up and resolves by querying the network with the recorded reference id, falling back to the network's daily batch files as the definitive record. The design target is [eventual consistency](../themes/consistency-and-replication.md), not a fight against asynchrony: whenever the network's answer arrives, that is the truth, and the durability spine already tracks every attempt on the way there. The system stores a hash of each request and rejects a retry that reuses a key with a different body. A duplicate that arrives while the first is in flight returns the intent's current state, not a second charge. The same reference id goes on the network call, so a retry after a timeout cannot charge twice there.
 
 ### 4 · Scaling to 10,000 TPS
 
-With the system designed, scale is mostly mechanical. Services are stateless and scale horizontally behind load balancers. The event stream is partitioned by `payment_intent_id`, which keeps every transition of one intent ordered (`created → authorized → captured` processed in sequence) while letting different intents run in parallel; 3–5 partitions at replication factor 3 cover the load, with a consumer group per service. The operational DB is the pressure point — ~10k writes/sec is the edge of one node — so [shard](../patterns/distributed/routing/sharding.md) by `merchant_id`, add read replicas for the status-check reads that dominate the workload, and put a Redis cache in front of recent statuses. Storage grows ~160&nbsp;TB/year, so a scheduled job moves anything past the retention window to cold object storage, still queryable for compliance but off the operational path.
+With the system designed, scale is mostly mechanical. Services are stateless and scale horizontally behind load balancers. The event stream is partitioned by `payment_intent_id`, which keeps every transition of one intent ordered (`created → authorized → captured` processed in sequence) while letting different intents run in parallel; the partition count from the sizing section covers the load, with a consumer group per service. The operational DB is the pressure point — ~10k writes/sec is the edge of one node — so [shard](../patterns/distributed/routing/sharding.md) by `merchant_id`, add read replicas for the status-check reads that dominate the workload, and put a Redis cache in front of recent statuses. Storage grows ~160&nbsp;TB/year, so a scheduled job moves anything past the retention window to cold object storage, still queryable for compliance but off the operational path.
 
 ### 5 · Pushing status instead of polling
 
@@ -181,14 +183,15 @@ stateDiagram-v2
 
 - Merchants get sub-10ms responses from a lean operational DB while every change is still captured independently in the event stream.
 - No transaction record can be silently lost — capture happens below the application, so a forgotten audit write is impossible.
-- A timeout is a state to resolve, not a lost payment: idempotency plus reconciliation against the network's own record kills double-charges.
+- A timeout is a state to resolve, not a lost payment: a retry that reuses the idempotency key returns the existing charge, and reconciliation against the network's own record settles the unknowns. Double-charge protection assumes merchants reuse the key.
 
 ### What it gives up
 <!--meta polarity=con-->
 
-- Audit, reconciliation and webhooks are all eventually consistent — a merchant may see `processing` for seconds while the stream catches up.
+- Audit, reconciliation and webhooks are eventually consistent: stream lag is seconds, but a timed-out charge stays processing until a network query or the network's daily batch file settles it.
 - CDC is a single logical choke point: if it stalls, DB writes continue but events stop, so it needs redundant instances and second-level lag alerting.
 - Correctness ultimately depends on an external network answering — reconciliation can only converge as fast as the network's batch files and query APIs allow.
+- Sharding by merchant_id puts a large merchant's burst on one shard; the cost is not sized here.
 
 ## What's expected at each level
 <!--meta block=levels-->
@@ -204,6 +207,10 @@ stateDiagram-v2
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
 
+**Exposed to**
+
+- [Hot Partition](../hazards/hot-partition.md) — sharding by merchant_id concentrates a high-volume merchant's writes on one shard
+
 **Demonstrates**
 
 - [Change Data Capture](../patterns/distributed/coordination/change-data-capture.md) — Change data capture (CDC) tails the database (DB) write-ahead log so every committed change becomes an event with no reliance on application code remembering to log
@@ -216,5 +223,6 @@ stateDiagram-v2
 - [Retry with Backoff](../patterns/distributed/resilience/retry-backoff.md) — webhook delivery to merchant callback URLs retries on failure with exponential backoff (5s, 25s, 125s, up to an hour)
 - [Sharding](../patterns/distributed/routing/sharding.md) — the operational database (DB) is sharded by merchant_id to push past the ~10k writes/sec ceiling of a single node
 - [Write-Ahead Log](../patterns/distributed/coordination/write-ahead-log.md) — Change data capture tails the database's write-ahead log and publishes every committed change onto an event stream
+- [Sweeper](../patterns/distributed/coordination/sweeper.md) — the reconciliation consumer resolves pending attempts by querying the network and its daily batch files
 
 <!-- relationships:end -->

@@ -14797,6 +14797,69 @@
       "b": "server-sent-events",
       "note_a": "one-way token flow, auto-reconnect and no protocol upgrade make SSE the transport for the answer",
       "note_b": "streams a model answer to the browser, with a Redis Stream replaying missed tokens on reconnect"
+    },
+    {
+      "a": "robinhood",
+      "verb": "exposed-to",
+      "b": "dual-write-inconsistency",
+      "note_a": "the exchange accepts the order but our write of its id fails; the client order id and the sweeper contain it",
+      "note_b": "an order store, an exchange and a KV index are written by separate calls with no shared transaction"
+    },
+    {
+      "a": "robinhood",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "a few dozen hot symbols draw one tick toward millions of open streams; watchers spread across many servers",
+      "note_b": "a hot symbol's price channel puts one tick in front of millions of streams, so the servers watching it take the load"
+    },
+    {
+      "a": "payment-system",
+      "verb": "demonstrates",
+      "b": "sweeper",
+      "note_a": "the reconciliation consumer resolves pending attempts by querying the network and its daily batch files",
+      "note_b": "the payment system's reconciliation consumer is a sweeper over pending attempts, settled against the network's records"
+    },
+    {
+      "a": "payment-system",
+      "verb": "exposed-to",
+      "b": "hot-partition",
+      "note_a": "sharding by merchant_id concentrates a high-volume merchant's writes on one shard",
+      "note_b": "a large merchant's burst on a merchant-keyed shard is the payment system's exposure"
+    },
+    {
+      "a": "job-scheduler",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "the current hour's execution partition takes every write for that hour until it is suffix-sharded",
+      "note_b": "a design that buckets executions by hour hits this on the current bucket"
+    },
+    {
+      "a": "persona-identification",
+      "verb": "exposed-to",
+      "b": "poison-message",
+      "note_a": "a malformed vendor response is the case the retry budget exists for: attempts and max_attempts stop it burning a worker slot, and the dead row is what an operator reads",
+      "note_b": "worked example: a Postgres task table with attempts, max_attempts and last_error parks the poisoned task in a dead state"
+    },
+    {
+      "a": "persona-identification-v2",
+      "verb": "exposed-to",
+      "b": "head-of-line-blocking",
+      "note_a": "the per-flow ordered lane holds a flow's later events behind one failing delivery; the attempt budget kills the lane after about a day and a stale verdict never overtakes a newer one",
+      "note_b": "a design that accepts the blocking on purpose: a per-flow delivery lane bounded by an attempt budget"
+    },
+    {
+      "a": "persona-identification-v2",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "a six-hour vendor outage ends and every parked flow comes due at once; jitter on run_after and a shared breaker probe keep the cohort from returning together",
+      "note_b": "a design that meets it: retry timing jittered per task and breaker state shared across workers"
+    },
+    {
+      "a": "persona-identification-v2",
+      "verb": "exposed-to",
+      "b": "starvation",
+      "note_a": "a recurring recheck batch on a delta day would spend the vendor quota and starve live invites; separate pools and quotas bound it",
+      "note_b": "a design that prices it: recheck and live work get separate pools and separate quota"
     }
   ],
   "group_order": {

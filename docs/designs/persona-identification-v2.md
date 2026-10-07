@@ -20,7 +20,7 @@ The same identity-and-sanctions flow, argued from its delivery contract. The tas
 ## Explained
 <!--meta block=explain-->
 
-This design is a service that checks one person's identity for a client, screens that person against the sanction lists their country requires, and reports the result to the client's webhook (a web address the client registers). Use it when the real work happens at outside vendors that can answer twice, late or never, so no vendor call sits in the request path. Every change is appended to one log in a single Postgres transaction together with its follow-up tasks, so the history and what the client was told are the same rows. Every wait is a stored task with a deadline, and a sweeper (a scheduled job that looks for overdue work) catches anything that stalls. A flow therefore always finishes or raises an alert.
+This design is a service that checks one person's identity for a client, screens that person against the sanction lists their country requires, and reports the result to the client's webhook (a web address the client registers). Use it when the real work happens at outside vendors that can answer twice, late or never, so no vendor call sits in the request path. Every change is appended to one log in a single Postgres transaction together with its follow-up tasks, so the history and what the client was told are the same rows. Every wait is a stored task with a deadline, and a sweeper (a scheduled job that looks for overdue work) catches anything that stalls. While the database and the pager are up, a flow finishes or raises an alert.
 
 - **Duplicates.** Delivery is at-least-once, so the client must drop repeats by event id or it acts twice.
 - **Refusals.** When hours behind, the service answers new requests with 429 and a retry time instead of queueing them.
@@ -44,11 +44,11 @@ This design is a service that checks one person's identity for a client, screens
 - The email's owner can ask for a fresh link when the first one expires or is lost.
 - The submitted personal information and identity photo are verified through the given identity provider.
 - Screening against the sanction lists a jurisdiction requires runs only after verification passes.
-- A flow concludes only once every required list is terminal for that round: answered, or recorded as unreachable.
+- A flow concludes only once every required list has finished for that round: answered, or recorded as unreachable.
 - Every concluded result reaches the client on their registered webhook.
 - A result delivered more than once is recognisable to the client as a repeat of one it already holds.
 - Two results for one flow reach the client in the order the system produced them.
-- Every accepted flow reaches a terminal state or raises an alert.
+- Every accepted flow reaches a finished state or raises an alert.
 
 **Additional — recovery, ongoing obligations and governance** {#requirements-h-additional}
 
@@ -77,7 +77,7 @@ This design is a service that checks one person's identity for a client, screens
   - A repeated or replayed input (a create, a callback, a batch member, a delivery) leaves the system in the state its first arrival produced.
 - **Reliability & recovery**
   - Nothing can stall without a clock that notices: every state and every vendor leg carries a deadline the system enforces.
-  - The identity vendor is unavailable ~6 hours a week; flows wait, and a vendor outage never fails one.
+  - The identity vendor is unavailable ~6 hours a week; flows wait, and an outage shorter than the flow's own deadlines never fails one; a longer one ends the flow at its deadline.
   - Every failed step retries on a bounded budget, then dead-letters with its diagnosis and an alert, and is re-runnable once the cause is fixed.
   - A crashed worker or scheduler costs time, never a fact; the system refuses work it cannot drain, and a database failover loses no acknowledged fact.
 - **Scale**
@@ -107,7 +107,7 @@ This design is a service that checks one person's identity for a client, screens
 
 ### Out of scope
 
-- **Cancelling a flow in flight** — a started flow runs to a terminal or is abandoned once its deadline passes. {#requirements-oos-1}
+- **Cancelling a flow in flight** — a started flow runs to a finished state or is abandoned once its deadline passes. {#requirements-oos-1}
 - **Status polling in flight** — recovery is replay plus the dashboard, not a second read path with its own consistency story. {#requirements-oos-2}
 - **Cross-region failover** — regional isolation for residency is in scope; surviving the loss of a region is not. {#requirements-oos-3}
 - **Human review of a possible match** — vendors return an adjudicated verdict, so no review state exists here. {#requirements-oos-4}
@@ -179,7 +179,7 @@ The recurring book outgrows live intake by an order of magnitude within three ye
 
 **Writes → NFR: scale** {#sizing-num-1}
 
-One flow commits ~12 appends with a projection update behind each, 7 task rows touched on claim and on completion, ~5 inbox rows, and single rows for the idempotency key, the invite key, the document and two audit entries: call it 50 row-writes. At 10k flows/day, doubled for business-hours bunching, that is ≈ **6 row-writes/s, ~12/s peak**, against a primary that stays comfortable to ~100 writes/s. These rows commit inside the transaction that makes the record and the client's event one fact, so this is what the guarantee costs.
+One flow commits ~12 appends with a projection update behind each, 7 task rows touched on claim and on completion, ~5 inbox rows, and single rows for the idempotency key, the invite key, the document and two audit entries: call it 50 row-writes. At 10k flows/day, doubled for business-hours bunching, that is ≈ **6 row-writes/s, ~12/s peak**, against a primary that stays comfortable to ~100 writes/s (an assumption to measure, not a measured limit). These rows commit inside the transaction that makes the record and the client's event one fact, so this is what the guarantee costs.
 
 **Claim polling → NFR: scale** {#sizing-num-2}
 
@@ -249,7 +249,7 @@ A ~24 h mean wait on the person against 10k/day leaves ≈ **10k flows parked** 
 
 **A third leg outcome for "unreachable" → FR: fan-in, list criticality** {#sizing-verdict-10}
 
-**Adopted**: a two-valued verdict gives an unanswerable leg no terminal, so a withdrawn list becomes our permanent stall.
+**Adopted**: a two-valued verdict gives an unanswerable leg no way to finish, so a withdrawn list becomes our permanent stall.
 
 **Leases on schedulers and on claimed tasks → NFR: reliability & recovery** {#sizing-verdict-11}
 
@@ -297,7 +297,7 @@ A ~24 h mean wait on the person against 10k/day leaves ≈ **10k flows parked** 
 
 **Log partitioning by time → NFR: scale** {#sizing-verdict-22}
 
-**Deferred**: the trigger is a region's log passing roughly 500 GB, which the recheck arithmetic reaches in year three.
+**Deferred**: the trigger is a region's log passing roughly 500 GB, which the recheck arithmetic reaches in year three or four, depending on how fast the book grows.
 
 **Read cache and search index → NFR: scale** {#sizing-verdict-23}
 
@@ -305,7 +305,7 @@ A ~24 h mean wait on the person against 10k/day leaves ≈ **10k flows parked** 
 
 ### When this stops being right → NFR: scale {#sizing-h-limits}
 
-Nothing in the guarantee chain wears out at volume: the writes, the lanes and the clocks keep the headroom the arithmetic shows. What wears out is the obligation itself. Every open relationship commits this system to a round on every list, every quarter, for as long as it lasts, so outbound legs track the accumulated book while income tracks only new business: twelve times live intake by year three, against a rate priced for today. Watch one ratio, outbound legs per second per vendor over the contracted ceiling, plotted beside new flows per day; the day the two lines diverge is the day the bill stopped following the business, well before anything technical complains. Then take the exits in order: batching (adopted, worth roughly 500×), staggered cadences so a jurisdiction's rounds spread across its quarter, a renegotiated contract with the curve in hand, and log partitioning once a region passes ~500 GB. Cheapest, and underneath all of them: honouring relationship close.
+At the 10k/day target nothing in the guarantee chain wears out: the writes, the lanes and the clocks keep the headroom the arithmetic shows. What wears out is the obligation itself. Every open relationship commits this system to a round on every list, every quarter, for as long as it lasts, so outbound legs track the accumulated book while income tracks only new business: twelve times live intake by year three, against a rate priced for today. Watch one ratio, outbound legs per second per vendor over the contracted ceiling, plotted beside new flows per day; the day the two lines diverge is the day the bill stopped following the business, well before anything technical complains. Then take the exits in order: batching (adopted, worth roughly 500×), staggered cadences so a jurisdiction's rounds spread across its quarter, a renegotiated contract with the curve in hand, and log partitioning once a region passes ~500 GB. Cheapest, and underneath all of them: honouring relationship close.
 
 ## Core entities & data design
 <!--meta block=entities-->
@@ -454,12 +454,12 @@ erDiagram
 - **Flow** — Current state, folded forward in the same transaction as the append that moves it, so it never lags the log and can be rebuilt from it. Its `state_due_at` is the sweeper's predicate, so no state can be occupied indefinitely.
 
   ```sql summary="schema — flow"
-  -- Nine states: four in flight, four verdict terminals, one abandoned terminal.
+  -- Nine states: four in flight, four finished verdict states, one finished abandoned state.
   CREATE TYPE flow_state AS ENUM (
     'initiated', 'awaiting_submission', 'awaiting_id_verification', 'awaiting_screening',
     'clear', 'cleared_with_caveat', 'sanctioned', 'invalid_id',
     'expired');
-  -- 'cleared_with_caveat' is its own terminal: folding it into 'clear' would hand the client a clean answer we never had.
+  -- 'cleared_with_caveat' is its own finished state: folding it into 'clear' would hand the client a clean answer we never had.
 
   CREATE TABLE flow (                    -- a projection: rebuildable, never written alone
     id           uuid PRIMARY KEY,
@@ -712,7 +712,7 @@ Every contract states what it guarantees, which key makes a repeat safe, and wha
   204 No Content
   # round selects the screening_round row. Only the leg that finds zero NULL verdicts in its
   # own round appends screening_concluded, so a partial verdict cannot ship.
-  # A leg the sweeper already stamped 'unavailable' is terminal (dive 3).
+  # A leg the sweeper already stamped 'unavailable' is finished (dive 3).
   ```
 - **`POST /callbacks/screening:batch`** — The recurring book's variant: one vendor call covers up to 500 persons. The batch is a transport optimisation and never a unit of failure.
 
@@ -856,7 +856,7 @@ Worker pools (IDV) → vendor; the callback re-enters at the API as an inbox row
 
 The `idv_passed` append writes the fan-out tasks and nothing else does, so the ordering is structural.
 
-**A flow concludes only once every list is terminal → FR: fan-in** {#arch-fr-8}
+**A flow concludes only once every list has finished → FR: fan-in** {#arch-fr-8}
 
 Worker pools write leg verdicts into `screening_round`, the Schedulers' sweeper stamps unreachable legs, and only the leg finding none outstanding in its own round appends `screening_concluded`.
 
@@ -872,7 +872,7 @@ Postgres log → Delivery relay → Client endpoint, at-least-once with a bounde
 
 The relay reads `delivery_cursor` and sends one sequence at a time per flow.
 
-**Every accepted flow terminates or raises an alert → FR: terminal or alert** {#arch-fr-12}
+**Every accepted flow finishes or raises an alert → FR: finished or alert** {#arch-fr-12}
 
 `flow.state_due_at` plus the Schedulers' sweep; the schema permits no in-flight state without a due date.
 
@@ -1021,7 +1021,7 @@ A failed attempt moves to `run_after` with [exponential backoff and jitter](../p
 
 **Rung two — the sweeper's verdict on a leg that can never answer** {#deepdives-h-rung-2}
 
-An exhausted screening leg is a conclusion problem, not a retry problem: a two-valued leg leaves an unanswered list no terminal. So the [sweeper](../patterns/distributed/coordination/sweeper.md) stamps it `unavailable`, the collector waits for every leg to be terminal instead of answered, and the leg's criticality in the [configuration store](../patterns/distributed/coordination/external-configuration-store.md) prices the ending. Blocking plus unavailable holds the flow and escalates to a human; on a list a regulator will ask about, late beats wrong. Advisory plus unavailable concludes `cleared_with_caveat`, names the missed list in the client's event and books a re-screen. A fan-in must never read an unanswered check as clean, so the gap rides on the verdict.
+An exhausted screening leg is a conclusion problem, not a retry problem: a two-valued leg leaves an unanswered list no way to finish. So the [sweeper](../patterns/distributed/coordination/sweeper.md) stamps it `unavailable`, the collector waits for every leg to have finished instead of answered, and the leg's criticality in the [configuration store](../patterns/distributed/coordination/external-configuration-store.md) prices the ending. Blocking plus unavailable holds the flow and escalates to a human; on a list a regulator will ask about, late beats wrong. Advisory plus unavailable concludes `cleared_with_caveat`, names the missed list in the client's event and books a re-screen. A fan-in must never read an unanswered check as clean, so the gap rides on the verdict.
 
 **Rung three — leases, and why a crash needs no special case** {#deepdives-h-rung-3}
 
@@ -1047,7 +1047,7 @@ One writer with a synchronous standby chooses consistency over availability, so 
 
 You can only promise what you own, and the slowest participant here is not owned. What is measured must be queryable: a flow's age in state, a task's age since claimable, undelivered attempts per lane, per-vendor error rate. What is engineered to stays internal and is assumed, not given: 99% of flows leave `awaiting_id_verification` within 4 hours of the vendor accepting them, 99% of screening rounds close within 12 hours of fan-out, 99.9% of client-visible events go out within 5 minutes of their append. What is promised to the client sits looser, or no room is left to operate: an operator paged within 15 minutes of a flow passing its state deadline, a client failure event within 5 minutes of a flow being declared stuck (assumed, not given). The gap between engineered and promised is the error budget, spent on deploys and vendor outages; when it is gone, stop shipping instead of restating the number. Nothing is promised about time-to-verdict, because the two slowest participants are a vendor down 3.6% of the week and a human being.
 
-```mermaid caption="The recovery ladder: silence past a deadline enters the same path as an error, and an exhausted screening leg gets a terminal of its own." wide=true
+```mermaid caption="The recovery ladder: silence past a deadline enters the same path as an error, and an exhausted screening leg gets a finished state of its own." wide=true
 flowchart TB
     Start["Task claimed · lease + deadline_at"] --> Call["Call vendor"]
     Call -->|"2xx callback"| Done["done — appended, folded"]
@@ -1318,7 +1318,7 @@ failover           promote the standby with commits in flight
 ### What it buys
 <!--meta polarity=pro-->
 
-- **Nothing can diverge.** The ingress record, the state change, the evidence and the client's event are one commit, so no window exists in which one is present without the others.
+- **Nothing can diverge.** The ingress record, the state change, the evidence and the client's event are one commit, so no window exists in which one is present without the others. This holds inside the operational store; the personal-data store and the client's own handler sit outside that one commit.
 - **Every duplicate has an owner.** Four boundaries carry four keys, each issued by the side that can see both copies, so a repeat collides instead of being absorbed by luck.
 - **Order is a property.** Sequence is total within a flow and the relay walks one lane at a time, so a stale verdict has no route past a fresh one.
 - **Nothing stalls unnoticed.** Every in-flight state and vendor leg carries a deadline the sweeper enforces, so a silent vendor is a breach with a page attached.
@@ -1434,6 +1434,12 @@ failover           promote the standby with commits in flight
 - [Correlation Identifier](../patterns/messaging/correlation-identifier.md) — one flow id threads every append, inbox row, task, vendor call and delivery attempt, so a stuck flow is one query rather than an archaeology exercise
 - [Keep It Simple (KISS)](../principles/kiss.md) — one Postgres and stateless workers carry the whole delivery guarantee; every rejected broker, router, tap and polling application programming interface (API) is priced against a confirmed hundred onboardings a week
 - [Secure Logger](../patterns/security/secure-logger.md) — log lines carry flow and person ids only, so a log never becomes a second copy of the vault
+
+**Exposed to**
+
+- [Head-of-Line Blocking](../hazards/head-of-line-blocking.md) — the per-flow ordered lane holds a flow's later events behind one failing delivery; the attempt budget kills the lane after about a day and a stale verdict never overtakes a newer one
+- [Thundering Herd](../hazards/thundering-herd.md) — a six-hour vendor outage ends and every parked flow comes due at once; jitter on run_after and a shared breaker probe keep the cohort from returning together
+- [Starvation](../hazards/starvation.md) — a recurring recheck batch on a delta day would spend the vendor quota and starve live invites; separate pools and quotas bound it
 
 **Demonstrates**
 
