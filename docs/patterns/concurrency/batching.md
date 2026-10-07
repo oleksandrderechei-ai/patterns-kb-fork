@@ -221,7 +221,7 @@ class Batcher<In, Out> {
 - [Bitly](../../designs/bitly.md) — Write instances claim counter values in blocks of 1000, cutting Redis round-trips 1000x
 - [Persona Identification & Sanction Check](../../designs/persona-identification.md) — a compliance re-screen batches to fit a contracted vendor rate, and keeps the batch a transport optimisation rather than a unit of failure by committing each member separately
 - [Persona Identification & Sanction Check (V2)](../../designs/persona-identification-v2.md) — batching priced exactly: it buys rate and not invoice, and its partial-failure cost is paid one member at a time
-- [Uber](../../designs/uber.md) — Batching buys throughput at the cost of staleness, which the design then measures against the freshness need
+- [Uber](../../designs/uber.md) — a design that tried batching location pings and rejected it for stale positions
 
 **Implemented by**
 

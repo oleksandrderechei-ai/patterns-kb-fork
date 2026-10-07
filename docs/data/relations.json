@@ -9475,13 +9475,6 @@
     {
       "a": "uber",
       "verb": "demonstrates",
-      "b": "batching",
-      "note_a": "Location updates are batched over a short window and written together, cutting the transaction count",
-      "note_b": "Batching buys throughput at the cost of staleness, which the design then measures against the freshness need"
-    },
-    {
-      "a": "uber",
-      "verb": "demonstrates",
       "b": "scatter-gather",
       "note_a": "A proximity search that straddles a shard boundary near a city edge queries both shards and merges",
       "note_b": "Scatter-gather as the rare exception cost of sharding by region"
@@ -14776,6 +14769,20 @@
       "b": "noisy-neighbour",
       "note_a": "A per-key bucket caps what one tenant can take, so a burst spends that tenant's own tokens.",
       "note_b": "A per-key token bucket gives each tenant a bounded burst."
+    },
+    {
+      "a": "uber",
+      "verb": "demonstrates",
+      "b": "batching",
+      "note_a": "the rejected first option: coalescing location pings over a short window trades throughput for stale positions, so the chosen design overwrites in Redis instead",
+      "note_b": "a design that tried batching location pings and rejected it for stale positions"
+    },
+    {
+      "a": "google-docs",
+      "verb": "demonstrates",
+      "b": "websocket",
+      "note_a": "Every editing socket stays open to the document's owning server, so each keystroke goes out and each peer's edit comes back with no polling.",
+      "note_b": "Collaborative editing holds one socket per editor open to the document's owning server."
     }
   ],
   "group_order": {
