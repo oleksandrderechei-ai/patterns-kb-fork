@@ -80,5 +80,7 @@ The fix is to stop routing all of the hot key's traffic to one place. **Replicat
 - [Consistent Hashing](../patterns/distributed/routing/consistent-hashing.md) — Placement by hash balances key count, not traffic
 - [Sharding](../patterns/distributed/routing/sharding.md) — A sharded cache puts a viral key on exactly one shard
 - [Bitly](../designs/bitly.md) — A design where one link carries most of the read load.
+- [Read-Through](../patterns/caching/read-through.md) — An evicted or expired hot key sends every reader to one synchronous load on the source
+- [Distributed Cache](../patterns/caching/distributed-cache.md) — One node of the shared tier takes all of a viral key's reads while the rest idle
 
 <!-- relationships:end -->

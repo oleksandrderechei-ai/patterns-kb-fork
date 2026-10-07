@@ -1665,7 +1665,7 @@
       "definition": "Cache in the app's own memory — fastest, but each instance has its own copy",
       "route": "/patterns/caching/in-process-cache.html",
       "requires": [],
-      "related": ["distributed-cache", "vertical-partitioning", "client-side-cache", "identity-map"]
+      "related": ["distributed-cache", "vertical-partitioning", "identity-map", "client-side-cache"]
     },
     {
       "id": "client-side-cache",

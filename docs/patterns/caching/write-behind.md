@@ -28,7 +28,7 @@ A write-behind cache, also called write-back, accepts a write into its own memor
 - **The saver needs its own care.** Retry in order per key and alert when the backlog grows.
 - **Cache and database disagree.** Cap how long an entry may stay unsaved.
 
-**Example.** A game takes 5,000 score updates a second on 500 hot players, and the database handles 1,000 writes a second. Written straight through, it would be 5 times over capacity. A write-behind cache that saves every 2 s collects 10,000 updates per flush, collapses them to the last value for each of the 500 players and sends 500 writes, which is 250 a second. The cost is a crash: everything since the last flush is gone, up to 2 s of updates, so keep the queue on disk if losing those 2 s is not acceptable.
+**Example.** A game takes 5,000 score updates a second on 500 hot players, and the database handles 1,000 writes a second. Written straight through, it would be 5 times over capacity. A write-behind cache that saves every 2 s collects 10,000 updates per flush, collapses them to the last value for each of the 500 players and sends 500 writes, which is 250 a second. The cost is a crash: everything since the last flush is gone, up to 2 s of updates, and more while a flush is slow or failing, so keep the queue on disk if losing that is not acceptable.
 
 ## How it works
 <!--meta block=structure-->
@@ -72,7 +72,7 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Time-based flush** — Drain the queue every N milliseconds regardless of size. Simple, and it bounds the staleness window to a known maximum.
+- **Time-based flush** — Drain the queue every N milliseconds regardless of size. Data waits at most N while the store accepts writes; during an outage the wait grows.
 - **Size- or count-based flush** — Flush once the dirty set reaches a threshold, so the store sees fewer, larger, more efficient writes under sustained load.
 - **Write coalescing** — Multiple writes to the same key before a flush collapse into one — the store only ever sees the final value, never the intermediates.
 - **Durable write queue** — Back the pending-writes queue with disk or replication so a cache crash doesn't silently drop unflushed data — trades some latency back for safety.
@@ -83,10 +83,10 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Write latency is cache-speed** — the caller never waits on the backing store.
+- **Write latency is cache-speed** — with a memory-only queue; a durable queue adds its own disk or replication latency, though not the store's.
 - **Absorbs write bursts**, smoothing spiky load into a steady trickle to the store.
 - **Coalescing collapses repeated writes** to a [hot key](../../hazards/hot-key.md) into a single store write.
-- **Frees the store to batch writes**, which is usually far cheaper than many small ones.
+- **Frees the store to batch writes**, which pays when its per-call overhead dominates, as with a network round trip or a transaction commit.
 
 ### Cons
 <!--meta polarity=con-->
@@ -95,6 +95,7 @@ sequenceDiagram
 - **Readers that bypass the cache** and hit the store directly see stale values until flush.
 - **The flush pipeline needs its own retry**, ordering, and failure handling.
 - **The system of record briefly disagrees with itself** — harder to reason about and debug.
+- **A slow or down store fills the pending queue** — once it is full the cache must block writers or shed load.
 
 ## When to use it
 <!--meta block=usage-->
@@ -104,7 +105,7 @@ sequenceDiagram
 
 - **Write volume is high** and the store's latency or throughput is the bottleneck.
 - **Losing the very latest writes** on a crash is tolerable, or the cache is itself durable.
-- **Writes to the same keys repeat often**, so coalescing before flush actually pays off.
+- **Writes to the same keys repeat often**, so coalescing before flush pays off; a coalesce ratio near 1 means no gain over write-through.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -122,6 +123,7 @@ interface Store<K, V> { save(key: K, value: V): Promise<void>; }
 class WriteBehindCache<K, V> {
   private data = new Map<K, V>();
   private dirty = new Set<K>();
+  private flushing = false;
 
   constructor(private readonly store: Store<K, V>, flushMs = 2_000) {
     setInterval(() => this.flush(), flushMs);
@@ -137,9 +139,15 @@ class WriteBehindCache<K, V> {
   }
 
   private async flush(): Promise<void> {
-    const keys = [...this.dirty];
-    this.dirty.clear();
-    await Promise.all(keys.map((k) => this.store.save(k, this.data.get(k)!)));
+    if (this.flushing) return;            // no overlapping flushes
+    this.flushing = true;
+    try {
+      await Promise.allSettled([...this.dirty].map(async (k) => {
+        const v = this.data.get(k)!;
+        await this.store.save(k, v);
+        if (this.data.get(k) === v) this.dirty.delete(k); // only a saved key leaves dirty
+      }));                                 // a failed save stays in dirty and retries next tick
+    } finally { this.flushing = false; }
   }
 }
 ```
@@ -182,7 +190,7 @@ class WriteBehindCache<K, V> {
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- The maximum data-loss window (flush interval times write rate) is quantified and acceptable, or the queue is made durable
+- The maximum data-loss window (flush interval times write rate, in updates) is written down and accepted, or the queue is durable
 - The pending-writes queue is bounded with a defined full behavior — block writers or shed load
 - Flush failures retry with write ordering preserved and are never silently dropped
 - Queue depth and flush-failure rate are alerted on before the queue saturates

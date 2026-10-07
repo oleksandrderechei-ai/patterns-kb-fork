@@ -21,13 +21,13 @@ Paying a network hop to a shared cache for settings, flags or a small lookup tab
 ## Explained
 <!--meta block=explain-->
 
-An in-process cache keeps values in a map inside the memory of your running application, so a hit is a plain memory read with no network call and no conversion to bytes. It is the fastest cache by a wide margin, because it removes the one cost even a [distributed cache](distributed-cache.md) cannot avoid: the round trip to reach it. Choose it over a shared cache for small, hot, mostly-read data, such as settings, feature flags or a lookup table, where even one network hop dominates the request. It is a targeted optimisation, not the default, and a natural first layer in front of a shared cache for the very hottest keys.
+An in-process cache keeps values in a map inside your application's own memory. It is the fastest cache by a wide margin, because it removes the one cost even a [distributed cache](distributed-cache.md) cannot avoid: the round trip to reach it. Choose it over a shared cache for small, hot, mostly-read data, such as settings, feature flags or a lookup table, where even one network hop dominates the request. It is a targeted optimisation, not the default, and a natural first layer in front of a shared cache for the very hottest keys.
 
 - **Copies disagree.** Each copy holds its own entry, so set the expiry (TTL) to the disagreement you accept, or use a shared cache if none.
 - **Memory multiplies.** Every copy stores the same data, so cap the size and drop the least recently used entries first.
 - **Cold start.** A restart or new copy starts empty, so load the keys that matter before it takes traffic.
 
-**Example.** Twenty copies of a service each hold the same 500 feature flags of 1 KB, so 500 KB per copy and 10 MB in all. A request checks 50 flags. From memory that costs microseconds; at about 0.5 ms per shared-cache hop it would cost 25 ms. The TTL is 60 s. You switch a flag off at 12:00:00, and some copies keep serving the old value until 12:01:00. If that minute is too long, a 5 s TTL narrows it, and the price is 12 times as many reloads, since each copy then refreshes 500 keys every 5 s instead of every 60 s.
+**Example.** Twenty copies of a service each hold the same 500 feature flags of 1 KB, so 500 KB per copy and 10 MB in all. A request checks 50 flags. From memory that costs microseconds; at about 0.5 ms per shared-cache hop it would cost 25 ms. The TTL is 60 s. You switch a flag off at 12:00:00, and some copies keep serving the old value until 12:01:00. If that minute is too long, a 5 s TTL narrows it, and the price is 12 times as many reloads: 2,000 a second across the fleet (20 × 500 ÷ 5 s) against about 167 at 60 s.
 
 ## How it works
 <!--meta block=structure-->
@@ -59,7 +59,7 @@ flowchart LR
 - **TTL-based expiry** — Each entry expires after a set time so the local copy can't drift too far from the source; the shorter the TTL, the narrower the cross-instance inconsistency window.
 - **Near cache (L1 in front of L2)** — The in-process cache fronts a shared [distributed cache](../../designs/design-distributed-cache.md): it absorbs the hottest reads locally and defers everything else to the shared tier, cutting network hops for the keys that matter most.
 - **Invalidation by broadcast** — To fight divergence, a write publishes an invalidation (e.g. over a pub/sub channel) that every instance listens for and applies to its local copy — buying tighter consistency at the cost of more moving parts.
-- **Server-assisted invalidation** — Let the data store drive it instead of building the [fan-out](../messaging/fan-out.md) yourself. The server remembers which keys each connected client has read and sends an invalidation only to the clients holding a copy, so a write is not shouted at every instance in the fleet — Redis ships this as client-side caching with tracking. The server pays for it in memory, one set of remembered keys per client, which is why a broadcast mode exists alongside it for when that ledger costs more than the wasted messages did.
+- **Server-assisted invalidation** — Let the data store drive it instead of building the [fan-out](../messaging/fan-out.md) yourself. The server tracks which keys each client has read and invalidates only the clients holding a copy. Redis ships this as client-side caching with tracking. The cost is server memory, one key set per client; a broadcast mode exists for when that costs more than the extra messages.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -69,7 +69,7 @@ flowchart LR
 
 - **The fastest cache possible**: a hit is an in-memory lookup with no network hop and no serialization.
 - **No extra infrastructure** — it's a library or a plain map, with nothing new to deploy or operate.
-- **No shared-cache dependency in the read path**, so it keeps working even if the shared tier is down.
+- **No shared-cache dependency in the read path**, so cached keys keep serving through a shared-cache outage until their TTL ends; a miss still needs the source.
 - **An effective L1 in front** of a shared cache, soaking up the hottest keys before they leave the process.
 
 ### Cons
@@ -79,6 +79,8 @@ flowchart LR
 - **The same data is duplicated across every instance**, wasting memory at scale.
 - **Cold on every restart** — a restart or newly-scaled instance starts with an empty cache, so a deploy re-warms from scratch.
 - **Invalidating a change across all instances** is genuinely hard — there's no single copy to update.
+- **Shared references** — a caller that mutates a cached object changes it for every reader in that process, so store immutable values or copy on read.
+- **Heap pressure** — cached objects live in the application heap, so a large cache raises garbage-collection time and slows every request in the process.
 
 ## When to use it
 <!--meta block=usage-->
@@ -100,11 +102,12 @@ flowchart LR
 ## Code sketch
 <!--meta block=sketch-->
 
-```typescript summary="TypeScript — a bounded-by-TTL cache living in the process's own memory"
+```typescript summary="TypeScript — a TTL cache with a size cap, living in the process's own memory"
 // A plain Map in the app's own memory — no network hop on a hit.
 // Each instance holds its own copy, so entries can diverge across the fleet.
 type Entry<V> = { value: V; expiresAt: number };
 const store = new Map<string, Entry<unknown>>();
+const maxEntries = 1000; // illustrative cap; size it from your heap budget
 
 function get<V>(key: string): V | undefined {
   const e = store.get(key);
@@ -114,6 +117,8 @@ function get<V>(key: string): V | undefined {
 }
 
 function set<V>(key: string, value: V, ttlMs: number): void {
+  // evict the oldest-inserted key; expired keys also leave only when read, the cap bounds the rest
+  if (!store.has(key) && store.size >= maxEntries) store.delete(store.keys().next().value as string);
   store.set(key, { value, expiresAt: Date.now() + ttlMs });
 }
 
@@ -135,7 +140,7 @@ function set<V>(key: string, value: V, ttlMs: number): void {
 - **Maximum size or weight** — The entry count, or weighted capacity, at which eviction begins — maximumSize and maximumWeight in Caffeine and Guava Cache
 - **Expiry policy** — Time-to-live measured after write or after last access: expireAfterWrite bounds how stale a value can get, expireAfterAccess reclaims memory held by keys nobody reads any more
 - **Eviction algorithm** — What is dropped at capacity — least-recently-used, least-frequently-used, or the W-TinyLFU admission policy Caffeine uses
-- **Background refresh window** — Whether an ageing entry is reloaded asynchronously on access instead of being evicted and reloaded synchronously — refreshAfterWrite in Caffeine and Guava Cache
+- **Background refresh window** — Whether an ageing entry is reloaded in the background on access instead of being evicted and reloaded in the request — refreshAfterWrite; asynchronous in Caffeine, and in Guava Cache only if the loader's reload is overridden to run asynchronously
 - **Share of the heap budgeted to the cache** — How much process memory the cache may hold before it competes with request handling and pushes the collector
 
 ### Signals to watch
@@ -195,7 +200,7 @@ function set<V>(key: string, value: V, ttlMs: number): void {
 
 **Often confused with**
 
-- [Client-Side Cache](./client-side-cache.md) — Both keep a copy near the reader, but this one lives in the server process and serves every caller of that instance
+- [Client-Side Cache](./client-side-cache.md) — Both keep a copy next to the reader; this one lives inside one server process and serves only that instance's callers, not the user's device
 
 **Prevents**
 

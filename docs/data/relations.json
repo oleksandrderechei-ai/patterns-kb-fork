@@ -4618,13 +4618,6 @@
     {
       "a": "cache-aside",
       "verb": "prevents-hazard",
-      "b": "stale-cache",
-      "note_a": "Invalidate the key on write, so the next read reloads the current value",
-      "note_b": "Invalidate the key on write, so the next read reloads the current value"
-    },
-    {
-      "a": "cache-aside",
-      "verb": "prevents-hazard",
       "b": "no-caching",
       "note_a": "The usual first answer when the same unchanged value is fetched on every request",
       "note_b": "Check the cache first and fill it on a miss, leaving the source of truth exactly where it was"
@@ -9747,13 +9740,6 @@
       "note_b": "Cache-aside reloads on a miss, and refresh-ahead reloads hot keys before they expire so readers skip the miss"
     },
     {
-      "a": "client-side-cache",
-      "verb": "often-confused-with",
-      "b": "in-process-cache",
-      "note_a": "The copy lives on the caller's device or browser, so a hit never reaches your servers at all",
-      "note_b": "Both keep a copy near the reader, but this one lives in the server process and serves every caller of that instance"
-    },
-    {
       "a": "functional-partitioning",
       "verb": "often-confused-with",
       "b": "vertical-partitioning",
@@ -13768,6 +13754,41 @@
       "b": "service-layer",
       "note_a": "An application service orchestrates the use case and calls this for the rule.",
       "note_b": "A service layer runs use cases and calls the domain service for the rule."
+    },
+    {
+      "a": "cache-aside",
+      "verb": "prevents-hazard",
+      "b": "stale-cache",
+      "note_a": "Delete the key on write so the next read reloads; a late refill can still re-cache the old value until the TTL ends",
+      "note_b": "Delete the key on write so the next read reloads; a late refill can still re-cache the old value until the TTL ends"
+    },
+    {
+      "a": "read-through",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "Can fall into hot key when an evicted or expired hot key sends every reader to one synchronous load on the source",
+      "note_b": "An evicted or expired hot key sends every reader to one synchronous load on the source"
+    },
+    {
+      "a": "distributed-cache",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "Can fall into hot key when one viral key lives on the single node of the shared tier that owns it",
+      "note_b": "One node of the shared tier takes all of a viral key's reads while the rest idle"
+    },
+    {
+      "a": "distributed-cache",
+      "verb": "exposed-to",
+      "b": "stale-cache",
+      "note_a": "Can fall into stale cache when a database write leaves the shared entry in place, so every instance reads the same old value until expiry or invalidation",
+      "note_b": "Every instance reads the same stale entry, so the error is fleet-wide"
+    },
+    {
+      "a": "client-side-cache",
+      "verb": "often-confused-with",
+      "b": "in-process-cache",
+      "note_a": "Both keep a copy next to the reader; this one lives on the user's device, so a hit never reaches your servers",
+      "note_b": "Both keep a copy next to the reader; this one lives inside one server process and serves only that instance's callers, not the user's device"
     }
   ],
   "group_order": {

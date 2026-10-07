@@ -27,7 +27,7 @@ A client-side cache keeps responses on the user's own device, in the browser's H
 - **Every device warms alone.** Each new visitor downloads everything once, so keep first-visit files small.
 - **Storage can vanish.** Treat it as a copy, never the record, and clear private data on logout.
 
-**Example.** Your app serves main.js at 400 KB and sees 10,000 visits a day, 2,000 of them from new devices. With a one-year lifetime and the file name main.3f9a.js, the 8,000 returning visits download nothing, so the day moves 800 MB instead of 4 GB. You ship a fix and the file becomes main.7c21.js. Each returning device fetches it once, and the old URL is never asked for again. Had the file stayed /main.js with the same one-year lifetime, those 8,000 devices would keep running the broken copy for up to a year, with no way to recall it.
+**Example.** Your app serves main.js at 400 KB and sees 10,000 visits a day, 2,000 of them from new devices. With a one-year lifetime and the file name main.3f9a.js, the 8,000 returning visits download nothing, so the day moves 800 MB instead of 4 GB. You ship a fix and the file becomes main.7c21.js. Each returning device fetches it once, provided the HTML page that names it is short-lived or revalidated; otherwise devices never learn the new name. Had the file stayed /main.js with the same one-year lifetime, those 8,000 devices would keep running the broken copy for up to a year, with no way to recall it.
 
 ## How it works
 <!--meta block=structure-->
@@ -62,9 +62,9 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **The fastest read possible**: served from the device with no network request at all.
-- **Offloads the origin** and the network entirely for anything the client already holds.
-- **Enables offline use** — the app keeps working when connectivity drops, then syncs later.
+- **The fastest read a client can get**: served from the device with no network request, though disk or worker startup still cost some time.
+- **Offloads the origin** and the network for anything the client already holds.
+- **Enables offline use** — the app keeps working when connectivity drops. Syncing writes back later is a separate variation: a native on-device store with sync.
 - **For static assets**, HTTP caching gets much of this for free, driven only by response headers.
 
 ### Cons
@@ -83,7 +83,7 @@ flowchart LR
 
 - **Static assets** — images, scripts, styles — can be reused across page loads instead of re-downloaded.
 - **The workload is offline-capable or client-heavy**, and the app must work without a live connection.
-- **Per-user data rarely changes** and the network round trip is the dominant cost, even with a CDN.
+- **Non-sensitive per-user data rarely changes** and the network round trip is the dominant cost, even with a CDN.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -102,13 +102,16 @@ function readCached<V>(key: string): V | null {
   const raw = localStorage.getItem(key);
   if (!raw) return null;
 
-  const { value, expiresAt } = JSON.parse(raw);
+  let entry;
+  try { entry = JSON.parse(raw); } catch { localStorage.removeItem(key); return null; }  // corrupt entry: treat as a miss
+  const { value, expiresAt } = entry;
   if (Date.now() > expiresAt) { localStorage.removeItem(key); return null; }  // stale → drop
   return value as V;
 }
 
 function writeCached<V>(key: string, value: V, ttlMs: number): void {
-  localStorage.setItem(key, JSON.stringify({ value, expiresAt: Date.now() + ttlMs }));
+  try { localStorage.setItem(key, JSON.stringify({ value, expiresAt: Date.now() + ttlMs })); }
+  catch { /* quota or eviction: treat as a miss, do not cache */ }
 }
 
 ```
@@ -126,7 +129,7 @@ function writeCached<V>(key: string, value: V, ttlMs: number): void {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Cache-Control lifetime** — How long a response may be reused without asking the server again; s-maxage sets a separate lifetime for shared caches, and no-store keeps a response off the device entirely
+- **Cache-Control lifetime** — How long a response may be reused without asking the server again; s-maxage is ignored by a device's own cache and sets the lifetime for shared caches such as the CDN, and no-store keeps a response off the device entirely
 - **Validators for revalidation** — Whether responses carry an ETag or Last-Modified, so a client can re-check a stale entry with a conditional request and get 304 Not Modified instead of the whole body
 - **Content-hashed asset URLs** — Filenames that change whenever the bytes change, so long-lived assets can be cached hard and busted by URL rather than by waiting for expiry
 - **Per-route caching strategy** — Which policy a request follows in a Service Worker — cache-first, network-first or stale-while-revalidate — and what is served when the network is unavailable
@@ -135,7 +138,7 @@ function writeCached<V>(key: string, value: V, ttlMs: number): void {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Share of reads served from the device** — Requests answered locally with no network at all — the number that says whether the cache is doing anything
+- **Share of reads served from the device** — Requests answered locally with no network at all, measured in the client (for example real-user timing where no bytes were transferred) because servers never see these hits; the number that says whether the cache is doing anything
 - **Ratio of 304 to 200 responses** — How many conditional requests come back Not Modified; mostly full 200s means validators are missing or not being honoured
 - **Bytes transferred on a repeat visit** — Network bytes on a second visit compared with a first; if it barely falls, nothing is being reused
 - **Storage used against the quota** — How close the app sits to its storage allowance, since crossing it triggers eviction of exactly the data offline mode depends on
@@ -185,7 +188,7 @@ function writeCached<V>(key: string, value: V, ttlMs: number): void {
 
 **Often confused with**
 
-- [In-Process Cache](./in-process-cache.md) — The copy lives on the caller's device or browser, so a hit never reaches your servers at all
+- [In-Process Cache](./in-process-cache.md) — Both keep a copy next to the reader; this one lives on the user's device, so a hit never reaches your servers
 
 **Prevents**
 

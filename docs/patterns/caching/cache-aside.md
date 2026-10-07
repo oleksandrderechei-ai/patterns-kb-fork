@@ -23,11 +23,11 @@ A generic cache such as Redis does not know what an order is, how to load one, o
 
 Cache-aside, also called lazy loading, keeps a copy of hot data in a fast key-value store (the cache) and leaves your code in charge of it. On a read you check the cache first. On a miss you load the value from the database, store it in the cache and return it. On a write you update the database and delete the cached key, so the next read reloads it. A hit costs one memory lookup instead of a query, entries exist only for data actually requested, and if the cache is down you read the database directly, slower but correct. Choose it over [read-through](read-through.md), where the cache library loads misses for you, when you use a plain store such as Redis or Memcached that knows nothing about your tables.
 
-- **Stale window.** A reader can get the old value between the database write and the key delete, so give every entry a short expiry.
+- **Stale window.** A reader can get the old value after the write, or refill it after the delete, so keep expiries short.
 - **Stampede on expiry.** A popular key expiring makes readers miss together, so let one reload while others wait, or spread expiries.
 - **Repeated read steps.** Every read site repeats check, load and store, so keep them in one helper.
 
-**Example.** A product page takes 2,000 reads a second and the database handles 500 queries a second. At a 95% hit ratio only 100 reads a second reach the database. One hot product draws 1,000 of those reads a second. When its entry expires and a reload takes 50 ms, about 50 readers miss together and send 50 identical queries at once. Letting one reload while the rest wait turns that into 1 query. The cost shows after a price change: if the database write succeeds but the delete fails, readers see the old price until the 300 s TTL ends.
+**Example.** A product page takes 2,000 reads a second and the database handles 500 queries a second. At a 95% hit ratio only 100 reads a second reach the database. One hot product draws 1,000 of the 2,000 reads a second. When its entry expires and a reload takes 50 ms, about 50 readers miss together and send 50 identical queries at once. Letting one reload while the rest wait turns that into 1 query. The cost shows after a price change: if the database write succeeds but the delete fails, readers see the old price until the 300 s TTL ends.
 
 ## How it works
 <!--meta block=structure-->
@@ -73,7 +73,7 @@ sequenceDiagram
 - **[Read-Through](./read-through.md)** — The cache library itself loads on a miss instead of the app doing it — same effect, opposite owner of the fetch logic.
 - **Write-invalidate on update** — A write deletes the cache key rather than updating it, so the next read repopulates from the source of truth instead of risking a bad overwrite.
 - **TTL / lazy expiration** — Entries expire after a fixed time-to-live in addition to (or instead of) explicit invalidation, bounding staleness cheaply when writes are hard to track.
-- **Negative caching** — Cache a "not found" marker too, so repeated lookups for a key that doesn't exist don't hit the database on every single request.
+- **Negative caching** — Cache a "not found" marker too, so repeated lookups for a key that doesn't exist don't hit the database on every single request. Give the marker a short TTL and delete it when the key is created.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -83,7 +83,7 @@ sequenceDiagram
 
 - **The cache holds only data** that's actually been requested, so it stays small and relevant.
 - **A generic key-value cache** needs zero knowledge of the backing store or domain model.
-- **A cache outage degrades gracefully** — reads just fall through to the source, slower but correct.
+- **A cache outage degrades gracefully** — reads fall through to the source, slower but correct, as long as the source can carry the full read rate. In the explain example, 2,000 reads a second would hit a database that handles 500.
 - **The read path is simple to reason about**: check, miss, load, populate, return.
 
 ### Cons
@@ -91,7 +91,7 @@ sequenceDiagram
 
 - **Repeated read logic** — every call site that reads must repeat the check-miss-load-populate logic, or share a helper that does.
 - **Slow first read after eviction** — the first reader pays the full latency of the source, the "cache penalty."
-- **There's a stale window** between a write to the source and the cache entry being invalidated.
+- **There's a stale window** between a write to the source and the cache entry being invalidated, and a failed delete or a late refill stretches it to the TTL.
 - **No built-in protection** against a [hot key](../../hazards/hot-key.md) expiring under load and a herd of misses hitting the source at once.
 
 ## When to use it
@@ -116,8 +116,10 @@ sequenceDiagram
 
 ```typescript summary="TypeScript — a cache-aside read and write path"
 async function getUser(id: string): Promise<User> {
-  const cached = await cache.get<User>(`user:${id}`);
-  if (cached !== null) return cached; // hit — database untouched
+  // a cache error here should be caught and fall through to db; stampede guard omitted
+  const cached = await cache.get<User | typeof NOT_FOUND>(`user:${id}`);
+  if (cached === NOT_FOUND) throw new NotFoundError(id); // cached not-found
+  if (cached !== null) return cached; // hit, database untouched
 
   const user = await db.query<User>(
     "SELECT * FROM users WHERE id = $1", [id],
@@ -166,7 +168,7 @@ async function updateUser(id: string, patch: Partial<User>): Promise<void> {
 <!--meta polarity=failure-->
 
 - **Stale read after write** — Between a source write and the cache invalidation, readers see the old value; a crash between the two steps can leave it stale until the TTL fires.
-- **Thundering herd on hot-key expiry** — A popular key expires and every concurrent reader misses at once, all hitting the source together; cache-aside has no built-in coalescing.
+- **Thundering herd on hot-key expiry** — A popular key expires and every concurrent reader misses at once, all hitting the source together; cache-aside has no built-in coalescing; mitigate with one reloader per key or a jittered TTL (see check 5).
 - **Cache-penalty latency spike** — The first reader after an eviction pays the full source latency; a wave of evictions surfaces as a tail-latency spike.
 - **Unbounded growth** — Without a memory cap and eviction policy, populated entries accumulate until the cache exhausts memory.
 
@@ -237,8 +239,8 @@ async function updateUser(id: string, patch: Partial<User>): Promise<void> {
 
 **Prevents**
 
-- [Stale Cache](../../hazards/stale-cache.md) — Invalidate the key on write, so the next read reloads the current value
 - [No Caching](../../hazards/no-caching.md) — The usual first answer when the same unchanged value is fetched on every request
+- [Stale Cache](../../hazards/stale-cache.md) — Delete the key on write so the next read reloads; a late refill can still re-cache the old value until the TTL ends
 
 **Exposed to**
 

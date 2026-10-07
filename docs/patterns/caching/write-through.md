@@ -25,9 +25,9 @@ A write-through cache sits in the write path: it saves the value to the database
 
 - **Every write pays both.** Each write waits for the database plus the cache update; for bursts use write-behind and accept unsaved data.
 - **Unread keys fill the cache.** Skip caching keys written once and never read, and let a later read load them.
-- **Two places must succeed.** Save to the database first and cache only after that works.
+- **Two places must succeed.** Save to the database first and cache only after that works. If the cache update fails, delete the key.
 
-**Example.** A profile service takes 10,000 reads and 100 writes a second. A database write takes 8 ms and a cache update 1 ms, so each write takes 9 ms. A user renames their account and reloads at once: the cache already holds the new name. With cache-aside, a crash between the write and the delete would show the old name until the 300 s expiry. The cost: if 90 of the 100 writes a second go to accounts nobody reads soon, they wait 9 ms each and fill the cache for nothing. Write those straight to the database and let a later read load them.
+**Example.** A profile service takes 10,000 reads and 100 writes a second. A database write takes 8 ms and a cache update 1 ms, so each write takes 9 ms. A user renames their account and reloads: the cache already holds the new name. With cache-aside, a crash between the write and the delete would show the old name until the 300 s expiry. The cost: if 90 of the 100 writes a second go to accounts nobody reads soon, each spends 1 ms on a cache update nobody uses and takes cache space. Write those straight to the database and let a later read load them. Write-through has the same gap if the cache update is lost; delete the key.
 
 ## How it works
 <!--meta block=structure-->
@@ -70,7 +70,7 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Store-then-cache vs. cache-then-store ordering** — Persist to the store first and only then update the cache, or update the cache first and write through behind it. Store-first never lets a value that failed to persist sit in the cache.
+- **Store-then-cache vs. cache-then-store ordering** — Persist to the store first and only then update the cache, or update the cache first and write through behind it. Store-first never lets a value that failed to persist sit in the cache. Cache-first leaves a value that never persisted readable if the store write fails, so it needs rollback.
 - **[Paired with Read-Through](./read-through.md)** — Misses on the read side fault through the same cache into the store, so both directions treat the cache as the single authoritative front door.
 - **Selective write-through (write-around for cold keys)** — Skip caching keys that are unlikely to be read again and let a later read fault them in — avoids spending the cache-write cost on data that's never reused.
 - **[Replicated](../distributed/coordination/replication.md) / distributed write-through** — In a clustered cache, the node taking the write must also propagate it (or an invalidation) to peer nodes before acking — more write latency in exchange for cluster-wide consistency.
@@ -81,7 +81,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Cache and store never diverge** — a read right after a write always sees the fresh value.
+- **Cache and store agree after each write** — while every write goes through the cache and both steps succeed, a read right after a write sees the fresh value; a failed cache step or a write that bypasses the cache breaks that.
 - **Removes the cold-read penalty**: data is warm in the cache the instant it's written.
 - **Simplifies the read path** — reads can trust the cache with no invalidate-then-fetch races.
 - **A failed persist is caught synchronously**, at the write call, not discovered later.
@@ -89,9 +89,9 @@ sequenceDiagram
 ### Cons
 <!--meta polarity=con-->
 
-- **Every write pays the store's** full latency plus the cache update — never faster than the slower of the two.
+- **Every write pays the store's** latency plus the cache update, in sequence: 8 ms + 1 ms = 9 ms in the example.
 - **Write-heavy, rarely-read keys** still get cached, wasting space on data nobody reads back.
-- **Cache and store must both succeed**, or the write needs careful rollback or retry handling.
+- **Cache and store must both succeed** — if the cache update fails or two writers race on one key, the cache can keep the older value, so evict the key on failure or write with retry or rollback.
 - **Does nothing for write throughput** — for that, look at Write-Behind instead.
 
 ## When to use it
@@ -159,15 +159,15 @@ class WriteThroughCache<K, V> {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Write latency p99** — The tail of the write path; because it's the store round trip plus the cache update, it's never faster than the slower of the two, and any store slowdown shows here.
+- **Write latency p99** — The tail of the write path: the store round trip plus the cache update, so any store slowdown shows here.
 - **Write error rate** — Writes where the store or cache update failed; write-through catches a failed persist synchronously, so this reflects real durability failures.
 - **Post-write hit ratio** — How often written keys are actually read back; a low ratio means write-through is caching data nobody reads, wasting space.
-- **Cache-store divergence** — Sampled comparisons of cache versus store values; write-through should hold this at zero, so any drift signals a write path that bypassed the cache.
+- **Cache-store divergence** — Sampled comparisons of cache versus store values; near zero when every write uses the cache. Non-zero means a partial write or a bypass.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Partial write splits cache and store** — If the store succeeds but the cache update fails (or the reverse), the two disagree until a retry or rollback reconciles them.
+- **Partial write splits cache and store** — Store succeeds but the cache update fails: the cache keeps the old value while the store holds the new one. Delete the key so the next read loads fresh, and log it.
 - **Write latency dominated by a slow store** — Every write waits on the store's full round trip; a slow or overloaded store makes all writes slow, with no throughput relief.
 - **Cache pollution by write-once keys** — Keys written and never read still occupy cache space, evicting hotter entries and lowering the overall hit rate.
 - **Out-of-band store change goes unseen** — A value changed directly in the store, bypassing the write-through path, leaves the cache confidently serving a stale copy until its TTL.
