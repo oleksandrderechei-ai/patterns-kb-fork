@@ -20,18 +20,18 @@ A user is watching a video. What plays next? Scope it to the up-next slot on a Y
 ## Explained
 <!--meta block=explain-->
 
-A video recommender picks the 5 videos to play next out of about a billion in roughly 250 ms, by narrowing in stages before it ranks carefully. Many candidate generators each propose videos by looking up videos whose numeric fingerprint is close to the viewer's. A cheap model trims the pooled ten thousand or so to a few hundred. A heavy model then scores those with all the features, predicting several outcomes at once, such as watch time, like and share. A final step balances those predictions against variety, freshness and creator health. Choose this over scoring every video with one model, which is impossible in the time. It costs three things. A video dropped early is gone for good, so measure recall at each stage and add content-based generators and some random exploration for videos nobody has watched. The goal you optimise becomes the product, so pick long-term satisfaction, not clicks. And the heavy model costs compute and resists explanation, so test it live on session watch time.
+A video recommender picks the 5 videos to play next out of about a billion in roughly 250 ms, by narrowing in stages before it ranks carefully. Many candidate generators each propose videos by looking up videos whose numeric fingerprint is close to the viewer's. A cheap model trims the pooled ten thousand or so to a few hundred. A heavy model then scores those with all the features, predicting several outcomes at once, such as watch time, like and share. A final step balances those predictions against variety, freshness and creator health. Choose this over scoring every video with one model, which is impossible in the time. It costs three things. A video dropped early is gone for good, so measure recall at each stage and add content-based generators and some random exploration for videos nobody has watched. The goal you optimise becomes the product, so pick long-term satisfaction, not clicks. And the heavy model costs compute and resists explanation, so test it live on session watch time and return rate.
 
-**Example.** Scoring all 1 billion videos in 250 ms needs 4 billion scores a second for one viewer, so the funnel cuts first. Generators propose about 10,000 videos. The light model keeps 300. The heavy model scores those 300 and the final step picks 5. A brand-new video has no views, so a history-based generator never proposes it, and it can never reach the viewer. A content-based generator and a small random share of exploration put it into the pool. The cost is that some of the 5 slots go to unproven videos.
+**Example.** Scoring all 1 billion videos in 250 ms needs 4 billion scores a second for one viewer, so the funnel cuts first. Generators propose about 10,000 videos. The light model keeps 300. The heavy model scores those 300 and the final step picks 5. A brand-new video has no views, so a history-based generator never proposes it. A content-based generator and a small random share of exploration put it into the pool. The cost is that some of the 5 slots go to unproven videos.
 
 ## How the system is built
 <!--meta block=architecture-->
 
-The design is the industry-standard multi-stage recommender. Many **candidate generators** — potentially hundreds, each a thin interface over a vector index, some universal, some personal to the viewer's history — each propose a pool of videos. A cheap **light ranker** optimised for recall trims the union of those pools from roughly ten thousand to a few hundred. A heavy **ranking model** then scores that short list with the full feature set and several prediction heads at once. Finally a **re-ranking** layer applies a value model that trades those predictions off against diversity, freshness, and creator health to assemble the actual slate.
+The design is a multi-stage recommender. There can be hundreds of **candidate generators**. Each is a thin interface over a vector index, some universal, some personal to the viewer's history, and each proposes a pool of videos. A cheap **light ranker** optimised for recall trims the union of those pools from roughly ten thousand to a few hundred. A heavy **ranking model** then scores that short list with the full feature set and several prediction heads at once. Finally a **re-ranking** layer applies a value model that trades those predictions off against diversity, freshness, and creator health to assemble the actual slate.
 
-The chain is one-directional: a candidate missed at generation can never be recovered downstream, so each stage's recall is something interviewers probe. The stages exist precisely so the expensive model only ever sees a few hundred items.
+The chain is one-directional: a candidate missed at generation can never be recovered downstream, so each stage's recall is measured.
 
-```mermaid caption="Billions of videos are narrowed in stages: many two-tower candidate generators propose, a recall-first light ranker cuts roughly ten thousand to a few hundred, a multi-task transformer scores the survivors, and a re-ranking value model balances engagement against diversity and creator health."
+```mermaid caption="Billions of videos are narrowed in stages: many two-tower (one network embeds the viewer, one embeds the video) candidate generators propose, a recall-first light ranker cuts roughly ten thousand to a few hundred, a multi-task transformer scores the survivors, and a re-ranking value model balances engagement against diversity and creator health."
 flowchart LR
     Req["Request: user + context video"] -->|"seed"| CG["Candidate generation"]
     CG -->|"~10k candidates"| LR["Light ranker (GBDT)"]
@@ -43,9 +43,9 @@ flowchart LR
 ## The trade-space
 <!--meta block=tradespace-->
 
-Two ladders shape the design: the **objective** the system optimises, and the model that scores against it. Start with the objective. Maximising click-through rate is the tempting-but-bad choice — it rewards clickbait thumbnails that win the click and lose the viewer. Total watch time is better and controls for that, but drifts toward addictive or merely-long content. Quality-adjusted watch time — folding in ratings, completion, and sharing — is better still. The strongest framing is long-term satisfaction balanced across three parties: viewers, creators, and the platform, since over-optimising any one erodes the others. The [YouTube](../designs/youtube.md) case study covers the upload, transcode and streaming path around this ranker.
+Two ladders shape the design: the **objective** the system optimises, and the model that scores against it. Start with the objective. Maximising click-through rate is the weak choice: it rewards clickbait thumbnails that win the click and lose the viewer. Total watch time is better and controls for that, but drifts toward addictive or merely-long content. Quality-adjusted watch time — folding in ratings, completion, and sharing — adds more. The final target is long-term satisfaction balanced across three parties: viewers, creators, and the platform, since over-optimising any one erodes the others. The [YouTube](../designs/youtube.md) case study covers the upload, transcode and streaming path around this ranker.
 
-The second is the **model**. A plain multilayer perceptron (MLP) on concatenated features is easy but misses feature interactions and sequence. A DLRM-style architecture treats sparse and dense features in separate towers and does better, but still reads the history as an unordered bag. A transformer sequence ranker models the watch history directly, captures temporal intent, and is the current default — at a real cost in compute and debuggability. Candidate generation itself is typically two-tower embeddings trained with a triplet loss and hard-negative sampling, and the heavy ranker is multi-task: separate heads for watch time, click, like, share, completion, and return-visit, which regularise one another and feed the re-ranking value model.
+The second is the **model**. A plain multilayer perceptron (MLP) on concatenated features is easy but misses feature interactions and sequence. A DLRM-style architecture embeds sparse features, passes dense features through a bottom MLP and models interactions with pairwise dot products and does better, but still reads the history as an unordered bag. A transformer sequence ranker models the watch history directly, captures temporal intent, and is a common choice where history order matters, at a cost in compute and debuggability. Candidate generation itself is typically two-tower embeddings trained with a triplet loss and hard-negative sampling, and the heavy ranker is multi-task: separate heads (one output per outcome) for watch time, click, like, share, completion, and return-visit, which can regularise one another when the tasks are related and feed the re-ranking value model. Logged engagement reflects the slots the old ranker chose, so heads trained on it learn position as well as appeal; feed slot position as a training feature and drop it at serving.
 
 ```mermaid caption="The objective ladder: each rung fixes the previous one's failure mode, up to long-term satisfaction balanced across viewers, creators, and the platform."
 flowchart LR
@@ -71,11 +71,11 @@ Both the context video and each candidate contribute content and engagement feat
 
 ### [Evaluation](../patterns/ml/evaluation.md) {#tour-evaluation}
 
-Each prediction head is scored on its own; the final ranking uses normalized discounted cumulative gain (NDCG), mean average precision (MAP), and diversity, while the gold standard is an A/B test on session watch time and return rate. The catch is the novelty effect — a new model can look good simply because it is different — so experiments must run long enough for that to fade.
+Each prediction head is scored on its own; the final ranking uses normalized discounted cumulative gain (NDCG), mean average precision (MAP), and diversity, while the final check is an A/B test on session watch time and return rate. The catch is the novelty effect — a new model can look good simply because it is different — so run each experiment until the lift against control stops shrinking.
 
 ### [Generalization](../patterns/ml/generalization.md) {#tour-generalization}
 
-The hardest problems are here: new users and videos with no behavioural history, popularity feedback loops and filter bubbles, and the explore/exploit balance between showing known-good content and surfacing something new. These are where staff-level answers spend their time.
+The hard cases are new users and videos with no behavioural history, popularity feedback loops and filter bubbles, and the explore/exploit balance between showing known-good content and surfacing something new.
 
 <!-- tour:end -->
 
@@ -85,7 +85,7 @@ The hardest problems are here: new users and videos with no behavioural history,
 | If you need… | Lean | Reach for |
 | --- | --- | --- |
 | Billions of candidates under a tight latency budget | Multi-stage | Candidate generation + light ranker before the heavy model |
-| To capture temporal intent from the watch history | Sequence model | Transformer [sequence ranker](../patterns/ml/embeddings.md) over a DLRM or MLP |
+| To capture temporal intent from the watch history | Sequence model | Transformer [sequence ranker](../patterns/ml/embeddings.md) over a DLRM or MLP, when the compute and debugging cost is accepted |
 | One model to serve several engagement signals | Multi-task | Shared trunk with per-signal heads feeding the value model |
 | A new video with no views to get a fair chance | Cold start | Content-based candidate generation + controlled exploration |
 
