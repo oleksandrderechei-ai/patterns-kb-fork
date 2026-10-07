@@ -23,10 +23,10 @@ Any system that is not fully public must answer two questions first: who is this
 Auth and access answer two separate questions: who is calling, and what may they do. You must check both, in that order, wherever a request can act. The deciding choice is where the checks live. One guarded gate ([single access point](../patterns/security/single-access-point.md)) is easy to audit, but a single bypass or forgotten internal endpoint exposes everything behind it. Checks in every service contain a break-in to one place, but each copy must stay correct. Choose the single gate when few services exist and one team owns them. Choose repeated checks when services are many or hold sensitive data. Then limit what any one credential is worth. A session that lives for days and carries a broad role stays dangerous if stolen, so apply [least privilege](../patterns/security/least-privilege.md) with narrow, expiring grants, such as a [valet key](../patterns/distributed/routing/valet-key.md), a link that allows one action on one resource for a few minutes.
 
 - **Latency.** A call to a central server per check adds a hop to every request, so verify signed tokens locally or cache decisions briefly.
-- **Token churn.** Narrow expiring grants mean more tokens to issue, renew and revoke, so automate renewal and keep a short revoke list.
+- **Token churn.** Narrow grants mean more tokens to issue and revoke, so automate renewal. A signed token works until it expires, so keep lifetimes short.
 - **Duplicated checks.** Each service's copy of a check can be wrong, so share one tested library and test every route.
 
-**Example.** A photo app has a gateway and 3 services. If each service asked a central auth server about every request at 20 ms, a request costs 60 ms. Instead the gateway checks the sign-in once, and each service checks the signed token itself in 0.1 ms, so 0.3 ms in all. That also covers the case where a compromised service calls another service directly and skips the gateway. For uploads the app issues a link valid for 15 minutes, for one file path and 10 MB. A leaked link lets an attacker write that one file for at most 15 minutes, not touch the whole account. The cost is one issued token per upload, about 1,000 a day.
+**Example.** A photo app has a gateway and 3 services, called in turn by each request. If each service asked a central auth server at 20 ms, a request costs 60 ms. Instead the gateway checks the sign-in once, and each service checks the signed token itself in 0.1 ms, so 0.3 ms in all. A direct call that skips the gateway carries no valid token and is rejected. For uploads the app issues a link valid for 15 minutes, for one file path and 10 MB. A leaked link lets an attacker write that one file for at most 15 minutes, not touch the whole account. The cost is one issued token per upload, about 1,000 a day.
 
 ## The trade-space
 <!--meta block=tradespace-->
@@ -69,11 +69,11 @@ Delegate sign-on to a trusted provider. Rather than owning passwords itself, the
 
 ### [Single Access Point](../patterns/security/single-access-point.md) {#tour-single-access-point}
 
-Funnel access through one guarded entry. Every request into the system passes through one place, which is what makes it possible to guarantee that no request skips the checks that follow.
+Funnel access through one guarded entry. Every request that enters through this one place gets the checks that follow, which makes it easy to audit. A forgotten internal endpoint or a route around it gets none.
 
 ### [Gatekeeper](../patterns/distributed/routing/gatekeeper.md) {#tour-gatekeeper}
 
-Validate and screen at that entry. Sitting at the single access point, it performs the actual check — validating credentials and requests before they're allowed further in, so the services behind it can assume what arrives has already been screened.
+Validate and screen at that entry. At the single access point it checks credentials and requests before they go further. Services behind it can assume what arrives is screened only while no request can skip the gate, so services that hold sensitive data should still verify the token themselves.
 
 ### [Valet Key](../patterns/distributed/routing/valet-key.md) {#tour-valet-key}
 
@@ -98,13 +98,16 @@ Reject bad input before it reaches logic. Authentication and authorization answe
 | Keep a user signed in across requests | Session | [Secure Session Manager](../patterns/security/secure-session-manager.md) |
 | Decide what a signed-in user can touch | Role-based | [Authorization Enforcer](../patterns/security/authorization-enforcer.md) |
 | Give a third party temporary access to one resource | Scoped | [Valet Key](../patterns/distributed/routing/valet-key.md) |
-| Guarantee no request skips the checks | Perimeter | [Single Access Point](../patterns/security/single-access-point.md), [Gatekeeper](../patterns/distributed/routing/gatekeeper.md) |
+| Check every request at one entry | Perimeter | [Single Access Point](../patterns/security/single-access-point.md), [Gatekeeper](../patterns/distributed/routing/gatekeeper.md) |
 | Limit the blast radius of any one credential | Minimal | [Least Privilege](../patterns/security/least-privilege.md) |
 | Block malformed or malicious input at the edge | Validate early | [Intercepting Validator](../patterns/security/intercepting-validator.md) |
+| Check credentials on every request before anything else runs | Verify | [Authentication Enforcer](../patterns/security/authentication-enforcer.md) |
+| Keep a compromise to one service when services are many or hold sensitive data | Per service | [Authorization Enforcer](../patterns/security/authorization-enforcer.md), [Intercepting Validator](../patterns/security/intercepting-validator.md) |
 
 ## Related areas
 <!--meta block=siblings-->
 
-- [Resilience](./resilience.md) — Enforcement that fails open instead of closed turns an auth gap into an outage risk.
+- [Resilience](./resilience.md) — A check that fails open lets requests through when it breaks, which is a security hole. One that fails closed blocks them, which turns an auth outage into an outage for every caller.
 - [Scalability](./scalability.md) — A single access point that every request must pass through can become the bottleneck as load grows.
 - [Observability](./observability.md) — Knowing who accessed what, and when, depends on the audit trail these patterns leave behind.
+- [Securing Availability](./securing-availability.md) — What a failure of these controls costs in uptime. Read this page for the mechanics and that one for the outage case.

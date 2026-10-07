@@ -1768,7 +1768,7 @@
     "/patterns/distributed/routing/gatekeeper.html": {
       "auth-and-access": {
         "role": "Validate and screen at that entry",
-        "tour": "Validate and screen at that entry. Sitting at the single access point, it performs the actual check — validating credentials and requests before they're allowed further in, so the services behind it can assume what arrives has already been screened.",
+        "tour": "Validate and screen at that entry. At the single access point it checks credentials and requests before they go further. Services behind it can assume what arrives is screened only while no request can skip the gate, so services that hold sensitive data should still verify the token themselves.",
         "fluency": "Validate and screen at that entry"
       },
       "global-traffic-and-ingress": {
@@ -2451,7 +2451,7 @@
     "/patterns/security/single-access-point.html": {
       "auth-and-access": {
         "role": "Funnel access through one guarded entry",
-        "tour": "Funnel access through one guarded entry. Every request into the system passes through one place, which is what makes it possible to guarantee that no request skips the checks that follow.",
+        "tour": "Funnel access through one guarded entry. Every request that enters through this one place gets the checks that follow, which makes it easy to audit. A forgotten internal endpoint or a route around it gets none.",
         "fluency": "Funnel access through one guarded entry"
       },
       "securing-availability": {
