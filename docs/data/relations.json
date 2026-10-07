@@ -4363,13 +4363,6 @@
       "note_b": "Make lifetime a declared registration a reviewer can read, not an accident of where the constructor sits"
     },
     {
-      "a": "containerization",
-      "verb": "prevents-hazard",
-      "b": "improper-instantiation",
-      "note_a": "Building once and promoting the artifact removes the per-environment rebuild that makes two environments differ",
-      "note_b": "Building once and promoting the artifact removes the per-environment rebuild that makes two environments differ"
-    },
-    {
       "a": "thread-pool",
       "verb": "prevents-hazard",
       "b": "resource-leak",
@@ -14062,6 +14055,13 @@
       "b": "resource-leak",
       "note_a": "An acquire timeout turns a silent hang from a leak into a loud error; it does not return the lost resource.",
       "note_b": "A caller that cannot get a resource fails fast instead of blocking forever."
+    },
+    {
+      "a": "test-stub",
+      "verb": "prevents-hazard",
+      "b": "static-cling",
+      "note_a": "Stands in for the static call only once a seam exists, so inject first",
+      "note_b": "A canned collaborator can replace the static call only once a seam exists"
     }
   ],
   "group_order": {

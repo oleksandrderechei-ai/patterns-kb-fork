@@ -21,10 +21,10 @@ An **N+1 query** is a request that loads a list with one query, then runs one mo
 ## Explained
 <!--meta block=explain-->
 
-An N+1 query is a request that loads a list of N rows with one query, then runs one more query for each row to fetch its related data, so N items cost 1 + N queries when one or two would do. It is rarely written on purpose. A lazy-loading ORM, a library that fetches related rows only when you touch them, makes reading event.venue inside a loop look like a field access, not a trip to the database. It hides in development, where five rows means six quick queries, and appears in production, where the same code meets hundreds of rows and the page time grows with the row count. Collapse the child queries into one. A batching loader gathers the keys requested during one tick and runs one query for all of them. A join or eager load fetches parents and children together. Pick a join when one place owns the read, and batching when many places ask. When one shape is read far more than it changes, precompute it as a [materialized view](../patterns/distributed/coordination/materialized-view.md).
+An N+1 query loads a list of N rows with one query, then runs one more query per row for its related data, so N items cost 1 + N queries when one or two would do. A lazy-loading ORM, a library that fetches related rows only when you touch them, makes reading event.venue inside a loop look like a field access, not a trip to the database. Five rows in development mean six quick queries; hundreds of rows in production make page time grow with the row count. Collapse the child queries into one. A batching loader gathers the keys requested during one tick and runs one query for all of them. A join or eager load fetches parents and children together, but over a to-many relation it repeats each parent per child, so batch there. Pick a join when one place owns the read, and batching when many places ask. When one shape is read far more than it changes, precompute it as a [materialized view](../patterns/distributed/coordination/materialized-view.md).
 
-- **Large key lists.** Batching sends all keys in one list, so cap its size.
-- **Strict loading.** Making unplanned lazy loads raise an error fails tests where the loop returns, which is the point.
+- **Large key lists.** Batching sends all keys in one list, so split them into chunks; a very long list can hit the driver's parameter limit.
+- **Strict loading.** Making unplanned lazy loads raise an error fails any test that loads several rows through that path, which is the point.
 
 **Example.** An endpoint returns 100 events with their venues. Each query costs 2 ms, so the lazy version runs 1 + 100 = 101 queries, 202 ms. With 5 test rows it ran 6 queries, 12 ms, and nobody noticed. At 50 requests a second, production sends 5,050 queries a second. A batched version runs one query for the events and one for the venues with a list of their keys, 2 queries and about 4 ms.
 
@@ -46,19 +46,21 @@ flowchart TB
 ## What it costs
 <!--meta block=cost-->
 
-- **Latency scales with N.** Each of the N child queries is a separate network round-trip to the database, and they run one after another — so response time grows linearly with the size of the result set, and the round-trip cost, not the query work, dominates.
+- **Latency scales with N.** Child queries run one after another, each a round-trip, so time grows linearly; for cheap indexed reads the round-trip dominates.
 - **The database is hammered with tiny queries.** Instead of planning and running one query once, the engine parses, plans, and executes N nearly-identical trivial lookups, and the connection pool churns through them for a single request.
-- **It degrades silently.** On a handful of rows in development it is invisible; the identical code path against a production-sized result set becomes thousands of queries and a request that times out — with no error to point at, only slowness.
-- **It caps throughput.** Each request holds its database connection far longer while it drains N queries, so under real load the pool saturates and unrelated requests queue behind it.
+- **It degrades silently.** Invisible on a few development rows; at production size it means hundreds to thousands of queries and a slow or timed-out request.
+- **It caps throughput.** A request holds its connection while N queries drain, so the pool saturates and others queue; concurrent issue only shifts the load.
 
 ## Getting out
 <!--meta block=mitigation-->
 
 Collapse the N child queries into one. The direct fix is to **batch** the child fetch into a single query keyed by the parent ids — one `SELECT ... WHERE parent_id IN (…)` in place of one query per parent. The DataLoader pattern automates exactly this: it coalesces the per-item requests made during one tick into a single batched call, so a resolver can keep asking for one venue at a time while only one query is actually issued.
 
-Alternatively, fetch parents and children together with a **JOIN**, or an eager-load / prefetch, so the relation arrives alongside the parents in one round-trip instead of being pulled lazily row by row. And when the joined shape is read far more often than it changes, precompute it as a **[materialized view](../patterns/distributed/coordination/materialized-view.md)**, turning the read into a single lookup against an already-assembled result. The through-line under all three is the same: stop asking once per row — ask once for the whole set.
+Alternatively, fetch parents and children together with a **JOIN**, or an eager-load / prefetch, so the relation arrives alongside the parents in one round-trip instead of being pulled lazily row by row. And when the joined shape is read far more often than it changes, precompute it as a **[materialized view](../patterns/distributed/coordination/materialized-view.md)**, turning the read into a single lookup against an already-assembled result. A join over a to-many relation repeats each parent once per child, so prefer a second batched query there.
 
-Fixing today's loop is not the same as preventing tomorrow's. Most data-access layers can be told to treat an unplanned lazy load as an error rather than as a query — Rails calls it strict loading, and offers both a strict form that raises on any lazily loaded association and a narrower one that raises only where the access would produce N+1. Turn it on for the queries you have already planned, and a reintroduced loop fails in a test run instead of degrading quietly in production. The cost is that the layer now refuses convenience: every association a caller wants has to be declared in the query that fetches it.
+Fixing today's loop is not the same as preventing tomorrow's. Most data-access layers can be told to treat an unplanned lazy load as an error rather than as a query — Rails calls it strict loading, and offers both a strict form that raises on any lazily loaded association and a narrower one that raises only where the access would produce N+1. Turn it on for the queries you have already planned, and a reintroduced loop fails in a test run instead of degrading quietly in production. The cost: every association a caller wants must be declared in the query that fetches it.
+
+To find a loop, count queries per request and group the query log by normalized statement; a test can assert a query-count budget per request.
 
 ## How it relates
 <!--meta block=relationships-->
