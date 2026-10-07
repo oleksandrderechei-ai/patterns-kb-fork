@@ -2140,6 +2140,14 @@
       "related": ["clock-skew"]
     },
     {
+      "id": "dual-write-inconsistency",
+      "label": "Dual-Write Inconsistency",
+      "definition": "Two systems updated by two calls, and one of them does not land",
+      "route": "/hazards/dual-write-inconsistency.html",
+      "requires": [],
+      "related": ["monolithic-persistence"]
+    },
+    {
       "id": "deadlock",
       "label": "Deadlock",
       "definition": "Two holders each wait for a lock the other holds, forever",
@@ -2161,7 +2169,7 @@
       "definition": "A queue with no capacity cap grows until the process runs out of memory",
       "route": "/hazards/unbounded-queue.html",
       "requires": [],
-      "related": ["poison-message"]
+      "related": ["poison-message", "busy-front-end"]
     },
     {
       "id": "poison-message",
@@ -2196,6 +2204,22 @@
       "related": ["extraneous-fetching"]
     },
     {
+      "id": "monolithic-persistence",
+      "label": "Monolithic Persistence",
+      "definition": "Every kind of data in one store, whatever its access shape",
+      "route": "/hazards/monolithic-persistence.html",
+      "requires": [],
+      "related": ["noisy-neighbour", "dual-write-inconsistency"]
+    },
+    {
+      "id": "busy-front-end",
+      "label": "Busy Front End",
+      "definition": "Background work on the threads meant to answer requests",
+      "route": "/hazards/busy-front-end.html",
+      "requires": [],
+      "related": ["unbounded-queue"]
+    },
+    {
       "id": "connection-pool-exhaustion",
       "label": "Connection-Pool Exhaustion",
       "definition": "Every pool slot is held by a slow call, so requests hang instead of failing",
@@ -2226,6 +2250,14 @@
       "route": "/hazards/cascading-failure.html",
       "requires": [],
       "related": ["metastable-failure"]
+    },
+    {
+      "id": "noisy-neighbour",
+      "label": "Noisy Neighbour",
+      "definition": "One tenant's load degrades everyone sharing the same pool",
+      "route": "/hazards/noisy-neighbour.html",
+      "requires": [],
+      "related": ["monolithic-persistence"]
     },
     {
       "id": "clock-skew",

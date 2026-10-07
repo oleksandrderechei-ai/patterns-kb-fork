@@ -14083,6 +14083,34 @@
       "b": "extraneous-fetching",
       "note_a": "A read model shaped per screen returns only the fields and rows that screen shows",
       "note_b": "A separate read model shaped per screen stops full-row and unbounded reads"
+    },
+    {
+      "a": "materialized-view",
+      "verb": "prevents-hazard",
+      "b": "busy-database",
+      "note_a": "Computes the costly shape once on a schedule, so the read is a lookup instead of per-request compute; staleness must be bounded",
+      "note_b": "Precompute near-data work on a schedule, so it stops costing store CPU per request"
+    },
+    {
+      "a": "monolithic-persistence",
+      "verb": "combines-with",
+      "b": "noisy-neighbour",
+      "note_a": "The single-store case: unlike workloads in one engine throttle each other.",
+      "note_b": "Monolithic Persistence is the same effect inside one data store."
+    },
+    {
+      "a": "dual-write-inconsistency",
+      "verb": "combines-with",
+      "b": "monolithic-persistence",
+      "note_a": "A split away from a single store is where this hazard arrives.",
+      "note_b": "Splitting stores breaks the shared transaction, and unsynchronised writes then diverge."
+    },
+    {
+      "a": "busy-front-end",
+      "verb": "combines-with",
+      "b": "unbounded-queue",
+      "note_a": "A queue added to relieve the front end grows without limit unless it is capped and rejects at the front door",
+      "note_b": "Adding a queue to relieve a busy front end recreates this hazard unless the depth is capped"
     }
   ],
   "group_order": {

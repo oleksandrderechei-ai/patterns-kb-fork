@@ -70,6 +70,7 @@ A bounded queue also gives **backpressure**, at the price of blocked producers o
 **Combines with**
 
 - [Poison Message](./poison-message.md) — A stuck consumer lets an unbounded queue grow without limit.
+- [Busy Front End](./busy-front-end.md) — Adding a queue to relieve a busy front end recreates this hazard unless the depth is capped
 
 **Mitigated by**
 
