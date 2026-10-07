@@ -51,7 +51,7 @@ A trap that fits no tier is usually two facts in one bullet. Split it and route 
   Leaves when `terminal` joins a `house` term's `avoid` list.
 - **The block writers escape what the rules say they keep.** `kb.mjs production` and `wild`
   wrote `` \` `` around an inline-code name (`max.poll.interval.ms`) that markdown-authoring
-  says passes through, and `kb.mjs explain --costs` turned a `[label](path.md)` link in a
-  cost note into escaped text. After each writer call, check the page file: `grep -n '\\'
-  docs/<path>.md`, and restore the backtick or link by hand. Leaves when the writers pass
-  inline code and cost links through, with a test case for each.
+  says passes through. After each writer call, `grep -n '\\' docs/<path>.md` and restore
+  the backtick by hand. A link in an explain cost note is escaped too, and restoring that
+  one fails the write-tree round-trip test: put the link in `--text` instead. Leaves when
+  the writers pass inline code through, with a test case.
