@@ -39,6 +39,16 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   - edges drafted but over the cap: `secure-session-manager` alternative-to `sticky-session`,
     `single-access-point` with `front-controller`, retyping `intercepting-validator` to
     `gatekeeper` and `quarantine` as often-confused-with.
+- From the kb-improve run over the 44 hazard pages (its pull request lists every dropped
+  finding):
+  - a sourcing pass for the 88 findings dropped as "needs a source": alert thresholds,
+    pool, timeout and queue sizing, clock drift rates and product defaults that readers
+    asked for in the mitigation blocks;
+  - a second pass for the 164 findings dropped as over the cap of 8, mostly wording;
+  - full stops on three `metastable-failure` notes (`cache-aside`, `message-queue`,
+    `failover`), each an unlink then link;
+  - an owner call on whether a hazard's mitigation block may hold list items, which
+    agent-consumer readers asked for on several pages so a citation can name one fix.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 
