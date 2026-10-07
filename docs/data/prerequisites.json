@@ -537,7 +537,7 @@
       "definition": "Caps how long a call may take before giving up",
       "route": "/patterns/distributed/resilience/timeout-deadline.html",
       "requires": [],
-      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request", "heartbeat", "bulkhead"]
+      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request", "heartbeat", "bulkhead", "scatter-gather"]
     },
     {
       "id": "hedged-request",
@@ -1177,7 +1177,7 @@
       "definition": "Generate keys on any node without asking a central allocator, and still index well",
       "route": "/patterns/distributed/coordination/unique-id-generation.html",
       "requires": [],
-      "related": ["correlation-identifier", "sharding", "write-ahead-log", "idempotency", "lsm-tree"]
+      "related": ["sharding", "write-ahead-log", "idempotency", "lsm-tree", "correlation-identifier"]
     },
     {
       "id": "inverted-index",
@@ -1513,7 +1513,7 @@
       "definition": "Tags related messages so replies can be matched up",
       "route": "/patterns/messaging/correlation-identifier.html",
       "requires": [],
-      "related": ["unique-id-generation", "scatter-gather", "saga", "splitter", "pubsub", "design-for-operations", "async-request-reply"]
+      "related": ["scatter-gather", "saga", "splitter", "pubsub", "design-for-operations", "async-request-reply", "unique-id-generation"]
     },
     {
       "id": "scatter-gather",
@@ -1521,7 +1521,7 @@
       "definition": "Broadcasts a request, then merges the responses",
       "route": "/patterns/messaging/scatter-gather.html",
       "requires": [],
-      "related": ["mapreduce", "correlation-identifier", "pagination", "recipient-list", "fork-join"]
+      "related": ["mapreduce", "correlation-identifier", "pagination", "recipient-list", "fork-join", "timeout-deadline"]
     },
     {
       "id": "wire-tap",

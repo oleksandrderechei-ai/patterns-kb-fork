@@ -5554,13 +5554,6 @@
       "note_b": "The engine's durable timers and retries replace the hand-rolled scan for work that stalled"
     },
     {
-      "a": "unique-id-generation",
-      "verb": "often-confused-with",
-      "b": "correlation-identifier",
-      "note_a": "This generates primary keys; a correlation id tags related messages and is never a key",
-      "note_b": "This generates primary keys; a correlation id tags related messages and is never a key"
-    },
-    {
       "a": "workflow-orchestration",
       "verb": "alternative-to",
       "b": "async-request-reply",
@@ -13656,6 +13649,20 @@
       "b": "idempotency",
       "note_a": "Each copy is delivered at least once, so every branch must tolerate a repeat.",
       "note_b": "Fan-out multiplies redelivery, one branch per consumer."
+    },
+    {
+      "a": "unique-id-generation",
+      "verb": "often-confused-with",
+      "b": "correlation-identifier",
+      "note_a": "This generates primary keys; a correlation id tags related messages and is not meant to be a record's key.",
+      "note_b": "A correlation id tags related messages and is not meant to be a record's key; that page generates primary keys."
+    },
+    {
+      "a": "timeout-deadline",
+      "verb": "combines-with",
+      "b": "scatter-gather",
+      "note_a": "A fan-out call needs one deadline for the whole gather, not one per recipient.",
+      "note_b": "The gather step needs a deadline, or one slow recipient holds the caller open."
     }
   ],
   "group_order": {

@@ -63,7 +63,7 @@ flowchart LR
 - **Static vs. dynamic [recipient list](./recipient-list.md)** — Recipients are a fixed, known set, or resolved at runtime from a directory or service registry — trading simplicity for the ability to add participants without redeploying.
 - **[Correlation Identifier](./correlation-identifier.md)** — Each reply carries the id of the request that produced it, so gather can match interleaved replies back to the right in-flight scatter.
 - **Timeout / quorum gather** — Rather than block for every reply, gather closes after a deadline or once a minimum count has arrived, treating stragglers as absent instead of stalling the whole exchange.
-- **Recipient-list vs. broadcast dispatch** — The EIP (Enterprise Integration Patterns) book splits the pattern on how the request goes out, and its variant names describe that axis: its Distribution sends to a recipient list the router controls, while its Auction broadcasts on a [publish-subscribe](./pubsub.md) channel for any interested participant to answer. Dispatch is independent of what gather does with the replies — either style can feed a winner-picking or a reassembling gather — so note that the book's Auction/Distribution label the dispatch, where this page's label the gather.
+- **Recipient-list vs. broadcast dispatch** — The EIP (Enterprise Integration Patterns) book splits the pattern by dispatch: Distribution sends to a recipient list the router controls, Auction broadcasts on a [publish-subscribe](./pubsub.md) channel. Either dispatch can feed either gather. This page's Auction and Distribution name the gather instead.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -79,11 +79,11 @@ flowchart LR
 ### Cons
 <!--meta polarity=con-->
 
-- **Latency is still bounded** by the slowest recipient, or by whatever timeout gather enforces — the deadline is what turns an unbounded wait into a known one, so it is not optional.
-- **Aggregation logic must handle partial**, duplicate, or out-of-order replies correctly, which is what the [correlation identifier](./correlation-identifier.md) on every reply is for.
+- **Latency is still bounded** by the slowest recipient or by the gather timeout. The deadline turns an unbounded wait into a known one, so it is required.
+- **Aggregation must handle partial, duplicate and out-of-order replies** — the [correlation identifier](./correlation-identifier.md) on each reply matches it to its request, and duplicates need a per-recipient dedupe.
 - **Every call multiplies load N-fold across recipients** and network, even when only one reply is kept — size the recipients for the amplified rate, and cap the fan-out breadth rather than discovering the cap in an incident.
 - **Needs correlation, timeout, and partial-failure handling** — real machinery, not a plain request/reply.
-- **Missing replies are a domain decision** — what a missing reply means is a domain decision the pattern cannot make for you: dropping an unanswered price quote is fine, reading an unanswered sanctions check as clean is not. Write the semantics down beside the timeout.
+- **Missing replies are a domain decision** — A missing reply has no default meaning; the domain decides. Dropping an unanswered price quote is fine, reading an unanswered sanctions check as clean is not. Write the choice beside the timeout.
 - **Stragglers arrive after the aggregate** has closed, for a request that no longer exists — give a late reply a defined destination, because the alternative is a silent drop nobody counts.
 
 ## When to use it
@@ -112,6 +112,7 @@ async function cheapestQuote(parcel: Parcel, carriers: Carrier[]) {
   const asked = carriers.map((carrier) => carrier.quote(parcel));
 
   // gather: wait once, for the slowest, instead of once per carrier
+  // toy: one failed carrier rejects the whole call and nothing bounds the wait; the next sketch adds a deadline and drops failed legs
   const quotes = await Promise.all(asked);
 
   return quotes.reduce((best, q) => (q.price < best.price ? q : best));
@@ -127,11 +128,16 @@ async function screen(
   lists: string[],          // one leg per sanctions list
   timeoutMs = 5_000,
 ) {
-  const withTimeout = (p: Promise<LegResult>) =>
-    Promise.race([
-      p,
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
-    ]);
+  const withTimeout = (p: Promise<LegResult>) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), timeoutMs);
+    });
+    // a vendor error counts as a missing leg, not a failed gather
+    // a reply after the deadline is dropped here; a real gather counts it
+    return Promise.race([p.catch(() => null), deadline])
+      .finally(() => clearTimeout(timer));
+  };
 
   // scatter: every list is dispatched at once, all carrying the same flowId
   const scattered = lists.map((list) =>
@@ -141,7 +147,7 @@ async function screen(
   const legs = await Promise.all(scattered);
 
   // A missing leg is not a clear one — an unanswered list decides nothing,
-  // so the flow stays in screening and the sweeper re-runs that task alone.
+  // so the flow stays in screening for a sweeper to retry.
   if (legs.some((leg) => leg === null)) return;
 
   const hits = legs.filter((leg) => leg!.hit).map((leg) => leg!.list);
@@ -154,7 +160,7 @@ async function screen(
 <!--meta block=wild-->
 
 - **Elasticsearch** — A coordinating node scatters each search to every relevant shard in parallel, gathers the top hits from each, and merges them into one ranked result set; the two-phase query-then-fetch design is Scatter-Gather over shards. {#wild-elasticsearch}
-- **Apollo Federation** — The gateway compiles one client query into a query plan of parallel fetches against the owning subgraphs, then stitches their partial responses into a single result by entity keys. {#wild-apollo-federation}
+- **Apollo Federation** — The gateway compiles one client query into a query plan against the owning subgraphs: independent fetches run in parallel, dependent ones in sequence, and the gateway stitches the partial responses into a single result by entity keys. {#wild-apollo-federation}
 
 ## In production
 <!--meta block=production-->
@@ -162,16 +168,16 @@ async function screen(
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Gather timeout / deadline** — How long to wait for replies before closing the aggregate and treating stragglers as absent.
+- **Gather timeout / deadline** — How long to wait for replies before closing the aggregate and treating late repliers (stragglers) as absent. Start just above the slowest healthy recipient's p99 and below the caller's own timeout.
 - **Quorum / minimum reply count** — The number of replies that closes the gather early, instead of waiting for every recipient.
 - **Fan-out breadth (recipient count)** — How many recipients each request is scattered to — it sets the load-amplification factor per call.
-- **Correlation state time to live (TTL)** — How long the gather holds an in-flight aggregation before discarding it.
+- **Correlation state time to live (TTL)** — How long the gather holds an in-flight aggregation before discarding it. Set it a little longer than the gather timeout, so the deadline closes the gather and the TTL only reaps orphans.
 - **Missing-reply semantics** — What the aggregate does with an absent recipient: omit it, substitute a default, or fail the whole exchange. A domain decision, not a default.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Reply completeness** — Replies received divided by recipients scattered to, before the deadline; a falling ratio means recipients are timing out.
+- **Reply completeness** — Replies received divided by recipients scattered to, before the deadline; a falling ratio means recipients are timing out. Alert when it drops below the quorum fraction or falls against its own baseline.
 - **End-to-end gather latency (p99)** — Bounded by the slowest reply or the timeout, whichever comes first — so it tells you which of the two is binding.
 - **Timeout / straggler rate** — How often the gather closes on the deadline instead of on full completion.
 - **In-flight aggregation count** — Open scatters awaiting replies; a climbing count signals orphaned or stuck aggregations.
@@ -180,9 +186,9 @@ async function screen(
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Slowest recipient dominates** — Tail latency of the whole exchange tracks the slowest responder up to the gather timeout, so one degraded participant sets the p99 for every call.
+- **Slowest recipient dominates** — Tail latency of the whole exchange tracks the slowest responder up to the gather timeout, so when the gather waits for every reply one degraded participant sets the p99 for every call; a deadline or quorum caps it.
 - **Orphaned aggregations** — Replies that never arrive leave gather state open, leaking memory unless a correlation TTL expires it.
-- **Late reply after close** — A straggler answers after the aggregate was already sent, arriving for a request that no longer exists.
+- **Late reply after close** — A straggler answers after the aggregate was already sent, arriving for a request that no longer exists. Count late replies: the straggler rate shows how often the best quote is lost.
 - **Load amplification** — Every call multiplies N-fold across recipients; a request burst arrives at all of them simultaneously, so they saturate together rather than one at a time.
 - **Absence read as an answer** — A gather that closes on a deadline and treats a missing reply as an empty or negative result reports a conclusion nobody computed.
 
@@ -219,6 +225,7 @@ async function screen(
 - [Correlation Identifier](./correlation-identifier.md) — Correlate responses back to the request
 - [Pagination](../distributed/routing/pagination.md) — A paged query across partitions is the everyday case: fan out, merge on the sort key, keep only the page
 - [Recipient List](./recipient-list.md) — Its distribution form sends to a recipient list rather than broadcasting
+- [Timeout / Deadline](../distributed/resilience/timeout-deadline.md) — The gather step needs a deadline, or one slow recipient holds the caller open.
 
 **Composed of**
 
