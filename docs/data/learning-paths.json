@@ -765,7 +765,7 @@
       },
       "event-storming": {
         "role": "Read models for the questions the wall raised",
-        "tour": "The questions people ask during a session — \"how would you know that?\", \"where do you look that up?\" — are read models. They rarely line up with the aggregates beside them, which is the observation that makes separating the two sides worth its cost.",
+        "tour": "The questions people ask during a session — \"how would you know that?\", \"where do you look that up?\" — are read models. They rarely line up with the aggregates beside them, which is the observation that makes separating the two sides worth considering. A read model is a view built to answer one question; the aggregate is the side that accepts changes.",
         "fluency": "Read models for the questions the wall raised"
       },
       "event-modeling": {
@@ -790,7 +790,7 @@
       },
       "event-storming": {
         "role": "Keep the discovered events as the record",
-        "tour": "A session that produces a good event model makes this look inevitable, and that is a trap worth naming: discovering the domain in events does not oblige you to store it in events. The technique is a modelling tool, and the storage decision is separate and much more expensive.",
+        "tour": "A session that produces a good event model makes this look inevitable, but that is a trap: discovering the domain in events does not oblige you to store it in events. The technique is a modelling tool, and the storage decision is separate and costlier.",
         "fluency": "Keep the discovered events as the record"
       },
       "event-modeling": {
@@ -1006,7 +1006,7 @@
       },
       "event-storming": {
         "role": "The cluster of events sharing one consistency rule",
-        "tour": "Aggregates are not drawn, they are noticed: a group of events that must agree with each other, guarded by the same rule, accepting the same commands. Finding them late in the session rather than early is deliberate, because a boundary proposed before the events are on the wall is a guess.",
+        "tour": "Aggregates are added in a late pass: a group of data that must change together, guarded by the same rule, accepting the same commands. Adding them late rather than early is deliberate, because a boundary proposed before the events are on the wall is a guess.",
         "fluency": "The cluster of events sharing one consistency rule"
       }
     },
@@ -1018,19 +1018,19 @@
       },
       "event-storming": {
         "role": "Where the language changes along the timeline",
-        "tour": "The clearest signal on a wall is a word that changes meaning partway along it — an \"order\" in fulfilment is not the \"order\" in billing. That point is a context boundary, and it is visible in a way no amount of up-front modelling makes visible.",
+        "tour": "The clearest signal on a wall is a word that changes meaning partway along it: an \"order\" in fulfilment is not the \"order\" in billing. That point often marks a context boundary, one that up-front modelling alone rarely shows.",
         "fluency": "Where the language changes along the timeline"
       }
     },
     "/patterns/ddd/domain-event.html": {
       "event-storming": {
         "role": "The note on the wall, in the past tense",
-        "tour": "The orange note is the pattern. A past-tense statement of something the business considers to have happened is exactly what the workshop asks people to write, which is why the technique produces domain events rather than requirements — and why the names survive into the code unchanged.",
+        "tour": "A domain event is the orange note. A past-tense statement of something the business considers to have happened is what the workshop asks people to write, so the technique produces domain events rather than requirements. The names usually survive into the code.",
         "fluency": "The note on the wall, in the past tense"
       },
       "event-modeling": {
         "role": "The fact recorded once the command is accepted",
-        "tour": "The third lane. Each note is a past-tense fact, and the rule that every event needs a command in front of it is what stops the model containing effects that nothing causes.",
+        "tour": "The third lane. Each note is a past-tense fact, and the rule that every event needs a cause, usually a command in front of it, is what stops the model containing effects that nothing causes.",
         "fluency": "The fact recorded once the command is accepted"
       }
     },
@@ -1186,7 +1186,7 @@
       },
       "event-modeling": {
         "role": "The read model built from the event stream",
-        "tour": "The fourth lane is a projection: a shape maintained from events specifically so a screen can be answered in one read. Drawing it per screen is what surfaces how many distinct read shapes a system actually needs, which is almost always more than anyone guessed.",
+        "tour": "The fourth lane is a projection: a shape maintained from events specifically so a screen can be answered in one read. Drawing it per screen is what surfaces how many distinct read shapes a system actually needs, so the number is counted from the drawing, not guessed.",
         "fluency": "The read model built from the event stream"
       }
     },
@@ -1299,7 +1299,7 @@
       },
       "event-modeling": {
         "role": "A policy on the wall becomes a coordinated process",
-        "tour": "Wherever the model says one event automatically triggers a later command, there is a long-running process with its own state and its own failure branches. The drawing names it; this pattern is what it costs to build.",
+        "tour": "Wherever the model says one event automatically triggers a later command that can fail or wait, there is a long-running process with its own state and its own failure branches. The drawing names it; this pattern is the code that tracks that state and handles those failures.",
         "fluency": "A policy on the wall becomes a coordinated process"
       }
     },
@@ -1504,7 +1504,7 @@
     "/patterns/distributed/resilience/rate-limiter.html": {
       "system-design-interview": {
         "role": "Protect the system from overload",
-        "tour": "The protection layer, and a common infrastructure prompt in its own right. Capping how much any one client can send keeps a single abuser or a [retry storm](../hazards/retry-storm.md) from taking the system down for everyone.",
+        "tour": "The protection layer, and a common infrastructure prompt in its own right. Capping how much any one client can send keeps a single abuser or a [retry storm](../hazards/retry-storm.md) from taking the system down for everyone. It does so at the cost of rejecting some legitimate bursts.",
         "fluency": "Protect the system from overload by refusing what exceeds a rate it can actually serve."
       },
       "spike-handling": {
@@ -1678,7 +1678,7 @@
     "/patterns/distributed/routing/cdn.html": {
       "system-design-interview": {
         "role": "Serve content from the edge, near the user",
-        "tour": "A cache with geography. Copies of static and media content sit at edge locations near the user, so a request from India need not travel to a server in America. Pairs naturally with object storage for images and video.",
+        "tour": "A cache at edge locations near the user. Copies of static and media content are served from nearby instead of a distant server. Pairs naturally with object storage for images and video.",
         "fluency": "Serve content from the edge, near the user"
       },
       "spike-handling": {
@@ -1711,7 +1711,7 @@
     "/patterns/distributed/routing/consistent-hashing.html": {
       "system-design-interview": {
         "role": "Pick a shard with minimal reshuffle",
-        "tour": "The usual answer to \"how do you decide which shard a key lives on?\" A hash ring means adding or removing a node reshuffles only a fraction of keys instead of remapping everything — a favourite deep-dive follow-up.",
+        "tour": "The usual answer to \"how do you decide which shard a key lives on?\" A hash ring means adding or removing a node reshuffles only a fraction of keys instead of remapping everything.",
         "fluency": "Pick a shard with minimal reshuffle"
       },
       "performance": {
@@ -1822,7 +1822,7 @@
     "/patterns/distributed/routing/object-storage.html": {
       "system-design-interview": {
         "role": "Keep large blobs out of the database",
-        "tour": "Where images, video, and other large blobs belong — not in the database, which bloats and slows the moment you cram bytes into it. Keep a reference in the row and let a content delivery network (CDN) serve the object from the edge.",
+        "tour": "Where images, video, and other large blobs belong — not in the database, which bloats and slows as blobs grow. Keep a reference in the row and let the CDN serve the object from the edge.",
         "fluency": "Keep large blobs out of the database"
       }
     },
@@ -1855,7 +1855,7 @@
     "/patterns/distributed/routing/sharding.html": {
       "system-design-interview": {
         "role": "Split data when one database won't fit",
-        "tour": "Scaling storage, not compute. When one database can no longer hold or serve the data, split it across instances by a partition key — and be ready to defend your choice of key against hot-shard skew.",
+        "tour": "Scaling storage and write throughput. When one database can no longer hold or serve the data, split it across instances by a partition key — and be ready to defend your choice of key against hot-shard skew.",
         "fluency": "Split data when one database won't fit"
       },
       "scalability": {
@@ -1909,7 +1909,7 @@
       },
       "system-design-interview": {
         "role": "The precondition for horizontal scale",
-        "tour": "The precondition for everything else. Push per-client state out to a shared store and any instance can serve any request — which is what makes adding, removing, and replacing servers cheap. Almost every \"how does this scale?\" answer starts here.",
+        "tour": "Per-client state lives in a shared store, so any instance can serve any request, which makes adding, removing and replacing servers cheap. Almost every \"how does this scale?\" answer starts here.",
         "fluency": "The precondition for horizontal scale"
       },
       "realtime-updates": {
@@ -2033,7 +2033,7 @@
     "/patterns/gof/behavioral/command.html": {
       "event-modeling": {
         "role": "The user's intent, as its own object",
-        "tour": "The second lane is this pattern by construction: an intent captured as an object, separate from whatever decides to accept it. Modelling it explicitly is what makes the given-when-then specification writable, because the command is the \"when\".",
+        "tour": "The second lane is this pattern: an intent captured as an object, separate from whatever decides to accept it. Modelling it explicitly is what makes the given-when-then specification writable, because the command is the \"when\".",
         "fluency": "The user's intent, as its own object"
       }
     },
@@ -2225,7 +2225,7 @@
     "/patterns/messaging/message-queue.html": {
       "system-design-interview": {
         "role": "Decouple services and absorb bursts",
-        "tour": "The answer to \"what if this step is slow, or spikes?\" A queue lets one service hand work to another asynchronously, decoupling them and absorbing bursts — the seam where load-levelling, retries, and delivery guarantees all come up.",
+        "tour": "The answer to \"what if this step is slow, or spikes?\" A queue lets one service hand work to another asynchronously, decoupling them and absorbing bursts, at the price of added latency and possible duplicate delivery. Load-levelling, retries and delivery guarantees all come up here.",
         "fluency": "Decouple services and absorb bursts"
       },
       "streaming": {
@@ -2285,7 +2285,7 @@
     "/patterns/ml/embeddings.html": {
       "ml-system-design": {
         "role": "The default representation for categorical, graph, and text signals",
-        "tour": "The default way to feed high-cardinality categorical, graph, and text signals into a model, and the backbone of retrieval-style architectures. Being specific about the loss, negatives, and dimensionality is what reads as real production experience.",
+        "tour": "A common way to feed high-cardinality (many distinct values) categorical, graph, and text signals into a model, and the backbone of retrieval-style architectures. Name the loss, the negatives (examples the model should score low) and the dimensionality: specifics like these read as production experience.",
         "fluency": "The default representation for categorical, graph, and text signals"
       },
       "harmful-content": {
@@ -2312,7 +2312,7 @@
       },
       "ml-system-design": {
         "role": "The Inference and Evaluation phase: offline metrics that predict online, tied to the objective",
-        "tour": "Design offline metrics that predict online results and tie back to the business objective; strong machine learning (ML)-metric performance with no business impact is not valued. Each system type — classification, recommender, search, generative — needs its own evaluation strategy.",
+        "tour": "Design offline metrics that predict online results and tie back to the business objective; strong ML-metric performance with no business impact carries little weight. Each system type (classification, recommender, search, generative) needs its own evaluation strategy.",
         "fluency": "The inference-and-evaluation phase: offline metrics that predict online, tied to the objective"
       },
       "harmful-content": {
@@ -2334,7 +2334,7 @@
     "/patterns/ml/feature-engineering.html": {
       "ml-system-design": {
         "role": "The Data and Features phase: enumerate sources, encode, keep train and serve in sync",
-        "tour": "The data-and-features phase is where interviews are won or lost. Enumerate signal sources before individual features, choose an encoding per source, and flag the pitfalls — leakage, cold start, drift — that a given problem is most exposed to.",
+        "tour": "The data-and-features phase often decides the interview. Enumerate signal sources before individual features, choose an encoding per source, and name the pitfalls this problem is most exposed to: leakage (a feature that carries the answer; a time-based split helps catch it), cold start (a new user or item with no history) and drift (inputs that change over time).",
         "fluency": "The data-and-features phase: enumerate sources, encode, keep train and serve in sync"
       },
       "harmful-content": {
@@ -2356,7 +2356,7 @@
     "/patterns/ml/generalization.html": {
       "ml-system-design": {
         "role": "The will-it-hold-up phase: capacity vs data, regularisation, drift",
-        "tour": "Model capacity against available data, regularisation, and drift — the questions behind \"will this hold up in production?\" Proposing a huge model on tiny data is a red flag interviewers are highly sensitive to.",
+        "tour": "Model capacity against available data, regularisation (a penalty that discourages overfitting), and drift: the questions behind \"will this hold up in production?\" Interviewers often mark down a huge model proposed on tiny data.",
         "fluency": "The will-it-hold-up phase: capacity vs data, regularisation, drift"
       },
       "harmful-content": {

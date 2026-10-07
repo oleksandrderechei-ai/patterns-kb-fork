@@ -19,23 +19,23 @@ Where event storming asks what happens in the business, event modeling asks what
 ## Explained
 <!--meta block=explain-->
 
-Event modeling lays out a system on one timeline with four lanes: the screens, the commands users issue (a request to do something), the events the system records (a fact that happened), and the read models that screens display (data shaped for one view). Every item must connect to its neighbours, so a screen with no read model behind it, or an event no command causes, shows up as a hole in the drawing before anyone writes code. Choose it over plain iterative delivery when the flow is known and complex, such as a payment lifecycle, because you can estimate and slice work from the drawing. Do not choose it for a product still finding its shape, where you redraw faster than you build. It also tempts you to store events as the source of truth, which is [event sourcing](../patterns/architecture/event-sourcing.md), a much larger commitment. Choose that only when you must rebuild past state or audit every change.
+Event modeling lays out a system on one timeline with four lanes: the screens, the commands users issue (a request to do something), the events the system records (a fact that happened), and the read models that screens display (data shaped for one view). Every item must connect to its neighbours, so a screen with no read model behind it, or an event no command causes, shows up as a hole in the drawing before anyone writes code. Choose it over plain iterative delivery when the flow is known and complex, such as a payment lifecycle, and its steps and failure branches can be written down and are not changing, because you can estimate and slice work from the drawing. Do not choose it for a product still finding its shape, where you redraw faster than you build. It also tempts you to store events as the source of truth, which is [event sourcing](../patterns/architecture/event-sourcing.md), a much larger commitment. Choose that when you must rebuild past state or audit every change.
 
-- **Up-front days.** Modeling takes days before any code, so model one flow at a time.
-- **Ageing drawing.** The drawing becomes a snapshot as the system changes, so redraw before you slice new work from it.
+- **Up-front days.** Modeling takes days before any code, so model one flow at a time; the refund example below took 2 days.
+- **Ageing drawing.** It goes stale as the system changes: before slicing, re-trace each screen to its events and redraw any broken flow.
 
-**Example.** A payments team models the refund flow in 2 days. The drawing has 4 screens, 6 commands, 9 events and 4 read models. Tracing the Refund status screen back, they find no event records the date a refund was paid, a gap found before any code. Each command becomes a spec: given PaymentCaptured of 50, when RequestRefund of 60 arrives, then RefundRejected follows. With about 3 such cases per command, that is 18 tests and work items. No one must reconstruct past balances, so they keep ordinary tables, not event sourcing.
+**Example.** A payments team models the refund flow in 2 days. The drawing has 4 screens, 6 commands, 9 events and 4 read models. Tracing the Refund status screen back, they find no event records the date a refund was paid, a gap found before any code. Each command becomes a spec in given-when-then form: given PaymentCaptured of 50, when RequestRefund of 60 arrives, then RefundRejected follows. With about 3 such cases per command, that is 18 specs to test and estimate. No one must reconstruct past balances, so they keep ordinary tables, not event sourcing.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-The technique buys completeness and charges for it in up-front effort. Drawing every screen, command, event and read model for a whole system takes days, and the drawing is only correct while the system matches it — so the choice is between maintaining it as a living artifact and accepting that it is a snapshot that was useful once. Most teams get the value in the first pass and let it age, which is fine as long as nobody later mistakes it for documentation.
+The technique buys completeness and charges for it in up-front effort. Drawing every screen, command, event and read model for a whole system takes days, and the drawing is only correct while the system matches it — so the choice is between maintaining it as a living artifact and accepting that it is a snapshot that was useful once. A team often gets the value in the first pass and lets it age, which is fine as long as nobody later mistakes it for documentation.
 
 The sharper trade is against ordinary iterative delivery. A complete model before implementation is a plan, and plans assume the requirements hold still. The technique is at its strongest where the flow is genuinely known and complex — a regulated process, a payment lifecycle, a fulfilment chain — and at its weakest on a product still discovering what it is, where the model is redrawn faster than it can be built.
 
-The third trade is architectural gravity. A model expressed as commands, events and projections makes an event-sourced, read-model-projecting implementation look like the obvious next step, because the drawing is already shaped like one. That is a real risk: the notation should not decide the persistence strategy. Ask whether you need to reconstruct past state and audit every change — and if the answer is no, keep the model and store rows.
+The third trade is the pull toward event sourcing. A model expressed as commands, events and read models built from those events makes an event-sourced implementation look like the obvious next step, because the drawing is already shaped like one. The notation should not decide the persistence strategy. Ask whether you need to reconstruct past state or audit every change. If the answer is no, keep the model and store rows.
 
-```mermaid caption="Every element must connect to the lane on either side of it. A read model with no events feeding it, or an event with no command causing it, is a hole in the design that the drawing makes impossible to overlook."
+```mermaid caption="Every element must connect to the lane on either side of it. A read model with no events feeding it, or an event with no command causing it, is a hole in the design, and tracing each element to its neighbours makes it visible."
 flowchart LR
     subgraph L["The four lanes, read left to right in time"]
         UI["Interface — what the user sees"]
@@ -58,15 +58,15 @@ flowchart LR
 
 ### [Command](../patterns/gof/behavioral/command.md) {#tour-command}
 
-The second lane is this pattern by construction: an intent captured as an object, separate from whatever decides to accept it. Modelling it explicitly is what makes the given-when-then specification writable, because the command is the "when".
+The second lane is this pattern: an intent captured as an object, separate from whatever decides to accept it. Modelling it explicitly is what makes the given-when-then specification writable, because the command is the "when".
 
 ### [Domain Event](../patterns/ddd/domain-event.md) {#tour-domain-event}
 
-The third lane. Each note is a past-tense fact, and the rule that every event needs a command in front of it is what stops the model containing effects that nothing causes.
+The third lane. Each note is a past-tense fact, and the rule that every event needs a cause, usually a command in front of it, is what stops the model containing effects that nothing causes.
 
 ### [Materialized View](../patterns/distributed/coordination/materialized-view.md) {#tour-materialized-view}
 
-The fourth lane is a projection: a shape maintained from events specifically so a screen can be answered in one read. Drawing it per screen is what surfaces how many distinct read shapes a system actually needs, which is almost always more than anyone guessed.
+The fourth lane is a projection: a shape maintained from events specifically so a screen can be answered in one read. Drawing it per screen is what surfaces how many distinct read shapes a system actually needs, so the number is counted from the drawing, not guessed.
 
 ### [CQRS](../patterns/architecture/cqrs.md) {#tour-cqrs}
 
@@ -74,7 +74,7 @@ The notation separates the two sides before you decide anything, so the split is
 
 ### [Saga](../patterns/distributed/coordination/saga.md) {#tour-saga}
 
-Wherever the model says one event automatically triggers a later command, there is a long-running process with its own state and its own failure branches. The drawing names it; this pattern is what it costs to build.
+Wherever the model says one event automatically triggers a later command that can fail or wait, there is a long-running process with its own state and its own failure branches. The drawing names it; this pattern is the code that tracks that state and handles those failures.
 
 ### [Event Sourcing](../patterns/architecture/event-sourcing.md) {#tour-event-sourcing}
 
@@ -88,10 +88,10 @@ The model looks like an event-sourced system because it is drawn in events, and 
 | If you need… | Signal | Reach for |
 | --- | --- | --- |
 | To agree what the domain even is, before designing anything | Vocabulary disputed | [Event Storming](./event-storming.md) |
-| A blueprint complete enough to estimate and slice into work | Flow known, design not | A full four-lane model |
-| To specify one command's behaviour and its test in one line | Given-When-Then | [Command](../patterns/gof/behavioral/command.md) |
-| To answer a screen in one read rather than assembling it | Given-Then | [Materialized View](../patterns/distributed/coordination/materialized-view.md) |
-| To handle an event that automatically triggers later work | Policy with failure branches | [Saga](../patterns/distributed/coordination/saga.md) |
+| A blueprint complete enough to estimate and slice into work | Flow known, design not yet drawn | A full four-lane model |
+| To specify one command's behaviour and its test in one line | Behaviour argued over, no testable rule | [Command](../patterns/gof/behavioral/command.md) |
+| To answer a screen in one read rather than assembling it | Screen assembled from several queries | [Materialized View](../patterns/distributed/coordination/materialized-view.md) |
+| To handle an event that automatically triggers later work | A policy (an event that triggers a command) with failure branches | [Saga](../patterns/distributed/coordination/saga.md) |
 | To reconstruct any past state, or audit every change | History is a requirement | [Event Sourcing](../patterns/architecture/event-sourcing.md) |
 
 ## Related areas
