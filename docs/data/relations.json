@@ -14020,6 +14020,27 @@
       "b": "split-brain",
       "note_a": "Replicas that each accept writes after a cut link can diverge into two histories.",
       "note_b": "Replicas that each accept writes after a cut link diverge into two histories."
+    },
+    {
+      "a": "rate-limiter",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "A counter read on two threads at once admits request 101 past the limit",
+      "note_b": "Rate Limiter's check-then-count is a check-then-act race when its counter is shared"
+    },
+    {
+      "a": "connection-pool-exhaustion",
+      "verb": "often-confused-with",
+      "b": "deadlock",
+      "note_a": "Nested checkouts can deadlock a pool; plain exhaustion needs no cycle, only holders slower than demand",
+      "note_b": "Both freeze a request path at idle CPU; deadlock needs a lock cycle, pool exhaustion needs only slow holders"
+    },
+    {
+      "a": "semaphore",
+      "verb": "exposed-to",
+      "b": "starvation",
+      "note_a": "Barging permit release lets a fresh thread retake the permit and starve queued waiters.",
+      "note_b": "A semaphore whose release lets the releasing thread retake the permit starves the queued waiters."
     }
   ],
   "group_order": {

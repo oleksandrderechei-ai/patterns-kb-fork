@@ -254,6 +254,10 @@ if (!limiterFor(`resend:${flowId}`, 3, 3 / 3600).tryConsume()) throw new Error("
 - [Thundering Herd](../../../hazards/thundering-herd.md) — Sheds a synchronized wave the resource is not sized for
 - [Cascading Failure](../../../hazards/cascading-failure.md) — A cap protects the survivors while capacity is short
 
+**Exposed to**
+
+- [Race Condition](../../../hazards/race-condition.md) — A counter read on two threads at once admits request 101 past the limit
+
 **Demonstrated by**
 
 - [Distributed Rate Limiter](../../../designs/distributed-rate-limiter.md) — shows the pattern's mechanics realised across a gateway fleet: identify client, check quota, reject overflow with headers

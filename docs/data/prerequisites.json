@@ -2145,7 +2145,7 @@
       "definition": "Two holders each wait for a lock the other holds, forever",
       "route": "/hazards/deadlock.html",
       "requires": [],
-      "related": ["starvation", "priority-inversion"]
+      "related": ["starvation", "priority-inversion", "connection-pool-exhaustion"]
     },
     {
       "id": "starvation",
@@ -2194,6 +2194,14 @@
       "route": "/hazards/busy-database.html",
       "requires": [],
       "related": ["extraneous-fetching"]
+    },
+    {
+      "id": "connection-pool-exhaustion",
+      "label": "Connection-Pool Exhaustion",
+      "definition": "Every pool slot is held by a slow call, so requests hang instead of failing",
+      "route": "/hazards/connection-pool-exhaustion.html",
+      "requires": [],
+      "related": ["deadlock"]
     },
     {
       "id": "retry-storm",

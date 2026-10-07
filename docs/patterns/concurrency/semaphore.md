@@ -231,5 +231,6 @@ func callDownstream() error {
 **Exposed to**
 
 - [Connection-Pool Exhaustion](../../hazards/connection-pool-exhaustion.md) — Can fall into connection pool exhaustion when a counted permit with no acquire timeout parks callers behind slow holders
+- [Starvation](../../hazards/starvation.md) — Barging permit release lets a fresh thread retake the permit and starve queued waiters.
 
 <!-- relationships:end -->
