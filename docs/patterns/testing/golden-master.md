@@ -28,7 +28,7 @@ A golden master test runs a system over a wide set of real inputs, saves today's
 - **Bulk approval.** Approving many differences at once can wave through a real bug; approve in small steps and read each diff.
 - **Pinned bugs.** It records current behaviour, bugs included; add direct assertions for the rules you know are right.
 
-**Example.** A legacy invoice renderer has no tests. You run it over 500 real orders and save 500 outputs of about 4 KB, 2 MB in all. Every file differs on the print-time line, so you replace that line with a fixed value before saving. You then refactor the tax rounding, and 37 of the 500 invoices differ, 7.4 percent, each by one cent. You read three of them, see the rounding change was intended, and approve the new copy. The cost is that the saved copy now also pins every other behaviour, wrong ones included, so you add direct tests for the rules you know, such as tax on a 100.00 order being 8.25.
+**Example.** A legacy invoice renderer has no tests. You run it over 500 real orders and save 500 outputs of about 4 KB, 2 MB in all. Every file differs on the print-time line, so you replace that line with a fixed value before saving. You then refactor the tax rounding, and 37 of the 500 invoices differ, 7.4 percent, each by one cent. You group the 37 diffs by cause, sample each group, confirm each is a one-cent rounding change, and approve the new copy. The cost is that the saved copy now also pins every other behaviour, wrong ones included, so you add direct tests for the rules you know, such as tax on a 100.00 order being 8.25.
 
 ## How it works
 <!--meta block=structure-->
@@ -59,17 +59,18 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Builds a safety net fast**, without first having to understand the code being pinned.
-- **Catches any behavioral change**, including ones nobody thought to assert on explicitly.
-- **Scales cheaply to outputs that are large, structured**, or otherwise painful to check field by field.
-- **Ideal first move before refactoring legacy code** with thin or no existing coverage.
+- **Catches any change in output** for the inputs it was run over, including ones nobody thought to assert on.
+- **Cheap to write for large output**, but review cost grows with the number of master files and their size.
+- **A common first move before refactoring legacy code** with thin coverage, if the output can be made deterministic.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **A failing test says something changed**, not whether it's a bug — every diff needs a human to interpret.
-- **Nondeterministic output causes false failures** unless scrubbed first (timestamps, random IDs, ordering).
+- **Nondeterministic output causes false failures** unless scrubbed first (timestamps, random IDs, ordering). Environment differences such as locale or line endings also break it across machines; pin them in CI.
 - **Approving a new golden** file can rubber-stamp a real regression if done carelessly or in bulk.
 - **Encodes current behavior**, not intended behavior — it proves nothing about whether the master was ever correct.
+- **Every intended change can produce many diffs**, so review fatigue grows with master size; keep masters small and split by area.
 
 ## When to use it
 <!--meta block=usage-->
@@ -79,7 +80,7 @@ flowchart LR
 
 - **You're about to refactor code** with little or no test coverage and need a safety net first.
 - **The output is too large, complex**, or opaque to assert on piece by piece.
-- **You need to prove** "nothing changed" across a change, not verify one specific behavior.
+- **You need to show** that output is unchanged across a change, for a broad sample of inputs.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -92,13 +93,17 @@ flowchart LR
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — a minimal golden-master assertion"
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 
 function assertGoldenMaster(name: string, actual: string): void {
   const path = `./__golden__/${name}.snap`;
 
+  if (!existsSync(path) && process.env.CI) {
+    throw new Error(`Missing golden master "${name}" in CI; approve it locally and commit it.`);
+  }
   if (!existsSync(path) || process.env.UPDATE_GOLDEN) {
-    writeFileSync(path, actual);   // first run, or an explicit approval
+    mkdirSync("./__golden__", { recursive: true });
+    writeFileSync(path, actual); // first run locally, or an explicit approval
     return;
   }
 

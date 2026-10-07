@@ -16,19 +16,19 @@ Set up the state a test needs, perform the one action under test, then check the
 ## What it is
 <!--meta block=description-->
 
-Arrange-Act-Assert is a way to shape a test body, not a library: arrange builds inputs and preconditions, act calls the single behaviour under test, assert checks the result, always in that order. Tests are read far more than written, so a fixed shape shows a reader what is under test and what is expected, and exposes a missing act or assert. Bill Wake named it in 2001.
+Arrange-Act-Assert is a way to shape a test body, not a library: arrange builds inputs and preconditions, act calls the one behaviour under test, assert checks the result, in that order. Tests are read far more than written, so a fixed shape shows a reader what is under test and what is expected, and exposes a missing act or assert. Bill Wake named it in 2001.
 
 ## Explained
 <!--meta block=explain-->
 
-Arrange-Act-Assert is a way to lay out a test body in three visible parts, in order: arrange builds the inputs and starting state, act calls the one behaviour under test, and assert checks the result. Tests are read far more often than written, usually by someone trying to learn what broke, and a test that mixes setup, calls and checks makes that reader trace the flow line by line. Choose it over a free-form test whenever more than one line of setup is involved, because a failure then points at a part: bad setup, a wrong call or a wrong result. A test with no real act or no real assert is also easy to spot.
+Arrange-Act-Assert is a way to lay out a test body in three visible parts, in order: arrange builds the inputs and starting state, act calls the one behaviour under test, and assert checks the result. Tests are read far more often than written, usually by someone trying to learn what broke, and a test that mixes setup, calls and checks makes that reader trace the flow line by line. Choose it over a free-form test for any test with a fixed input and one outcome, because a failed assert points at one act and one expected result. A test with no real act or no real assert is also easy to spot.
 
 - **Bloated assert.** An assert block can grow to check many unrelated things, so test one behaviour and assert one outcome.
 - **Repeated arrange.** Long setup repeats across tests, so move it into a helper or builder.
 - **Fused act.** Catching a thrown error joins act and assert, so treat the call wrapped in the expectation as the act.
 - **No cleanup slot.** Cleanup has no part of its own, so give it a named fixture.
 
-**Example.** A transfer test is written as 12 interleaved lines: create an account, check it, create another, move 30, check, move again, check. It fails at line 9, and you must read all 9 lines to learn which step is wrong. Rewritten, arrange creates accounts holding 100 and 50, act moves 30 once, and assert expects 70 and 80. A failure now names the assert and the one act above it. The cost is that the 6-line arrange block repeats across 40 transfer tests, 240 lines, so it moves into one makeAccounts helper.
+**Example.** A transfer test is written as 12 interleaved lines: create an account, check it, create another, move 30, check, move again, check. It fails at line 9, and you must read all 9 lines to learn which step is wrong. Rewritten, arrange creates accounts holding 100 and 50, act moves 30 once, and assert expects 70 and 80. A failure now names the assert and the one act above it. The cost is that, say, a 6-line arrange block repeats across 40 transfer tests, 240 lines, so it moves into one makeAccounts helper.
 
 ## How it works
 <!--meta block=structure-->
@@ -44,8 +44,8 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Given-When-Then** — The BDD vocabulary for the identical three-part shape — Given sets up state, When performs the action, Then checks the outcome.
-- **Four-phase test** — Wraps AAA in explicit setup and teardown phases, so shared fixture management is separated from the arrange step of any single test.
-- **Table-driven / parameterized AAA** — One Arrange-Act-Assert body runs once per row of a data table, trading a wall of near-duplicate tests for a single documented case shape.
+- **Four-phase test** — Wraps AAA in explicit setup and teardown phases, so shared fixture management is separated from the arrange step of any single test. Teardown is for state outside the test, such as files, connections or global stubs; in-memory objects need none.
+- **Table-driven / parameterized AAA** — One Arrange-Act-Assert body runs once per row of a data table, replacing many near-duplicate tests with one documented case shape. Split a row into its own test once its arrange or assert differs from the rest.
 - **[Test data builders](./test-data-builder.md) / Object Mother** — Push the Arrange phase behind a builder or factory function, so each test states only the inputs that matter to the case at hand.
 
 ## Trade-offs
@@ -73,15 +73,15 @@ flowchart LR
 ### Reach for it when
 <!--meta polarity=when-->
 
-- **Writing any unit or integration test** with a fixed input, one action, one expected outcome shape.
-- **Consistent tests across a codebase** — you want tests that read consistently, regardless of who wrote them.
-- **Newcomers skimming the suite** — engineers unfamiliar with the code need to skim the test suite and infer behavior quickly.
+- **Writing any unit or integration test** with a fixed input, one action and one expected outcome.
+- **Consistent tests across a codebase** — tests should read the same way, whoever wrote them.
+- **Newcomers skimming the suite** — engineers new to the code need to skim the suite and infer behaviour fast.
 
 ### Avoid when
 <!--meta polarity=avoid-->
 
 - **The test is property-based and generates many inputs** — there's no single fixed state to arrange.
-- **You mean to compare** a whole output wholesale rather than discrete expectations — that's [Golden Master](./golden-master.md) territory.
+- **You compare the whole output** in one go, not discrete expectations — that is [Golden Master](./golden-master.md) territory: use it when the output is too large to list expectations one by one.
 - **The test is a throwaway exploratory spike**, never meant to stay in the suite.
 
 ## Code sketch

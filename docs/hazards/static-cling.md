@@ -89,9 +89,9 @@ Two traps on the way out. A global lookup registry is the same hazard wearing an
 
 - [Dependency Injection](../patterns/gof/extra/dependency-injection.md) — The seam appears the moment the collaborator arrives as a parameter
 - [Adapter](../patterns/gof/structural/adapter.md) — A thin instance-level wrapper is the whole fix for a third-party static application programming interface (API)
-- [Test Stub](../patterns/testing/test-stub.md) — Substituting a canned collaborator is exactly what a static call makes impossible
 - [Dependency Inversion Principle](../principles/dependency-inversion.md) — Depending on an abstraction the caller owns is the general form of the fix
 - [Gateway](../patterns/enterprise/gateway.md) — An injected gateway turns a hidden static call to the outside world into a visible dependency
+- [Test Stub](../patterns/testing/test-stub.md) — Code that takes its collaborator at a seam, so a stub can stand in, has no static call to cling to
 
 **Threatens**
 

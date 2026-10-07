@@ -28,7 +28,7 @@ A test stub is a test double that returns the same prepared answers whenever you
 - **Self-testing.** Stubbing part of what you test checks your own canned value; draw the boundary first.
 - **Multiplication.** One stub per scenario piles up; make one stub that takes the answer as a parameter.
 
-**Example.** A pricing function converts euros using an exchange-rate service. A stub returns 1.10, so 100 euros must give 110.00 dollars, and the test runs in 1 ms with no network. A second stub throws a timeout, to test the fallback to yesterday's rate, which the real service rarely produces on demand. The cost: the real service starts returning the rate as the string 1.10, the stubs still return a number, and both tests stay green while production breaks. A contract test against the real service would catch it.
+**Example.** A pricing function converts euros using an exchange-rate service. A stub returns 1.10, so 100 euros must give 110.00 dollars, and the test runs with no network call, so it is fast and the same every run. A second stub throws a timeout, to test the fallback to yesterday's rate, which the real service rarely produces on demand. The cost: the real service starts returning the rate as the string 1.10, the stubs still return a number, and both tests stay green while production breaks. A contract test that checks the response type against the real service would catch it.
 
 ## How it works
 <!--meta block=structure-->
@@ -51,9 +51,9 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Fixed-response stub** — Returns the same canned value on every call regardless of arguments — the simplest and most common form.
-- **Parameterized / sequenced stub** — Returns a different canned answer depending on the input, or the next value in a preloaded sequence — useful for polling or pagination scenarios.
+- **Parameterized / sequenced stub** — Returns a different canned answer depending on the input, or the next value in a preloaded sequence — useful for polling or pagination scenarios. A sequenced or argument-keyed stub still holds only a preloaded table; once it computes answers or keeps state, it is a fake.
 - **Saboteur stub** — Throws an exception or returns an error code instead of a value, to exercise error-handling paths that the real collaborator rarely fails on demand.
-- **Recorded / fixture-replay stub** — Canned answers captured verbatim from a real call (an HTTP fixture, a database snapshot) and replayed, keeping the stub honest to a real shape without a live dependency.
+- **Recorded / fixture-replay stub** — Canned answers captured verbatim from a real call (an HTTP fixture, a database snapshot) and replayed. The stub keeps the real response shape without a live dependency. Re-record on a schedule and scrub secrets and personal data from the capture.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -63,7 +63,7 @@ sequenceDiagram
 
 - **Removes dependence on slow**, flaky, or unavailable collaborators — networks, databases, third-party APIs.
 - **Makes hard-to-trigger conditions trivial to construct**: errors, timeouts, empty results, edge-case data.
-- **Deterministic and fast** — the same canned answer every run, with no side effects to clean up.
+- **Deterministic and fast**: the same canned answer every run, with no side effects in the collaborator; process-wide patches still need teardown.
 - **The simplest double to write**: no expectation-setting DSL (domain-specific language), no call-matching logic.
 
 ### Cons
@@ -73,7 +73,8 @@ sequenceDiagram
 - **Canned data can drift** from what the real dependency actually returns, letting tests pass against a stale contract.
 - **Overuse encourages testing against your own fixtures** rather than real integration behavior.
 - **One stub per scenario tends to multiply**, adding maintenance surface when the real interface changes.
-- **Stub something that is part** of what you are testing and the assertion checks your own canned value — the test stays green while the logic it was written for never runs, so be explicit about where the boundary falls before replacing anything.
+- **Stubbing part of what you test** makes the assertion check your own canned value; the logic never runs. Draw the boundary before you replace anything.
+- **Hides missing interaction checks** — Stubbing a command (a call with side effects) hides that it never ran; use a stub for queries and a spy or mock for commands.
 
 ## When to use it
 <!--meta block=usage-->
@@ -140,28 +141,28 @@ await expect(brittle.getFormattedBalance("acc_1")).rejects.toThrow();
 <!--meta polarity=knob-->
 
 - **Hand-written vs recorded fixtures** — Canned answers typed by hand are cheap to make and quick to drift; answers captured from a real call and replayed stay honest to a real response shape, at the cost of a re-recording workflow.
-- **Simulated latency and faults** — Whether the stub answers instantly or can inject delays, timeouts, and connection failures. Instant answers keep the suite fast but leave the timeout and retry paths of the code under test permanently unexercised.
+- **Simulated latency and faults** — Whether the stub can inject delays, timeouts and connection failures. Instant answers keep the suite fast but leave the code's timeout and retry paths unexercised.
 - **Behavior on unmatched calls** — What happens when the system under test makes a call the stub has no canned answer for — return a bland default, or fail loudly. Defaults hide wiring mistakes; loud failure catches calls you did not anticipate.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Bugs that only integration catches** — Defects that sail through the stubbed suite and surface first against the real dependency are the direct measure of fixture drift — each one marks a canned answer that no longer tells the truth.
+- **Bugs that only integration catches** — Defects the stubbed suite misses and the real dependency exposes. Each one is a canned answer that has drifted.
 - **Age of recorded fixtures** — Time since each captured response was last re-recorded against the live dependency; the older the capture, the more API evolution it has silently missed.
-- **Stub count per collaborator** — How many distinct stubs exist for one interface. A swelling count is the advance warning that the next change to that interface will be an expensive, many-file edit.
+- **Stub count per collaborator** — How many distinct stubs exist for one interface. A rising count means the next change to that interface touches many files.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Contract drift** — The real dependency renames a field, adds an enum value, or changes its error shape — and every stubbed test keeps passing against the stale contract while production breaks.
-- **The stub is kinder than the real thing** — Real collaborators fail slowly, paginate, and return partial data; a stub that always answers instantly and completely means timeout, retry, and pagination logic ships untested.
+- **Contract drift** — The real dependency renames a field, adds an enum value or changes its error shape. Stubbed tests keep passing while production breaks.
+- **The stub is kinder than the real thing** — Real collaborators fail slowly, paginate and return partial data. A stub that always answers instantly and fully leaves timeout, retry and pagination logic untested.
 - **Leaked interceptors** — Stubs installed process-wide — patched modules, intercepted HTTP — outlive their test when teardown is missed, so an unrelated test later passes or fails depending on run order.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- Back every stubbed interface with at least one contract or integration test against the real dependency in continuous integration (CI), so drift surfaces there instead of in production.
-- Re-record captured fixtures on a schedule or on provider version bumps, and keep the capture date visible next to the fixture.
+- Back every stubbed interface with at least one contract or integration test against the real dependency in continuous integration (CI), so drift surfaces there instead of in production. The contract test covers each field and error shape the stubs return, and runs on every provider version bump.
+- Re-record captured fixtures on a schedule or on provider version bumps, and keep the capture date visible next to the fixture. Fail CI when a fixture's capture date is older than the interval you set.
 - Configure unmatched calls to fail loudly rather than answer with defaults.
 - Tear stubs down after every test — restore patched methods and clear interceptors so no canned answer leaks into the next test.
 - Give every collaborator a saboteur variant — errors, timeouts, empty results — not just the happy-path canned answer.
@@ -197,6 +198,6 @@ await expect(brittle.getFormattedBalance("acc_1")).rejects.toThrow();
 
 **Prevents**
 
-- [Static Cling](../../hazards/static-cling.md) — Needs a seam to substitute at, which a static call to stateful code does not provide
+- [Static Cling](../../hazards/static-cling.md) — Wanting to stub a collaborator forces it behind an injected seam, which leaves no static call to cling to
 
 <!-- relationships:end -->

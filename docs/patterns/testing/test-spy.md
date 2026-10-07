@@ -16,17 +16,17 @@ A test spy stands in for a real collaborator during the exercise phase and recor
 ## What it is
 <!--meta block=description-->
 
-A test spy replaces a real collaborator and quietly records each call it receives: which method, which arguments, how many times and in what order. The test runs the code as normal, then asserts on the recorded history. It makes invisible interactions, such as an email sent or an event published, inspectable. Unlike a mock it never fails mid-call, and unlike a stub it remembers.
+A test spy replaces a real collaborator and quietly records each call it receives: which method, which arguments, how many times and in what order. The test runs the code as normal, then asserts on the recorded history. It makes invisible interactions, such as an email sent or an event published, inspectable. Unlike a mock it does not fail on an unexpected call itself, and unlike a stub it remembers.
 
 ## Explained
 <!--meta block=explain-->
 
-A test spy stands in for a real collaborator and quietly records every call it receives, which method, with which arguments, how many times and in what order. The test runs the code as usual, then reads the record and judges it. Use it when the behaviour leaves no trace the test can read, such as an email sent or an event published. Choose it over a [mock](mock-object.md) when you want the test, not the double, to decide pass or fail, because a mock fails in the middle of the call and a spy leaves the verdict to you. Choose it over a [stub](test-stub.md), which keeps no record, when the call itself matters.
+A test spy stands in for a real collaborator and quietly records every call it receives, which method, with which arguments, how many times and in what order. The test runs the code as usual, then reads the record and judges it. Use it when the behaviour leaves no trace the test can read, such as an email sent or an event published. Choose it over a [mock](mock-object.md) when you want the test, not the double, to decide pass or fail, because a classic mock fails in the middle of the call, while a spy records and leaves the verdict to the test, though a call-through spy still raises whatever the real object raises. Choose it over a [stub](test-stub.md), which keeps no record, when the call itself matters.
 
 - **Brittle call shapes.** Exact call shapes break on harmless refactors, so assert only the fields that matter.
 - **Outcome blindness.** Checking how the code called its helper says nothing about what it achieved, so also check the outcome.
 - **Argument matching.** Complex arguments need matching logic, so compare one field at a time.
-- **Change detector.** Many spies with no outcome checks make the suite fail on every refactor, so cut them.
+- **Change detector.** Many spies with no outcome checks make the suite fail on refactors that change no behaviour, so add outcome checks or cut spies.
 
 **Example.** placeOrder should send one confirmation. A retry bug sends it twice for the 3% of orders that retry, 30 duplicate emails a day across 1,000 orders. No return value or stored state shows this. A spy records two send calls, and the test asserts the record holds exactly one. The test then fails with a count of 2. The cost: when the team later sends confirmations in batches, the spy sees one call with many orders and the test breaks although every customer still gets the email, so you rewrite it to check recipients sent, not number of calls.
 
@@ -54,9 +54,9 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Recording spy** — Pure record-only: implements the collaborator's interface, does nothing but push each call onto a list, returns nothing meaningful.
-- **Call-through spy** — Wraps a real object and delegates every call to it after recording — verifies the wiring is correct while adding no expectations, the shape behind `sinon.spy(obj, "method")` or Jest's `spyOn`.
+- **Call-through spy** — Wraps a real object and delegates every call after recording. It checks the wiring and adds no expectations; this is the shape behind `sinon.spy(obj, "method")` or Jest's `spyOn`.
 - **Spy with canned return** — Records calls and answers with a fixed value, so a single object covers both the input side (stub) and the observation side (spy) of the same collaborator.
-- **Framework-generated spy** — Auto-created by the test framework (`jest.fn()`) rather than hand-written — same recording behavior, none of the boilerplate of a bespoke class.
+- **Framework-generated spy** — Auto-created by the test framework (`jest.fn()`) rather than hand-written; records the same way, with no hand-written class.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -66,7 +66,7 @@ sequenceDiagram
 
 - **Makes invisible interactions visible**: you can assert on arguments, call count, and order, not just return values.
 - **Verification happens after the exercise phase**, so setup and assertion stay cleanly separated.
-- **Works on silent collaborators** — it works even when the collaborator has no return value or observable state at all.
+- **Works on silent collaborators** that have no return value or observable state.
 - **Can call through to the real implementation**, checking the wiring without declaring expectations up front.
 
 ### Cons
@@ -76,6 +76,8 @@ sequenceDiagram
 - **Tests how, not what** — overused, it tests how code called a collaborator instead of what the code accomplished.
 - **Matching recorded arguments against** expected ones needs its own logic once arguments get complex.
 - **A pile of spies** with no assertions on outcome turns a test suite into a change-detector.
+- **Captures references** — The spy stores argument references, so a later mutation by the code under test changes what the record shows; copy the arguments when recording.
+- **Leaks between tests** — Spies on shared objects keep recorded calls and patches across tests unless reset or restored after each one, so order-dependent failures appear.
 
 ## When to use it
 <!--meta block=usage-->
@@ -131,7 +133,7 @@ test("placing an order notifies the customer", () => {
 
 - **Jest jest.fn() / jest.spyOn** — \`jest.fn()\` and \`jest.spyOn\` create functions that record every call and its arguments; the test inspects them afterwards with matchers like \`toHaveBeenCalledWith\` and \`toHaveBeenCalledTimes\`, and \`spyOn\` calls through to the original unless a mock implementation is supplied. {#wild-jest-fn}
 - **Sinon.JS sinon.spy** — \`sinon.spy(obj, 'method')\` wraps an existing method, recording calls in \`spy.args\` and \`spy.callCount\` while passing through to the real implementation, or \`sinon.spy()\` creates a standalone recording function. {#wild-sinon-spy}
-- **Python unittest.mock** — Its \`Mock\` objects expose \`call_args\`, \`call_args_list\` and \`call_count\` so a test can assert on the recorded conversation after the exercise phase, and \`assert_called_with\` checks the last call. {#wild-unittest-mock}
+- **Python unittest.mock** — Its \`Mock\` objects expose \`call_args\`, \`call_args_list\` and \`call_count\` so a test can assert on the recorded calls after the exercise phase, and \`assert_called_with\` checks the last call. The same object also takes canned return values, so it serves as stub and spy at once. {#wild-unittest-mock}
 
 ## In production
 <!--meta block=production-->

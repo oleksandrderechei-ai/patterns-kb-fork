@@ -24,7 +24,7 @@ A dummy object is the simplest of Meszaros' test doubles: an object passed only 
 A dummy object is a placeholder you pass to satisfy a required parameter that the test's code path never uses. A constructor often asks for every helper a class will ever need, while one test drives a narrow path through it. Building a real logger or database client just to fill the slot slows the test and pulls in setup that is irrelevant to it. Choose it over a stub or fake, which are doubles that return canned or working answers, when you are sure the object is never called.
 
 - **Silent drift.** A do-nothing dummy hides it when code starts using the object; make the dummy throw on any call.
-- **Hidden coupling.** Dummies by default can paper over a class with too many collaborators; count them and consider splitting the class.
+- **Hidden coupling.** Dummies make long constructors cheap, so nothing flags too many collaborators; count the dummies a test needs and consider splitting the class.
 - **Outgrown.** Once the object's behaviour matters, replace the dummy with a stub, fake or mock.
 
 **Example.** An OrderTotal class takes a tax service it does not use in sum(). The test passes a dummy and checks that sum of 12 and 8 is 20. Later someone adds a 10% tax call inside sum(), so the real result is 22. A do-nothing dummy returns 0 tax and the test still shows 20, a green test over code that now needs the tax service. A throwing dummy fails the test the moment the call happens, with a message that the dummy was used. The cost is that you edit that test, replacing the dummy with a stub that returns a tax rate.
@@ -42,9 +42,9 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Null dummy** — Pass a literal `null` or `undefined` where the parameter type permits it — nothing to build, nothing to maintain. It stops working the moment the callee validates its arguments, and it tells the next reader nothing about why the parameter is there.
+- **Null dummy** — Pass `null` or `undefined` where the type allows it. It fails once the callee validates arguments. A call on it fails with a generic null error, not a message saying the dummy was used, and it does not tell the reader why the parameter is there.
 - **Throwing dummy** — Every method throws immediately, turning an accidental call into a hard test failure instead of a silent pass.
-- **No-op dummy** — Every method is implemented but does nothing and returns a harmless default — tolerant of an unexpected call, at the cost of hiding it.
+- **No-op dummy** — Every method is implemented but does nothing and returns a harmless default, so an unexpected call passes unnoticed. Use it only where the code under test legitimately calls the collaborator on an untested side path, such as best-effort logging; otherwise default to throwing.
 - **Dummy value** — A placeholder primitive — an empty string, a zero, a fixed id — where a whole object isn't required, just a value the code never inspects.
 
 ## Trade-offs
@@ -54,16 +54,16 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Cheapest possible test double** — nothing to configure, verify, or maintain.
-- **Makes an untouched dependency explicit** instead of quietly faking behavior for it.
-- **A throwing variant turns an unexpected call** into an immediate, loud test failure.
+- **A named or throwing dummy** marks the dependency as deliberately unused, instead of quietly faking behavior for it.
+- **A throwing variant turns an unexpected call** into an immediate, loud test failure, unless the code under test catches the exception.
 - **Keeps a test's setup focused** on the one collaborator that actually matters.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Valid only while unused** — only valid while the path truly never touches it; a silent no-op dummy hides it when that stops being true.
+- **Valid only while unused** — Valid only while the path never touches it; once it does, a no-op dummy passes silently.
 - **Easy to reach for by default**, papering over a constructor that takes too many collaborators.
-- **A no-op dummy can mask** that the code started depending on it, since it just returns a harmless default.
+- **Every test that builds the class** must supply the dummy, so adding a constructor parameter touches all of them.
 - **Doesn't help once the parameter's behavior matters** — that call belongs to a Stub, Fake, or Mock instead.
 
 ## When to use it
@@ -74,7 +74,7 @@ flowchart LR
 
 - **The signature requires an argument** that this test's particular path never touches.
 - **You want the lightest possible double** — no return values to configure, no calls to verify.
-- **You want a broken "never used" assumption** to fail the test loudly — use the throwing variant.
+- **You want a broken "never used" assumption** to fail the test loudly: use the throwing variant. It does not fail if the code under test catches exceptions around the collaborator.
 
 ### Avoid when
 <!--meta polarity=avoid-->
