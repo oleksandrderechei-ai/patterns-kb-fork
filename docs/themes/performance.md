@@ -14,25 +14,25 @@ Serving more requests, faster, without the cost growing in step: spread work acr
 ## The question
 <!--meta block=description-->
 
-Every system that gets used enough hits the same wall: the same query, computation or object is produced again for every request. More hardware only postpones the wall if the work is still repeated in full. This theme splits make it faster into three questions: where load concentrates, what is recomputed without having changed, and where memory churn itself is the bottleneck.
+Every system that gets used enough hits the same wall: the same query, computation or object is produced again for every request. More hardware only postpones the wall if the work is still repeated in full. This theme splits "make it faster" into three questions: where load concentrates, what is recomputed without having changed, and where memory churn itself is the bottleneck. Symptoms: slow pages, repeated queries, cache misses, GC churn.
 
 ## Explained
 <!--meta block=explain-->
 
-Performance work means not repeating work: do it once and reuse the result, do it closer to the user, or rule it out cheaply. Start by finding which of three bottlenecks you have, because each needs a different fix. Concentrated load is spread across machines with a [load balancer](../patterns/distributed/routing/load-balancer.md). Repeated computation is saved with a [cache](../patterns/caching/cache-aside.md), which keeps an answer so the next request skips the work, or a [precomputed table](../patterns/distributed/coordination/materialized-view.md). Memory pressure is cut by reusing objects with an [object pool](../patterns/gof/extra/object-pool.md) instead of making new ones. Place cache keys with [consistent hashing](../patterns/distributed/routing/consistent-hashing.md), which moves only the keys nearest a changed machine, not most of them. More hardware alone only postpones the wall.
+Performance work means not repeating work: do it once and reuse the result, do it closer to the user, or rule it out cheaply. Start by finding which of three bottlenecks you have, because each needs a different fix. Concentrated load is spread across machines with a [load balancer](../patterns/distributed/routing/load-balancer.md). Repeated computation is saved with a [cache](../patterns/caching/cache-aside.md), which keeps an answer so the next request skips the work, or a [precomputed table](../patterns/distributed/coordination/materialized-view.md). Allocation churn is cut by reusing objects with an [object pool](../patterns/gof/extra/object-pool.md) instead of making new ones; resident memory, by sharing the heavy part of many objects ([flyweight](../patterns/gof/structural/flyweight.md)). Place cache keys with [consistent hashing](../patterns/distributed/routing/consistent-hashing.md), which moves only the keys nearest a changed machine, not most of them.
 
-- **Stale answers.** A cached answer is a bet that nothing changed. Give each entry a time limit you can defend.
+- **Stale answers.** A cached answer is a bet that nothing changed. Set each time limit to no more than the staleness the product owner accepts.
 - **Upkeep.** A precomputed table costs storage and a refresh job. Assign an owner who keeps it in step with its source.
 - **Leaked state.** A reused object can carry state between callers. Reset it when it returns to the pool.
 
-**Example.** A product page takes 2,000 reads a second, each a 20 ms database query, so 40 queries run at once. A cache with a 90% hit rate and a 60 s limit cuts that to 200 queries a second, 4 at once, and a price can be up to 60 s old. The cache runs on 5 machines placed by key number modulo 5. Adding a sixth remaps about 83% of keys, so most entries miss at once. With consistent hashing it remaps about 17%, so the database sees a small bump, not a flood.
+**Example.** A product page takes 2,000 reads a second, each a 20 ms database query, so 40 queries run at once. A cache with a 90% hit rate and a 60 s limit cuts that to 200 queries a second, 4 at once, and a price can be up to 60 s old. The cache runs on 5 machines placed by key number modulo 5. Adding a sixth remaps about 83% of keys, so most entries miss at once. With consistent hashing and many ring points per machine it remaps about 17%, so right after the change the database sees about 500 queries a second, not about 1,700.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-Almost every performance pattern buys speed by spending something else. Caching buys latency with **freshness** — a cached answer is a bet that the world hasn't changed since it was computed, and the bet is occasionally wrong. Precomputation buys read speed with **storage and update complexity** — a materialized view is fast to read and someone has to keep it in sync with its source. Pooling and sharing buy allocation savings with **statefulness** — a reused object can leak state between callers if it isn't reset carefully. When an exact answer costs more than it is worth, [Approximate Answers](./approximate-answers.md) trades a bounded error for fixed memory.
+Almost every performance pattern buys speed by spending something else. Caching buys latency with **freshness**: the cached answer is occasionally wrong. Precomputation buys read speed with **storage and update complexity**: someone has to keep a materialized view in sync with its source. Pooling and sharing buy allocation savings and risk **shared state** if a reused object is not reset. Write-behind buys write latency with **durability**: an acknowledged write can be lost before it is flushed. When an exact answer costs more than it is worth, [Approximate Answers](./approximate-answers.md) trades a bounded error for fixed memory.
 
-Spreading load geographically or across instances buys throughput with **routing complexity**: a load balancer or a consistent-hashing ring has to keep working correctly as the pool of nodes changes underneath it, or the cure becomes the outage. None of these trades are free, which is why the first move is always diagnosis — find which bottleneck you actually have before reaching for the pattern that fixes it.
+Spreading load geographically or across instances buys throughput with **routing complexity**: a load balancer or a consistent-hashing ring has to keep working correctly as the pool of nodes changes, or requests land on dead or wrong nodes. None of these trades are free, so diagnose first: find which bottleneck you have, whether uneven load across instances, a low cache hit rate or time lost to garbage collection (GC), before reaching for the pattern that fixes it.
 
 ```mermaid caption="Different bottlenecks want different fixes — the remedy for a read-heavy path does nothing for memory pressure."
 flowchart TD
@@ -57,7 +57,7 @@ Distributes incoming requests across a pool of interchangeable instances so no s
 
 ### [Cache-Aside](../patterns/caching/cache-aside.md) {#tour-cache-aside}
 
-The application checks the cache first, falls back to the source of truth on a miss, and populates the cache with the result. It's the default read-cache strategy precisely because the cache can be empty, wrong, or evicted at any moment without breaking correctness — the source of truth is still there.
+The application checks the cache first, falls back to the source of truth on a miss, and populates the cache with the result. It's the default read-cache strategy because the cache can be empty or evicted at any moment without losing data: the source of truth is still there. A stale entry is still a wrong answer, so give each entry a time limit.
 
 ### [Read-Through](../patterns/caching/read-through.md) {#tour-read-through}
 
@@ -69,7 +69,7 @@ Acknowledges a write the moment it lands in the cache and flushes it to the back
 
 ### [CDN](../patterns/distributed/routing/cdn.md) {#tour-cdn}
 
-Moves static and semi-static content to points of presence near the requester, so the round trip is single-digit milliseconds instead of crossing a continent. It's caching applied at the network layer rather than the application layer.
+Moves static and semi-static content to points of presence near the requester, so the round trip is tens of milliseconds or less instead of crossing a continent. It's caching applied at the network layer rather than the application layer.
 
 ### [Materialized View](../patterns/distributed/coordination/materialized-view.md) {#tour-materialized-view}
 
@@ -93,7 +93,7 @@ A compact, probabilistic structure that answers "definitely not present" or "may
 
 ### [Vertical Partitioning](../patterns/distributed/routing/vertical-partitioning.md) {#tour-vertical-partitioning}
 
-A store reads pages, not columns, so a wide row makes every query pay for the bulk it ignores. Splitting an entity by pattern of use packs more rows into each page and each cached block — the same working set, a higher hit rate, and no change to the query itself.
+A store reads pages, not columns, so a wide row makes every query pay for the bulk it ignores. Splitting an entity by pattern of use packs more rows into each page and each cached block — the same working set, a higher hit rate, and no change to the query itself when queries mostly touch one group of columns. Queries that need both halves pay a join, so split along the access pattern.
 
 <!-- tour:end -->
 
@@ -102,13 +102,14 @@ A store reads pages, not columns, so a wide row makes every query pay for the bu
 
 | If you need… | Approach | Reach for |
 | --- | --- | --- |
-| Fewer requests landing on each instance | Spread horizontally | [Load Balancer](../patterns/distributed/routing/load-balancer.md), [Consistent Hashing](../patterns/distributed/routing/consistent-hashing.md) |
+| One instance overloaded, or cache keys that must stay put as the pool changes | Spread horizontally | [Load Balancer](../patterns/distributed/routing/load-balancer.md), [Consistent Hashing](../patterns/distributed/routing/consistent-hashing.md) |
 | Read-heavy traffic hitting a slow source | Cache the read | [Cache-Aside](../patterns/caching/cache-aside.md), [Read-Through](../patterns/caching/read-through.md) |
-| Writes that can't block the caller | Buffer, flush async | [Write-Behind](../patterns/caching/write-behind.md) |
+| Writes that can't block the caller and can survive losing the unflushed tail on a crash | Buffer, flush async | [Write-Behind](../patterns/caching/write-behind.md) |
 | Static assets served to a global audience | Push to the edge | [CDN](../patterns/distributed/routing/cdn.md) |
 | Expensive joins recomputed on every read | Precompute | [Materialized View](../patterns/distributed/coordination/materialized-view.md) |
-| High allocation or GC churn | Reuse or share objects | [Object Pool](../patterns/gof/extra/object-pool.md), [Flyweight](../patterns/gof/structural/flyweight.md) |
+| High allocation churn or too many resident copies | Reuse or share objects | [Object Pool](../patterns/gof/extra/object-pool.md), [Flyweight](../patterns/gof/structural/flyweight.md) |
 | Lookups wasted on keys that don't exist | Filter before you fetch | [Bloom Filter](../patterns/distributed/coordination/bloom-filter.md) |
+| Hot queries paying for columns they never read | Split the entity by use | [Vertical Partitioning](../patterns/distributed/routing/vertical-partitioning.md) |
 
 ## Related areas
 <!--meta block=siblings-->
@@ -116,3 +117,5 @@ A store reads pages, not columns, so a wide row makes every query pay for the bu
 - [Handling Spikes](./spike-handling.md) — Performance sets the steady-state baseline; spike handling is what holds when demand suddenly multiplies it.
 - [Scalability](./scalability.md) — Scaling out is the structural answer once load balancing and caching alone can't keep up.
 - [Observability](./observability.md) — You can't tune a bottleneck you can't see — latency and cache hit rates come from here.
+- [Scaling Reads](./scaling-reads.md) — The ordered ladder for read growth; this theme is the wider menu.
+- [Caching](./caching.md) — Depth on cache strategies once you have chosen to cache.

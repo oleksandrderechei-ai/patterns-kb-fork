@@ -760,7 +760,7 @@
       },
       "scaling-writes": {
         "role": "Give writes their own model and store",
-        "tour": "When the write path and the read path pull in genuinely different directions, give them separate models. Command query responsibility segregation (CQRS) splits the command side from the query side, so writes land in a store and schema tuned for ingest — normalized, write-optimized, lightly indexed — while a separate read model is projected for queries, each scaled on its own. It is the heavier option, buying independent write scaling at the price of two models to keep in sync and the eventual consistency between them, so it earns its place when the load shapes are truly divergent rather than merely large.",
+        "tour": "When the write path and the read path pull in different directions, give them separate models. Command query responsibility segregation (CQRS) splits the command side from the query side, so writes land in a store and schema tuned for ingest — normalized, write-optimized, lightly indexed — while a separate read model is projected for queries, each scaled on its own. It is the heavier option, buying independent write scaling at the price of two models to keep in sync and the eventual consistency between them, so it pays off when the load shapes diverge rather than merely large.",
         "fluency": "Give writes their own model and store"
       },
       "event-storming": {
@@ -853,12 +853,12 @@
       },
       "performance": {
         "role": "The default read-cache strategy",
-        "tour": "The application checks the cache first, falls back to the source of truth on a miss, and populates the cache with the result. It's the default read-cache strategy precisely because the cache can be empty, wrong, or evicted at any moment without breaking correctness — the source of truth is still there.",
+        "tour": "The application checks the cache first, falls back to the source of truth on a miss, and populates the cache with the result. It's the default read-cache strategy because the cache can be empty or evicted at any moment without losing data: the source of truth is still there. A stale entry is still a wrong answer, so give each entry a time limit.",
         "fluency": "The default read-cache strategy"
       },
       "scaling-reads": {
         "role": "Serve hot reads from an in-memory cache",
-        "tour": "Real read traffic is wildly skewed — millions hit the same viral post, thousands the same product page — so the same rows get re-fetched endlessly. A cache-aside layer checks an in-memory store first and falls back to the database on a miss, populating the cache on the way back; hot data stays resident at sub-millisecond latency while cold data expires by time to live (TTL). The hard part is invalidation — short TTLs as a safety net, plus active invalidation ([write-through](../patterns/caching/write-through.md), versioned keys) for data that must stay fresh.",
+        "tour": "Real read traffic is heavily skewed — millions hit the same viral post, thousands the same product page — so the same rows get re-fetched endlessly. A cache-aside layer checks an in-memory store first and falls back to the database on a miss, populating the cache on the way back; hot data stays resident at sub-millisecond latency while cold data expires by time to live (TTL). Set the TTL from the staleness budget and track the hit rate per key class. The hard part is invalidation — short TTLs as a safety net, plus active invalidation ([write-through](../patterns/caching/write-through.md), versioned keys) for data that must stay fresh.",
         "fluency": "Serve hot reads from an in-memory cache"
       },
       "caching": {
@@ -956,7 +956,7 @@
       },
       "genai-scale": {
         "role": "Keep the graphics processing unit (GPU) busy",
-        "tour": "Inference throughput lives and dies on batch size. Grouping requests amortizes the fixed cost of a forward pass across many of them, and continuous batching keeps the batch full by swapping requests in and out at every decoding step instead of waiting for the slowest one to finish. Asynchronous batch application programming interfaces (APIs) push the same idea further, trading up to a day of latency for a lower price per token.",
+        "tour": "Batch size sets inference throughput, until memory or latency limits bite. A batch shares the fixed cost of one forward pass across all its requests, and continuous batching keeps the batch full by swapping requests in and out at every decoding step instead of waiting for the slowest one to finish. Asynchronous batch application programming interfaces (APIs) push the same idea further, trading up to a day of latency, set by the provider, for a lower price per token. Batch only when requests are queued while the GPU is under-used, so check queue depth and GPU utilization first.",
         "fluency": "Keep the graphics processing unit (GPU) busy"
       }
     },
@@ -1151,7 +1151,7 @@
     "/patterns/distributed/coordination/lsm-tree.html": {
       "scaling-writes": {
         "role": "Trade read cost for sequential write throughput",
-        "tour": "Before adding nodes, consider a storage engine built for writes. An log-structured merge (LSM)-tree turns random in-place updates into sequential appends to an in-memory table that is flushed and later compacted, so a disk that struggles with scattered B-tree updates streams writes fast — the reason a log-structured store can sustain an order of magnitude more writes than a comparable relational one on the same hardware. The trade is on the read side: a lookup may have to check and merge several on-disk files, so you spend read latency to buy write throughput — worth it exactly when the workload is write-dominated.",
+        "tour": "Before adding nodes, consider a storage engine built for writes. A log-structured merge (LSM) tree turns random in-place updates into sequential appends to an in-memory table that is flushed and later compacted, so a disk that struggles with scattered B-tree updates streams writes fast — the reason a log-structured store sustains write throughput far above a comparable B-tree store. The trade is on the read side: a lookup may have to check and merge several on-disk files, so you spend read latency to buy write throughput — worth it exactly when the workload is write-dominated.",
         "fluency": "Trade read cost for sequential write throughput",
         "heading": "log-structured merge tree (LSM tree)"
       }
@@ -1171,7 +1171,7 @@
       },
       "scaling-reads": {
         "role": "Precompute an expensive read as a maintained table",
-        "tour": "The first rung is to do less work per read. A materialized view precomputes an expensive query — a multi-table join, or an aggregate like average rating per product — into a maintained table that a background job refreshes, so a page load reads one row instead of recomputing the join every time. It trades storage and write-time upkeep for reads that no longer pay the computation. Denormalization is the same move in miniature; a materialized view is denormalization the database keeps up to date for you.",
+        "tour": "The first rung is to do less work per read. A materialized view precomputes an expensive query — a multi-table join, or an aggregate like average rating per product — into a maintained table that a background job refreshes, so a page load reads one row instead of recomputing the join every time. It trades storage and refresh cost for reads that no longer pay the computation, and reads can lag the base tables between refreshes. Denormalization is the same move in miniature; a materialized view is denormalization stored by the database and refreshed on a schedule or on demand.",
         "fluency": "Precompute an expensive read as a maintained table"
       },
       "proximity-search": {
@@ -1193,7 +1193,7 @@
     "/patterns/distributed/coordination/optimistic-concurrency-control.html": {
       "dealing-with-contention": {
         "role": "Bet no one else wrote, verify the bet at write time, retry the rare loser",
-        "tour": "When the decision needs a little application logic but collisions are rare, don't lock — assume no one else touched the row and check that assumption as you write. Attach a version that changes on every write and condition the update on the version you read still being current. If a concurrent writer moved it first, your update matches zero rows and you retry. You pay only when there is a real conflict, which makes it ideal for high read-to-write ratios.",
+        "tour": "When the decision needs a little application logic but collisions are rare, don't lock — assume no one else touched the row and check that assumption as you write. Attach a version that changes on every write and condition the update on the version you read still being current. If a concurrent writer moved it first, your update matches zero rows and you retry. You pay only when there is a real conflict, which makes it a fit when the same row is rarely written by two writers at once, however read-heavy the traffic.",
         "fluency": "Bet no one else wrote, verify the bet at write time, retry the rare loser"
       },
       "data-platform": {
@@ -1228,7 +1228,7 @@
     "/patterns/distributed/coordination/pessimistic-locking.html": {
       "dealing-with-contention": {
         "role": "Lock the contended rows up front when collisions are frequent",
-        "tour": "When collisions are frequent, optimism degrades into a retry storm. Lock the contended rows up front instead — `SELECT ... FOR UPDATE` — so a competing writer blocks until you commit rather than doing work it will have to discard. The price is that every writer pays lock overhead even when it would never have collided, and a lock held across slow I/O — a payment call, say — stalls everyone queued behind it.",
+        "tour": "When collisions are frequent, optimism degrades into a retry storm. Lock the contended rows up front instead — `SELECT ... FOR UPDATE` — so a competing writer blocks until you commit rather than doing work it will have to discard. The price is that every writer pays lock overhead even when it would never have collided, and a lock held across slow I/O — a payment call, say — stalls everyone queued behind it. Lock rows in one fixed order and set a lock timeout, or two writers can deadlock or wait without end.",
         "fluency": "Lock the contended rows up front when collisions are frequent"
       }
     },
@@ -1267,7 +1267,7 @@
       },
       "scaling-reads": {
         "role": "Multiply read capacity with follower copies",
-        "tour": "When one primary can no longer serve the read volume — a rough interview trigger is somewhere around 50k–100k reads/sec on a well-indexed database — copy it. Leader–follower replication sends every write to the primary and spreads reads across read-only followers, so read capacity grows with the number of copies (and a follower can be promoted on failover). The catch is replication lag: an asynchronous follower can be seconds stale, so a user may not see their own just-written change — the classic trade of synchronous consistency against asynchronous speed.",
+        "tour": "When one primary can no longer serve the read volume (a rough rule of thumb is around 50k–100k reads/sec for simple lookups on a well-indexed database, and far fewer for heavy queries, such as the 4,000 a second in the explain example), copy it. Your own number is your primary's measured peak at target latency. Leader–follower replication sends every write to the primary and spreads reads across read-only followers, so read capacity grows with the number of copies, less than linearly as write volume rises, since every follower replays every write (and a follower can be promoted on failover). The catch is replication lag: an asynchronous follower can be seconds stale, so a user may not see their own just-written change — the classic trade of synchronous consistency against asynchronous speed.",
         "fluency": "Multiply read capacity with follower copies"
       },
       "scale-units-and-stamps": {
@@ -1487,7 +1487,7 @@
       },
       "scaling-writes": {
         "role": "Buffer write bursts in a queue to smooth load",
-        "tour": "Real write traffic is bursty — a holiday order spike, a flood of drivers on New Year's — and provisioning for the peak wastes capacity the rest of the year. Load leveling puts a queue between accepting a write and applying it, so the database drains at its steady rate while the queue absorbs the burst. The cost is that the client learns only that the write was accepted, not durably stored, so it often needs a callback or poll to confirm; and a queue is for short bursts, not a database that simply can't keep up — feed it faster than it drains and the backlog grows without bound. Its sibling is [load shedding](../patterns/distributed/resilience/load-shedding.md): when even the queue can't cope, deliberately drop the least valuable writes — one of many location pings — to keep the important ones flowing.",
+        "tour": "Real write traffic is bursty — a holiday order spike, a flood of drivers on New Year's — and provisioning for the peak wastes capacity the rest of the year. Load leveling puts a queue between accepting a write and applying it, so the database drains at its steady rate while the queue absorbs the burst. The cost is that the client learns only that the write was accepted, not yet applied to the store, so it often needs a callback or poll to confirm; and a queue is for short bursts, not a database that simply can't keep up — feed it faster than it drains and the backlog grows without bound. Its sibling is [load shedding](../patterns/distributed/resilience/load-shedding.md): when even the queue can't cope, deliberately drop the least valuable writes — one of many location pings — to keep the important ones flowing.",
         "fluency": "Buffer write bursts in a queue to smooth load, so the store sees a steady rate rather than a spike."
       },
       "long-running-tasks": {
@@ -1600,7 +1600,7 @@
       },
       "spike-handling": {
         "role": "Add capacity as the surge builds",
-        "tour": "Add capacity as the surge builds. A load signal — central processing unit (CPU), queue depth, request rate — triggers new instances so throughput grows with demand; because it's never instant, it's a complement to absorbing and shedding during ramp-up, not a substitute for them.",
+        "tour": "Add capacity as the surge builds. A load signal — central processing unit (CPU), queue depth, request rate — triggers new instances so throughput grows with demand; because it's never instant, it's a complement to absorbing and shedding during ramp-up, not a substitute for them. Measure how long a new instance takes to start; if that is longer than the spike, scaling cannot help.",
         "fluency": "Add capacity as the surge builds"
       },
       "scalability": {
@@ -1610,7 +1610,7 @@
       },
       "genai-scale": {
         "role": "Resize the graphics processing unit (GPU) fleet with demand",
-        "tour": "Inference load is spiky and graphics processing units (GPUs) are the most expensive line in the budget, so the serving fleet is resized against a signal — queue depth, latency, tokens in flight — instead of paying year-round for a peak that shows up occasionally. It is the precondition that lets every pattern above actually pay off.",
+        "tour": "Inference load is spiky and GPUs are the most expensive line in the budget, so the serving fleet is resized against a signal (queue depth, latency, tokens in flight) instead of paying year-round for a peak that shows up occasionally. A new replica must load its model weights before it serves, so scale on a leading signal and keep some headroom; a sudden burst can still outrun it.",
         "fluency": "Resize the graphics processing unit (GPU) fleet with demand"
       },
       "workload-composition": {
@@ -1683,17 +1683,17 @@
       },
       "spike-handling": {
         "role": "Serve the static surge from the edge",
-        "tour": "Serve the static surge from the edge. Cacheable responses live on nodes near the user, so a spike in reads for a viral asset never reaches origin at all — the cheapest form of absorption available.",
+        "tour": "Serve the static surge from the edge. Cacheable responses live on nodes near the user, so repeat reads for a viral asset are served from the edge and only a cache miss reaches origin.",
         "fluency": "Serve the static surge from the edge"
       },
       "performance": {
         "role": "Cut latency by serving from the edge",
-        "tour": "Moves static and semi-static content to points of presence near the requester, so the round trip is single-digit milliseconds instead of crossing a continent. It's caching applied at the network layer rather than the application layer.",
+        "tour": "Moves static and semi-static content to points of presence near the requester, so the round trip is tens of milliseconds or less instead of crossing a continent. It's caching applied at the network layer rather than the application layer.",
         "fluency": "Cut latency by serving from the edge"
       },
       "scaling-reads": {
         "role": "Cache read-heavy responses at the edge, near users",
-        "tour": "The last rung pushes the cache out to the user. A content delivery network (CDN) caches read-heavy responses — modern ones cache application programming interface (API) responses and query results, not just static assets — at edge locations near the client, so a request is served nearby instead of round-tripping to a distant origin, and origin load drops sharply for shared content. It only pays off for data shared across users; personal, per-requester data gets no hit-rate benefit and should not be cached at the edge.",
+        "tour": "The last rung pushes the cache out to the user. A content delivery network (CDN) caches read-heavy responses — modern ones cache application programming interface (API) responses and query results, not just static assets — at edge locations near the client, so a request is served nearby instead of round-tripping to a distant origin, and origin load drops sharply for shared content. It only pays off for data shared across users; personal, per-requester data gets no shared hit rate, so keep it out of a shared edge cache.",
         "fluency": "Cache read-heavy responses at the edge, near users"
       },
       "caching": {
@@ -1803,7 +1803,7 @@
       },
       "scalability": {
         "role": "Distribute across a horizontal fleet",
-        "tour": "The front door for horizontal scale: it spreads incoming requests across every instance in the fleet, so the capacity autoscaling adds actually gets used. Health checks pull dead instances out of rotation before they cost you requests.",
+        "tour": "The front door for horizontal scale: it spreads incoming requests across every instance in the fleet, so the capacity autoscaling adds actually gets used. Health checks pull dead instances out of rotation after a few failed probes, which bounds the lost requests but does not remove them.",
         "fluency": "Distribute across a horizontal fleet"
       },
       "global-traffic-and-ingress": {
@@ -1860,7 +1860,7 @@
       },
       "scalability": {
         "role": "Partition data to scale writes",
-        "tour": "Splits a dataset across many nodes by key, so write throughput scales with node count instead of hitting the ceiling of a single primary. The cost is that queries spanning shards get harder and a bad key choice creates hot spots.",
+        "tour": "Splits a dataset across many nodes by key, so write throughput scales with node count when the key spreads writes evenly, instead of hitting the ceiling of a single primary. The cost is that queries spanning shards get harder, and a skewed key creates hot spots that leave one node as the ceiling.",
         "fluency": "Partition data to scale writes"
       },
       "proximity-search": {
@@ -1875,12 +1875,12 @@
       },
       "scaling-writes": {
         "role": "Partition writes across nodes by key",
-        "tour": "The default move when writes outgrow a single primary. Sharding partitions the data across nodes by key, so if one server sustains 1,000 writes/sec, ten shards approach 10,000 — the multi-node fleet hidden behind one logical database. Everything rides on the partition key: hash a primary identifier and load spreads evenly; pick something skewed like raw country and one shard melts while another idles. Weigh reads too — the write path is cheap to shard, but if reads must fan out across every shard the per-request overhead can eat the win.",
+        "tour": "The default move once one primary, even on a write-optimized engine, cannot keep up. Sharding partitions the data across nodes by key, so if one server sustains 1,000 writes/sec, ten shards approach 10,000 — the multi-node fleet hidden behind one logical database. Everything rides on the partition key: hash a primary identifier and load spreads evenly; pick something skewed like raw country and one shard melts while another idles. Weigh reads too — the write path is cheap to shard, but if reads must fan out across every shard the per-request overhead can eat the win.",
         "fluency": "Partition writes across nodes by key"
       },
       "genai-scale": {
         "role": "Split a model too big for one device",
-        "tour": "When a model's weights, gradients, and optimizer state outgrow a single graphics processing unit (GPU), they are partitioned across many — the same partition-by-key idea as a sharded database, applied to tensors. The data side shards too: billion-vector embedding indexes are split across nodes and answered by a fan-out query.",
+        "tour": "When a model's weights (plus gradients and optimizer state, when training) outgrow a single graphics processing unit (GPU), they are partitioned across many — the same partition-by-key idea as a sharded database, applied to tensors. The data side shards too: billion-vector embedding indexes are split across nodes and answered by a fan-out query. When serving, one lost GPU takes its whole replica down, so plan restart and failover per group.",
         "fluency": "Split a model too big for one device"
       },
       "scale-units-and-stamps": {
@@ -1919,7 +1919,7 @@
       },
       "scalability": {
         "role": "Statelessness is what lets you add instances freely",
-        "tour": "Statelessness is what lets you add instances freely: if a request can land on any instance because no instance holds session state the others lack, you can add or kill instances without a migration plan. Push the state to a shared store and the fleet becomes disposable — this is the precondition every pattern above depends on.",
+        "tour": "Statelessness is what lets you add instances freely: if a request can land on any instance because no instance holds session state the others lack, you can add or kill instances without a migration plan. Push the state to a shared store and the fleet becomes disposable. That store is now data you must scale. This is the precondition for the load balancer, autoscaling and competing consumers.",
         "fluency": "Statelessness is what lets you add instances freely"
       },
       "continuous-delivery": {
@@ -1970,7 +1970,7 @@
     "/patterns/distributed/routing/vertical-partitioning.html": {
       "performance": {
         "role": "Stop the hot query paying for columns it never reads",
-        "tour": "A store reads pages, not columns, so a wide row makes every query pay for the bulk it ignores. Splitting an entity by pattern of use packs more rows into each page and each cached block — the same working set, a higher hit rate, and no change to the query itself.",
+        "tour": "A store reads pages, not columns, so a wide row makes every query pay for the bulk it ignores. Splitting an entity by pattern of use packs more rows into each page and each cached block — the same working set, a higher hit rate, and no change to the query itself when queries mostly touch one group of columns. Queries that need both halves pay a join, so split along the access pattern.",
         "fluency": "Stop the hot query paying for columns it never reads"
       }
     },
@@ -2095,7 +2095,7 @@
       },
       "scalability": {
         "role": "Scale work across parallel consumers",
-        "tour": "Turns a queue of work into parallel throughput: add consumer instances and the backlog drains faster, with no coordination beyond each consumer claiming its own message.",
+        "tour": "Turns a queue of work into parallel throughput: add consumer instances and the backlog drains faster. The only coordination is each consumer claiming its own message. Delivery can repeat, so make handlers safe to repeat, and parallel consumers give up order unless related messages share a partition key.",
         "fluency": "Scale work across parallel consumers"
       },
       "long-running-tasks": {
@@ -2186,7 +2186,7 @@
       },
       "dealing-with-contention": {
         "role": "Make the retry safe so a duplicate write is harmless",
-        "tour": "Every rung above leans on retrying the loser, and a retry is only safe if doing the write twice equals doing it once. Give each operation a key the store remembers, so a replayed or duplicated request returns the first result instead of applying a second charge. It doesn't resolve contention on its own — it is what makes the whole ladder's retries trustworthy from client to store.",
+        "tour": "A retry is only safe if doing the write twice equals doing it once, and that holds for optimistic retries and for any client or queue redelivery on every rung. Give each operation a key the store remembers, so a replayed or duplicated request returns the first result instead of applying a second charge. Keep the key at least as long as your longest redelivery, and claim it in one atomic step, such as a unique constraint. Idempotency doesn't resolve contention on its own; it is what makes retries trustworthy from client to store.",
         "fluency": "Make the retry safe so a duplicate write is harmless"
       },
       "multi-step-processes": {
@@ -2490,7 +2490,7 @@
     "/patterns/distributed/resilience/request-coalescing.html": {
       "spike-handling": {
         "role": "One origin call for a herd of identical misses",
-        "tour": "A surge on a hot key sends hundreds of identical misses to the origin at once. A gate in front of the fetch lets the first caller do the work while the rest wait on its result, so duplicate demand never reaches the backend and the genuine demand left is what shedding has to size.",
+        "tour": "A surge on a hot key sends hundreds of identical misses to the origin at once. A gate in front of the fetch lets the first caller do the work while the rest wait on its result, so duplicate demand through that gate never reaches the backend; one gate per process still lets each process send one. The genuine demand left is what shedding has to size.",
         "fluency": "Collapse concurrent identical requests into one call to the origin."
       }
     },
@@ -3183,7 +3183,7 @@
     "/patterns/distributed/coordination/lease.html": {
       "dealing-with-contention": {
         "role": "Make the lock expire on its own: a time-bound grant the holder must renew.",
-        "tour": "A lease is a grant that ends at a deadline unless the holder renews it. A holder that crashes frees the resource when the deadline passes, with no cleanup job. A paused holder can still act after expiry, so pair it with a check at the resource.",
+        "tour": "A lease is a grant that ends at a deadline unless the holder renews it. A holder that crashes frees the resource when the deadline passes, with no cleanup job. A paused holder can still act after expiry, so pair it with a check at the resource. Choose the term longer than your worst pause and renew at a third to a half of it; a short term recovers fast but renews often, a long one leaves a crashed holder's resource idle.",
         "fluency": "The time-bound core of a distributed lock: a crashed holder frees the resource at the deadline, with no cleanup job."
       }
     },
@@ -3204,7 +3204,7 @@
     "/patterns/distributed/coordination/inverted-index.html": {
       "scaling-reads": {
         "role": "Serve keyword reads from a term-to-document index",
-        "tour": "Reads for a keyword never scan the documents. The index lists the documents for each term, so the read touches only those lists and write cost is paid once at indexing time.",
+        "tour": "Reads for a keyword avoid scanning the documents. The index lists the documents for each term, so the read touches only those lists and write cost is paid when a document is indexed.",
         "fluency": "Answer keyword searches from a prebuilt term-to-document index instead of scanning."
       }
     },
