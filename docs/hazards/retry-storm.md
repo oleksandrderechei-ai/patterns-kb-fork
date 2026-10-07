@@ -21,7 +21,7 @@ A retry storm is what happens when a dependency starts failing and every caller 
 ## Explained
 <!--meta block=explain-->
 
-A retry storm is what happens when a dependency starts failing and every caller tries again at the same moment, so the struggling service receives several times the traffic it could not serve in the first place. Each retry is sensible alone. But attempts multiply down a chain, since three tries at each of two layers makes nine calls for one user request, and clients that failed together wait the same time and return together. The outage outlives its cause: the fault clears, yet the amplified load keeps the failures going. Watch calls per user request, not calls per second. Make each attempt later than the last with exponential delay, add random jitter, and cap attempts, as [retry with backoff](../patterns/distributed/resilience/retry-backoff.md) does. Pick one layer to retry at. Stop retries outright while the dependency is down with a [circuit breaker](../patterns/distributed/resilience/circuit-breaker.md).
+A retry storm is what happens when a dependency starts failing and every caller tries again at the same moment, so the struggling service receives several times the traffic it could not serve in the first place. Each retry is sensible alone. But attempts multiply down a chain, since three tries at each of two layers makes nine calls for one user request, and clients that failed together wait the same time and return together. The outage outlives its cause: the fault clears, yet the amplified load keeps the failures going. Watch calls per user request, not calls per second. Make each attempt later than the last with exponential delay, add random jitter, and cap attempts, as [retry with backoff](../patterns/distributed/resilience/retry-backoff.md) does. Pick one layer to retry at. Cap retries as a share of successful traffic, a retry budget. Stop retries outright while the dependency is down with a [circuit breaker](../patterns/distributed/resilience/circuit-breaker.md).
 
 - **Lost recoveries.** A retry budget caps retries as a share of successful traffic, and drops a rare transient failure a second try would have saved.
 - **Errors surface higher.** Retrying at one layer means lower layers pass transient errors up instead of healing locally.
@@ -33,9 +33,9 @@ A retry storm is what happens when a dependency starts failing and every caller 
 
 Nobody writes a retry storm on purpose. Every caller is doing the sensible thing — the call failed, so try it again — and the only trouble is that they all do it at the same moment, because they all failed at the same moment. The ordinary defaults below decide how big the wave gets.
 
-The loop amplifies and it is synchronized, and both properties are fixed by choices made long before the incident. Amplification comes from attempts per call multiplied by the number of layers that retry; synchronization comes from a delay that every client computes identically. The defaults below keep both turned up.
+Amplification comes from attempts per call multiplied by the number of layers that retry; synchronization comes from a delay that every client computes identically.
 
-Read it as an incentive problem. A retry raises this client's success rate today, and its cost lands on a shared dependency during someone else's incident, so nothing in a code review rejects it and no load test with a single client reveals it. Amplification is a property of the fleet, which is why it is discovered in production and nowhere else.
+Read it as an incentive problem. A retry raises this client's success rate today, and its cost lands on a shared dependency during someone else's incident, so nothing in a code review rejects it and no load test with a single client reveals it. Amplification is a property of the fleet, which is why it is discovered in production, unless failure is injected under fleet-scale load.
 
 ```mermaid caption="The loop that keeps the outage alive: the retries a failure triggers are what produce the next failures."
 flowchart LR
@@ -49,24 +49,25 @@ flowchart LR
 - Retries at several layers — the SDK, the service client, the gateway — multiply instead of adding: three attempts at each of three hops is up to twenty-seven calls for one user request.
 - Retrying failures that cannot clear: an overload response or a rejected request gets the same treatment as a dropped packet, so callers keep knocking on a door that is explicitly telling them to stop.
 - Timeouts set far above normal latency: the caller waits out the full deadline before retrying, so the retry arrives while the first attempt is still occupying the dependency.
+- No deadline carried downstream: each hop retries inside its own timeout, so work continues after the caller's budget is spent and the user has already given up.
 
 ## What it costs
 <!--meta block=cost-->
 
-- **The outage outlives its cause.** The dependency spends its returning capacity on retries, so it never gets the quiet interval it needs to drain the backlog that the retries are made of. That self-sustaining state is a [metastable failure](./metastable-failure.md).
+- **The outage outlives its cause.** The dependency spends its returning capacity on retries, so while retry load stays above capacity it never gets the quiet interval it needs to drain the backlog that the retries are made of. That self-sustaining state is a [metastable failure](./metastable-failure.md).
 - **Recovery is punished.** Bring an instance back and the waiting attempts consume it within seconds, which is why a restarted service dies again immediately and the graph shows a sawtooth rather than a rise.
-- **Most of the load is unwanted work.** Attempts whose caller has already given up still cost the dependency a full query, so a large share of what is knocking it over is work no one will ever read.
+- **Most of the load is unwanted work.** Attempts whose caller has already given up still cost the dependency a full query, so when timeouts are short against the dependency's slowed response time, a large share of what is knocking it over is work no one will ever read.
 - **The blast radius is wider than the dependency.** Retries occupy threads, connections and load-balancer capacity that unrelated calls share, so requests that never touch the failing service start failing too.
 - **Retried writes can duplicate.** A response lost after the operation succeeded is indistinguishable from a failure, so every retry of a non-idempotent write risks a second effect on top of the outage.
 
-The bill lands in capacity planning, which is why you cannot buy your way out. Absorbing a storm means provisioning for the amplified rate — several times peak, held permanently, for load that exists only while you are failing — and that multiple grows with the depth of your call graph rather than with your traffic. Amplification also breaks the assumption your dashboards run on: request rate at a dependency stops being a measure of demand, so any capacity model fitted to incident traffic sizes for a number the business never asked for.
+The bill lands in capacity planning, and buying capacity is possible but costly. Absorbing a storm means provisioning for the amplified rate — several times peak, held permanently, for load that exists only while you are failing — and that multiple grows with the depth of your call graph rather than with your traffic. Amplification also breaks the assumption your dashboards run on: request rate at a dependency stops being a measure of demand, so any capacity model fitted to incident traffic sizes for a number the business never asked for.
 
 ## Getting out
 <!--meta block=mitigation-->
 
-Make each attempt later than the last, and make the crowd spread out. Grow the delay exponentially, add a random component to it, and cap the number of attempts. The randomness is the part that does the work: clients that failed together compute the same delay and return together, so a longer interval alone moves the wave without flattening it.
+Make each attempt later than the last, and make the crowd spread out. Grow the delay exponentially, add a random component to it, and cap the number of attempts. Randomness is what spreads the wave, and the attempt cap and single layer bound its size: clients that failed together compute the same delay and return together, so a longer interval alone moves the wave without flattening it.
 
-Then bound the total, not just the interval. Pick one layer to retry at and switch retries off at every other one, so a failure is not multiplied by the number of hops it passes through. Cap retries as a share of successful traffic, so the volume a struggling dependency can see is a number you chose in advance. And retry only what can clear — a transient error, on a call that is safe to repeat.
+Then bound the total, not just the interval. Pick one layer to retry at and switch retries off at every other one, so a failure is not multiplied by the number of hops it passes through. Cap retries as a share of successful traffic, so the volume a struggling dependency can see is a number you chose in advance. And retry only what can clear — a transient error, on a call that is safe to repeat. Send an idempotency key with every retried write so the receiver can drop a duplicate, and treat an overload or rejection response as a stop, honouring any retry delay the server sends.
 
 The dependency has a move of its own. Refuse excess work quickly and cheaply instead of queueing it, so a rejected call costs almost nothing to serve and whatever capacity remains goes to requests that can still succeed. Keep amplification as a standing measurement, calls per user request and retry share per dependency, because it is a fleet property that no single client's tests will ever show you.
 
@@ -81,6 +82,8 @@ The dependency has a move of its own. Refuse excess work quickly and cheaply ins
 
 - [Poison Message](./poison-message.md) — A message that cannot succeed keeps feeding the storm.
 - [Metastable Failure](./metastable-failure.md) — A retry storm that outlives its trigger becomes a metastable failure.
+- [Cascading Failure](./cascading-failure.md) — Retries holding threads and connections spread a dependency's failure to callers that never touch it.
+- [Thundering Herd](./thundering-herd.md) — A herd released after an outage is the first wave; the retries after its failures are the storm.
 
 **Mitigated by**
 

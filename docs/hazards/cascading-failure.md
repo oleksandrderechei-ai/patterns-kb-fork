@@ -82,6 +82,7 @@ Recovery is a procedure, not a restart. Bring capacity back with traffic turned 
 **Combines with**
 
 - [Synchronous I/O](./synchronous-io.md) — A blocking caller is one way a cascade crosses a hop: parked threads pass the slowness on
+- [Retry Storm](./retry-storm.md) — A retry storm is one way a failing peer is re-fed until the failure spreads.
 
 **Often confused with**
 

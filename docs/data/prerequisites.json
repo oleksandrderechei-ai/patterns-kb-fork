@@ -2249,7 +2249,7 @@
       "definition": "Clients retry in unison, multiplying load on a service already failing",
       "route": "/hazards/retry-storm.html",
       "requires": [],
-      "related": ["poison-message", "metastable-failure"]
+      "related": ["poison-message", "metastable-failure", "cascading-failure", "thundering-herd"]
     },
     {
       "id": "thundering-herd",
@@ -2257,7 +2257,7 @@
       "definition": "One event releases every waiter at once and they all rush the same resource",
       "route": "/hazards/thundering-herd.html",
       "requires": [],
-      "related": ["cache-stampede"]
+      "related": ["cache-stampede", "retry-storm"]
     },
     {
       "id": "cascading-failure",
@@ -2265,7 +2265,7 @@
       "definition": "One failure's load lands on its peers and takes them down in turn",
       "route": "/hazards/cascading-failure.html",
       "requires": [],
-      "related": ["metastable-failure", "synchronous-io"]
+      "related": ["metastable-failure", "synchronous-io", "retry-storm"]
     },
     {
       "id": "noisy-neighbour",

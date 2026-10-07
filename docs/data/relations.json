@@ -14139,6 +14139,20 @@
       "b": "host-header-rewriting",
       "note_a": "Cookie affinity breaks when the proxy rewrites the host, so the balancer sees a first-time visitor",
       "note_b": "Sticky-session affinity stops working once the host is rewritten"
+    },
+    {
+      "a": "cascading-failure",
+      "verb": "combines-with",
+      "b": "retry-storm",
+      "note_a": "A retry storm is one way a failing peer is re-fed until the failure spreads.",
+      "note_b": "Retries holding threads and connections spread a dependency's failure to callers that never touch it."
+    },
+    {
+      "a": "retry-storm",
+      "verb": "combines-with",
+      "b": "thundering-herd",
+      "note_a": "A herd released after an outage is the first wave; the retries after its failures are the storm.",
+      "note_b": "A recovery wave of synchronized retries is the herd's second round; backoff without jitter feeds both."
     }
   ],
   "group_order": {
