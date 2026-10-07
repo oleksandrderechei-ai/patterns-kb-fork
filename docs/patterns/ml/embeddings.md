@@ -48,8 +48,8 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Matrix factorization** — Factor an interaction matrix (users × items) into two thin matrices, users × k and items × k, so their product reconstructs the observed cells. Forcing each entity through only k numbers makes the decomposition discover shared behavioural patterns; the similarity comes from that low-rank compression, not from explicit pairwise nudges. Cheap, well-understood, and still a common retrieval baseline via ALS or SGD.
-- **Two-tower / contrastive learning** — Separate encoders for the query side and the candidate side output into the same space; train on positive and negative pairs, using the other rows of a batch as free "in-batch negatives" and a loss such as Triplet loss or InfoNCE. Candidates are pre-embedded into an index and only the query tower runs online, which is what makes retrieval over billions of items fast.
-- **Graph embeddings** — For relational data — who follows whom, what is bought together. Transductive methods (node2vec, DeepWalk) run random walks and a word2vec-style objective to learn one vector per node in the training graph, but a new node has no vector until you retrain. Inductive methods (GraphSAGE and most graph neural networks (GNNs)) learn a function that computes a node's vector from its features and neighbourhood, so new nodes get embeddings at inference — solving cold start natively on a growing graph.
+- **Two-tower / contrastive learning** — Separate encoders for the query side and the candidate side output into the same space; train on positive and negative pairs, using the other rows of a batch as free "in-batch negatives" and a loss such as Triplet loss or InfoNCE. Candidates are pre-embedded into an index and only the query tower runs online; with an approximate index over those vectors, that is what makes retrieval over billions of items fast.
+- **Graph embeddings** — For relational data, such as who follows whom or what is bought together. Transductive methods (node2vec, DeepWalk) run random walks and a word2vec-style objective to learn one vector per node in the training graph, but a new node has no vector until you retrain. Inductive methods (GraphSAGE and most graph neural networks (GNNs)) learn a function that computes a node's vector from its features and neighbourhood, so new nodes get embeddings at inference, provided they arrive with usable features or neighbours.
 - **Pre-trained, then fine-tuned** — When a model already trained on a huge general corpus (BERT, CLIP, sentence-transformers) encodes most of the structure you need, start from it and fine-tune on task-specific data instead of training from scratch. The cheapest path to a usable space, and the first to try.
 
 ## Trade-offs
@@ -58,7 +58,7 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Compact** — one short vector replaces a column per id, so ten million entities cost the same width as ten.
+- **Compact per entity** — one short vector replaces a column per id, so the model input width stays fixed, though table storage still grows with entity count (2.56 GB for ten million at 64 floats).
 - **Enables fast similarity search**: pre-index candidates once and retrieve nearest neighbours over huge catalogues with only the lightweight query encoder running online.
 - **Transferable** — a vector trained for one task (say, recommendations) can be handed to a neighbouring team as a ready-made input feature.
 - **Inductive and content-based setups** can represent a brand-new entity from its attributes, without waiting for a retrain.
@@ -69,7 +69,8 @@ flowchart LR
 - **"Similar" means only what the training objective** made it mean — co-watch closeness is not conceptual similarity.
 - **Purely behavioural vectors are useless** for a new entity with no interactions until a content-based embedding is blended in.
 - **Dimensionality is a real tradeoff** — higher costs more to train, store, and search; too low loses structure — so it has to be tuned per use case.
-- **Hard to evaluate directly**; you fall back on downstream metrics, and mining hard negatives plus keeping vectors fresh adds genuine infrastructure.
+- **Hard to evaluate directly**; only downstream metrics judge quality. Mining hard negatives and keeping vectors fresh adds infrastructure work.
+- **Version lock** — a new model makes old vectors incomparable, so re-embed and re-index every candidate and roll the query side out with them.
 
 ## When to use it
 <!--meta block=usage-->
@@ -87,7 +88,7 @@ flowchart LR
 
 - **The inputs are few in number** or already numeric — an embedding just adds cost.
 - **You cannot define a meaningful notion** of similarity, or you lack the interaction or pair data to train one.
-- **Matching must be exact, interpretable, and auditable** — a learned vector space is opaque and its nearest-neighbour search is approximate.
+- **Matching must be exact, interpretable, and auditable** — a learned vector space is opaque, and at scale its nearest-neighbour search is approximate.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -131,14 +132,14 @@ catalog
 
 - **Vector dimensionality** — The width of the learned vector. Higher retains more structure and costs more to train, store and search; too low collapses distinctions. Tune it per catalogue and task.
 - **Similarity metric** — Cosine, dot product or Euclidean distance. It has to match the objective the vectors were trained under, and the index must be built for the same metric.
-- **Approximate index build and search parameters** — Graph-based indexes expose a build-time neighbour count and a query-time candidate breadth; partition-based ones expose how many partitions a query probes. Both trade recall against latency and memory.
+- **Approximate index build and search parameters** — Graph-based indexes expose a build-time neighbour count and a query-time candidate breadth; partition-based ones expose how many partitions a query probes. Both trade recall against latency and memory. Sweep each parameter against exact search on a sampled query set and keep the cheapest setting that meets your target recall at k.
 - **Refresh cadence** — How often changed and newly created entities are re-embedded, and whether the index is rebuilt wholesale or updated incrementally.
 - **Encoder batch size and placement** — Batch size and hardware for the offline embedding job, and whether the query encoder runs in-process or as a separate service.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Approximate recall against exact search** — Recall at k for the served index measured against a brute-force scan on a sampled set of queries — the only direct read on how much the approximation costs.
+- **Approximate recall against exact search** — Recall at k for the served index measured against a brute-force scan on a sampled set of queries — the only direct read on how much the approximation costs. Set the floor from the downstream metric (the lowest recall where it stays flat) and alert on a drop from the launch baseline.
 - **Nearest-neighbour query latency percentiles** — p50 and p99 for the retrieval step, separate from the encoder, so an index regression is not hidden by model time.
 - **Index freshness lag** — Time between an entity changing and its new vector being searchable.
 - **Share of requests with no vector** — Fraction of queries or candidates falling back because the entity has never been embedded.

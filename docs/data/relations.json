@@ -1006,7 +1006,7 @@
       "verb": "implements",
       "b": "feature-engineering",
       "note_a": "Feature stores serve one set of computed features to both training and inference.",
-      "note_b": "Managed feature stores keep training and serving features consistent, so you do not hand-build that sync.",
+      "note_b": "Feature stores help keep training and serving values consistent by sharing one definition, but you still monitor skew.",
       "maps_a": "mapping-row-14",
       "maps_label_a": "Feature store"
     },
@@ -13894,6 +13894,27 @@
       "b": "agent-sandboxing",
       "note_a": "The agent is a client that should hold only a short-lived token.",
       "note_b": "Source of the task-scoped token that bounds a leak."
+    },
+    {
+      "a": "shadow-traffic",
+      "verb": "combines-with",
+      "b": "evaluation",
+      "note_a": "Offline evaluation sets the metrics and floors that a shadow run's output is judged against.",
+      "note_b": "Shadow mode validates a new model on copied live requests before it affects users."
+    },
+    {
+      "a": "agent-memory",
+      "verb": "often-confused-with",
+      "b": "rag",
+      "note_a": "This keeps what the agent learned across sessions; that fetches passages from documents that already exist.",
+      "note_b": "This fetches passages from a corpus that already exists; that keeps what an agent learned and wrote down itself."
+    },
+    {
+      "a": "external-configuration-store",
+      "verb": "combines-with",
+      "b": "context-engineering",
+      "note_a": "Holds declared data such as the repository scope an agent workspace loads, rather than leaving the agent to infer it at run time.",
+      "note_b": "A multi-repository scope registry is declared data, like a config store, not inferred at run time."
     }
   ],
   "group_order": {

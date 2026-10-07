@@ -24,7 +24,7 @@ A team that optimises a number disconnected from the business ships noise or har
 Evaluation decides whether an ML system does its job, and by how much, by tracing a chain from the business goal to a product metric a user would notice, then to an ML metric you can compute on demand, then to the method that produces it. Without the chain, a team optimises a number nobody cares about: an offline gain never shows up in a live test, or the metric climbs while users leave. Choose it over reporting one headline score when positives are rare or the system serves different groups, because a single average hides the groups where it fails. Break each metric down by segment and block a release when any segment drops below its floor.
 
 - **Moving target** Offline metrics approximate live behaviour, so check them against online results.
-- **Slow labels** Labels are slow and expensive, so sample by model score rather than at random when positives are rare.
+- **Slow labels** Labels are slow and expensive, so sample by model score when positives are rare, then weight each label by its sampling probability.
 - **Self-confirming loop** A model that trains on its own decisions confirms itself, so keep a held-out set and some random traffic.
 - **Human review** Generated text resists one number, so add a human review sample.
 
@@ -45,8 +45,8 @@ flowchart TB
 ## Variations
 <!--meta block=variations-->
 
-- **Classification** — Precision and recall at a chosen threshold, summarized by the precision-recall curve; the area under that curve (PR-AUC) stays honest under heavy imbalance, where the ROC curve flatters a useless model. Fix the threshold where the cost of a false alarm is acceptable — often near the precision a human reviewer reaches.
-- **Recommenders** — Ranking metrics — NDCG, MRR, Hit@K — plus catalogue coverage and calibration, measured longitudinally over sessions rather than single impressions. Interleaving compares two rankers on the same user with roughly 10–20× less traffic than an unpaired A/B test.
+- **Classification** — Precision and recall at a chosen threshold, summarized by the precision-recall curve; the area under that curve (PR-AUC) reflects precision on the rare class, where the ROC curve can look high for a weak model. Set the threshold from the cost of a false alarm against a miss, or from reviewer capacity.
+- **Recommenders** — Ranking metrics — NDCG, MRR, Hit@K — plus catalogue coverage and calibration, measured longitudinally over sessions rather than single impressions. Interleaving shows two rankers to the same user, so it needs less traffic than an unpaired A/B test; it ranks two rankers against each other but does not measure absolute or long-term effects.
 - **Search & information retrieval** — Rank-aware metrics at a cutoff k (NDCG@k, MAP, MRR) over a graded-relevance test set, with query diversity across head, torso, and tail. Click logs carry presentation bias, so labels need debiasing via inverse-propensity weighting or interleaving.
 - **Generative** — No single scalar: combine cheap-but-brittle overlap scores (BLEU, ROUGE), semantic similarity (BERTScore), task-specific fact-checkers, safety and toxicity classifiers, and periodic human preference ratings — tracking how well the automated proxies correlate with human judgement.
 
@@ -57,9 +57,9 @@ flowchart TB
 <!--meta polarity=pro-->
 
 - **The stack forces every metric** to trace back to the business objective, catching the classic trap of optimizing a number users don't care about.
-- **Choosing the right metric for the data** — PR-AUC over ROC-AUC under imbalance, rank-aware metrics for ranking — prevents a useless model from looking good.
+- **Choosing the right metric for the data** (PR-AUC over ROC-AUC under imbalance, rank-aware metrics for ranking) makes a useless model easier to spot, provided the split and slices are sound.
 - **Offline evaluation gives a fast** iteration loop, and shadow mode lets a model be validated before it ever affects a user.
-- **Interleaving and importance sampling** make rigorous online measurement affordable even for small lifts or rare classes.
+- **Interleaving and importance sampling** cut the traffic needed to compare rankers and the labels needed for rare classes, so measurement stays affordable; small lifts still need enough samples.
 
 ### Cons
 <!--meta polarity=con-->
@@ -68,6 +68,7 @@ flowchart TB
 - **High-quality labels are expensive** and slow, and under class imbalance random sampling wastes budget and inflates variance.
 - **Feedback loops let a model train** on its own echo chamber, so evaluation needs exploration traffic and a golden set unaffected by the model's own decisions.
 - **Generative quality resists any single** number, so evaluation stays partly subjective and human-dependent.
+- **Small slices** give noisy estimates, so report confidence intervals and set a minimum slice size before gating a release.
 
 ## When to use it
 <!--meta block=usage-->
@@ -104,7 +105,7 @@ const accuracy = (c: Counts) => (c.tp + c.tn) / (c.tp + c.fp + c.fn + c.tn || 1)
 const lazy: Counts = { tp: 0, fp: 0, fn: 100, tn: 9900 };
 console.log("accuracy", accuracy(lazy).toFixed(3)); // 0.990 — looks great
 console.log("recall",   recall(lazy).toFixed(3));   // 0.000 — catches nothing
-// Accuracy is fooled by imbalance; precision/recall (and PR-AUC across thresholds) are not.
+// Accuracy reads 0.990 here while recall is 0.000: accuracy is fooled by imbalance.
 ```
 
 ## In the wild
@@ -178,6 +179,7 @@ console.log("recall",   recall(lazy).toFixed(3));   // 0.000 — catches nothing
 - [Embeddings](./embeddings.md) — Retrieval and ranking metrics are how embedding quality is actually measured
 - [Feature Engineering](./feature-engineering.md) — An offline gain that dies online usually traces back to features
 - [Retrieval-Augmented Generation](./rag.md) — A retrieval-augmented system has two stages to measure, and one score hides which broke
+- [Shadow Traffic](../distributed/routing/shadow-traffic.md) — Shadow mode validates a new model on copied live requests before it affects users.
 
 **Implemented by**
 

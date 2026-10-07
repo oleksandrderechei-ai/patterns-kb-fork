@@ -162,6 +162,7 @@ declare function record(primary: Response, shadow: Response): void;
 
 - [Service Mesh](./service-mesh.md) — Mesh proxies can duplicate requests by rule, with no application change
 - [Wire Tap](../../messaging/wire-tap.md) — Message-layer sibling: copies messages to a side channel for a shadow consumer
+- [Evaluation](../../ml/evaluation.md) — Offline evaluation sets the metrics and floors that a shadow run's output is judged against.
 
 **Variant of**
 

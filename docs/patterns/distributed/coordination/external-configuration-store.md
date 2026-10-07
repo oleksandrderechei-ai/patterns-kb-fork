@@ -231,6 +231,7 @@ export class Configuration {
 - [Secure Session Manager](../../security/secure-session-manager.md) — Settings live here; credentials and keys live in a secret manager the store only references
 - [Microservices](../../architecture/microservices.md) — Many deployables multiply the places a setting can drift, which is what earns the store its own dependency
 - [Convention over Configuration](../../../principles/convention-over-configuration.md) — An external store holds the settings a convention cannot supply
+- [Context Engineering](../../ml/context-engineering.md) — Holds declared data such as the repository scope an agent workspace loads, rather than leaving the agent to infer it at run time.
 
 **Enables**
 
