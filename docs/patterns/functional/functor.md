@@ -20,7 +20,7 @@ Transforming a value trapped in a container means checking every case first, whe
 ## Explained
 <!--meta block=explain-->
 
-A functor is a container with a map operation. It applies your function to the value inside and returns the same kind of container, so you transform the value without opening the container. An array, a promise and an optional value are all functors, and the word names a shape, not one class. Without it you repeat the unwrapping and re-wrapping at every call site. Two laws keep map trustworthy: mapping the identity function changes nothing, and mapping f then g equals one map of both. Choose it over unwrapping and checking by hand when the value may be missing, late or many, and you want to transform it without repeating that check in every step.
+A functor is a container with a map operation. It applies your function to the value inside and returns the same kind of container, so you transform the value without opening the container. An array and an optional value are functors, and a promise is one only for callbacks that return plain values; the word names a shape, not one class. Without it you repeat the unwrapping and re-wrapping at every call site. Two laws keep map trustworthy: mapping the identity function changes nothing, and mapping f then g equals one map of both. Choose it over unwrapping and checking by hand when the value may be missing, late or many, and you want to transform it without repeating that check in every step.
 
 - **Nested containers.** A function that itself returns a container gives one inside another, so use flatMap, which flattens them (see \[monad\](monad.md)).
 - **No combining.** Map cannot join two separate containers, so use zip or an applicative, which applies a wrapped function to wrapped values.
@@ -32,7 +32,7 @@ A functor is a container with a map operation. It applies your function to the v
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Any type that implements a lawful map conforms to the Functor shape. Array, Option, and Promise all do, each preserving its own structure while transforming what's inside."
+```mermaid caption="Any type that implements a lawful map conforms to the Functor shape. Array and Option do, and Promise does for plain-value callbacks, each preserving its own structure while transforming what's inside."
 classDiagram
     class Functor {
         +map(f) Functor
@@ -58,13 +58,13 @@ classDiagram
 
 - **One vocabulary** — `map` — works across arrays, optionals, futures, results, and any other lawful container.
 - **Preserves the surrounding structure automatically**: map an array and get an array back, same length, same order.
-- **The identity and composition laws** make chained maps predictable and safe to refactor or fuse.
+- **The identity and composition laws** make chained maps predictable and safe to refactor or fuse, provided the mapped functions are pure.
 - **Keeps unwrapping and rewrapping logic in one place** instead of scattered through every caller.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Cannot flatten or sequence** — `map` can only apply a single pure, unary function to what's inside; it can't flatten a nested wrapper or sequence dependent steps.
+- **Cannot flatten or sequence** — `map` applies one unary function to what's inside, so it cannot flatten a nested wrapper, and dependent steps need `flatMap` (a monad).
 - **Can't combine two separately-wrapped values** with `map` alone; that needs an Applicative.
 - **The functor laws aren't enforced by most type systems**, so a "map" that silently breaks them still type-checks.
 - **Without real generics or higher-kinded types**, the interface has to be faked per-type instead of shared.
@@ -124,7 +124,7 @@ console.log(new Box(5).map((n) => (n + 1) * 2).unwrap());        // same — com
 
 - **Haskell Functor typeclass** — Defines fmap :: (a -> b) -> f a -> f b, also exposed as an infix operator, as the single lawful operation over lists, Maybe, IO, Either, and every other instance. GHC can generate an instance mechanically via DeriveFunctor, while the identity and composition laws remain documented conventions the compiler never checks. {#wild-haskell-functor}
 - **java.util.Optional** — Introduced in Java 8. Its map applies the function only when a value is present and wraps the result as if by ofNullable, so a mapper returning null collapses to an empty Optional instead of throwing — and flatMap exists separately for mappers that already return an Optional. {#wild-java-optional}
-- **Rust Option and Iterator** — Option::map eagerly transforms the value inside Some, while Iterator::map is a lazy adapter whose closure runs only as elements are pulled — a chain of maps therefore fuses into a single pass with no intermediate collections, the composition-law rewrite done by construction. {#wild-rust-option}
+- **Rust Option and Iterator** — Option::map eagerly transforms the value inside Some, while Iterator::map is a lazy adapter whose closure runs only as elements are pulled, so a chain of maps runs in a single pass with no intermediate collections, the same result the composition law permits. {#wild-rust-option}
 
 ## In production
 <!--meta block=production-->
@@ -132,14 +132,14 @@ console.log(new Box(5).map((n) => (n + 1) * 2).unwrap());        // same — com
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Eager vs lazy map** — Whether each map in a chain materializes a new container immediately or defers into a fused pipeline that runs once per element. Eager is simpler to reason about; lazy avoids intermediate allocations but changes when the mapped functions actually execute.
+- **Eager vs lazy map** — Whether each map in a chain materializes a new container immediately or defers into a fused pipeline that runs once per element. Eager is simpler to reason about; lazy avoids intermediate allocations but changes when the mapped functions actually execute. Switch to lazy when profiling shows a chain of n stages over m elements allocating n×m intermediate items that show up in GC time.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
 - **Impure functions break map fusion** — Rewriting .map(f).map(g) as one map of the composition is only safe under the composition law. If f or g logs, counts, or mutates, the fused version interleaves those effects differently and behavior silently changes.
-- **Intermediate copies in long chains** — With an eager map, every stage of a chain over a large collection materializes a full new collection, so memory and garbage collection (GC) cost grow with the length of the chain rather than the size of the data.
-- **Map-shaped APIs that do more than map** — An operation that also flattens or filters — JavaScript Promise.then collapses a returned promise instead of nesting it — violates structure preservation, so refactors that assume the functor laws quietly change behavior.
+- **Intermediate copies in long chains** — With an eager map, every stage of a chain over a large collection materializes a full new collection, so memory and garbage collection (GC) cost grow with chain length multiplied by collection size. Watch allocation rate and GC pause time in a heap profile.
+- **Map-shaped APIs that do more than map** — An operation that also flattens or filters violates structure preservation. JavaScript Promise.then collapses a returned promise instead of nesting it, so refactors that assume the functor laws quietly change behavior.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -171,6 +171,7 @@ console.log(new Box(5).map((n) => (n + 1) * 2).unwrap());        // same — com
 - [Pipeline / Composition](./pipeline.md) — map turns a stage into a lawful, fusable step
 - [Immutability](./immutability.md) — map returns a new wrapper, never touching the original
 - [Currying](./currying.md) — A curried map is the transformer waiting for its container
+- [Lens / Optics](./lens-optics.md) — Optics generalize map to nested, many-focus targets
 
 **Generalizes**
 

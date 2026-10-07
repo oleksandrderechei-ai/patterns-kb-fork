@@ -23,7 +23,7 @@ A lens pairs a get function, which reads one field of a nested structure, with a
 
 A lens is a pair of get and set bound to one path into nested data. Get reads the value at that path. Set returns a new copy of the whole structure with only that value changed, so the original is untouched. Lenses compose, so a lens to the address and a lens to the city join into one lens to the city. Choose it over nested copy-with-spread when the same deep path is read and updated in many places, or when the path is chosen while the program runs. For one or two levels a plain spread is clearer.
 
-- **Extra concept.** It adds a concept and usually a library, so use it only for deep paths.
+- **Extra concept.** It adds a concept and often a library, though a hand-written lens needs none; use it only for deep paths.
 - **Unreadable type errors.** Composed lenses give long type errors, so annotate each lens with its types.
 - **Call overhead.** Each call costs a little more than a property access, so measure it on hot paths.
 - **Hidden path.** A lens hides a path that a spread shows, so name each one after what it points at.
@@ -49,8 +49,8 @@ flowchart LR
 - **Traversal** — Targets zero or more foci at once, such as every element of an array, and lifts a single update across all of them in one pass.
 - **Optional (affine traversal)** — A lens-and-prism hybrid with at most one focus that may or may not exist — an array index, a map key, an optional field.
 - **Iso** — A lossless, reversible view between two equivalent representations — a wrapped newtype and its raw value, a tuple and a record — with no failure and no information loss.
-- **Read-only optics** — Not every optic writes. A getter reads one focus, a fold reads many, and both compose with the read-write optics through the same operators. The rule worth knowing is that composing two kinds yields the weakest capability the pair share: a traversal composed with a getter is a fold, which reads the collection perfectly well and cannot set anything through it. The loss is silent at the point you build the optic and surfaces later, wherever you tried to write.
-- **Concrete pair vs. van Laarhoven encoding** — Optics can be plain `{ get, set }` objects, as in Ramda or monocle-ts, or encoded as higher-order functions over profunctors, which composes more uniformly but reads far less directly.
+- **Read-only optics** — Not every optic writes. A getter reads one focus and a fold reads many; both compose with the read-write optics through the same operators. Composing two kinds yields the weakest capability the pair share: a traversal composed with a getter is a fold, which reads the collection and cannot set anything through it. The loss shows only when you try to write.
+- **Concrete pair vs. van Laarhoven encoding** — Optics can be plain `{ get, set }` objects, as in monocle-ts, or encoded as higher-order functions over a [functor](./functor.md) (a wrapper type with map) or a profunctor, the van Laarhoven style, which composes the same way for every optic kind but is harder to read and debug.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -68,7 +68,7 @@ flowchart LR
 
 - **Extra abstraction** — and often a library — for what a plain field access already does.
 - **Composition-type errors**, especially in profunctor encodings, can produce unreadable inferred types.
-- **A small per-call overhead** versus a raw property read or assignment.
+- **A small per-call overhead** versus a raw property read or assignment; it grows with the number of levels copied, so profile hot updates before dropping the lens.
 - **Overkill for shallow**, one- or two-level structures where a spread is already clear.
 
 ## When to use it
@@ -119,7 +119,22 @@ const cityL: Lens<Address, string> =
   lens((a) => a.city, (c, a) => ({ ...a, city: c }));
 
 const userCityL = compose(addressL, cityL);
+const user: User = { address: { city: "Lviv" } };
 const shouted = over(userCityL, (c) => c.toUpperCase(), user);
+
+// Laws on cityL: get-set, set-get, set-set.
+const a: Address = { city: "Lviv" };
+console.assert(cityL.get(cityL.set("Kyiv", a)) === "Kyiv");
+console.assert(cityL.set(cityL.get(a), a).city === a.city);
+console.assert(cityL.set("Odesa", cityL.set("Kyiv", a)).city === cityL.set("Odesa", a).city);
+
+// A prism focuses on one case of a union: get may miss, set leaves a miss unchanged.
+interface Prism<S, A> { get(s: S): A | undefined; set(a: A, s: S): S }
+type Shape = { kind: "circle"; r: number } | { kind: "square"; side: number };
+const circleR: Prism<Shape, number> = {
+  get: (s) => (s.kind === "circle" ? s.r : undefined),
+  set: (r, s) => (s.kind === "circle" ? { ...s, r } : s),
+};
 ```
 
 ## In the wild
@@ -149,7 +164,7 @@ const shouted = over(userCityL, (c) => c.toUpperCase(), user);
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Lens law violation** — A hand-written lens whose set and get do not agree gives surprising results on composition. Test the get-set and set-get laws.
+- **Lens law violation** — A hand-written lens whose set and get do not agree gives surprising results on composition. Test the get-set, set-get and set-set laws; set-set means setting twice equals setting the last value.
 - **Silent miss on a prism** — A prism over a variant that does not match returns nothing and the update silently does nothing. Handle the miss on purpose.
 - **Unfamiliar to the team** — Optic jargon in a codebase nobody else reads costs more than the nested updates it replaces.
 - **Deep copy cost** — Updating through a deep path still copies each level on the way, and large collections make that slow.
@@ -157,7 +172,7 @@ const shouted = over(userCityL, (c) => c.toUpperCase(), user);
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- Each hand-written lens has a test for the get-set and set-get laws
+- Each hand-written lens has a test for the get-set, set-get and set-set laws
 - Optional and prism misses are handled in the calling code
 - Lenses sit beside their data types
 - The team has read the module's conventions, or plain updates are used instead
@@ -185,5 +200,6 @@ const shouted = over(userCityL, (c) => c.toUpperCase(), user);
 - [Immutability](./immutability.md) — Optics update nested immutable data
 - [Flux](../frontend/flux.md) — Targets one path inside a big reducer's state tree
 - [Value Object](../ddd/value-object.md) — Replace a nested value object without a spread tower
+- [Functor](./functor.md) — Traversals and the van Laarhoven encoding are built on map over a context
 
 <!-- relationships:end -->

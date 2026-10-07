@@ -25,10 +25,10 @@ A pipeline builds behavior by passing a value through a list of small functions,
 
 - **Hidden middle values.** You cannot see values between stages, so add a tap stage that logs the value and passes it on.
 - **Shape agreement.** Every stage must agree on the shape it passes, so add a small adapter stage where two do not match.
-- **Slow typing.** Type inference over many generic stages gets slow and confusing, so type each stage and keep a pipe to about six.
+- **Slow typing.** Type inference over many generic stages gets slow and confusing, so type each stage and split a long pipe into named sub-pipes.
 - **Straight line only.** Branches, side effects and errors do not fit, so wrap values in a result type or split the pipeline.
 
-**Example.** A pipeline cleans a price from a CSV: trim, parse, add 20% VAT, format with two decimals. The input " 50 " becomes "50", then 50, then 60, then "60.00". A row reads "5O" with a letter O, and the output is "NaN". The pipeline gives no hint which of 4 stages failed. Adding a tap after each stage shows that the parse stage produced NaN, and the VAT and format stages only passed it on. The fix is a check in the parse stage. The cost is that the check needs an error path, and a plain straight line cannot hold one without a result type.
+**Example.** A pipeline cleans a price from a CSV: trim, parse, add 20% VAT, format with two decimals. The input " 50 " becomes "50", then 50, then 60, then "60.00". A row reads "5O" with a letter O, and the output is "NaN". The pipeline gives no hint which of 4 stages failed. Adding a tap after each stage shows that the parse stage produced NaN, and the VAT and format stages only passed it on. The fix is a check in the parse stage that returns an error value, which later stages skip. The cost is that the check needs an error path, and a plain straight line cannot hold one without a result type.
 
 ## How it works
 <!--meta block=structure-->
@@ -93,25 +93,30 @@ flowchart LR
 type Fn<A, B> = (a: A) => B;
 
 // Chains any number of unary functions, left to right.
+// The any signature is untyped: it drops per-stage type checks.
+// Typed overloads such as pipe<A, B, C>(f: Fn<A, B>, g: Fn<B, C>) keep them.
 function pipe(...fns: Fn<any, any>[]): Fn<any, any> {
   return (input: any) =>
     fns.reduce((value, fn) => fn(value), input);
 }
 
+// A tap stage logs the value and passes it on unchanged.
+const tap = <T>(label: string) => (v: T): T => { console.log(label, v); return v; };
+
 const parse = (raw: string): number => Number(raw.trim());
 const double = (n: number): number => n * 2;
 const format = (n: number): string => `total: ${n}`;
 
-const process = pipe(parse, double, format);
+const process = pipe(parse, tap<number>("parsed"), double, format);
 
-console.log(process("  21 ")); // "total: 42"
+console.log(process("  21 ")); // logs "parsed 21", then prints "total: 42"
 ```
 
 ## In the wild
 <!--meta block=wild-->
 
-- **Unix shell pipelines** — The | operator wires one program's stdout into the next's stdin; stages run concurrently and a fixed-size kernel pipe buffer applies natural backpressure, blocking the writer when the reader falls behind. set -o pipefail surfaces a failure from any stage rather than just the last. {#wild-unix-pipes}
-- **RxJS pipe()** — Observables compose by passing unary operators to pipe(); the chain stays cold and lazy until subscribe, each operator returns a new Observable, and tap() inserts a side-effecting stage for logging without altering the stream. {#wild-rxjs-pipe}
+- **Unix shell pipelines** — The | operator wires one program's stdout into the next's stdin; stages run concurrently and a fixed-size kernel pipe buffer applies backpressure, blocking the writer when the reader falls behind. set -o pipefail surfaces a failure from any stage rather than just the last. {#wild-unix-pipes}
+- **RxJS pipe()** — Observables compose by passing unary operators to pipe(); for cold observables the chain stays lazy until subscribe, each operator returns a new Observable, and tap() inserts a side-effecting stage for logging without altering the stream. {#wild-rxjs-pipe}
 - **java.util.stream** — Intermediate operations such as map and filter are lazy and fused into a single pass that runs only when a terminal operation (collect, reduce) pulls; a stream is single-use, and parallel() hands the pipeline to the common ForkJoin pool. {#wild-java-streams}
 
 ## In production
@@ -126,15 +131,15 @@ console.log(process("  21 ")); // "total: 42"
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Intermediate-collection memory (eager pipelines)** — In an eager collection pipeline each stage materializes a full copy, so peak memory tracks the number of stages times the input size — observable as allocation and live-heap growth over a large input.
+- **Intermediate-collection memory (eager pipelines)** — In an eager collection pipeline each stage materializes a full copy of its output, so peak memory is about two copies of the input at once (a stage's input and its output), more if earlier copies stay referenced. Observable as allocation and live-heap growth over a large input.
 - **Per-stage latency (once instrumented)** — A composed chain reports one total time; attributing that latency to a specific stage is only observable if a timing tap sits between stages, otherwise the whole pipe is one opaque number.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Opaque chain, poor observability** — A long composed chain runs as one call; a failure deep inside surfaces as a stack trace pointing at the generic pipe/reduce helper, not the offending stage, and inspecting an intermediate value means adding a tap or stepping through stage by stage.
+- **Opaque chain, poor observability** — A failure deep in a long composed chain shows a stack trace pointing at the generic pipe/reduce helper, not the failing stage.
 - **Deferred errors in lazy pipelines** — In a lazy pipeline nothing runs until the terminal step, so a fault built into an early stage only throws when the terminal operation pulls — far from where the pipeline was assembled, and easy to misattribute to the wrong stage.
-- **Intermediate blow-up over large inputs** — An eager collection pipeline materializes a full intermediate collection at every stage; over a large input that is several full copies live at once, spiking memory versus a lazy or fused single pass.
+- **Intermediate blow-up over large inputs** — An eager collection pipeline materializes a full intermediate collection at every stage; over a large input each copy stays live until the next stage finishes with it, spiking memory versus a lazy or fused single pass.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -166,6 +171,7 @@ console.log(process("  21 ")); // "total: 42"
 - [Currying](./currying.md) — Curried functions compose cleanly in a pipeline
 - [Monad](./monad.md) — Monadic bind is pipeline composition with context
 - [Functor](./functor.md) — Mapping inside a wrapper keeps stages unary
+- [Immutability](./immutability.md) — Pure stages only compose safely when values are never edited in place
 
 **Often confused with**
 

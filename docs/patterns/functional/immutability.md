@@ -16,7 +16,7 @@ Never mutates data in place — every change produces a brand-new value, so ever
 ## What it is
 <!--meta block=description-->
 
-When two parts of a program hold the same object and either can change it, one caller edits what the other assumed was stable. Immutability means a value never changes after creation: an update returns a new value and the old one stays valid, so there is nothing to defend against and no defensive copying.
+When two parts of a program hold the same object and either can change it, one caller edits what the other assumed was stable. Immutability means a value never changes after creation: an update returns a new value and the old one stays valid, so there is nothing to defend against and no defensive copying, provided immutability is enforced all the way down.
 
 ## Explained
 <!--meta block=explain-->
@@ -58,10 +58,10 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Eliminates whole classes of bugs** from aliasing and shared mutable state.
-- **Safe to share across threads or async tasks** without locks — nothing to race over.
+- **Eliminates whole classes of bugs** from aliasing and shared mutable state, wherever the type system or freezing actually enforces it.
+- **Safe to share across threads or async tasks** without locks: the value itself needs no lock, though swapping which version is current still needs one atomic reference.
 - **Equality, hashing, and caching become trivial**; an immutable value is a safe map key forever.
-- **Undo, redo, and time-travel debugging** fall out for free — old versions are just kept around.
+- **Undo, redo, and time-travel debugging** are cheap to build: old versions are kept, at the memory cost of the versions you retain.
 
 ### Cons
 <!--meta polarity=con-->
@@ -69,7 +69,7 @@ flowchart LR
 - **Every "change" allocates** — naive implementations copy far more than they need to.
 - **Deep or large structures** need persistent, structurally-shared implementations, or updates get slow.
 - **Constant translation at the boundary with mutable-by-default libraries**, ORMs (object-relational mappers), and APIs.
-- **Without a type system or freezing** to enforce it, "immutable" degrades to "please don't mutate this."
+- **Without a type system or freezing** to enforce it, "immutable" degrades to "please don't mutate this." `Object.freeze` is shallow and `readonly` is erased at runtime, so neither stops a mutation through a cast or a nested field.
 
 ## When to use it
 <!--meta block=usage-->
@@ -85,7 +85,7 @@ flowchart LR
 <!--meta polarity=avoid-->
 
 - **The data is large and mutated extremely often**, and copying would be a genuine bottleneck — tight numeric loops, big in-memory buffers.
-- **A single owner mutates a value** in a narrow, well-understood scope that no one else can observe mid-mutation.
+- **A single owner mutates a value** in a narrow, well-understood scope that no one else can observe mid-mutation, such as a local mutable builder inside a function that returns an immutable value. [Thread Confinement](../concurrency/thread-confinement.md) is the neighbour for wider cases.
 - **The runtime gives you no cheap way** to share structure, so copying everything each time is wasted work.
 
 ## Code sketch
@@ -104,7 +104,7 @@ interface CartState {
 
 function addItem(state: CartState, item: CartItem): CartState {
   return {
-    items: [...state.items, item],   // new array; old one untouched
+    items: [...state.items, item],   // new array (O(n) copy); old one untouched
     total: state.total + item.priceCents,
   };
 }
@@ -116,7 +116,7 @@ v1.items.length; // 0 — v1 never changed
 v2.items.length; // 1 — v2 is a distinct object
 v1 === v2;        // false — no shared identity
 
-// A runtime guard on top of the type-level one.
+// A runtime guard on top of the type-level one. Shallow: it freezes v1 only, not v1.items.
 Object.freeze(v1);
 ```
 
@@ -155,7 +155,7 @@ Object.freeze(v1);
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- Use structurally-shared / persistent structures for large or deeply nested state; reserve naive copy for small, flat records.
+- Profile one update on your largest state; if it copies more than the changed path, switch to a persistent structure and keep naive copy for small, flat records.
 - Bound every retained-version store — undo stacks, snapshot lists, value-keyed caches — so old versions can be collected.
 - Confirm hot loops and per-event handlers don't deep-copy a whole structure per iteration; batch updates where they do.
 - Make freezing an explicit decision per environment (on in dev and at boundaries, off on hot paths), not an accident.
@@ -190,6 +190,7 @@ Object.freeze(v1);
 - [DTO](../enterprise/dto.md) — A DTO is the everyday carrier that is built once and never changed
 - [Builder](../gof/creational/builder.md) — A builder assembles a many-field immutable object before it is frozen
 - [Flyweight](../gof/structural/flyweight.md) — Flyweight puts one never-changed copy behind many objects
+- [Pipeline / Composition](./pipeline.md) — Pipelines of pure stages are the usual way to chain transformations of immutable values
 
 **Alternative to**
 
