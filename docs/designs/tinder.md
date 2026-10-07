@@ -21,9 +21,13 @@ A swipe-based matching app shows a stack of nearby profiles and notifies two peo
 ## Explained
 <!--meta block=explain-->
 
-Tinder records about 2 billion swipes a day and must tell the second person to swipe right on a pair, right now, that they have a match. The key move is to name each swipe by the pair, with the two user ids sorted and joined, so a swipe from A to B and one from B to A land on the same partition (one slice of the data). Writing your swipe and reading theirs is then one atomic step, so two simultaneous swipes cannot both miss each other. Choose this over spreading swipes evenly and matching on a schedule, because the second swiper must hear now, not on the next pass. It costs three things. A popular user's pairs concentrate writes, so keep each swipe row tiny and append-only. An in-memory front for the check is fast but loses a very recent swipe if its node dies, so Cassandra, a write-heavy database, stays the system of record and the user just swipes again. Precomputed candidate stacks cost refresh work, so build them only for users who will open them.
+Tinder records about 2 billion swipes a day and must tell the second person to swipe right on a pair, right now, that they have a match. The key move is to name each swipe by the pair, with the two user ids sorted and joined, so a swipe from A to B and one from B to A land on the same partition (one slice of the data). Writing your swipe and reading theirs is then one atomic step, so two simultaneous swipes cannot both miss each other. Choose this over matching on a schedule, because the second swiper must hear now. Redis fronts the check for speed, and Cassandra, a write-heavy database, stays the system of record.
 
-**Example.** 20 million daily users swipe about 100 times each, so 2 billion swipes a day, about 23,000 a second. A swipe is about 100 bytes, so about 200 GB a day. Two users swipe right on each other in the same millisecond. Both writes use the key lower-id:higher-id, so both land in the same partition and run one after the other. The second one finds the first and reports a match. Under separate keys both would find nothing and miss it. If the Redis node holding recent swipes dies, a swipe from the last moments is lost and the user swipes again.
+- **Round trips.** Cassandra compare-and-set writes take several round trips each, so Redis fronts the check and Cassandra holds the durable copy.
+- **Lost recent swipe.** A lost Redis node loses a recent swipe, which Cassandra recovers on a miss.
+- **Refresh work.** Precomputed candidate stacks cost refresh work, so build them only for users who will open them.
+
+**Example.** Two users swipe right on each other in the same millisecond. Both writes use the key lower-id:higher-id, so both land in the same partition and run one after the other. The second one finds the first and reports a match. Under separate keys per direction, both checks would find nothing and the match would be missed. If the Redis node holding recent swipes dies just after, the swipe is gone from Redis, and a read of the pair's Cassandra partition recovers it.
 
 ## Requirements
 <!--meta block=requirements-->
@@ -41,7 +45,7 @@ Out of scope: photo uploads, post-match chat, and paid boosts or super-likes —
 ### Non-functional
 <!--meta requirement=nfr-->
 
-- **Consistency (matching)** — a mutual right-swipe must always notify the person who swiped second; strong consistency here, not eventual reconciliation.
+- **Consistency (matching)** — a mutual right-swipe must always notify the person who swiped second once both swipes reach the durable store; strong consistency, not eventual reconciliation.
 - **Latency** — the candidate stack loads in under 300&nbsp;ms.
 - **No repeats** — never show a profile the user has already swiped on.
 - **Scale** — 20M daily actives at ~100 swipes each per day, roughly 2B swipes/day.
@@ -109,44 +113,22 @@ flowchart TB
 
 ### 1 · Detecting a mutual match without a race
 
-The dangerous case is two people swiping right on each other in the same instant. Each swipe independently checks for the other's swipe, both find nothing because neither write has landed yet, and both save — a textbook [race condition](../hazards/race-condition.md) that leaves a genuine match undetected and both people un-notified. Polling the store on a schedule for reciprocal swipes is a non-starter: it violates the immediate-notification requirement outright and hammers the database. The fix is to make write-and-check a single atomic step.
+The dangerous case is two people swiping right on each other in the same instant. Each swipe independently checks for the other's swipe, both find nothing because neither write has landed yet, and both save — a [race condition](../hazards/race-condition.md) that leaves a genuine match undetected and both people un-notified. Polling the store on a schedule for reciprocal swipes breaks the notify-immediately requirement and loads the database. The fix is to make write-and-check a single atomic step.
 
-The durable store is [Cassandra](../patterns/distributed/coordination/lsm-tree.md) — its log-structured write path (commit log, memtables, SSTables) absorbs the ~2B swipes/day that a B-tree store could not. Cassandra offers lightweight transactions, but only within one partition, so the trick is to force both directions of a pair into the same partition. Build the partition key from the two user ids sorted and joined — `smaller:larger` — and A→B and B→A land together, turning an insert-then-read into one single-partition, atomic operation. That is [sharding](../patterns/distributed/routing/sharding.md) chosen for atomicity, not merely for spread.
+The durable store is [Cassandra](../patterns/distributed/coordination/lsm-tree.md) — its log-structured write path (commit log, memtables, SSTables) absorbs the ~2B swipes/day that a B-tree store could not. Cassandra offers lightweight transactions (compare-and-set writes), but only within one partition, so the trick is to force both directions of a pair into the same partition. Build the partition key from the two user ids sorted and joined — `smaller:larger` — and A→B and B→A land together, turning an insert-then-read into one single-partition, atomic operation. That is [sharding](../patterns/distributed/routing/sharding.md) chosen for atomicity, not merely for spread.
 
-```python summary="Pseudocode — co-locate a pair, then check atomically"
+```python summary="Pseudocode (Redis variant) — co-locate a pair, then check atomically"
 def pair_key(a, b):
     lo, hi = sorted([a, b])
     return f"{lo}:{hi}"          # A→B and B→A resolve to the same key
 
-# one atomic Redis step: record my swipe, read theirs
+# one atomic step: run both commands inside one Lua script (EVAL)
 #   HSET  swipes:{pair_key}  {me}_swipe    {decision}
 #   HGET  swipes:{pair_key}  {them}_swipe
 # if both sides are "yes" → it's a match, notify immediately
 ```
 
-A faster variant keeps the same co-location trick but in Redis: combine the two ids into one key so [consistent hashing](../patterns/distributed/routing/consistent-hashing.md) maps both swipes to the same shard, then run set-my-swipe-and-read-yours inside one Lua script, which Redis executes atomically and in memory. Cassandra stays the system of record; Redis holds only recent swipes and expires them aggressively, so losing a Redis node risks missing a very recent match — the user just swipes again — never durable data.
-
-### 2 · Loading the stack in under 300&nbsp;ms
-
-The naive feed query — `SELECT … WHERE age BETWEEN … AND lat BETWEEN … AND long BETWEEN …` — is a filtered scan that blows the budget even with ordinary indexes. Two moves fix it. First, hold the candidate corpus in a search-optimized store (Elasticsearch or OpenSearch) with a [geospatial index](../patterns/distributed/routing/geohash.md), so "profiles matching these preferences within N&nbsp;km" is a fast bounded lookup rather than a scan. That index has to track the profile store, which is a separate write path, so [change data capture](../patterns/distributed/coordination/change-data-capture.md) streams profile edits into it instead of dual-writing — at the cost of a small sync lag. Second, don't compute the stack on the hot path for active users at all: a background job precomputes each active user's next stack and stores it as a [materialized view](../patterns/distributed/coordination/materialized-view.md), served straight from cache on app open.
-
-The two combine: instant from the precomputed stack, and when a user nears the end of it the Feed Service falls back to the live geo query and refreshes the stack in the background, so the feed feels endless. The risk is a [stale feed](../hazards/stale-cache.md) — a candidate moves out of range or edits their filters and no longer qualifies. Bounding it is a set of tunable knobs: a short TTL (time to live) (well under an hour), precompute only for genuinely active users rather than everyone, and trigger a refresh when the user changes filters or moves a meaningful distance.
-
-Both paths feed the Feed Service, which prefers the precomputed stack:
-
-```mermaid caption="How does the Feed Service load a stack in under 300 ms and still feel endless?"
-flowchart LR
-    App["Client app"] -->|"open app"| Feed["Feed Service"]
-    Profiles["Profile store"] -->|"CDC: profile edits"| Geo[("Geo index (Elasticsearch / OpenSearch)")]
-    Job["Background job"] -->|"precompute next stack for active users"| Stack[("Materialized stack (cache)")]
-    Feed -->|"serve stack straight from cache"| Stack
-    Feed -->|"near end of stack: live geo query"| Geo
-    Feed -->|"refresh stack in background"| Stack
-```
-
-### 3 · Never re-showing a swiped profile
-
-Re-showing someone the user already dismissed reads as a bug, and worse, suggests their swipes weren't recorded. The obvious approach — query swipe history and filter the feed against it — has two problems: under an availability-leaning store a very recent swipe may not have replicated to the replica the feed reads from, and a heavy swiper's history grows into an ever more expensive contains-check. Both get solved on the way to the client. Because a user is on a single device, a [client-side cache](../patterns/caching/client-side-cache.md) of the last K swipes filters anything just swiped out of the next stack, closing the replication-lag window with no server-side cache to maintain. For users whose history is genuinely enormous, keep a per-user [Bloom filter](../patterns/distributed/coordination/bloom-filter.md) of everything they've swiped and test candidates against it: it never re-shows a swiped profile (no false negatives) and only, rarely, hides a fresh one (a false positive), with the error rate traded against memory. It is arguably over-engineered for the median user — which is the point: it earns its keep only in the long tail.
+A faster variant keeps the same co-location trick but in Redis: combine the two ids into one key so [consistent hashing](../patterns/distributed/routing/consistent-hashing.md) maps both swipes to the same hash slot (or the same shard under consistent hashing), then run set-my-swipe-and-read-yours inside one Lua script, which Redis executes atomically and in memory. Cassandra stays the system of record; Redis holds only recent swipes and expires them aggressively, so losing a Redis node risks missing a very recent match, and a Redis miss reads Cassandra first, so no durable data is lost.
 
 ```mermaid caption="How is a mutual match detected atomically when two people swipe right at the same instant?"
 sequenceDiagram
@@ -169,6 +151,30 @@ sequenceDiagram
     end
 ```
 
+### 2 · Loading the stack in under 300&nbsp;ms
+
+The naive feed query — `SELECT … WHERE age BETWEEN … AND lat BETWEEN … AND long BETWEEN …` — is a filtered scan that blows the budget even with ordinary indexes. Two moves fix it. First, hold the candidate corpus in a search-optimized store (Elasticsearch or OpenSearch) with a [geospatial index](../patterns/distributed/routing/geohash.md), so "profiles matching these preferences within N&nbsp;km" is a fast bounded lookup rather than a scan. That index has to track the profile store, which is a separate write path, so [change data capture](../patterns/distributed/coordination/change-data-capture.md) streams profile edits into it instead of dual-writing — at the cost of a small sync lag. Second, don't compute the stack on the hot path for active users at all: a background job precomputes each active user's next stack and stores it as a [materialized view](../patterns/distributed/coordination/materialized-view.md), served straight from cache on app open.
+
+The two combine: instant from the precomputed stack, and when a user nears the end of it the Feed Service falls back to the live geo query and refreshes the stack in the background, so the feed feels endless. The risk is a [stale feed](../hazards/stale-cache.md) — a candidate moves out of range or edits their filters and no longer qualifies. Bounding it is a set of tunable knobs: a short TTL (time to live) (well under an hour), precompute only for genuinely active users rather than everyone, and trigger a refresh when the user changes filters or moves a meaningful distance.
+
+Both paths feed the Feed Service, which prefers the precomputed stack:
+
+```mermaid caption="How does the Feed Service load a stack in under 300 ms and still feel endless?"
+flowchart LR
+    App["Client app"] -->|"open app"| Feed["Feed Service"]
+    Profiles["Profile store"] -->|"CDC: profile edits"| Geo[("Geo index (Elasticsearch / OpenSearch)")]
+    Job["Background job"] -->|"precompute next stack for active users"| Stack[("Materialized stack (cache)")]
+    Feed -->|"serve stack straight from cache"| Stack
+    Feed -->|"near end of stack: live geo query"| Geo
+    Feed -->|"refresh stack in background"| Stack
+```
+
+### 3 · Never re-showing a swiped profile
+
+Re-showing someone the user already dismissed reads as a bug, and worse, suggests their swipes weren't recorded. The obvious approach — query swipe history and filter the feed against it — has two problems: under an availability-leaning store a very recent swipe may not have replicated to the replica the feed reads from, and a heavy swiper's history grows into an ever more expensive contains-check. Two fixes run on the way to the client.
+
+A [client-side cache](../patterns/caching/client-side-cache.md) of the last K swipes filters anything just swiped out of the next stack, closing the replication-lag window with no server-side cache to maintain. A second or new device falls back to the server-side Bloom filter or swipe history. For users whose history is genuinely enormous, keep a per-user [Bloom filter](../patterns/distributed/coordination/bloom-filter.md) of everything they've swiped and test candidates against it: it never re-shows a swiped profile (no false negatives) and only, rarely, hides a fresh one (a false positive), with the error rate traded against memory. The Bloom filter is overkill for most users; it pays off only for the heaviest swipers.
+
 ## Limitations & trade-offs
 <!--meta block=tradeoffs-->
 
@@ -182,9 +188,12 @@ sequenceDiagram
 ### What it gives up
 <!--meta polarity=con-->
 
-- The Redis match path and the search index fed by profile changes are both internally eventually consistent: a lost Redis node can miss a very recent match, and index lag can briefly surface a stale profile.
+- A Redis node that dies loses its recent swipes and can miss a very recent match. The client filter in the no-repeat path then hides that profile, so the user cannot swipe again; a Redis miss must read the pair's Cassandra partition.
 - Precomputed feeds go stale between refreshes; freshness leans on TTLs and change-triggered recomputes rather than always-live data.
 - The Bloom filter trades a small rate of never-shown profiles for cheap history checks, and its per-user cache is expensive to rebuild after a loss.
+- Cassandra lightweight transactions take several round trips per write. At ~23k writes/s on average, that is why Redis fronts the check and Cassandra stays the system of record.
+- Search-index lag, from change data capture, can briefly show a stale profile.
+- Rebuilding a user's Bloom filter or client cache means rereading their full swipe history, which grows by ~100 swipes a day.
 
 ## What's expected at each level
 <!--meta block=levels-->
