@@ -633,7 +633,7 @@
       "definition": "A dedicated broker validates requests before they reach the service",
       "route": "/patterns/distributed/routing/gatekeeper.html",
       "requires": [],
-      "related": ["api-gateway", "valet-key", "intercepting-validator", "quarantine", "identity-as-perimeter"]
+      "related": ["api-gateway", "valet-key", "intercepting-validator", "quarantine", "identity-as-perimeter", "authorization-enforcer"]
     },
     {
       "id": "valet-key",
@@ -641,7 +641,7 @@
       "definition": "A token grants temporary, limited access to a resource directly",
       "route": "/patterns/distributed/routing/valet-key.html",
       "requires": [],
-      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check"]
+      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing"]
     },
     {
       "id": "api-routing",
@@ -825,7 +825,7 @@
       "definition": "Keeps no per-client state in memory, so any instance can serve any request",
       "route": "/patterns/distributed/routing/stateless-service.html",
       "requires": [],
-      "related": ["load-balancer", "sticky-session", "redundancy", "managed-services", "container-orchestration", "web-queue-worker", "containerization", "websocket"]
+      "related": ["load-balancer", "sticky-session", "redundancy", "managed-services", "container-orchestration", "web-queue-worker", "containerization", "websocket", "secure-session-manager"]
     },
     {
       "id": "compute-resource-consolidation",
@@ -1041,7 +1041,7 @@
       "definition": "Ship the application and its dependencies as one immutable, layered image",
       "route": "/patterns/distributed/coordination/containerization.html",
       "requires": [],
-      "related": ["stateless-service", "blue-green-deployment"]
+      "related": ["stateless-service", "blue-green-deployment", "quarantine"]
     },
     {
       "id": "a2a",
@@ -1257,7 +1257,7 @@
       "definition": "A slow consumer signals upstream to slow down",
       "route": "/patterns/concurrency/backpressure.html",
       "requires": [],
-      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer", "thread-pool", "websocket", "splitter", "competing-consumers"]
+      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer", "thread-pool", "websocket", "splitter", "competing-consumers", "secure-logger"]
     },
     {
       "id": "semaphore",
@@ -1881,7 +1881,7 @@
       "definition": "Centralizes checking what a role is allowed to do",
       "route": "/patterns/security/authorization-enforcer.html",
       "requires": ["authentication-enforcer"],
-      "related": ["least-privilege", "secure-session-manager", "identity-as-perimeter"]
+      "related": ["least-privilege", "secure-session-manager", "identity-as-perimeter", "intercepting-validator", "gatekeeper", "single-access-point"]
     },
     {
       "id": "secure-session-manager",
@@ -1889,7 +1889,7 @@
       "definition": "Issues, tracks, and expires session state safely",
       "route": "/patterns/security/secure-session-manager.html",
       "requires": [],
-      "related": ["authentication-enforcer", "federated-identity", "authorization-enforcer", "identity-as-perimeter", "external-configuration-store"]
+      "related": ["authentication-enforcer", "federated-identity", "authorization-enforcer", "identity-as-perimeter", "external-configuration-store", "stateless-service"]
     },
     {
       "id": "intercepting-validator",
@@ -1897,7 +1897,7 @@
       "definition": "Validates and sanitizes input before it reaches logic",
       "route": "/patterns/security/intercepting-validator.html",
       "requires": [],
-      "related": ["gatekeeper", "api-gateway", "secure-logger", "chain-of-responsibility", "fail-fast", "postels-law", "quarantine", "defense-in-depth"]
+      "related": ["gatekeeper", "api-gateway", "secure-logger", "chain-of-responsibility", "fail-fast", "postels-law", "quarantine", "defense-in-depth", "authorization-enforcer"]
     },
     {
       "id": "secure-logger",
@@ -1905,7 +1905,7 @@
       "definition": "Records events for audit without leaking sensitive data",
       "route": "/patterns/security/secure-logger.html",
       "requires": [],
-      "related": ["wire-tap", "intercepting-validator", "single-access-point", "design-for-operations"]
+      "related": ["wire-tap", "intercepting-validator", "single-access-point", "design-for-operations", "backpressure"]
     },
     {
       "id": "single-access-point",
@@ -1913,7 +1913,7 @@
       "definition": "One well-guarded entry, instead of many small ones",
       "route": "/patterns/security/single-access-point.html",
       "requires": [],
-      "related": ["federated-identity", "authentication-enforcer", "secure-logger", "defense-in-depth"]
+      "related": ["federated-identity", "authentication-enforcer", "secure-logger", "defense-in-depth", "authorization-enforcer"]
     },
     {
       "id": "least-privilege",
@@ -1929,7 +1929,7 @@
       "definition": "Holds an external artifact in isolation until checks mark it trusted",
       "route": "/patterns/security/quarantine.html",
       "requires": [],
-      "related": ["gatekeeper", "intercepting-validator", "least-privilege", "canary-release"]
+      "related": ["gatekeeper", "intercepting-validator", "least-privilege", "canary-release", "containerization"]
     },
     {
       "id": "agent-sandboxing",
@@ -1937,7 +1937,7 @@
       "definition": "Bound what an autonomous agent can reach, on the filesystem and on the network",
       "route": "/patterns/security/agent-sandboxing.html",
       "requires": [],
-      "related": ["ai-agent", "acp"]
+      "related": ["ai-agent", "acp", "defense-in-depth", "valet-key"]
     },
     {
       "id": "container-presentational",
@@ -2577,7 +2577,7 @@
       "definition": "Independent layers of protection, so one failed or bypassed control is not a breach",
       "route": "/principles/defense-in-depth.html",
       "requires": [],
-      "related": ["multi-tenancy", "redundancy", "identity-as-perimeter", "single-access-point", "least-privilege", "intercepting-validator"]
+      "related": ["multi-tenancy", "redundancy", "identity-as-perimeter", "single-access-point", "least-privilege", "intercepting-validator", "agent-sandboxing"]
     },
     {
       "id": "conways-law",

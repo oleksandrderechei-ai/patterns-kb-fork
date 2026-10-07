@@ -201,6 +201,7 @@ CMD ["dist/server.js"]
 
 - [Stateless Service](../routing/stateless-service.md) — An image is replaced rather than patched, so anything held in the container is lost on the next deploy
 - [Blue-Green Deployment](../routing/blue-green-deployment.md) — Promoting one digest between environments is what makes the two sides genuinely identical
+- [Quarantine](../../security/quarantine.md) — A built image from a public source enters through quarantine before anything pulls it.
 
 **Enables**
 

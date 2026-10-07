@@ -27,7 +27,7 @@ A single access point makes every outside request enter through one guarded gate
 - **Added delay.** It can slow every request, so size it for peak traffic and measure the delay it adds.
 - **Logic creep.** It tends to collect business logic, so keep it to security and routing only.
 
-**Example.** A company runs 12 services, and 11 check tokens. A scan finds the forgotten reports service on port 8081, open to anyone who calls it. With a gateway, a network rule lets the backends accept connections only from the gateway's address, so the same scan from outside times out. The gateway handles 3,000 requests a second and each copy handles 1,500, so you run three copies: if one fails, two carry 3,000. The cost is about 2 ms added to every request.
+**Example.** A company runs 12 services, and 11 check tokens. A scan finds the forgotten reports service on port 8081, open to anyone who calls it. With a gateway, a network rule lets the backends accept connections only from the gateway's address, so the same scan from outside times out. The gateway handles 3,000 requests a second and each copy handles 1,500, so you run three copies: if one fails, two carry 3,000. The cost is about 2 ms added to every request in this example; measure yours.
 
 ## How it works
 <!--meta block=structure-->
@@ -70,8 +70,8 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Concentrates auth**, validation, and logging in one place instead of duplicating them everywhere.
-- **Shrinks the attack surface** to one hardened door instead of many half-guarded ones.
-- **Gives full, consistent audit coverage** — every request necessarily crosses one log point.
+- **Shrinks the attack surface** to one hardened door instead of many half-guarded ones, when backends accept traffic from the gate alone.
+- **Gives full, consistent audit coverage**: every request crosses one log point, provided no backend is reachable except through the gate.
 - **Security policy changes once**, at the access point, instead of once per service.
 
 ### Cons
@@ -105,18 +105,20 @@ flowchart LR
 ```typescript summary="TypeScript — one guard in front of every route"
 const app = express();
 
-// Every request meets this guard before it reaches any handler below.
+// Network rule, not code: backends accept connections only from this host's address.
+
+// Every request through this app meets this guard first; a second listener or open backend port would still bypass it.
 app.use(async (req, res, next) => {
   const token = req.headers.authorization;
-  const session = await verifySession(token);
-  if (!session) {
-    return res.status(401).json({ error: "unauthorized" });
-  }
-  req.session = session; // downstream handlers trust this
+  if (!token) return res.status(401).json({ error: "unauthorized" });
+  let session;
+  try { session = await verifySession(token); }
+  catch { return res.status(503).json({ error: "auth unavailable" }); }
+  if (!session) return res.status(401).json({ error: "unauthorized" });
+  req.session = session; // handlers behind the gate rely on this
   next();
 });
 
-// Internal routers assume auth already happened — no route bypasses it.
 app.use("/orders", ordersRouter);
 app.use("/billing", billingRouter);
 app.use("/reports", reportsRouter);
@@ -139,13 +141,13 @@ app.listen(443);
 
 - **Rate-limit thresholds** — Requests allowed per client and globally before the gate starts rejecting (429s). Set too low it throttles legitimate traffic; too high it lets an abusive client saturate everything behind the one door.
 - **Concurrency and timeout limits** — Maximum in-flight connections and per-request timeouts at the access point. These bound how much load reaches the fleet and stop a slow upstream from pinning all the gate connections open.
-- **High-availability topology (replica count / failover)** — How many instances of the access point run behind a load balancer and how failover works. This is the direct mitigation for the patterns single-point-of-failure risk — one instance is one outage away from total unreachability.
+- **High-availability topology (replica count / failover)** — How many instances of the access point run behind a load balancer and how failover works. This is the direct mitigation for the single-point-of-failure risk of this pattern — one instance is one outage away from total unreachability.
 - **Exposed-route / upstream allowlist** — Which paths and backends the gate is willing to route to. A tight allowlist keeps the surface to what is intended; a permissive default can quietly expose an internal service the moment it appears.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Gate throughput and added latency (p99)** — Requests per second the access point sustains and the latency it adds per hop. Because every request crosses it, its tail latency is the whole systems tail latency.
+- **Gate throughput and added latency (p99)** — Requests per second the access point sustains and the latency it adds per hop. Because every request crosses it, its tail latency adds to every request's tail latency.
 - **Error and rejection rate (5xx, 429)** — Rate of gate-level failures and rate-limit rejections. A 429 climb means clients are hitting the throttle; a 5xx climb points at the gate itself or a failing upstream behind it.
 - **Connection saturation vs limit** — Active connections and queue depth against the configured maximum. Approaching the ceiling is the early warning that the single door is about to become the bottleneck.
 - **Upstream health / routing failures** — Share of requests the gate cannot route to a healthy backend. It separates a problem at the door from a problem in the fleet behind it.
@@ -154,7 +156,7 @@ app.listen(443);
 <!--meta polarity=failure-->
 
 - **Access point down** — The one door is a single point of failure: if it is unavailable, everything behind it is unreachable at once, no matter how healthy the backends are.
-- **Access point breached** — It concentrates risk as well as defense. A compromise of the gate exposes every service it fronts, because those services trust it and no longer guard themselves.
+- **Access point breached** — It concentrates risk as well as defense. A compromise of the gate exposes every service it fronts when backends trust it blindly, so keep per-service checks on sensitive routes.
 - **Throughput bottleneck under load** — If the gate is not sized for full traffic, requests queue and time out at the entrance; the chokepoint meant to protect the fleet becomes the ceiling on serving it.
 - **Bypass path behind the gate** — A backend still listening on the open network defeats the whole model — attackers walk around the hardened door to the unguarded window, and the single-entry guarantee is silently void.
 - **Scope creep into a god object** — The gate accretes unrelated business logic over time, drifting from a thin, auditable security chokepoint into a sprawling component that is hard to keep hardened and reason about.
@@ -193,11 +195,16 @@ app.listen(443);
 - [Authentication Enforcer](./authentication-enforcer.md) — Authenticate at the one entry
 - [Secure Logger](./secure-logger.md) — The choke point is where the full audit trail is taken
 - [Defense in Depth](../../principles/defense-in-depth.md) — One guarded entry still needs layers behind it.
+- [Authorization Enforcer (RBAC)](./authorization-enforcer.md) — Everything admitted through the one channel still needs a permission check, which this enforcer supplies.
 
 **Generalizes**
 
 - [Gatekeeper](../distributed/routing/gatekeeper.md) — A gatekeeper is a hardened single entry
 - [API Gateway](../distributed/routing/api-gateway.md) — A gateway is the usual form of the one guarded entry
+
+**Exposed to**
+
+- [God Object](../../hazards/god-object.md) — A gate that collects business logic drifts into one component everything leans on.
 
 **Implemented by**
 

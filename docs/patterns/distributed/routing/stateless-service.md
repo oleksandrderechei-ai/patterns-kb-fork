@@ -212,6 +212,7 @@ async function addToCart(
 - [Web-Queue-Worker](../../architecture/web-queue-worker.md) — Session state moves to a shared cache, which is what lets the front end scale out at all.
 - [Containerization](../coordination/containerization.md) — Immutable images make replacement the normal path, which only works if nothing important lives in the process
 - [WebSocket](../../messaging/websocket.md) — Sockets are the state you confine in a dedicated tier.
+- [Secure Session Manager](../../security/secure-session-manager.md) — Where the session record lives when the tier keeps no per-client state.
 
 **Alternative to**
 

@@ -3745,14 +3745,6 @@
     {
       "a": "persona-identification-v2",
       "verb": "demonstrates",
-      "b": "secure-logger",
-      "note_a": "log lines carry flow and person ids only, so a log never becomes a second copy of the vault",
-      "note_b": "the same reasoning that rejects a wire tap here: a monitoring surface is where access controls are weakest",
-      "group_a": "Payloads, evidence and restraint"
-    },
-    {
-      "a": "persona-identification-v2",
-      "verb": "demonstrates",
       "b": "correlation-identifier",
       "note_a": "one flow id threads every append, inbox row, task, vendor call and delivery attempt, so a stuck flow is one query rather than an archaeology exercise",
       "note_b": "one id instead of distributed tracing, with the honest note that this stops being true when work leaves the transaction",
@@ -13831,6 +13823,77 @@
       "b": "micro-frontends",
       "note_a": "A team that owns a service can own the matching UI slice, so the split runs the same way end to end.",
       "note_b": "The UI side of per-team services: each slice talks to the services its team owns."
+    },
+    {
+      "a": "authorization-enforcer",
+      "verb": "combines-with",
+      "b": "intercepting-validator",
+      "note_a": "Validation rejects malformed input at the edge; this decides what the valid caller may do, per service.",
+      "note_b": "Once input is valid, the authorization enforcer decides what that caller may do with it."
+    },
+    {
+      "a": "gatekeeper",
+      "verb": "combines-with",
+      "b": "authorization-enforcer",
+      "note_a": "Screening at the broker is one decision point; the enforcer holds the role-to-permission rules each service applies.",
+      "note_b": "The gatekeeper screens requests at the perimeter; this enforces the role's permissions at each service behind it."
+    },
+    {
+      "a": "authorization-enforcer",
+      "verb": "combines-with",
+      "b": "single-access-point",
+      "note_a": "The single entry point guards the perimeter; this decides what an admitted caller may do.",
+      "note_b": "Everything admitted through the one channel still needs a permission check, which this enforcer supplies."
+    },
+    {
+      "a": "stateless-service",
+      "verb": "combines-with",
+      "b": "secure-session-manager",
+      "note_a": "Where the session record lives when the tier keeps no per-client state.",
+      "note_b": "A shared session store is what lets any instance serve a signed-in user."
+    },
+    {
+      "a": "persona-identification-v2",
+      "verb": "demonstrates",
+      "b": "secure-logger",
+      "note_a": "log lines carry flow and person ids only, so a log never becomes a second copy of the vault",
+      "note_b": "a case study whose log lines carry only flow and person ids, never raw personal data, so the log is no second copy of the vault",
+      "group_a": "Payloads, evidence and restraint"
+    },
+    {
+      "a": "backpressure",
+      "verb": "combines-with",
+      "b": "secure-logger",
+      "note_a": "A secure logger's audit events must not be the records dropped when the sink is saturated.",
+      "note_b": "When the sink overflows, backpressure drops records; security events need a durable path beneath it."
+    },
+    {
+      "a": "single-access-point",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "A gate that collects business logic drifts into one component everything leans on.",
+      "note_b": "A single access point that takes every route's special case becomes the same class."
+    },
+    {
+      "a": "containerization",
+      "verb": "combines-with",
+      "b": "quarantine",
+      "note_a": "A built image from a public source enters through quarantine before anything pulls it.",
+      "note_b": "Images are the commonest artifact quarantine holds; the immutable image is the unit it scans and republishes."
+    },
+    {
+      "a": "agent-sandboxing",
+      "verb": "combines-with",
+      "b": "defense-in-depth",
+      "note_a": "One independent layer; the human gate on irreversible actions is the other.",
+      "note_b": "An agent boundary is a worked layer for a non-human actor."
+    },
+    {
+      "a": "valet-key",
+      "verb": "combines-with",
+      "b": "agent-sandboxing",
+      "note_a": "The agent is a client that should hold only a short-lived token.",
+      "note_b": "Source of the task-scoped token that bounds a leak."
     }
   ],
   "group_order": {

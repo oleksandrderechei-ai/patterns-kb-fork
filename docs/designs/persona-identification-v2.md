@@ -1431,9 +1431,9 @@ failover           promote the standby with commits in flight
 - [Object Storage](../patterns/distributed/routing/object-storage.md) — identity photos go straight to an object store on a presigned upload, referenced by key from a metadata row written before the URL is signed
 - [Valet Key](../patterns/distributed/routing/valet-key.md) — the photo goes up on a URL scoped to one object for fifteen minutes, re-issuable when a mobile upload fails, so the application programming interface (API) decides who may upload and then leaves the data path
 - [Claim Check](../patterns/messaging/claim-check.md) — workers pass the photo's storage key between steps, never the image bytes
-- [Secure Logger](../patterns/security/secure-logger.md) — log lines carry flow and person ids only, so a log never becomes a second copy of the vault
 - [Correlation Identifier](../patterns/messaging/correlation-identifier.md) — one flow id threads every append, inbox row, task, vendor call and delivery attempt, so a stuck flow is one query rather than an archaeology exercise
 - [Keep It Simple (KISS)](../principles/kiss.md) — one Postgres and stateless workers carry the whole delivery guarantee; every rejected broker, router, tap and polling application programming interface (API) is priced against a confirmed hundred onboardings a week
+- [Secure Logger](../patterns/security/secure-logger.md) — log lines carry flow and person ids only, so a log never becomes a second copy of the vault
 
 **Demonstrates**
 

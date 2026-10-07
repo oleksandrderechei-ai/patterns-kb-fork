@@ -21,14 +21,14 @@ Your build pulls base images, packages, infrastructure modules and vendor instal
 ## Explained
 <!--meta block=explain-->
 
-Quarantine is a holding area for outside artifacts, such as base images, packages and infrastructure modules. Each one lands first in an isolated store that nothing in production can read, gets the same agreed checks (vulnerability scan, malware scan, signature, and a review of the list of parts inside it), and is copied to the trusted store only if it passes, otherwise destroyed. What you ship is exactly the bytes you inspected. Choose it over scanning in each team's pipeline when many teams pull from public sources, because a single gate makes the rules the same for everyone and leaves one audit trail.
+Quarantine is a holding area for outside artifacts, such as base images, packages and infrastructure modules. Each one lands first in an isolated store that nothing in production can read, gets the same agreed checks (vulnerability scan, malware scan, signature, and a review of the list of parts inside it), and is copied to the trusted store only if it passes, otherwise rejected, and the quarantine copy is destroyed either way. What you ship is exactly the bytes you inspected. Choose it over scanning in each team's pipeline when many teams pull from public sources, because a single gate makes the rules the same for everyone and leaves one audit trail.
 
 - **Perishable verdict.** A pass is true only for the day given; stamp the report with an expiry and keep scanning the trusted store.
 - **Store separation.** Two stores that share access are one store; separate them by identity and network.
 - **Latency.** Checks take minutes to hours; request ahead and notify on finish, or people switch the gate off.
 - **Manual hand-offs.** A manual step gets skipped under deadline; automate every hand-off.
 
-**Example.** On Monday a team requests python:3.12 as a base image. It lands in the untrusted store, and a 20-minute scan finds one critical vulnerability, so the image is rejected and destroyed, and no pipeline can pull it. A later request for a patched build passes and is published to the trusted store with a 30-day report. On day 40 a new vulnerability is published for that image. The day-0 pass says nothing about it, so the expired report forces a rescan and the continuous scanner flags it. The cost is the 20 minutes of waiting, which is why teams request images the day before.
+**Example.** On Monday a team requests python:3.12 as a base image. It lands in the untrusted store, and a scan (say, 20 minutes) finds one critical vulnerability, so the image is rejected and destroyed, and no pipeline can pull it. A later request for a patched build passes and is published to the trusted store with a 30-day report (the expiry is a setting). On day 40 a new vulnerability is published for that image. The day-0 pass says nothing about it, so the expired report forces a rescan and the continuous scanner flags it. The cost is the 20 minutes of waiting, which is why teams request images the day before.
 
 ## How it works
 <!--meta block=structure-->
@@ -96,8 +96,8 @@ sequenceDiagram
 
 - **Supply-chain risk gets a single choke point**. One place decides what may enter, instead of every pipeline deciding by accident.
 - **The trusted store becomes a real assertion**. Anything in it has been through a known set of checks, and the annotation says which.
-- **The audit trail comes free**. Requester, source, checks run and verdict are recorded per artifact, which is most of what an audit asks for.
-- **It costs nothing at build time**. The gate is a store the pipeline already reads from, so pulls stay as fast as they were.
+- **The audit trail is a by-product**. Requester, source, checks run and verdict are recorded per artifact, which covers most of what an audit asks for.
+- **Pulls from the trusted store stay as fast as before**. The gate is a store the pipeline already reads, so the wait falls on a new artifact's first request, not on the build.
 
 ### Cons
 <!--meta polarity=con-->
@@ -105,7 +105,7 @@ sequenceDiagram
 - **It is a point-in-time verdict**, not a standing guarantee. A vulnerability published tomorrow is in an artifact that passed today, so expire the report and keep scanning continuously.
 - **Segmentation is the part people skip**, and skipping it voids the pattern. Trusted and untrusted stores must be separate resources with identity and network controls, or the quarantine store is just another registry someone can pull from.
 - **A bypassable gate is not a gate**. Invocation and signalling have to be automated, because any manual step is a step that gets skipped under deadline.
-- **Validation takes real time** — minutes to hours — so anything that blocks a synchronous pipeline on it will be turned off within a week.
+- **Validation takes real time**, minutes to hours, so a synchronous pipeline blocked on it tends to get turned off.
 - **It needs an owner** and an agreed rule set. Without consensus on what "checked" means for each artifact type, the verdicts are inconsistent and nobody trusts them.
 - **Vendor trust sits upstream** of all of it. A quarantine cannot fix a supplier with no responsible-disclosure process; it only tells you what today's scanners already know.
 - **It is not free to build or run**, and where the risk of skipping verification is genuinely small, the process costs more than it saves.
@@ -150,16 +150,24 @@ const CHECKS: Record<ArtifactRef['type'], ((r: ArtifactRef) => Promise<CheckResu
 async function quarantine(ref: ArtifactRef, untrusted: Store, trusted: Store, audit: Audit) {
   // Copy first: checks must run on the exact bytes that get published.
   await untrusted.import(ref)
-  const results = await Promise.all(CHECKS[ref.type].map((check) => check(ref)))
-  const blocking = results.filter((r) => !r.passed && r.critical)
-  if (blocking.length > 0) {
-    await audit.record(ref, results, 'rejected')
-  } else {
-    await audit.record(ref, results, 'trusted')
-    await trusted.publish(ref, { results, expiresInDays: REPORT_TTL_DAYS })
+  try {
+    // A check that throws counts as a critical failure.
+    const results = await Promise.all(
+      CHECKS[ref.type].map((check) =>
+        check(ref).catch((e): CheckResult => ({ name: 'check-error', passed: false, critical: true, detail: String(e) })),
+      ),
+    )
+    const blocking = results.filter((r) => !r.passed && r.critical)
+    if (blocking.length > 0) {
+      await audit.record(ref, results, 'rejected')
+    } else {
+      await trusted.publish(ref, { results, expiresInDays: REPORT_TTL_DAYS })
+      await audit.record(ref, results, 'trusted')
+    }
+  } finally {
+    // Destroy either way: an artifact reachable by accident is used by accident.
+    await untrusted.destroy(ref)
   }
-  // Destroy either way — an artifact reachable by accident is used by accident.
-  await untrusted.destroy(ref)
 }
 ```
 
@@ -177,7 +185,7 @@ async function quarantine(ref: ArtifactRef, untrusted: Store, trusted: Store, au
 <!--meta polarity=knob-->
 
 - **Check set per artifact type** — Fixed per type and agreed in advance. A set that varies per request makes the trusted label meaningless.
-- **Report expiry** — How long a pass remains valid before the artifact must be revalidated.
+- **Report expiry** — How long a pass remains valid before the artifact must be revalidated. The sketch and example use 30 days; shorten it for artifacts that are more exposed.
 - **Failure severity threshold** — Which findings block promotion and which are recorded and allowed through.
 - **Quarantine retention window** — How long a pending artifact stays available in the pull model before it is deleted.
 
@@ -194,7 +202,7 @@ async function quarantine(ref: ArtifactRef, untrusted: Store, trusted: Store, au
 
 - **The gate gets bypassed under deadline** — Any manual invocation step is the step that gets skipped, and nothing in the build says the artifact was never checked.
 - **Segmentation is nominal** — When the quarantine store is reachable by the same identity as the trusted one, the isolation exists only on the diagram.
-- **Slow checks block a synchronous pipeline** — Validation takes minutes to hours, so a pipeline gated on the scan rather than on the trusted store gets disabled within a week.
+- **Slow checks block a synchronous pipeline** — Validation takes minutes to hours, so gate the pipeline on the trusted store, not the scan; a pipeline blocked on the scan gets disabled.
 - **Stale trust** — An artifact that passed months ago carries a vulnerability published since, and nothing rechecks it.
 
 ### Readiness checklist
@@ -230,6 +238,7 @@ async function quarantine(ref: ArtifactRef, untrusted: Store, trusted: Store, au
 - [Intercepting Validator](./intercepting-validator.md) — Same instinct at a different boundary: check untrusted input before anything acts on it
 - [Least Privilege](./least-privilege.md) — The trusted and untrusted stores are only separate if access to each is scoped
 - [Canary Release](../distributed/routing/canary-release.md) — Verify the artifact before release, then expose it progressively once it ships
+- [Containerization](../distributed/coordination/containerization.md) — Images are the commonest artifact quarantine holds; the immutable image is the unit it scans and republishes.
 
 **Often confused with**
 

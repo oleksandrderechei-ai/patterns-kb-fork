@@ -21,14 +21,14 @@ An agent that runs commands is running code it wrote, steered by text from files
 ## Explained
 <!--meta block=explain-->
 
-An agent sandbox is a boundary, declared before the work starts, around an agent that runs commands: it limits which directories the agent can read and write and which hosts it can reach, and the system enforces it below the agent, so nothing the model is told can move it. You need both limits, because files without network let nothing out, but files with network let credentials leave, and network without file limits gives a confined process something worth sending. Choose it over approving every action by hand when the agent works for long stretches, because people stop reading prompts after the fortieth. A boundary set once lets routine actions run and keeps the few remaining prompts meaningful.
+An agent sandbox is a boundary, declared before the work starts, around an agent that runs commands: it limits which directories the agent can read and write and which hosts it can reach, and the system enforces it below the agent, so nothing the model is told can move it. You need both limits, because file limits alone leave workspace secrets free to send over open network, and network limits alone leave a confined process able to read home keys. Choose it over approving every action by hand when the agent works for long stretches, because people stop reading prompts after enough of them. A boundary set once lets routine actions run and keeps the few remaining prompts meaningful.
 
 - **Over-broad allowlist** A broad allowlist looks like a sandbox and stops nothing, so list exact hosts and review the list like code.
 - **Boundary is the only control** With routine prompts gone, nothing else reviews actions, so read the log of refusals.
 - **Growing allowlist** Developer tools need network, so add hosts one at a time as real breakage shows.
 - **Damage limit only** It bounds the damage, not the compromise, so give the agent short-lived, narrow credentials.
 
-**Example.** You clone a repository whose README tells the agent to run a script that reads ~/.ssh/id_ed25519 and posts it to evil.example. Without a boundary, the agent has your whole home directory and open network, so the key is gone in under a second. With read access limited to the workspace and an allowlist of registry.internal and api.github.com, the read of ~/.ssh fails and the connection to evil.example is refused and logged. Two checks stopped it, so one over-broad rule, such as allowing all of ~, would have let it through. The cost: the first build fails until you add the package host.
+**Example.** You clone a repository whose README tells the agent to run a script that reads ~/.ssh/id_ed25519 and posts it to evil.example. Without a boundary, the agent has your whole home directory and open network, so the key is gone before you notice. With read access limited to the workspace and an allowlist of registry.internal and api.github.com, the read of ~/.ssh fails and the connection to evil.example is refused and logged. Either check alone would have stopped this one; you need both because a different payload can use a path the other check allows. The cost: the first build fails until you add the package host.
 
 ## How it works
 <!--meta block=structure-->
@@ -93,20 +93,22 @@ sequenceDiagram
 
 - **Bounds the blast radius** of a compromise to what the boundary admits, whatever text talked the loop into it.
 - **Buys autonomy**: routine actions proceed without a prompt, so the prompts that remain get read.
-- **Enforced below the agent**, so it holds regardless of what the model was persuaded to do.
+- **Enforced below the agent**, so it holds regardless of what the model was persuaded to do, provided the policy is right and the mechanism itself is not bypassed.
 - **Produces evidence**. Denied paths and refused hosts are a log of what a run tried to do that it should not have.
 - **Makes the permitted surface explicit**, which is a thing you can review, diff and argue about.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Declaration limits the boundary** — a boundary is only as good as its declaration. An over-broad allowlist looks exactly like a sandbox and stops nothing.
+- **Declaration limits the boundary**. A boundary is only as good as its declaration. An over-broad allowlist looks exactly like a sandbox and stops nothing.
 - **Removing routine prompts removes routine human review**, so the boundary is now the entire control rather than one of two.
 - **Developer tooling needs network access constantly**, so the allowlist grows under real pressure from real breakage.
 - **Containers cost startup time** and drift from the host, producing failures nobody can reproduce outside them.
 - **Platform primitives differ**, so a policy proven on one operating system is not proven on another.
 - **Everything already inside the boundary is fully reachable**. This bounds the damage; it does not prevent the compromise.
-- **Scoped credentials need an issuing system**, which is infrastructure a small team will skip and then quietly do without.
+- **Scoped credentials need an issuing system**. A small team will skip it and run with the developer's own credentials.
+- **An allowed host can carry data out**. Pushes or uploads to an attacker's account get through, so prefer narrow paths or accounts and proxy-inspected egress.
+- **Workspace files that run later escape the boundary**. Hooks, build scripts and agent config execute outside it, so keep those paths read-only.
 
 ## When to use it
 <!--meta block=usage-->
@@ -178,10 +180,11 @@ if (refusals.length > REFUSAL_ALERT) await flagForReview(sessionId, refusals);
 <!--meta polarity=signal-->
 
 - **Denied path attempts per run** — A few are normal. A run that keeps reaching outside its roots is the clearest sign something redirected it.
-- **Refused hosts per run** — Same signal on the other dimension, and the one that would catch an exfiltration attempt.
+- **Refused hosts per run** — Same signal on the other dimension, and the one that would catch an exfiltration attempt. It misses exfiltration to a host already on the list.
 - **Allowlist growth rate** — Entries added per week. The allowlist expands under real pressure from real breakage, and nothing else tracks that erosion.
-- **Prompts per session** — How often the human is asked. Rising means the boundary is drawn too tight; near zero means it may be drawn too wide.
+- **Prompts per session** — How often the human is asked. Rising means the boundary is drawn too tight.
 - **Sandbox startup time** — The cost people route around. When it is high, someone will run the agent unsandboxed instead.
+- **Near-zero prompts with no refusals logged** — The boundary may be drawn too wide. Check the allowlist and the roots.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -224,6 +227,8 @@ if (refusals.length > REFUSAL_ALERT) await flagForReview(sessionId, refusals);
 
 - [AI Agent](../architecture/ai-agent.md) — The action surface it confines is the loop's tool list
 - [Agent Client Protocol](../distributed/routing/acp.md) — When the host mediates every read and write, the protocol is where the boundary lives
+- [Defense in Depth](../../principles/defense-in-depth.md) — One independent layer; the human gate on irreversible actions is the other.
+- [Valet Key](../distributed/routing/valet-key.md) — Source of the task-scoped token that bounds a leak.
 
 **Specializes**
 

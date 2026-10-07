@@ -73,5 +73,6 @@ Keep the layers that stop different failures and drop the ones that repeat each 
 - [Single Access Point](../patterns/security/single-access-point.md) — A hardened front door is one layer; depth assumes someone gets past it.
 - [Least Privilege](../patterns/security/least-privilege.md) — Least privilege limits what one breached layer yields.
 - [Intercepting Validator](../patterns/security/intercepting-validator.md) — Validate again at each trust boundary.
+- [Agent Sandboxing](../patterns/security/agent-sandboxing.md) — An agent boundary is a worked layer for a non-human actor.
 
 <!-- relationships:end -->

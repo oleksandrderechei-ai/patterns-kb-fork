@@ -224,6 +224,7 @@ class BoundedChannel<T> {
 - [WebSocket](../messaging/websocket.md) — A socket's output buffer is where a slow client's lag shows first.
 - [Splitter](../messaging/splitter.md) — A splitter is a burst source that needs the bound.
 - [Competing Consumers](../messaging/competing-consumers.md) — Feeds the pool a bounded stream.
+- [Secure Logger](../security/secure-logger.md) — A secure logger's audit events must not be the records dropped when the sink is saturated.
 
 **Alternative to**
 
