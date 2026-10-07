@@ -25,9 +25,9 @@ A recipient list works out, for each message, which channels it belongs on and s
 - **Partial delivery.** Some recipients hold the message and others do not. Record an outcome per recipient and retry only the failures.
 - **Duplicates.** A retry sends a second copy to recipients that already succeeded, so make every consumer safe to run twice.
 - **Empty list.** An empty list drops the message silently. Send that case to a dead-letter channel (a side queue) and alert on its rate.
-- **Slow recipient.** One slow recipient sets the pace if you send in sequence, so send to recipients in parallel.
+- **Slow recipient.** Sequential sends make latency the sum of the list. Send in parallel with a cap; latency then follows the slowest.
 
-**Example.** An alert system gets 1,000 alerts a minute. Every alert goes to the log, warnings and critical alerts go to chat, and critical alerts go to the pager. With 100 warnings and 20 critical, that is 1,000 + 120 + 20 = 1,140 copies a minute. The pager service goes down. Replaying the whole list for each failed critical alert would send its log and chat copies again, 3 deliveries for 1 needed. Recording an outcome per recipient retries only the pager, and nobody sees duplicates in chat.
+**Example.** An alert system gets 1,000 alerts a minute. Every alert goes to the log, warnings and critical alerts go to chat, and critical alerts go to the pager. With 100 warnings and 20 critical, that is 1,000 + 120 + 20 = 1,140 copies a minute. The pager service goes down. Replaying the whole list for each failed critical alert would send its log and chat copies again, 3 deliveries for 1 needed. Recording an outcome per recipient retries only the pager, so chat sees no duplicates, as long as those outcomes are stored durably.
 
 ## How it works
 <!--meta block=structure-->
@@ -78,8 +78,8 @@ sequenceDiagram
 - **Static list** — Destinations come from a configuration entry an operator edits, so the whole routing decision is one reviewable file — at the price of a config change and a reload for every new consumer.
 - **[Content-Based Router](./content-based-router.md) rules per destination** — Each destination carries a predicate over the message, and every destination whose predicate passes gets a copy. This is where the two patterns meet: identical rule evaluation, except that first-match-wins is dropped and all the matches are kept.
 - **List looked up in a registry** — The list is resolved at send time from a directory, a subscription table or a service registry. Participants join and leave by writing to that store, so neither side redeploys — and a stale or unreachable registry now decides who gets your messages.
-- **List carried in the message** — The message names its own itinerary in a header, and the dispatcher does no computing at all. That moves the decision to whoever created the message, which suits a workflow that already knows its route, and it makes the route visible in a trace instead of hidden in a rule table.
-- **Delivery semantics: all-or-nothing versus best-effort** — Either the dispatcher abandons the message on the first failed send and lets redelivery repeat the successful ones, or it attempts every recipient and records an outcome for each. The first keeps the dispatcher stateless and guarantees duplicates; the second keeps duplicates rare and makes the dispatcher hold per-recipient state.
+- **List carried in the message** — The message names its own list of destinations in a header, and the dispatcher does no computing at all. That moves the decision to whoever created the message, which suits a workflow that already knows its route, and it makes the route visible in a trace instead of hidden in a rule table. The dispatcher must still check each named destination against an allow-list, or any producer can address any destination.
+- **Delivery semantics: all-or-nothing versus best-effort** — Either the dispatcher abandons the message on the first failed send and lets redelivery repeat the sends that already succeeded, or it attempts every recipient and records an outcome for each. The first keeps the dispatcher stateless and duplicates whenever an earlier send went out; the second cuts duplicates only while its recorded outcomes survive a crash, and makes the dispatcher hold per-recipient state.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -89,8 +89,8 @@ sequenceDiagram
 
 - **Destinations are data**, so onboarding a consumer is a config or registry change instead of a producer release.
 - **The set can differ per** message, so one customer's event reaches three systems and the next customer's reaches one, with no branching in the sender.
-- **Consumers receive only what was addressed** to them, so none of them carries a filter it has to keep correct.
-- **Who receives what lives in one place**, so the decision is testable and auditable as a unit.
+- **Consumers receive only what was addressed** to them, so none carries a filter. The predicate moves into the list, where it is maintained once.
+- **With a static list or rule table, who receives what lives in one place**, so the decision is testable and auditable as a unit.
 
 ### Cons
 <!--meta polarity=con-->
@@ -136,21 +136,30 @@ const recipientsFor = (o: OrderPlaced): Channel[] =>
   rules.filter((r) => r.wants(o)).map((r) => r.channel);
 
 type Outcome = { channel: Channel; ok: boolean; error?: unknown };
-async function dispatch(order: OrderPlaced): Promise<Outcome[]> {
+const withTimeout = <T,>(p: Promise<T>, ms: number) =>
+  Promise.race([p, new Promise<never>((_, no) => setTimeout(() => no(new Error("send timed out")), ms))]);
+
+async function dispatch(order: OrderPlaced, timeoutMs: number, maxAttempts: number): Promise<Outcome[]> {
   const recipients = recipientsFor(order);
   if (recipients.length === 0) {  // an empty list is a message nobody will ever see
     await deadLetter.publish(order, "no recipient matched");
+    alertOnEmptyList(order.orderId); // alert on the rate, never a silent no-op
     return [];
   }
-  // one failed send must not hide the outcome of the others
-  const settled = await Promise.allSettled(recipients.map((c) => channels[c].publish(order)));
-  return settled.map((r, i) => ({
-    channel: recipients[i], ok: r.status === "fulfilled",
-    error: r.status === "rejected" ? r.reason : undefined,
-  }));
+  const outcomes = new Map<Channel, Outcome>();
+  let pending = recipients;
+  for (let attempt = 1; attempt <= maxAttempts && pending.length > 0; attempt++) {
+    // one failed send must not hide the outcome of the others
+    const settled = await Promise.allSettled(pending.map((c) => withTimeout(channels[c].publish(order), timeoutMs)));
+    settled.forEach((r, i) => outcomes.set(pending[i], {
+      channel: pending[i], ok: r.status === "fulfilled",
+      error: r.status === "rejected" ? r.reason : undefined,
+    }));
+    pending = pending.filter((c) => !outcomes.get(c)!.ok); // retry only what failed
+  }
+  for (const c of pending) await deadLetter.publish(order, `recipient ${c} still failing`); // per recipient
+  return [...outcomes.values()];
 }
-// Retry only what failed — the others already have their copy.
-const unsent = (await dispatch(order)).filter((o) => !o.ok);
 ```
 
 ## In the wild
@@ -165,23 +174,23 @@ const unsent = (await dispatch(order)).filter((o) => !o.ok);
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Dispatch concurrency** — Whether copies go out sequentially or in parallel, and how many sends are in flight at once — sequential makes latency the sum of the list, unbounded parallelism turns a long list into a burst.
+- **Dispatch concurrency** — Whether copies go out sequentially or in parallel, how many sends are in flight at once, and a timeout on each send. Sequential makes latency the sum of the list and unbounded parallelism turns a long list into a burst, so cap in-flight sends at what the most rate-limited recipient accepts.
 - **Failure policy** — Whether the first failed send abandons the whole message or the dispatcher attempts every recipient and collects outcomes — the choice decides who owns the retry, the broker or the dispatcher.
-- **Per-recipient retry and dead-letter policy** — How many times one recipient is retried and where its copy goes when the retries run out; a single shared policy lets the slowest recipient set the budget for all of them.
+- **Per-recipient retry and dead-letter policy** — How many times one recipient is retried and where its copy goes when the retries run out. Work out attempts and backoff from the slowest recipient's p99 latency and how long the input channel can wait; a single shared policy lets the slowest recipient set the budget for all of them.
 - **List source and refresh** — Where the list comes from — inline config, a rule table, a registry read per message — and how often a cached copy of it is refreshed.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Computed list size per message** — The amplification factor; a distribution drifting upward means each publish now costs more sends than it used to.
+- **Computed list size per message** — How many sends each message costs; a distribution drifting upward means each publish costs more sends than it used to. Alert when its p95 passes the baseline you measured for that message type.
 - **Per-recipient delivery failure rate** — Broken out by destination, because an aggregate rate hides one recipient failing while the rest succeed.
 - **Empty-list rate** — Messages for which the computation matched nothing; they are delivered nowhere and raise no error on their own.
-- **Dispatch latency per message** — Grows with list length under sequential sending, so it tracks the slowest recipient rather than the average one.
+- **Dispatch latency per message** — Grows with list length under sequential sending (the sum of all sends) and tracks the slowest recipient under parallel sending.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Partial delivery** — Some recipients acknowledged and some did not, leaving the systems that received the message ahead of the ones that did not.
+- **Partial delivery** — Some recipients acknowledged and some did not, so some systems have acted on the message and others have not.
 - **Silent empty list** — A rule change or a stale registry narrows the computation to nothing, and those messages disappear with no failure recorded anywhere.
 - **Duplicate delivery on retry** — Replaying the whole list re-sends to recipients that already succeeded, so a non-idempotent consumer applies the message twice.
 - **One slow recipient stalls the dispatch** — Under sequential sending every other recipient waits behind the slowest, and the input channel backs up behind them.
@@ -218,6 +227,7 @@ const unsent = (await dispatch(order)).filter((o) => !o.ok);
 
 - [Scatter-Gather](./scatter-gather.md) — The scatter half can dispatch through a recipient list the router controls
 - [Splitter](./splitter.md) — A splitter feeds each fragment to the step that decides where that fragment goes
+- [Dead Letter Channel](./dead-letter-channel.md) — A list that computes to empty goes here instead of vanishing.
 
 **Variant of**
 
@@ -227,7 +237,8 @@ const unsent = (await dispatch(order)).filter((o) => !o.ok);
 
 - [Content-Based Router](./content-based-router.md) — A content-based router picks the first matching rule; a recipient list takes every match
 - [Fan-Out](./fan-out.md) — Fan-out copies to every consumer; a recipient list copies to a computed subset
-- [Routing Slip](./routing-slip.md) — Sends one copy of the message to every recipient at once, in parallel
+- [Publish-Subscribe](./pubsub.md) — The topic holds the subscriber set; the sender names no recipient.
+- [Routing Slip](./routing-slip.md) — A routing slip sends one message through an ordered chain of steps, each forwarding to the next; a recipient list sends a copy to every recipient at once.
 
 **Implemented by**
 

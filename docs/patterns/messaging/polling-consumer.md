@@ -21,13 +21,13 @@ A consumer that is pushed messages as fast as they arrive can be flooded when it
 ## Explained
 <!--meta block=explain-->
 
-A polling consumer asks the channel for the next message when it is ready, instead of waiting to be handed one. It loops: ask, receive a message or an empty answer, process, acknowledge, ask again. Because it fetches only with spare capacity, a burst waits in the queue instead of flooding the worker. Choose it over an event-driven consumer, which the broker pushes messages to, when each message is heavy work, the pace must be controlled, or nothing can push to you. Choose push when delay in milliseconds matters more than pace. Without it, a slow push consumer piles messages into its own memory, and a crash loses them. See [long polling](./long-polling.md) for the variant that cuts empty asks.
+A polling consumer asks the channel for the next message when it is ready, instead of waiting to be handed one. It loops: ask, receive a message or an empty answer, process, acknowledge, ask again. Because it fetches only with spare capacity, a burst waits in the queue instead of flooding the worker. Choose it over an event-driven consumer, which the broker pushes messages to, when each message is heavy work, the pace must be controlled, or nothing can push to you. Choose push when delay in milliseconds matters more than pace. A push consumer with no limit on unacknowledged messages piles them into its own memory. See [long polling](./long-polling.md) for the variant that cuts empty asks.
 
 - **Empty polls waste calls.** Each empty answer costs a call and maybe money; back off when idle or hold the request open.
 - **Delay up to one interval.** A message waits for the next poll; shorten the interval or use long polling.
-- **You own the loop.** Crashes, slow messages and shutdown are yours; use a framework poller and make the handler repeat-safe.
+- **You own the loop.** Crashes, slow messages and shutdown are yours; use a framework poller and make the handler idempotent (safe to run twice).
 
-**Example.** A queue gets a burst of 600 image jobs, each taking 2 s. Four pollers take one job each, so work runs at 2 jobs a second and the queue drains in 300 s, with 4 images in memory. A push consumer taking all 600 at once would hold 600 x 8 MB = 4.8 GB. The cost shows when idle: four pollers asking every second make 4 empty calls a second all night. Holding each request open for 20 s cuts that to 0.2 calls a second, with the same 2 s of work once a job arrives.
+**Example.** A queue gets a burst of 600 image jobs, each taking 2 s. Four pollers take one job each, so work runs at 2 jobs a second and the queue drains in 300 s, with 4 images in memory. A push consumer with no limit on unacknowledged messages would take all 600 at once and hold 600 x 8 MB = 4.8 GB. The cost shows when idle: four pollers asking every second make 4 empty calls a second all night. Holding each request open for 20 s cuts that to 0.2 calls a second, with the same 2 s of work once a job arrives.
 
 ## How it works
 <!--meta block=structure-->
@@ -64,7 +64,7 @@ sequenceDiagram
 
 The loop has four decisions to make. How many messages to ask for at once, what to do when the answer is empty, how long a received message stays hidden from other consumers before it is offered again, and when to stop. An empty answer should not lead straight to another poll: back off, or ask the channel to hold the request open until a message arrives, as [long polling](./long-polling.md) does.
 
-Scaling is adding more pollers on the same queue, which then work as [competing consumers](./competing-consumers.md). Each message goes to one of them, and the hidden-for-a-while rule keeps two pollers from working the same message at the same time.
+Scaling is adding more pollers on the same queue, which then work as [competing consumers](./competing-consumers.md). Each message goes to one of them, and the hidden-for-a-while rule keeps two pollers from working the same message at the same time, as long as handling finishes inside the hide time.
 
 ## Variations
 <!--meta block=variations-->
@@ -132,8 +132,9 @@ async function pollLoop(queue: Queue, handle: (m: Message) => Promise<void>, sig
     try {
       await handle(msg);
       await queue.acknowledge(msg);                   // only now does the queue forget it
-    } catch {
+    } catch (err) {
       // no acknowledgement: the queue offers it again after the 30 s hide time
+      console.error("handler failed", msg.id, msg.receiveCount, err); // past the attempt cap, send it to the dead-letter channel
     }
   }
 }
@@ -154,8 +155,8 @@ async function pollLoop(queue: Queue, handle: (m: Message) => Promise<void>, sig
 
 - **Poll interval or wait time** — How often to ask, or how long a long poll waits. Sets the delay a message can suffer against the number of empty calls.
 - **Batch size** — Messages taken per poll, such as max.poll.records in Kafka. Larger batches cut calls and make a crash redo more work.
-- **Visibility or acknowledgement timeout** — How long a received message stays hidden before it is offered again. It must exceed the slowest handling time.
-- **Number of pollers** — Concurrent loops on the same queue. It sets throughput and the load on the downstream system.
+- **Visibility or acknowledgement timeout** — How long a received message stays hidden before it is offered again; this page calls it the hide time, SQS the visibility timeout. Set it above the tail of measured handling time with some margin, or have the consumer extend it while it works.
+- **Number of pollers** — Concurrent loops on the same queue. It sets throughput and the load on the downstream system. Start from arrival rate times handling time, cap it at what the downstream system takes, and check it against the age of the oldest message.
 - **Idle backoff cap** — The longest wait between polls on an empty queue. It bounds both idle cost and first-message delay.
 
 ### Signals to watch
@@ -171,14 +172,14 @@ async function pollLoop(queue: Queue, handle: (m: Message) => Promise<void>, sig
 
 - **Duplicate handling** — Handling outlasts the hide time, so the queue offers the message to a second poller while the first is still working.
 - **Poison message loop** — A message that always fails is polled, fails and returns forever, taking a poller slot each time.
-- **Group removal** — On a pull system with membership such as Kafka, a consumer that waits too long between polls is dropped and its work moves, causing a rebalance.
-- **Poll storm** — Many pollers on a tiny interval hit an empty queue or a rate-limited API with a constant flood of calls.
+- **Group removal** — On a pull system with membership such as Kafka, a consumer that waits too long between polls is dropped from its group and its work moves to the others (a rebalance). In Kafka the limit is `max.poll.interval.ms`; lower max.poll.records or the handling time to stay under it.
+- **Poll storm** — Many pollers on a tiny interval hit an empty queue or a rate-limited API with a constant flood of calls. Pollers that back off in step retry together; add random jitter to the wait.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - The handler is safe to run twice on the same message
-- The hide or acknowledgement timeout exceeds the slowest handling time
+- The hide or acknowledgement timeout exceeds the slowest handling time, or the handler extends it while working
 - Failed messages stop after a set number of attempts and land in a dead-letter channel
 - Idle polling backs off or uses a long poll
 - Shutdown finishes the current message before exit
@@ -207,10 +208,16 @@ async function pollLoop(queue: Queue, handle: (m: Message) => Promise<void>, sig
 - [Backpressure](../concurrency/backpressure.md) — Pulling only when ready makes the consumer set the pace, so a slow consumer is never flooded
 - [Competing Consumers](./competing-consumers.md) — Several polling consumers can pull from one queue, each taking the next message when free
 - [Queue-Based Load Leveling](../distributed/resilience/load-leveling.md) — A burst waits in the queue while the consumer drains it at a steady rate
+- [Dead Letter Channel](./dead-letter-channel.md) — Failed messages stop after a set number of attempts and land here, so a bad message stops taking a poller slot.
+- [Idempotency](./idempotency.md) — A message can be handled twice when the consumer dies before acknowledging, so the handler must tolerate a repeat.
 
 **Often confused with**
 
-- [Long Polling](./long-polling.md) — The consumer asks the channel for work, and the call may return empty
+- [Long Polling](./long-polling.md) — Pulls from a queue at its own pace and may get nothing back at once; long polling is one request held open until data arrives, and is also a way to run this loop.
+
+**Exposed to**
+
+- [Poison Message](../../hazards/poison-message.md) — A message that always fails is polled, fails and returns forever, taking a poller slot each time.
 
 **Implemented by**
 

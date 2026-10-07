@@ -16,7 +16,7 @@ A pool of interchangeable consumers pulls from one shared channel, so a single m
 ## What it is
 <!--meta block=description-->
 
-Jobs arrive faster than one worker finishes them, so the queue only grows. **Competing consumers** starts several identical, stateless copies of the worker on one channel, and the broker hands each message to whichever copy is free. Delivery is leased: a message left unacknowledged when its lease expires returns for another copy, so delivery is at-least-once. To add capacity you start one more copy, with no code change. Kafka consumer groups and RabbitMQ consumers work this way.
+Jobs arrive faster than one worker finishes them, so the queue only grows. **Competing consumers** starts several identical, stateless copies of the worker on one channel, and the broker hands each message to whichever copy is free. Delivery is leased: a message left unacknowledged when its lease expires returns for another copy, so delivery is at-least-once. To add capacity you start one more copy, up to the partition count if partitioned. Kafka consumer groups and RabbitMQ work this way.
 
 ## Explained
 <!--meta block=explain-->
@@ -64,8 +64,8 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Scales throughput horizontally** by adding consumer instances, with no producer changes.
-- **Consumers are stateless and interchangeable** — any one can crash and restart without special handling.
-- **The channel itself absorbs load spikes** as a buffer while the pool catches up.
+- **Consumers hold no state between messages**, so any one can crash; its in-flight message is redelivered, so handlers must be idempotent.
+- **The channel itself absorbs load spikes** as a buffer while the pool catches up, until its size or retention limit is reached; wait time grows with depth.
 - **Failed processing just means the message goes back** for another consumer to try.
 
 ### Cons
@@ -74,7 +74,7 @@ flowchart LR
 - **No ordering guarantee across the pool** — two related messages can be processed out of sequence by different consumers.
 - **Most brokers give at-least-once delivery**, so a redelivered message must be handled safely, not processed twice — that is what [idempotency](./idempotency.md) is for.
 - **A poison message that always fails** can bounce between consumers, burning capacity, until an attempt cap sends it to a [dead-letter channel](./dead-letter-channel.md).
-- **Uneven message cost** means one consumer can be starved while another sits idle.
+- **Uneven message cost, or a large prefetch**, can leave one consumer holding a slow backlog while another sits idle.
 - **Restoring order costs parallelism**: a partition key keeps related messages in sequence, and the partition count then becomes the ceiling on how many consumers can work at once.
 - **A pool only widens the consumer side**. If the producer's bursts are what hurts, a [leveling queue](../distributed/resilience/load-leveling.md) in front is cheaper than a pool sized for the peak all day.
 
@@ -102,7 +102,7 @@ flowchart LR
 async function worker(queue: Queue) {
   while (true) {
     const job = await queue.receive();   // the queue picks one free worker
-    if (!job) continue;                  // nothing waiting, ask again
+    if (!job) continue;                  // nothing waiting, ask again (back off or long-poll in practice)
     try {
       await handle(job);
       await queue.ack(job);              // done — it leaves the queue
@@ -119,7 +119,7 @@ for (let i = 0; i < workerCount; i++) worker(jobQueue);
 ```typescript summary="TypeScript — replicas claiming KYC tasks from one Postgres queue"
 interface Task { id: string; flowId: string; type: "verify_id" | "check_list"; }
 interface TaskQueue {
-  claim(leaseMs: number): Promise<Task | null>;
+  claim(leaseMs: number, maxAttempts: number): Promise<Task | null>; // binds $1 and $2
   complete(id: string): Promise<void>;
   release(id: string): Promise<void>; // returns the task for another consumer
 }
@@ -127,7 +127,9 @@ const claimSql = `
   UPDATE task SET status = 'processing', locked_at = now(), attempts = attempts + 1
   WHERE id = (
     SELECT id FROM task
-    WHERE status = 'pending' AND run_after <= now()
+    WHERE ((status = 'pending' AND run_after <= now())
+        OR (status = 'processing' AND locked_at < now() - $1 * interval '1 millisecond')) -- $1 = leaseMs: reclaim an expired lease
+      AND attempts < $2   -- $2 = maxAttempts: past the cap, leave the row for a dead-letter sweep
     ORDER BY run_after
     FOR UPDATE SKIP LOCKED       -- the whole pattern: a locked row is invisible
     LIMIT 1)
@@ -135,8 +137,8 @@ const claimSql = `
 
 async function runConsumer(queue: TaskQueue, handle: (t: Task) => Promise<void>) {
   while (true) {
-    const task = await queue.claim(30_000); // leased to this replica for 30s
-    if (!task) continue;                    // nothing waiting, poll again
+    const task = await queue.claim(30_000, 5); // lease 30s, give up after 5 attempts
+    if (!task) continue;                    // nothing waiting, poll again (back off or long-poll in practice)
     try { await handle(task); await queue.complete(task.id); } // done — leaves the queue
     catch { await queue.release(task.id); }                    // let a sibling retry it
   }
@@ -151,7 +153,7 @@ for (let i = 0; i < workerCount; i++) runConsumer(taskQueue, runKycStep);
 - **Kafka consumer groups** — Partitions are divided among the consumers in a group so exactly one member reads each partition; a rebalance reassigns partitions when a member joins or leaves. The partition count is the hard ceiling on parallelism — consumers beyond it sit idle with nothing assigned. {#wild-kafka-consumer-groups}
 - **Celery** — Python workers compete for tasks on a shared RabbitMQ or Redis broker, scaling by adding worker processes or raising --concurrency. worker_prefetch_multiplier controls how many tasks each worker reserves ahead of time, the knob that trades throughput against even distribution. {#wild-celery}
 - **Sidekiq** — Ruby workers compete for jobs on shared Redis queues, each process running a pool of threads (concurrency) that pull with BRPOP. Because plain BRPOP removes the job before it is done, an in-flight job is lost if the process is killed; reliable fetch that re-queues interrupted jobs is a Pro/Enterprise feature. {#wild-sidekiq}
-- **Amazon SQS** — Many workers poll one queue and each message is handled once: a visibility timeout hides an in-flight message from sibling workers while it is processed, a Lambda event source mapping polls the queue and invokes functions in batches, and a redrive policy moves a message to a dead-letter queue after maxReceiveCount failed attempts. {#wild-amazon-sqs}
+- **Amazon SQS** — Many workers poll one queue and each message goes to one worker at a time: a visibility timeout hides an in-flight message from sibling workers while it is processed and redelivers it if it expires first, a Lambda event source mapping polls the queue and invokes functions in batches, and a redrive policy moves a message to a dead-letter queue after maxReceiveCount failed attempts. {#wild-amazon-sqs}
 
 ## In production
 <!--meta block=production-->
@@ -228,6 +230,9 @@ for (let i = 0; i < workerCount; i++) runConsumer(taskQueue, runKycStep);
 - [Polling Consumer](./polling-consumer.md) — Competing consumers often poll, so each worker takes work only when it has capacity
 - [Web-Queue-Worker](../architecture/web-queue-worker.md) — The worker tier is the usual home for this: one queue, many identical consumers.
 - [Producer-Consumer](../concurrency/producer-consumer.md) — The in-process base shape the competing workers share.
+- [Splitter](./splitter.md) — A splitter is what turns one big message into the many that a pool can share.
+- [Sweeper](../distributed/coordination/sweeper.md) — When the queue is a table, no broker returns an expired claim; a sweeper does.
+- [Backpressure](../concurrency/backpressure.md) — A bigger pool raises the drain rate; backpressure still caps intake when the pool cannot keep up.
 
 **Requires**
 

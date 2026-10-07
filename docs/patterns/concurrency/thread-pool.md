@@ -202,6 +202,7 @@ func (p *Pool) Submit(task func()) error {
 - [Fork-Join](./fork-join.md) — A fork-join pool is a thread pool tuned for many small tasks that wait for each other
 - [Proactor](./proactor.md) — A pool of workers can drain a proactor's completion queue
 - [Backpressure](./backpressure.md) — A bounded queue in front of the pool rejects or parks submitters instead of growing
+- [Splitter](../messaging/splitter.md) — A split is a common source of the many small tasks a pool drains.
 
 **Variant of**
 

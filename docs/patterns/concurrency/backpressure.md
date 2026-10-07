@@ -221,6 +221,9 @@ class BoundedChannel<T> {
 - [Ring Buffer](./ring-buffer.md) — A bounded ring gives backpressure a visible place to act
 - [Polling Consumer](../messaging/polling-consumer.md) — A consumer that pulls at its own pace is the simplest form of backpressure
 - [Thread Pool](./thread-pool.md) — A pool's full queue is where the slow-down signal fires
+- [WebSocket](../messaging/websocket.md) — A socket's output buffer is where a slow client's lag shows first.
+- [Splitter](../messaging/splitter.md) — A splitter is a burst source that needs the bound.
+- [Competing Consumers](../messaging/competing-consumers.md) — Feeds the pool a bounded stream.
 
 **Alternative to**
 

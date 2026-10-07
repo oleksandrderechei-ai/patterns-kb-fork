@@ -77,6 +77,7 @@ sequenceDiagram
 - **Bridging a system with no broker** — Where one side has no messaging infrastructure at all and cannot be modified, give it one: use [Change Data Capture](../distributed/coordination/change-data-capture.md) to push its committed changes into a dedicated queue table, and let the bridge forward from there. The legacy system keeps writing to its database and unknowingly becomes a producer.
 - **Scaled-out bridge** — Run several bridge instances as [Competing Consumers](./competing-consumers.md) on the source queue when one cannot meet the throughput or availability target. Ordering across the boundary goes with it, so this is only safe where the receiving side does not depend on message order.
 - **Translating bridge** — A bridge that also reshapes the payload has become a [Message Translator](./message-translator.md), and it is worth naming the moment it happens: the pure bridge can be proven correct by inspection because it changes nothing, and a translating one now owns schema compatibility between two systems that never agreed on one.
+- **Bidirectional bridge** — Two relays, one per direction. Stamp a header on each forwarded message and skip stamped ones, or messages ping-pong between the brokers forever.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -84,20 +85,21 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Neither system is modified, retested or redeployed**. The integration is additive, which is the difference between a two-week change and a two-quarter one.
-- **The channel stays asynchronous and durable end** to end. An unreachable far side means a queue grows, not that a caller fails.
+- **Neither system needs changes to talk across**, provided the receiver already tolerates duplicates; a non-idempotent receiver must change, or the bridge must deduplicate. Otherwise the integration is additive.
+- **The channel stays asynchronous and durable end** to end. An unreachable far side means the source queue grows, not that a caller fails, until that queue's own quota or retention limit is reached.
 - **Migration becomes incremental**. Endpoints move broker one at a time on their own schedule, and the bridge covers the gap for as long as it takes.
-- **It survives a flaky link**. Geo-distributed systems on an unreliable connection tolerate the outage as backlog rather than as errors.
+- **It survives a flaky link**. Geo-distributed systems on an unreliable connection tolerate the outage as backlog rather than as errors, for as long as the source queue can hold the backlog.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **The route offers only what both sides support**. Advanced features on either broker are unavailable across it, and every limit clamps to the smaller of the two.
-- **There is no transaction** across two brokers, so relaying is at-least-once and duplicates are normal. If either side relies on a distributed transaction for correctness, the bridge has to deduplicate itself.
+- **There is no transaction** across two brokers, so relaying is at-least-once and duplicates are normal. The bridge must carry the source message id unchanged so the receiver can deduplicate, and must deduplicate itself if either side relies on a distributed transaction.
 - **The usual retry policy is actively wrong here**. Counting attempts and dead-lettering at the limit condemns perfectly good messages during an infrastructure outage, so pause forwarding with a [Circuit Breaker](../distributed/resilience/circuit-breaker.md) instead of burning through the retry budget.
 - **It is a new component** on a path that had none — one more thing to deploy, monitor, scale and page someone about.
 - **Ordering is not preserved** once you scale the bridge out, and often not even before that.
 - **It hides the coupling rather than removing it**. Two systems now depend on each other through a component neither team owns, and nothing in either codebase says so.
+- **Outage and bad message look alike**. A breaker trips on failures across many messages. One message failing while others pass is a poison message: dead-letter it, or it blocks the route behind it.
 
 ## When to use it
 <!--meta block=usage-->
@@ -124,9 +126,10 @@ sequenceDiagram
 ```typescript summary="TypeScript — relay one direction, settling only after the far side accepts"
 type Envelope = { id: string; body: Uint8Array; headers: Record<string, string> }
 interface Source {
-  receive(): Promise<{ message: Envelope; settle(): Promise<void>; abandon(): Promise<void> } | null>
+  receive(): Promise<{ message: Envelope; settle(): Promise<void>; abandon(): Promise<void>; deadLetter(): Promise<void> } | null>
 }
 interface Destination { send(m: Envelope): Promise<void> }
+declare function isRejected(err: unknown): boolean   // true when the far side refuses this one message (too large, malformed)
 
 // Pausing beats retrying here: during an infrastructure outage every message
 // looks poisonous, and a per-message attempt counter would dead-letter the lot.
@@ -134,9 +137,9 @@ interface Breaker { allows(): boolean; onSuccess(): void; onFailure(): void }
 
 async function relay(source: Source, destination: Destination, breaker: Breaker) {
   for (;;) {
-    if (!breaker.allows()) return   // forwarding paused; the source queue absorbs the backlog
+    if (!breaker.allows()) return   // paused; the source queue absorbs the backlog, and a scheduler re-runs relay once the breaker's reset timeout lets it probe
     const delivery = await source.receive()
-    if (!delivery) return
+    if (!delivery) return   // queue empty; the scheduler calls relay again
     try {
       // The payload crosses untouched — the bridge carries, it does not translate.
       await destination.send(delivery.message)
@@ -145,6 +148,8 @@ async function relay(source: Source, destination: Destination, breaker: Breaker)
       // duplicate the receiving side is expected to absorb.
       await delivery.settle()
     } catch (err) {
+      // A rejection of this one message goes to the dead-letter queue; only a link failure counts toward the breaker.
+      if (isRejected(err)) { await delivery.deadLetter(); continue }
       breaker.onFailure()
       await delivery.abandon()
       return
@@ -170,13 +175,14 @@ async function relay(source: Source, destination: Destination, breaker: Breaker)
 - **Circuit-breaker thresholds** — How many consecutive send failures pause forwarding, and how long before it probes the far side again.
 - **Bridge instance count** — Scaling out with competing consumers buys throughput and gives up ordering across the boundary.
 - **Maximum relayed message size** — Clamp it to the smaller of the two infrastructures at the bridge, so an oversized message fails at the crossing rather than deep on the far side.
+- **Source queue quota and message lifetime** — Size it as send rate x longest outage you must ride out, as in the explain example (200 x 600 = 120,000 messages). Alert on depth well before the quota.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Source queue depth and its rate of change** — A growing backlog is how a far-side outage announces itself, since nothing else errors.
 - **Relay latency, receive to settle** — The end-to-end cost the bridge adds, and the first thing to rise when either broker degrades.
-- **Duplicate rate at the receiver** — The at-least-once tax, measured — a step change means the settle path is failing more often than the send path.
+- **Duplicate rate at the receiver** — The cost of at-least-once delivery, counted. A sudden jump often means the settle path is failing more often than the send path; a larger prefetch widens the redelivery window and raises it too.
 - **Circuit-breaker state transitions** — Frequent opening and closing means the thresholds are chasing a partly-degraded far side rather than a clean outage.
 
 ### Failure modes under load
@@ -186,6 +192,8 @@ async function relay(source: Source, destination: Destination, breaker: Breaker)
 - **Size limit discovered in production** — The larger infrastructure accepts a message the smaller one rejects, and it fails after the sender already considers it delivered.
 - **Silent duplicate application** — A crash between send and settle redelivers, and a non-idempotent receiver applies the change twice.
 - **Unbounded backlog during a long outage** — The source queue absorbs everything until it hits its own quota, and then the sender starts failing too.
+- **Poison message trips the breaker** — One message the far side rejects for its own fault, such as oversize or malformed, counts as a link failure, opens the breaker and blocks every message behind it. Dead-letter per-message rejections; pause only on link failure.
+- **Relay loop on a two-way bridge** — A forwarded message is bridged back and forth between the brokers. Stamp relayed messages with a header and skip stamped ones.
 
 ### Readiness checklist
 <!--meta polarity=check-->

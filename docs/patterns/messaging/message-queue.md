@@ -16,15 +16,15 @@ A point-to-point channel that holds each message until exactly one consumer pull
 ## What it is
 <!--meta block=description-->
 
-A **message queue** is an ordered, durable channel between a producer and its consumers. The producer adds a message and moves on, and the queue holds it until a consumer takes it. Even with several consumers, each message goes to exactly one. This frees the producer from the consumer's uptime and pace, turns a burst into a backlog that drains, and survives a crash because messages are stored on disk or replicated across broker nodes.
+Without a queue, a producer that calls a slow or down consumer blocks, and a burst becomes failures. A **message queue** is a durable channel between them: the producer adds a message and moves on, and the queue holds it until a consumer takes it. Each message goes to one consumer at a time, and goes out again if it is not acknowledged. A burst becomes a backlog that drains, and stored messages survive a crash.
 
 ## Explained
 <!--meta block=explain-->
 
-A message queue is a durable line between a producer and its consumers: the producer adds a message and moves on, and the queue holds it until a consumer takes it, delivering each message to exactly one consumer. The producer no longer waits for the consumer to be up or fast, a burst becomes a backlog that drains instead of a failure, and a crash between accepting and finishing the work loses nothing. Choose it over a direct call when the caller does not need the answer now. Choose a [publish-subscribe](./pubsub.md) topic instead when every interested party needs the message, not just one.
+Use a message queue when the caller does not need the answer now. The producer no longer waits for the consumer to be up or fast, a burst becomes a backlog that drains instead of a failure, and a crash between accepting and finishing the work loses nothing once the broker has stored the message, until retention expires it. A queue hands each message to one consumer at a time. Choose a [publish-subscribe](./pubsub.md) topic instead when every interested party needs the message, not just one.
 
-- **Duplicates.** Delivery is at least once, so make each handler safe to repeat.
-- **Waiting.** Messages wait, so alert on the age of the oldest message.
+- **Duplicates.** Delivery is at-least-once, so make each handler safe to repeat.
+- **Waiting.** Messages wait, so alert on the age of the oldest waiting message.
 - **Harder tracing.** The path is indirect, so stamp each message with a correlation id (one token shared by a whole operation).
 - **Broker upkeep.** You must run the broker and keep it available.
 
@@ -73,10 +73,10 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **[Competing Consumers](./competing-consumers.md)** — Run a pool of consumer instances against the same queue to scale throughput horizontally — the queue still guarantees any one message reaches only one of them.
+- **[Competing Consumers](./competing-consumers.md)** — Run a pool of consumer instances against the same queue to scale throughput horizontally — the queue hands any one message to only one of them at a time.
 - **Visibility timeout / lease-based redelivery** — A dequeued message is hidden rather than deleted until the consumer acknowledges it; if the lease expires without an ack, another consumer picks it up — the basis of at-least-once delivery.
 - **[Dead Letter Channel](./dead-letter-channel.md)** — A message that fails processing past a retry limit is diverted to a separate channel instead of blocking the queue or being redelivered forever.
-- **FIFO vs. standard queues** — FIFO (first in, first out) queues guarantee strict order and exactly-once processing within a group, at the cost of throughput; standard queues favor throughput and tolerate occasional reordering or duplicates.
+- **FIFO vs. standard queues** — FIFO (first in, first out) queues keep strict order within a group and drop duplicate sends inside a time window, at the cost of throughput; consumers still need idempotency. Standard queues favor throughput and tolerate occasional reordering or duplicates.
 - **[Claim Check](./claim-check.md)** — Store a large payload externally and put only a reference in the message, so broker size limits and throughput aren't spent moving bulk data around.
 
 ## Trade-offs
@@ -94,7 +94,7 @@ sequenceDiagram
 <!--meta polarity=con-->
 
 - **Introduces a broker as new infrastructure** to run, monitor, and keep highly available.
-- **Adds end-to-end latency versus a direct call** — a message waits until something polls for it.
+- **Adds end-to-end latency versus a direct call** — a message waits in the backlog until a consumer is free, and under a burst that wait dominates.
 - **At-least-once delivery pushes** [idempotency](./idempotency.md) onto every consumer, or duplicates cause real damage.
 - **Flow becomes indirect**: tracing a message's path is harder than following a synchronous call stack.
 
@@ -131,6 +131,12 @@ class MessageQueue<T> {
 
   dequeue(visibilityMs = 30_000): Message<T> | undefined {
     const now = Date.now();
+    for (const [id, m] of this.inFlight) {
+      if (m.visibleAt <= now) { // lease expired with no ack: redeliver
+        this.inFlight.delete(id);
+        this.messages.push(m);
+      }
+    }
     const msg = this.messages.find((m) => m.visibleAt <= now);
     if (!msg) return undefined;
     this.messages = this.messages.filter((m) => m !== msg);
@@ -145,7 +151,7 @@ class MessageQueue<T> {
 
   nack(id: string): void {
     const msg = this.inFlight.get(id);
-    if (msg) this.messages.push(msg); // back on the queue for redelivery
+    if (msg) { msg.visibleAt = 0; this.messages.push(msg); } // visible again now
     this.inFlight.delete(id);
   }
 }
@@ -164,32 +170,32 @@ class MessageQueue<T> {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Visibility timeout (message lease)** — How long a dequeued message stays hidden before redelivery; set above worst-case processing time or extend it with a heartbeat.
+- **Visibility timeout (message lease)** — How long a dequeued message stays hidden before redelivery; set above the slowest processing time in consumer metrics, or extend it with a heartbeat (a periodic call that extends the lease). Too long delays recovery after a crash.
 - **Consumer prefetch / concurrency** — How many unacknowledged messages one consumer holds in flight; caps memory and spreads load across the pool.
-- **Max receive count before dead-lettering** — Number of failed delivery attempts before a message is diverted to a dead-letter channel.
+- **Max receive count before dead-lettering** — Number of failed delivery attempts before a message is diverted to a dead-letter channel; pick a count whose total retry delay outlasts a typical transient fault.
 - **Message retention / time to live (TTL)** — How long an unconsumed message survives before the broker discards it.
 - **Consumer pool size** — Number of competing consumers draining one queue.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Queue depth (backlog)** — Messages waiting to be consumed; the primary saturation signal.
-- **Age of oldest unacknowledged message** — How long the front of the queue has waited to be picked up.
+- **Queue depth (backlog)** — Messages waiting to be consumed; the primary saturation signal. Depth divided by dequeue rate is the time to drain.
+- **Age of oldest waiting message** — How long the front of the queue has waited to be picked up; set the alert from the latency target of the work.
 - **Dead-letter and redelivery rate** — Messages diverted or redelivered per interval; a rise flags poison messages or failing consumers.
 - **Enqueue vs. dequeue rate** — Whether consumers are keeping pace with producers.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Poison message** — A message that always fails is redelivered each cycle, burning a consumer slot until it hits the dead-letter threshold.
+- **Poison message** — A message that always fails is redelivered each cycle and ties up a consumer until it hits the dead-letter threshold.
 - **Lease shorter than processing time** — The visibility timeout expires mid-work, a second consumer takes the same message, and it runs twice.
-- **Backlog runaway** — Sustained enqueue above consumer capacity grows depth without bound; latency climbs until retention drops the oldest.
+- **Backlog runaway** — Sustained enqueue above consumer capacity grows depth and latency until retention or broker limits discard the oldest messages unprocessed; cap depth or age and slow producers.
 - **Duplicate delivery** — At-least-once redelivery double-applies non-idempotent side effects.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- Consumers are idempotent — dedupe on message id or a business key
+- Consumers are idempotent — dedupe on message id or a key from the work itself, such as an order id
 - A dead-letter channel is configured with a bounded retry count
 - Visibility timeout exceeds worst-case processing, or the consumer extends the lease with a heartbeat
 - Queue depth and oldest-message age are alerted, not just graphed
@@ -226,6 +232,7 @@ class MessageQueue<T> {
 - [Message Router](./message-router.md) — Queues are the channels a router reads from and writes to
 - [Prefer Managed Services](../../principles/managed-services.md) — A hosted broker is queueing without the operational commitment
 - [Polling Consumer](./polling-consumer.md) — A queue holds messages until a polling consumer asks for them
+- [Idempotency](./idempotency.md) — At-least-once delivery makes every consumer owe a safe repeat.
 
 **Alternative to**
 

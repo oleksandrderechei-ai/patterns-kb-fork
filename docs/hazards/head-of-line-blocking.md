@@ -73,10 +73,10 @@ Finally, hide what you cannot remove. If a slow server at the front is the cause
 **Mitigated by**
 
 - [Hedged Request](../patterns/distributed/resilience/hedged-request.md) — Hedging hides a slow server at the front by sending the request elsewhere.
-- [Sequential Convoy](../patterns/messaging/sequential-convoy.md) — Ordering only within a keyed group means a stuck item blocks only its own group.
 - [Priority Queue](../patterns/messaging/priority-queue.md) — Separate lanes by class keep urgent items out from behind slow ones.
 - [Message Queue](../patterns/messaging/message-queue.md) — Many consumers on one queue mean a stuck item holds one worker, not the whole lane.
 - [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) — A per-item timeout bounds how long any one item may hold the front.
+- [Sequential Convoy](../patterns/messaging/sequential-convoy.md) — Ordering only within a keyed group means a stuck item blocks only its own group.
 
 **Threatens**
 

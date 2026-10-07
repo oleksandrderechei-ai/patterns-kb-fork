@@ -212,7 +212,7 @@ class IdGenerator {
 
 **Often confused with**
 
-- [Correlation Identifier](../../messaging/correlation-identifier.md) — This generates primary keys; a correlation id tags related messages and is never a key
+- [Correlation Identifier](../../messaging/correlation-identifier.md) — This generates primary keys; a correlation id tags related messages and is not meant to be a record's key.
 
 **Exposed to**
 

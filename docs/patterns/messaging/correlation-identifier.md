@@ -24,12 +24,12 @@ Replies on a shared channel arrive late, out of order and mixed with others, and
 
 A correlation identifier is a token, such as a random UUID, that you put in the header of a request and that every reply or follow-up message copies unchanged. It lets you match each answer to its question when answers arrive late, out of order or mixed with others on one channel, and it gives you one key to search every log line of that operation. Add it as soon as more than one conversation shares an asynchronous channel, because matching by arrival order breaks the first time one reply is slow. It is not a message id: that names one message, while the correlation id names the whole conversation.
 
-- **Dropped ids.** A hop that drops or replaces the id breaks the chain, so reject a message that arrives without one.
+- **Dropped ids.** The first hop creates the id. A later hop that drops it breaks the chain, so reject a message without one.
 - **Pending table.** The sender must track pending ids with a timeout and a size cap, or a lost reply leaks memory.
 - **Links only.** The id does not show that all replies arrived; an aggregator does that.
-- **Collisions and leaks.** Use a random id, not a business key, so a clash or log leak exposes nothing.
+- **Collisions and leaks.** Prefer a random id: a business key reaches every log line, and a repeated key sends a reply to the wrong caller.
 
-**Example.** A pricing service sends 3 requests onto one reply queue: a1 for a hotel, b2 for a flight, c3 for a car. The replies return as c3, a1, b2. Matched by arrival order, the hotel would get the car price. Matched by id, each lands on its own request. The flight service is down, so b2 never returns. With a 30 s timeout the caller fails that one request and frees its entry. With no timeout and 20 requests a second, a dead service leaks 20 entries a second, which fills a 1,000-entry cap in 50 s.
+**Example.** A pricing service sends 3 requests onto one reply queue: a1 for a hotel, b2 for a flight, c3 for a car. The replies return as c3, a1, b2. Matched by arrival order, the hotel would get the car price. Matched by id, each lands on its own request. The flight service is down, so b2 never returns. With a 30 s timeout the caller fails that one request and frees its entry. With no timeout and 20 requests a second all waiting on that dead service, entries leak at 20 a second and fill a 1,000-entry cap in 50 s; a 30 s timeout would hold about 600.
 
 ## How it works
 <!--meta block=structure-->
@@ -52,7 +52,7 @@ flowchart LR
     classDef ext stroke-dasharray:4 4
 ```
 
-```mermaid caption="Two requests are in flight at once and their replies come back out of order; the correlation id — not arrival order — tells the requestor which reply answers which request, and a reply matching no pending id is discarded."
+```mermaid caption="Two requests are in flight at once and their replies come back out of order. The correlation id, not arrival order, tells the requestor which reply answers which request. A reply that matches no pending id is counted and logged, not dropped silently."
 sequenceDiagram
     autonumber
     participant R as Requestor
@@ -66,7 +66,7 @@ sequenceDiagram
         R->>R: resolve caller by id, arrival order irrelevant
     else id unknown, late, or already handled
         Ch--xR: Reply, CorrelationId=zzz
-        R->>R: discard unmatched reply
+        R->>R: count and log the unmatched reply, never drop it silently
     end
 ```
 
@@ -98,7 +98,8 @@ sequenceDiagram
 - **A collision or an accidentally reused id** attributes a reply to the wrong requestor — use a random UUID unless a business key is provably unique across concurrent conversations.
 - **It only marks messages as related** — it provides no ordering and no guarantee that every expected reply actually arrived.
 - **Completeness needs a second mechanism on top**: something has to know how many replies to expect and what to do when one never comes, which is the job of a [Scatter-Gather](./scatter-gather.md) aggregator, not of the id.
-- **An id that reaches a log** or an audit trail carries whatever it was built from — a business key used as a correlation id puts an order number, or worse, into every span and log line a third party might hold.
+- **An id that reaches a log** or an audit trail carries whatever it was built from. A business key used as a correlation id puts an order number into every span and log line a third party might hold.
+- **Retries and late replies** — a retry that reuses an id lets a late reply to the first attempt match the second. A retry with a new id orphans that late reply, so count replies whose entry is gone.
 
 ## When to use it
 <!--meta block=usage-->
@@ -113,7 +114,7 @@ sequenceDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The exchange is a synchronous request/reply call** — the open connection already correlates request and response for free.
+- **The exchange is a synchronous request/reply call** — the open connection already matches response to request for free; carry a trace id across services for logs only.
 - **Only one request is ever outstanding** at a time, so there's nothing to disambiguate.
 - **You need the workflow around** the correlated messages managed, not just the matching — reach for [Scatter-Gather](./scatter-gather.md) or [Saga](../distributed/coordination/saga.md).
 
@@ -122,25 +123,41 @@ sequenceDiagram
 
 ```typescript summary="TypeScript — matching vendor callbacks back to their flow"
 interface Callback { flowId: string; payload: unknown; }
+interface Entry { resolve: (cb: Callback) => void; timer: ReturnType<typeof setTimeout>; }
+
+const MAX_PENDING = 1000;
+const TIMEOUT_MS = 30_000;
 
 class CorrelatingVendorClient {
-  private pending = new Map<string, (cb: Callback) => void>();
+  private pending = new Map<string, Entry>();
+  private unmatched = 0;
 
   // flowId is generated once when the flow is created, not per call: the same id
   // rides every transition, task row, vendor request and the final webhook.
   async request(flowId: string, payload: unknown): Promise<Callback> {
-    return new Promise<Callback>((resolve) => {
-      this.pending.set(flowId, resolve);
+    if (this.pending.has(flowId)) throw new Error("flow already has a vendor call in flight");
+    if (this.pending.size >= MAX_PENDING) throw new Error("pending ceiling reached");
+    return new Promise<Callback>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(flowId);
+        reject(new Error("no callback for " + flowId));
+      }, TIMEOUT_MS);
+      this.pending.set(flowId, { resolve, timer });
       idVendor.send({ flowId, payload });
     });
   }
 
   // Called whenever the vendor calls back into the API.
   onCallback(cb: Callback) {
-    const resolve = this.pending.get(cb.flowId);
-    if (!resolve) return; // unknown, late, or already-handled callback
+    const entry = this.pending.get(cb.flowId);
+    if (!entry) {
+      this.unmatched++;
+      log.warn({ flowId: cb.flowId, reason: "unmatched callback" });
+      return; // late-reply destination: a counter plus a log line
+    }
+    clearTimeout(entry.timer);
     this.pending.delete(cb.flowId);
-    resolve(cb);
+    entry.resolve(cb);
   }
 }
 
@@ -162,8 +179,8 @@ await webhook.deliver(clientUrl, { flowId, state: "cleared" }); // … and on th
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Pending-request timeout** — How long the requestor keeps a correlation entry waiting for its reply before expiring it and reclaiming the slot.
-- **Pending-map ceiling** — The maximum number of outstanding correlations the requestor will hold at once, and what it does on reaching it — reject, shed, or block.
+- **Pending-request timeout** — How long the requestor keeps a correlation entry waiting for its reply before expiring it and reclaiming the slot. Start from the tail of the request-to-reply latency plus margin, then tune against the unmatched reply rate.
+- **Pending-map ceiling** — The maximum number of outstanding correlations the requestor will hold at once, and what it does on reaching it — reject, shed, or block. Size it as peak request rate times the timeout, plus headroom; reject for callers that can retry, and block only with a bounded wait.
 - **ID generation scheme** — Random UUID versus a reused business key; it sets how much collision resistance you have when many conversations share one channel.
 - **Propagation header** — Which header carries the id (traceparent, X-Request-Id, JMSCorrelationID), and therefore what every hop has to read and re-emit.
 
@@ -173,7 +190,7 @@ await webhook.deliver(clientUrl, { flowId, state: "cleared" }); // … and on th
 - **Outstanding pending correlations** — Size of the requestor pending map, next to its ceiling — the number that tells you whether replies are coming back at all.
 - **Unmatched reply rate** — Replies whose correlation id has no pending entry — late, unknown, or an id that was dropped or regenerated somewhere upstream.
 - **Missing-id rate on ingress** — Messages arriving with no correlation header at all, counted per upstream — this names the component that is breaking the chain.
-- **Request-to-reply latency** — Time from stamping the id on a request to matching its reply, measured per correlation.
+- **Request-to-reply latency** — Time from stamping the id on a request to matching its reply, measured per correlation. Track p50 and p99 per upstream, because a mean hides the stuck tail.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -229,7 +246,7 @@ await webhook.deliver(clientUrl, { flowId, state: "cleared" }); // … and on th
 
 **Often confused with**
 
-- [Unique ID Generation](../distributed/coordination/unique-id-generation.md) — This generates primary keys; a correlation id tags related messages and is never a key
+- [Unique ID Generation](../distributed/coordination/unique-id-generation.md) — A correlation id tags related messages and is not meant to be a record's key; that page generates primary keys.
 
 **Demonstrated by**
 

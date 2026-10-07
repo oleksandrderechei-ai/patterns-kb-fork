@@ -16,18 +16,18 @@ Fan-out delivers a single message as a separate, independent copy to every inter
 ## What it is
 <!--meta block=description-->
 
-**Fan-out** replicates one published message into an independent copy for every consumer, and each consumer processes its own copy in parallel, one way, with no reply. The producer emits once and a topic or broker does the multiplying. Direct calls would tie the producer to every consumer's speed and availability, and the slowest would stall the rest. Plain [publish-subscribe](./pubsub.md) decouples the sender; fan-out also keeps each copy buffered, retried and consumed separately.
+**Fan-out** replicates one published message into an independent copy for every consumer, and each consumer processes its own copy in parallel, one way, with no reply. The producer emits once and a topic or broker does the multiplying. Direct calls would tie the producer to every consumer's speed and availability, and the slowest would stall the rest. Plain [publish-subscribe](./pubsub.md) decouples the sender; fan-out usually keeps each copy buffered, retried and consumed separately, with a queue per consumer.
 
 ## Explained
 <!--meta block=explain-->
 
-Fan-out sends one published message to many consumers, each receiving its own copy and acting on it independently. The producer publishes once and does not know who listens, and a slow or broken consumer cannot stall the others. Choose it over calling each consumer directly when the consumers are unrelated: total time then follows the slowest branch, not the sum, and you add a consumer without touching the producer. Use a queue with [competing consumers](./competing-consumers.md) instead when a message must reach exactly one worker, and [scatter-gather](./scatter-gather.md) when you need the answers back.
+Fan-out sends one published message to many consumers, each receiving its own copy and acting on it independently. The producer publishes once and does not know who listens, and when each copy sits in its own queue a slow or broken consumer cannot stall the others. Choose it over calling each consumer directly when the consumers are unrelated: total time then follows the slowest branch, not the sum, and you add a consumer without touching the producer. Use a queue with [competing consumers](./competing-consumers.md) instead when a message must reach exactly one worker, and [scatter-gather](./scatter-gather.md) when you need the answers back.
 
 - **Load multiplied.** One message becomes N deliveries, so size each branch for the extra load.
 - **Per-branch care.** Each branch needs its own retries, dead-letter queue and duplicate protection, since delivery is at least once per copy.
-- **Backlog.** A lagging consumer piles up unread copies in shared storage, so set a backlog limit or expiry and filter at the subscription.
+- **Backlog.** A lagging consumer piles up unread copies, so set a backlog limit or expiry and filter at the subscription.
 
-**Example.** An order-placed event has 5 consumers: email takes 200 ms, inventory 50 ms, analytics 20 ms, fraud 300 ms and loyalty 100 ms. Called one after another they cost 670 ms. Fanned out, the order finishes in about 300 ms, the slowest branch. At 100 orders a second that is 500 deliveries a second. If analytics is down for an hour, its branch alone holds 100 x 3,600 = 360,000 unread copies, and your backlog limit decides when they are dropped.
+**Example.** An order-placed event has 5 consumers: email takes 200 ms, inventory 50 ms, analytics 20 ms, fraud 300 ms and loyalty 100 ms. Called one after another they cost 670 ms. Fanned out, the producer publishes once and the last branch finishes about 300 ms later, the slowest branch. At 100 orders a second that is 500 deliveries a second. If analytics is down for an hour, its branch alone holds 100 x 3,600 = 360,000 unread copies, and your backlog limit decides when they are dropped.
 
 ## How it works
 <!--meta block=structure-->
@@ -78,7 +78,7 @@ flowchart LR
 - **Each branch needs its own** [idempotency](./idempotency.md), retry, and dead-lettering; delivery is at-least-once per copy.
 - **There is no built-in "did everyone get it"** — completion and failure are per-branch, not global.
 - **A misconfigured filter silently drops** messages a consumer needed, with nothing in the call to trace.
-- **Per-branch isolation stops at the broker**: a consumer that never catches up piles its unread copies into storage every branch shares, until a backlog limit or an expiry policy cuts it off.
+- **Per-branch isolation stops at the broker** — where branches share one topic or log, a consumer that never catches up piles unread copies into storage every branch shares, until a backlog limit or an expiry policy cuts it off.
 
 ## When to use it
 <!--meta block=usage-->
@@ -113,17 +113,16 @@ interface Consumer {
 
 // The producer publishes once; each consumer gets its own independent copy.
 async function fanOut(consumers: Consumer[], message: Message): Promise<void> {
-  const deliveries = consumers
-    .filter((c) => c.wants(message))            // trim the branch to what it cares about
-    .map((c) => c.handle(structuredClone(message))); // an independent copy per branch
+  const targets = consumers.filter((c) => c.wants(message)); // trim the branch to what it cares about
+  const deliveries = targets.map((c) => c.handle(structuredClone(message))); // an independent copy per branch
 
-  // one slow or failing branch never blocks delivery to the others
+  // every branch starts at once and one failure never cancels another; this awaits the slowest, so do not await fanOut on the publish path
   const results = await Promise.allSettled(deliveries);
 
   results.forEach((r, i) => {
     if (r.status === "rejected") {
       // retry or dead-letter this branch alone — the rest already went through
-      console.error(`branch ${consumers[i].name} failed:`, r.reason);
+      console.error(`branch ${targets[i].name} failed:`, r.reason);
     }
   });
 }
@@ -135,7 +134,7 @@ async function fanOut(consumers: Consumer[], message: Message): Promise<void> {
 
 - **Amazon Simple Notification Service (SNS) → Simple Queue Service (SQS) fanout** — Publishing to an SNS topic pushes an independent copy to every subscribed SQS queue; each microservice owns a queue and drains it at its own pace, a Lambda event source mapping polls each queue in batches, subscription filter policies route by message attribute, and delivery failures land in a redrive dead-letter queue. {#wild-sns-sqs}
 - **Azure Service Bus topics** — A topic delivers each message into every subscription, and a subscription is its own durable queue-like buffer that a consumer reads independently; SQL and correlation filter rules decide which messages land in each subscription. {#wild-azure-sb-topics}
-- **Parallel large language model (LLM) & agent fan-out** — An orchestrator dispatches one request to several models, tools, or sub-agents at once — running independent tool calls or sampling multiple generations in parallel so none waits on the others — and a fan-in gathers the results. {#wild-llm-fanout}
+- **Parallel large language model (LLM) & agent fan-out** — An orchestrator dispatches one request to several models, tools, or sub-agents at once — running independent tool calls or sampling multiple generations in parallel so none waits on the others; gathering the results afterwards is a separate fan-in step. {#wild-llm-fanout}
 
 ## In production
 <!--meta block=production-->
@@ -144,23 +143,23 @@ async function fanOut(consumers: Consumer[], message: Message): Promise<void> {
 <!--meta polarity=knob-->
 
 - **Per-subscription filter** — Which messages a branch receives — narrows a consumer to the subset it cares about instead of the whole stream.
-- **In-flight / visibility timeout** — How long a delivered copy is hidden from redelivery while a consumer works it; too short redelivers prematurely, too long slows recovery from a crash.
-- **Redelivery limit before dead-lettering** — How many times a copy is retried on one branch before it is moved to that branch dead-letter queue (a maxReceiveCount-style dial).
-- **Delivery retry / backoff policy** — How the fabric spaces retries to a failing branch so a struggling consumer is not hammered.
+- **In-flight / visibility timeout** — How long a delivered copy is hidden from redelivery while a consumer works it; too short redelivers prematurely, too long slows recovery from a crash. Set it above the slowest normal handling time of that branch.
+- **Redelivery limit before dead-lettering** — How many times a copy is retried on one branch before it is moved to that branch dead-letter queue (SQS calls this maxReceiveCount).
+- **Delivery retry / backoff policy** — How the broker spaces retries to a failing branch so a struggling consumer is not hammered.
 - **Per-consumer batch size** — How many copies a consumer pulls and processes per fetch, trading latency against throughput on that branch.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Per-queue backlog** — Pending copies on a single branch; the core per-consumer saturation signal (e.g. an approximate-messages-visible count).
+- **Per-queue backlog** — Pending copies on a single branch; the core per-consumer saturation signal (e.g. SQS ApproximateNumberOfMessagesVisible).
 - **Age of the oldest unprocessed copy** — How far the slowest branch has fallen behind the head of its queue.
 - **Dead-letter-queue depth** — Copies a branch gave up on after exhausting retries — poison messages or a broken consumer.
-- **Delivery-failure / throttle rate** — How often the fabric fails or is throttled delivering to a branch endpoint.
+- **Delivery-failure / throttle rate** — How often the broker fails or is throttled delivering to a branch endpoint.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **One branch backs up in isolation** — A slow or failed branch sees its queue grow while the others stay healthy — the isolation win, visible as a single climbing backlog.
+- **One branch backs up in isolation** — A slow or failed branch sees its queue grow while the others stay healthy: the isolation working, shown as one climbing backlog.
 - **Poison message redelivery loop** — A copy that always fails redelivers on its branch until the redelivery limit moves it to the dead-letter queue.
 - **Silent filter drop** — A misconfigured filter excludes messages a consumer needed; nothing errors, the branch simply never sees them.
 - **Publish-burst amplification** — A burst on the topic multiplies into a simultaneous copy on every branch, hitting all consumers at once.
@@ -199,6 +198,7 @@ async function fanOut(consumers: Consumer[], message: Message): Promise<void> {
 - [Content-Based Router](./content-based-router.md) — Filter each branch so a consumer only gets the messages it cares about.
 - [Fan-In](./fan-in.md) — The parallel branches fan-out creates are gathered by a fan-in
 - [WebSocket](./websocket.md) — Fan-out to clients ends in open connections such as WebSockets.
+- [Idempotency](./idempotency.md) — Each copy is delivered at least once, so every branch must tolerate a repeat.
 
 **Part of**
 
@@ -210,6 +210,10 @@ async function fanOut(consumers: Consumer[], message: Message): Promise<void> {
 - [Message Router](./message-router.md) — Fan-out delivers a copy to all; a router chooses one destination
 - [Wire Tap](./wire-tap.md) — Fan-out copies are real deliveries every consumer is expected to process
 - [Recipient List](./recipient-list.md) — A recipient list narrows delivery to a per-message set instead of everyone subscribed
+
+**Exposed to**
+
+- [Thundering Herd](../../hazards/thundering-herd.md) — Can fall into thundering herd when one publish hits every consumer at the same instant.
 
 **Demonstrated by**
 

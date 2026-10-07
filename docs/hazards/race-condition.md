@@ -84,11 +84,11 @@ Every fix closes the gap between reading and writing. **Serialize the check and 
 - [Monitor Object](../patterns/concurrency/monitor-object.md) — Hold one lock across the check and the write so nothing interleaves
 - [Read-Write Lock](../patterns/concurrency/rw-lock.md) — Exclude everyone during a write; let reads run in parallel the rest of the time
 - [Thread Confinement](../patterns/concurrency/thread-confinement.md) — Give one owner the state so there's no sharing to race over at all
-- [Sequential Convoy](../patterns/messaging/sequential-convoy.md) — Serialize per entity rather than detecting the collision afterwards
 - [Copy-on-Write](../patterns/concurrency/copy-on-write.md) — Publish a finished copy rather than mutating in place, so no reader can catch a partial write
 - [Immutability](../patterns/functional/immutability.md) — Shared state that is never written after creation needs no lock to read safely
 - [Mutex](../patterns/concurrency/mutex.md) — Guarding the shared data with a lock stops two threads interleaving their reads and writes
 - [Barrier](../patterns/concurrency/barrier.md) — A barrier orders the phases of a parallel job, so a fast thread cannot read a slow thread's unfinished result
+- [Sequential Convoy](../patterns/messaging/sequential-convoy.md) — Serialize per entity rather than detecting the collision afterwards
 
 **Threatens**
 

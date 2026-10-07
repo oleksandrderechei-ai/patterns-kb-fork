@@ -16,19 +16,19 @@ Event-carried state transfer puts the changed data inside the event, so each con
 ## What it is
 <!--meta block=description-->
 
-**Event-carried state transfer** puts the changed data inside the event. The owner of a record publishes its new state on every change, and each consumer applies it to a local table and later reads its own copy, so it never calls the owner. In event notification the event holds only an id, so every consumer calls back and the owner returns to the request path. The cost here is a copy that is always a little behind.
+When every consumer calls the owner back for the data it needs, the owner's outage or read load reaches all of them. Event-carried state transfer puts the changed data inside the event: the owner publishes the new state on every change, and each consumer applies it to a local table and reads its own copy. The cost is a copy that is always a little behind, so the owner can fail without stopping the consumers.
 
 ## Explained
 <!--meta block=explain-->
 
-Event-carried state transfer puts the changed data inside the event. The service that owns a record publishes the new state on every change, and each consumer applies it to its own local table and reads from that table later, so it never calls the owner. Martin Fowler named it as one of four meanings of event-driven. Choose it over event notification, where the event only says that something changed, when consumers must keep working while the owner is down, or when callbacks would hit the owner several times harder than the writes do.
+Event-carried state transfer puts the changed data inside the event. The service that owns a record publishes the new state on every change, and each consumer applies it to its own local table and reads from that table later, so it does not call the owner for routine reads. Martin Fowler named it as one of four meanings of event-driven. Choose it over event notification, where the event only says that something changed, when consumers must keep working while the owner is down, or when callbacks would hit the owner several times harder than the writes do.
 
 - **Lag.** Copies run behind, so use it only where seconds of lag are fine and ask the owner for the cases that are not.
 - **Repeats and disorder.** Events can repeat or arrive out of order, so carry a version number and ignore any event that is not newer.
 - **Public contract.** Version the event, send only needed fields, publish delete events and keep sensitive fields out.
-- **New consumers.** They need the history, so keep a compacted topic or republish a snapshot.
+- **New consumers.** They need the history, so keep a compacted topic (a log that keeps only the latest event per key) or republish a snapshot.
 
-**Example.** A catalogue service has 2 million products, and the cart, search and pricing services each need name and price. Each change publishes one 400-byte event with the full record and version. With callbacks, a nightly import of 500,000 changes makes 3 consumers call the catalogue 1.5 million times. With state transfer, the import is 500,000 events and zero calls. When the catalogue is down for 20 minutes, the cart still shows prices from its copy. The cost: a price changed 2 s ago can still show the old value for 2 s in the cart, so checkout rechecks the price with the owner.
+**Example.** A catalogue service has 2 million products, and the cart, search and pricing services each need name and price. Each change publishes one 400-byte event with the full record and version. With callbacks, a nightly import of 500,000 changes makes 3 consumers call the catalogue 1.5 million times. With state transfer, the import is 500,000 events and zero calls, though each copy lags while its consumer drains them. When the catalogue is down for 20 minutes, the cart still shows prices from its copy. The cost: with 2 s of lag, a price changed 1 s ago still shows the old value in the cart, so checkout rechecks the price with the owner.
 
 ## How it works
 <!--meta block=structure-->
@@ -72,9 +72,9 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Full-state event** — each event holds the whole record, so the consumer needs no earlier event to make sense of it. Events are larger, and a missed event heals at the next one for the same key.
+- **Full-state event** — each event holds the whole record, so the consumer needs no earlier event to make sense of it. Events are larger, and a missed event heals at the next one for the same key. A record that is not changed again stays wrong until a resync.
 - **Delta event** — the event holds only the changed fields. It is smaller, but a consumer that misses one is wrong until a resync, so it needs ordered, gap-free delivery.
-- **Compacted topic as the snapshot** — a log that keeps only the latest event per key doubles as the full dataset, so a new consumer reads it from the start to build its copy. Kafka log compaction does this.
+- **Compacted topic as the snapshot** — a log that keeps only the latest event per key doubles as the full dataset, so a new consumer reads it from the start to build its copy. Kafka log compaction does this. It works only with full-state events; with delta events compaction drops the earlier changes and the rebuilt copy is wrong. Older events for a key stay until compaction runs, so the version check still applies.
 - **Subset of fields** — the event carries only what consumers need, which keeps private fields inside the owner and shrinks the contract. The cost is a new event version each time a consumer needs one more field.
 - **Event notification plus fetch** — the event carries an id and the consumer calls back. This is the opposite choice, used when data is large or sensitive, at the price of the callback coupling.
 
@@ -85,9 +85,9 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - **Owner outage does not reach consumers** — they read local data, so a down or slow owner stops new updates but not existing reads.
-- **No read traffic back to the owner** — a burst of changes does not become a burst of callbacks, so the owner is sized for writes only.
+- **No read traffic back to the owner** — a burst of changes does not become a burst of callbacks, so the owner is sized for writes plus a few fresh reads and snapshot republishes, not for every consumer read.
 - **Fast local reads** — a consumer joins the data with its own tables in one query instead of a network call.
-- **Easy to add a consumer** — a new team subscribes and builds its copy, and the owner changes nothing.
+- **Easy to add a consumer** — a new team subscribes and builds its copy, and the owner changes nothing as long as the copy needs only the current fields and history is still retained; otherwise it republishes a snapshot.
 
 ### Cons
 <!--meta polarity=con-->
@@ -103,7 +103,7 @@ sequenceDiagram
 ### Reach for it when
 <!--meta polarity=when-->
 
-- **Consumers must work when the owner is down** — checkout needs the product price and customer address even while the catalogue or customer service restarts.
+- **Consumers must work when the owner is down** — the cart shows product prices and the order shows customer addresses from the copy while the owner restarts; a step that needs the latest value still waits for the owner.
 - **Many consumers read the same data often** — callbacks would put the owner under load several times the write rate.
 - **Consumers can accept seconds of lag** — a copy a second behind is fine for shipping addresses and display names.
 
@@ -122,25 +122,28 @@ type CustomerChanged = {
   type: "customer-changed" | "customer-deleted";
   id: string;
   version: number;          // the owner's counter for this record
-  name?: string;
+  name?: string;            // a change event carries the full state (name and address)
   address?: string;
 };
 
-const customers = new Map<string, { version: number; name: string; address: string }>();
+type Copy = { version: number; deleted: boolean; name?: string; address?: string };
+const customers = new Map<string, Copy>();
 
 export function onCustomerEvent(e: CustomerChanged) {
   const current = customers.get(e.id);
-  if (current && e.version <= current.version) return;   // stale or duplicate
+  if (current && e.version <= current.version) return;   // stale or duplicate, even after a delete
   if (e.type === "customer-deleted") {
-    customers.delete(e.id);                              // honour deletion
+    // keep a tombstone with the delete's version; purge it only after the longest redelivery delay
+    customers.set(e.id, { version: e.version, deleted: true });
     return;
   }
-  customers.set(e.id, { version: e.version, name: e.name!, address: e.address! });
+  customers.set(e.id, { version: e.version, deleted: false, name: e.name!, address: e.address! });
 }
 
 // Order service reads its own copy, never the customer service.
 export function shippingAddress(customerId: string) {
-  return customers.get(customerId)?.address;             // may lag by seconds
+  const c = customers.get(customerId);
+  return c && !c.deleted ? c.address : undefined;   // undefined: not replicated yet or deleted; retry or fetch from the owner
 }
 ```
 
@@ -159,13 +162,13 @@ export function shippingAddress(customerId: string) {
 
 - **event contents** — Which fields go in the event. Fewer fields mean a smaller contract and less private data copied, but more versions when consumers need more.
 - **partition key** — Use the entity id as the key so all events for one record are ordered and a version check can work.
-- **retention or compaction** — How long events stay available. A compacted topic lets a new consumer build a full copy; plain time-based retention does not.
-- **version field** — A per-record counter or timestamp the consumer compares to drop stale and repeated events.
+- **retention or compaction** — How long events stay available. A compacted topic lets a new consumer build a full copy, but only with full-state events; plain time-based retention does not. Set it longer than the longest consumer outage or rebuild you accept, and keep delete tombstones for the same window.
+- **version field** — A per-record counter or timestamp the consumer compares to drop stale and repeated events. Take it from the single writer for each record (a row version or sequence), not from consumer or wall clocks, which can skew and reject real updates.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **consumer lag** — How far the consumer is behind the topic; it is the staleness of the local copy.
+- **consumer lag** — How far the consumer is behind the topic; it is the staleness of the local copy. Alert when it nears the seconds of lag the consumers accepted, not at a fixed number.
 - **stale events dropped** — A rising count means reordering or redelivery, and shows the version check is working.
 - **copy age at read time** — How old the record a decision used was, for the decisions that care.
 - **deserialisation or schema errors** — A spike after a release shows an event change that a consumer cannot read.
@@ -174,9 +177,9 @@ export function shippingAddress(customerId: string) {
 <!--meta polarity=failure-->
 
 - **older event overwrites newer** — Without a version check, a redelivered or reordered event rolls the local copy back.
-- **new consumer has no history** — Retention dropped old events, so the new copy starts empty or partial until you republish a snapshot.
+- **new consumer has no history** — Retention dropped old events, so the new copy starts empty or partial until you republish a snapshot. When joining a snapshot to the live stream, record its version or offset, start the live read from there and let the version check absorb the overlap.
 - **schema change breaks readers** — The owner renames a field and consumers fail or store nulls, because the event is a shared contract.
-- **deleted data lives on** — A delete is never sent or never applied, so a copy keeps data that must be gone.
+- **deleted data lives on** — A delete is never sent or never applied, so a copy keeps data that must be gone. Applying a delete by removing the row is also a hole: an older event arriving later brings the record back, so keep a versioned tombstone until retention passes.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -211,6 +214,7 @@ export function shippingAddress(customerId: string) {
 - [Publish-Subscribe](./pubsub.md) — The topic delivers the full-state events to every consumer that keeps a copy.
 - [Outbox](../distributed/coordination/outbox.md) — Publish the state event through an outbox so the save and the event cannot disagree.
 - [Idempotency](./idempotency.md) — Consumers must tolerate repeats and stale versions when applying state events.
+- [Materialized View](../distributed/coordination/materialized-view.md) — The events are one way to feed a local view of the owner's data.
 
 **Alternative to**
 

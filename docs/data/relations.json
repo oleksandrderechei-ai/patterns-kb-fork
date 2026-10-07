@@ -4350,13 +4350,6 @@
       "note_b": "Remove the locks entirely and the hold-and-wait precondition disappears"
     },
     {
-      "a": "sequential-convoy",
-      "verb": "prevents-hazard",
-      "b": "race-condition",
-      "note_a": "One consumer per group at a time removes the concurrent-update race entirely",
-      "note_b": "Serialize per entity rather than detecting the collision afterwards"
-    },
-    {
       "a": "copy-on-write",
       "verb": "prevents-hazard",
       "b": "race-condition",
@@ -5559,13 +5552,6 @@
       "b": "workflow-orchestration",
       "note_a": "A durable timer inside an orchestration engine does the same job with no scan, once you already run the engine",
       "note_b": "The engine's durable timers and retries replace the hand-rolled scan for work that stalled"
-    },
-    {
-      "a": "unique-id-generation",
-      "verb": "often-confused-with",
-      "b": "correlation-identifier",
-      "note_a": "This generates primary keys; a correlation id tags related messages and is never a key",
-      "note_b": "This generates primary keys; a correlation id tags related messages and is never a key"
     },
     {
       "a": "workflow-orchestration",
@@ -8454,13 +8440,6 @@
     {
       "a": "async-request-reply",
       "verb": "combines-with",
-      "b": "claim-check",
-      "note_a": "A large result leaves the status body and becomes a short-lived link the caller fetches",
-      "note_b": "The terminal state of a long-running operation is a natural place to hand back a reference instead of a payload"
-    },
-    {
-      "a": "async-request-reply",
-      "verb": "combines-with",
       "b": "correlation-identifier",
       "note_a": "Over a broker the reply is matched by an echoed id, because there is no open connection to answer on",
       "note_b": "A request queue and a reply queue need the id to route the answer back to the caller that is waiting"
@@ -10650,13 +10629,6 @@
       "note_b": "A cold cache is one trigger and one sustaining effect among several."
     },
     {
-      "a": "sequential-convoy",
-      "verb": "prevents-hazard",
-      "b": "head-of-line-blocking",
-      "note_a": "The convoy is the answer to an ordered lane whose head can block everything.",
-      "note_b": "Ordering only within a keyed group means a stuck item blocks only its own group."
-    },
-    {
       "a": "priority-queue",
       "verb": "prevents-hazard",
       "b": "head-of-line-blocking",
@@ -11245,13 +11217,6 @@
       "note_b": "The route travels with the message as an ordered list, so no central router has to know every sequence"
     },
     {
-      "a": "recipient-list",
-      "verb": "often-confused-with",
-      "b": "routing-slip",
-      "note_a": "Sends one copy of the message to every recipient at once, in parallel",
-      "note_b": "Sends the message through steps one after another, each step forwarding to the next address"
-    },
-    {
       "a": "workflow-orchestration",
       "verb": "alternative-to",
       "b": "routing-slip",
@@ -11292,13 +11257,6 @@
       "b": "polling-consumer",
       "note_a": "The steady drain rate of a polling consumer is what levels the load",
       "note_b": "A burst waits in the queue while the consumer drains it at a steady rate"
-    },
-    {
-      "a": "long-polling",
-      "verb": "often-confused-with",
-      "b": "polling-consumer",
-      "note_a": "The server holds one request open until data arrives, to avoid empty replies",
-      "note_b": "The consumer asks the channel for work, and the call may return empty"
     },
     {
       "a": "canonical-data-model",
@@ -13509,6 +13467,279 @@
       "b": "bulkhead",
       "note_a": "One permit budget per remote service is how a semaphore becomes a bulkhead",
       "note_b": "A bulkhead's permit is a counting semaphore sized per dependency"
+    },
+    {
+      "a": "idempotency",
+      "verb": "combines-with",
+      "b": "pubsub",
+      "note_a": "Each topic subscription needs it, because the broker redelivers messages.",
+      "note_b": "Redelivery after a missed acknowledgement means every subscriber must tolerate a repeat."
+    },
+    {
+      "a": "pubsub",
+      "verb": "often-confused-with",
+      "b": "recipient-list",
+      "note_a": "Subscribers choose what they receive; with a recipient list the sender computes the list.",
+      "note_b": "The topic holds the subscriber set; the sender names no recipient."
+    },
+    {
+      "a": "reverse-proxy",
+      "verb": "combines-with",
+      "b": "server-sent-events",
+      "note_a": "A held SSE stream is the traffic that proxy buffering and idle timeouts break.",
+      "note_b": "Turn buffering off on the stream route and keep its idle timeout above the keepalive interval."
+    },
+    {
+      "a": "websocket",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "Can fall into thundering herd when a deploy drops many sockets and every client reconnects at the same instant.",
+      "note_b": "A deploy or balancer reset makes every dropped socket reconnect in the same instant."
+    },
+    {
+      "a": "retry-backoff",
+      "verb": "combines-with",
+      "b": "websocket",
+      "note_a": "Reconnecting WebSocket clients are the case where jitter matters most.",
+      "note_b": "The client reconnects after a jittered, growing delay."
+    },
+    {
+      "a": "backpressure",
+      "verb": "combines-with",
+      "b": "websocket",
+      "note_a": "A socket's output buffer is where a slow client's lag shows first.",
+      "note_b": "A send-buffer cap is how you push back on a slow reader."
+    },
+    {
+      "a": "materialized-view",
+      "verb": "combines-with",
+      "b": "event-carried-state-transfer",
+      "note_a": "Events carrying full state let a consumer build and refresh the view with no call back.",
+      "note_b": "The events are one way to feed a local view of the owner's data."
+    },
+    {
+      "a": "idempotency",
+      "verb": "combines-with",
+      "b": "message-queue",
+      "note_a": "The queue redelivers, so repeats must be harmless.",
+      "note_b": "At-least-once delivery makes every consumer owe a safe repeat."
+    },
+    {
+      "a": "bulkhead",
+      "verb": "combines-with",
+      "b": "priority-queue",
+      "note_a": "Per-class queues with their own pools are the messaging form of the compartment.",
+      "note_b": "Dedicated pools per class are bulkheads: a stuck lane cannot drain the others, at the cost of idle capacity."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "message-router",
+      "note_a": "Unroutable messages arrive from the router's no-match path.",
+      "note_b": "Messages that match no rule go to the dead-letter channel, not a default queue."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "message-translator",
+      "note_a": "Unconvertible messages arrive here from a translator.",
+      "note_b": "A message the mapping cannot convert is moved aside, not retried."
+    },
+    {
+      "a": "aggregator",
+      "verb": "combines-with",
+      "b": "idempotency",
+      "note_a": "A redelivered fragment must not count twice, so each fragment id is recorded.",
+      "note_b": "An aggregator that tallies messages double counts a redelivery unless its input is deduplicated."
+    },
+    {
+      "a": "content-based-router",
+      "verb": "combines-with",
+      "b": "message-encoding",
+      "note_a": "Pin the routed fields in a versioned schema so rules keep matching.",
+      "note_b": "A router that reads body fields breaks first when a field is renamed."
+    },
+    {
+      "a": "competing-consumers",
+      "verb": "combines-with",
+      "b": "splitter",
+      "note_a": "A splitter is what turns one big message into the many that a pool can share.",
+      "note_b": "Fragments are one-item messages that a consumer pool drains in parallel."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "splitter",
+      "note_a": "Isolated per-item failures from a split are what it receives.",
+      "note_b": "A fragment that fails every attempt is diverted, not left to stall the batch."
+    },
+    {
+      "a": "backpressure",
+      "verb": "combines-with",
+      "b": "splitter",
+      "note_a": "A splitter is a burst source that needs the bound.",
+      "note_b": "Bounds how fast a large split can flood the fragment channel."
+    },
+    {
+      "a": "thread-pool",
+      "verb": "combines-with",
+      "b": "splitter",
+      "note_a": "A split is a common source of the many small tasks a pool drains.",
+      "note_b": "Per-split parallelism runs the fragments on a fixed worker pool."
+    },
+    {
+      "a": "sequential-convoy",
+      "verb": "prevents-hazard",
+      "b": "head-of-line-blocking",
+      "note_a": "Confines head-of-line blocking to one key's lane instead of the whole queue; inside the lane it remains.",
+      "note_b": "Ordering only within a keyed group means a stuck item blocks only its own group."
+    },
+    {
+      "a": "sequential-convoy",
+      "verb": "prevents-hazard",
+      "b": "race-condition",
+      "note_a": "One consumer per group at a time removes the concurrent-update race while the lock holds; an expired lock redelivers mid-message.",
+      "note_b": "Serialize per entity rather than detecting the collision afterwards"
+    },
+    {
+      "a": "sweeper",
+      "verb": "combines-with",
+      "b": "competing-consumers",
+      "note_a": "Reclaims the stale claim a crashed pool member left.",
+      "note_b": "When the queue is a table, no broker returns an expired claim; a sweeper does."
+    },
+    {
+      "a": "backpressure",
+      "verb": "combines-with",
+      "b": "competing-consumers",
+      "note_a": "Feeds the pool a bounded stream.",
+      "note_b": "A bigger pool raises the drain rate; backpressure still caps intake when the pool cannot keep up."
+    },
+    {
+      "a": "fan-out",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "Can fall into thundering herd when one publish hits every consumer at the same instant.",
+      "note_b": "One publish to many branches lands on every consumer at once."
+    },
+    {
+      "a": "fan-out",
+      "verb": "combines-with",
+      "b": "idempotency",
+      "note_a": "Each copy is delivered at least once, so every branch must tolerate a repeat.",
+      "note_b": "Fan-out multiplies redelivery, one branch per consumer."
+    },
+    {
+      "a": "unique-id-generation",
+      "verb": "often-confused-with",
+      "b": "correlation-identifier",
+      "note_a": "This generates primary keys; a correlation id tags related messages and is not meant to be a record's key.",
+      "note_b": "A correlation id tags related messages and is not meant to be a record's key; that page generates primary keys."
+    },
+    {
+      "a": "timeout-deadline",
+      "verb": "combines-with",
+      "b": "scatter-gather",
+      "note_a": "A fan-out call needs one deadline for the whole gather, not one per recipient.",
+      "note_b": "The gather step needs a deadline, or one slow recipient holds the caller open."
+    },
+    {
+      "a": "valet-key",
+      "verb": "combines-with",
+      "b": "claim-check",
+      "note_a": "A pre-signed URL is a claim check that carries its own access grant.",
+      "note_b": "The reference can be a valet key: a pre-signed URL that carries its own access grant."
+    },
+    {
+      "a": "async-request-reply",
+      "verb": "combines-with",
+      "b": "claim-check",
+      "note_a": "A large result leaves the status body and becomes a short-lived link the caller fetches",
+      "note_b": "The finished state of a long-running operation is a natural place to hand back a reference instead of a payload"
+    },
+    {
+      "a": "fan-in",
+      "verb": "combines-with",
+      "b": "scatter-gather",
+      "note_a": "Scatter-gather is fan-out plus fan-in, with a deadline and a correlation id added.",
+      "note_b": "Its gather half is a fan-in; this page names the convergence topology."
+    },
+    {
+      "a": "fan-in",
+      "verb": "exposed-to",
+      "b": "unbounded-queue",
+      "note_a": "Fast sources outrun the collector, so its buffer grows without a cap.",
+      "note_b": "A fan-in collector is a common place it appears."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "recipient-list",
+      "note_a": "A recipient list's empty result is a message nobody will see, so it lands here.",
+      "note_b": "A list that computes to empty goes here instead of vanishing."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "resequencer",
+      "note_a": "A gap that never fills lands here, so the resequencer can release the rest",
+      "note_b": "Receives the gap a timeout skipped, and the late message that follows it, instead of dropping them silently"
+    },
+    {
+      "a": "polling-consumer",
+      "verb": "exposed-to",
+      "b": "poison-message",
+      "note_a": "A message that always fails is polled, fails and returns forever, taking a poller slot each time.",
+      "note_b": "The polling loop redelivers it after every failed attempt."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "polling-consumer",
+      "note_a": "A polling consumer is where the redelivery loop starts; this channel catches the message at the attempt cap.",
+      "note_b": "Failed messages stop after a set number of attempts and land here, so a bad message stops taking a poller slot."
+    },
+    {
+      "a": "long-polling",
+      "verb": "often-confused-with",
+      "b": "polling-consumer",
+      "note_a": "A polling consumer asks a queue at its own pace and may get nothing; long polling parks one HTTP request until data arrives or a timeout fires.",
+      "note_b": "Pulls from a queue at its own pace and may get nothing back at once; long polling is one request held open until data arrives, and is also a way to run this loop."
+    },
+    {
+      "a": "content-enricher",
+      "verb": "combines-with",
+      "b": "dead-letter-channel",
+      "note_a": "A message whose lookup fails or times out goes to the dead-letter channel instead of stalling the flow",
+      "note_b": "Messages an enricher cannot complete arrive here"
+    },
+    {
+      "a": "recipient-list",
+      "verb": "often-confused-with",
+      "b": "routing-slip",
+      "note_a": "A routing slip sends one message through an ordered chain of steps, each forwarding to the next; a recipient list sends a copy to every recipient at once.",
+      "note_b": "One copy walks the steps in order, each forwarding to the next; a recipient list sends a copy to every recipient at once."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "routing-slip",
+      "note_a": "A slip route's failed step is a source of dead letters",
+      "note_b": "A step that exhausts its retries sends the stranded message here"
+    },
+    {
+      "a": "routing-slip",
+      "verb": "exposed-to",
+      "b": "unbounded-queue",
+      "note_a": "A slow step's queue grows without bound while the slip keeps feeding it",
+      "note_b": "A route of many steps has a queue per step, and any one of them can back up"
+    },
+    {
+      "a": "idempotency",
+      "verb": "combines-with",
+      "b": "polling-consumer",
+      "note_a": "Pull consumers redeliver after a timeout, so this is the property they need.",
+      "note_b": "A message can be handled twice when the consumer dies before acknowledging, so the handler must tolerate a repeat."
     }
   ],
   "group_order": {

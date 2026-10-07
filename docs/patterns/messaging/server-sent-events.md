@@ -21,14 +21,14 @@ Server-Sent Events keep one HTTP response open and write events down it as lines
 ## Explained
 <!--meta block=explain-->
 
-Server-Sent Events are one HTTP response that never ends. The client opens it with a GET, and the server writes events down it as lines of text, each ending with a blank line and carrying an id. The browser reads them through the EventSource API. Choose it over a WebSocket when data only flows from server to client, such as a feed, a dashboard or a streamed answer: it is plain HTTP, so your proxies, cookies and auth work unchanged. Its big gain is automatic reconnect. After a drop the browser waits, reconnects and sends the last id it saw in a Last-Event-ID header, and the server replays what was missed if it kept a window of recent events.
+Server-Sent Events are one HTTP response that never ends. The client opens it with a GET, and the server writes events down it as lines of text, each ending with a blank line and usually carrying an id, which replay needs. The browser reads them through the EventSource API. Choose it over a WebSocket when data only flows from server to client, such as a feed, a dashboard or a streamed answer: it is plain HTTP, so your proxies and cookies work unchanged, though a buffering proxy delays events and auth is cookies only. Its big gain is automatic reconnect. After a drop the browser waits, reconnects and sends the last id it saw in a Last-Event-ID header, and the server replays what was missed if it kept a window of recent events.
 
 - **One direction.** The client cannot send upstream, so any message to the server is a separate request.
 - **Text only.** Events are text, so encode binary data.
 - **Connection limit.** Browsers allow about 6 HTTP/1.1 connections per host, so use HTTP/2.
 - **Buffering proxies.** They delay events. Turn buffering off on that route and send a comment line every 15 to 30 seconds.
 
-**Example.** A build page shows live logs to 5,000 viewers. Each log line is one event with an id, about 120 bytes. A viewer on a train loses signal at line 8,412 and gets it back 20 s later. The browser reconnects with Last-Event-ID 8412, and the server replays the 35 lines it kept in a 1,000-line window, so the viewer sees no gap. Had the server kept only 20 lines, the replay would start at the wrong place, so the window must cover your longest expected outage. The cost is 5,000 open connections held on the server.
+**Example.** A build page shows live logs to 5,000 viewers. Each log line is one event with an id, about 120 bytes. A viewer on a train loses signal at line 8,412 and gets it back 20 s later. The browser reconnects with Last-Event-ID 8412, and the server replays the 35 lines it kept in a 1,000-line window, so the viewer sees no gap. Had the server kept only 20 lines, the viewer would silently lose the oldest 15 of the 35 missed lines, so the window must cover your longest expected outage. The cost is 5,000 open connections held on the server.
 
 ## How it works
 <!--meta block=structure-->
@@ -71,7 +71,7 @@ sequenceDiagram
 
 - **Replay from `Last-Event-ID`** — the server keeps a window of recent events by id and resends the missed ones on reconnect. Without a window a reconnect silently skips events.
 - **Streamed response body** — the server sends the same event format as a response to a `fetch` call and the client reads it with a stream reader. This allows POST bodies and custom headers, which `EventSource` cannot send, but you write the reconnect yourself. It is how many AI APIs stream answers.
-- **Per-user stream** — one stream per signed-in user, fed from a per-user topic on a [publish-subscribe](./pubsub.md) bus, so any server can hold the stream and the bus carries the event to it.
+- **Per-user stream** — one stream per signed-in user, fed from a per-user topic on a [publish-subscribe](./pubsub.md) bus, so any server can hold the stream and the bus carries the event to it. The replay window must live on the bus or in a store keyed by user and id, not in one server's memory, because a reconnect can land on a different server.
 - **Named event types** — the `event:` field lets one stream carry several kinds, and the client adds a listener per name.
 - **Fan-out through a hub** — a separate hub process holds the open connections and the application publishes to it by HTTP. The Mercure protocol follows this design.
 
@@ -81,7 +81,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Reconnect is built in** — `EventSource` retries and sends the last id, so you write no reconnect loop and a drop costs a delay, not a missed feed.
+- **Reconnect is built in** — `EventSource` retries and sends the last id, so you write no reconnect loop. A drop costs a delay, not a missed feed, if the server keeps a replay window; past the window events are lost.
 - **Plain HTTP** — it passes through ordinary proxies, uses normal cookies and auth, and compresses with the usual response encodings.
 - **Cheap per event** — after the first request an event costs only its own bytes, not a request round trip.
 - **Simple server** — it is a response that never ends, and any stack that can flush a response can serve it.
@@ -101,7 +101,7 @@ sequenceDiagram
 <!--meta polarity=when-->
 
 - **The server talks and the client listens** — a live feed, a dashboard, a build log or a streamed AI answer, where upstream traffic is an occasional ordinary request.
-- **You want reconnect for free** — a flaky mobile link drops often, and replay from the last id beats code you write and test yourself.
+- **You want automatic reconnect** — a flaky mobile link drops often, and the browser retries and sends the last id, so you write no reconnect loop and only keep the replay window.
 - **You stay on plain HTTP** — your auth, logging and load balancing already speak it, and a new protocol would need new infrastructure.
 
 ### Avoid when
@@ -109,7 +109,7 @@ sequenceDiagram
 
 - **The client sends as often as it receives** — chat, games and shared editing need both directions on one connection, so use [WebSocket](./websocket.md).
 - **Events are rare and a held stream is wasteful** — one result a minute after a long wait fits a held request, so use [long polling](./long-polling.md).
-- **You need binary frames or a custom handshake header** — native `EventSource` cannot set headers, so use [WebSocket](./websocket.md) or a streamed `fetch`.
+- **You need binary frames or custom request headers** — native `EventSource` cannot set headers, and browser WebSocket cannot either, so use [WebSocket](./websocket.md) for binary frames and a streamed `fetch` for headers or a POST body.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -117,8 +117,11 @@ sequenceDiagram
 ```typescript summary="TypeScript — a Node stream endpoint with replay and keepalive, and the browser side"
 import { createServer, type ServerResponse } from "node:http";
 
+// ids restart at 1 on restart and history is per process: keep both in the bus or a store to survive restart or more than one node
 const history: { id: number; data: string }[] = []; // recent events
 const clients = new Set<ServerResponse>();
+const WINDOW = 1000;           // events kept for replay: peak events/s × longest outage
+const MAX_BACKLOG = 1 << 20;  // bytes buffered before a slow client is cut (tune)
 
 function send(res: ServerResponse, e: { id: number; data: string }) {
   res.write(`id: ${e.id}\ndata: ${e.data}\n\n`);   // blank line ends the event
@@ -126,11 +129,12 @@ function send(res: ServerResponse, e: { id: number; data: string }) {
 export function publish(data: string) {
   const e = { id: (history.at(-1)?.id ?? 0) + 1, data };
   history.push(e);
-  clients.forEach((c) => send(c, e));
+  if (history.length > WINDOW) history.shift();
+  clients.forEach((c) => (c.writableLength > MAX_BACKLOG ? c.destroy() : send(c, e)));
 }
 
 createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" });
   const last = Number(req.headers["last-event-id"] ?? 0);
   history.filter((e) => e.id > last).forEach((e) => send(res, e)); // replay
   clients.add(res);
@@ -157,9 +161,9 @@ createServer((req, res) => {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **retry field** — The reconnect delay the server tells the browser to use. A longer value spreads a reconnect wave after a restart.
-- **keepalive interval** — How often the server sends a comment line. Keep it below the idle timeout of every proxy on the path.
-- **replay window** — How many recent events or seconds the server keeps for Last-Event-ID. It must cover your longest expected disconnect.
+- **retry field** — The reconnect delay in milliseconds the server tells the browser to use; the browser default applies if you omit it. A fixed value only delays the wave, so send a randomised value per connection to spread it.
+- **keepalive interval** — How often the server sends a comment line. Measure the shortest idle timeout on the path and keep the interval below it; 15 to 30 s is a starting point, and the sketch's 20 s assumes every timeout is longer.
+- **replay window** — How many recent events the server keeps for Last-Event-ID; the sketch counts events. Size it as peak events per second times the longest disconnect you accept, and read that disconnect from replay size per reconnect.
 - **max streams per node** — A cap on open connections, sized to file descriptors and memory.
 
 ### Signals to watch
@@ -183,7 +187,7 @@ createServer((req, res) => {
 
 - Every event carries an id and the server honours Last-Event-ID
 - A keepalive comment goes out more often than any idle timeout
-- Proxy buffering is disabled on the stream route
+- Proxy buffering is disabled on the stream route, for nginx with the X-Accel-Buffering: no response header
 - The stream is served over HTTP/2 or the per-host limit is planned for
 - Slow clients are disconnected once their buffered output passes a limit
 
@@ -208,6 +212,7 @@ createServer((req, res) => {
 **Combines with**
 
 - [Publish-Subscribe](./pubsub.md) — A per-user topic on the bus feeds the stream held by whichever server has the connection.
+- [Reverse Proxy](../distributed/routing/reverse-proxy.md) — Turn buffering off on the stream route and keep its idle timeout above the keepalive interval.
 
 **Alternative to**
 

@@ -201,6 +201,7 @@ async function rebuild(
 - [Big Data](../../architecture/big-data.md) — Analytical serving is one of the largest uses of a precomputed view.
 - [Retrieval-Augmented Generation](../../ml/rag.md) — A vector index over documents is one of these, rebuilt by an embedding job rather than a query
 - [Change Data Capture](./change-data-capture.md) — A change-data-capture stream is one way to keep the view fed as the source changes
+- [Event-Carried State Transfer](../../messaging/event-carried-state-transfer.md) — Events carrying full state let a consumer build and refresh the view with no call back.
 
 **Alternative to**
 

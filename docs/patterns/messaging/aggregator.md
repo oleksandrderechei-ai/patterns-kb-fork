@@ -68,16 +68,17 @@ flowchart LR
 
 - **Collapses a stream of related messages** into one coherent result the rest of the system can consume simply.
 - **Correlation id decouples producers** — none of them needs to know about the others or about the aggregation itself.
-- **Count- and timeout-based completeness make it resilient** to slow, missing, or reordered fragments.
+- **Timeout-based completeness** — keeps a slow or missing fragment from blocking the set; a count alone does not, and reordering is left to the aggregation strategy.
 - **Centralizes reconstruction logic in one place instead** of duplicating it in every downstream consumer.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Needs a durable correlation store** — a crash mid-aggregation must not silently drop the partial state.
+- **Needs a durable correlation store** — a crash mid-aggregation drops partial state when the store is in memory, so use a durable store when that loss is unacceptable.
 - **Choosing completeness is a real design problem**: too strict waits forever, too loose emits partial data as if it were whole.
 - **Adds latency** — nothing downstream sees anything until the last piece, or the timeout, arrives.
 - **Duplicate or out-of-order inputs complicate** the aggregation strategy and must be handled explicitly.
+- **Group affinity** — all fragments of one key must reach one worker, so scale-out needs partitioning by correlation id, and a hot key becomes a bottleneck.
 
 ## When to use it
 <!--meta block=usage-->
@@ -95,6 +96,7 @@ flowchart LR
 - **Messages don't share a natural, stable key** to correlate on — there is nothing to group them by.
 - **Each message must be processed independently and immediately**; waiting for the rest of the set defeats that.
 - **The transformation needed is stateless**, one message in and one message out — a plain translation step is enough, with no collector required.
+- **You only need ordering, not combining** — use the [Resequencer](./resequencer.md) instead.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -120,7 +122,7 @@ class Aggregator<T, R> {
     this.groups.set(msg.correlationId, parts);
 
     if (parts.length >= this.expectedSize) {
-      this.groups.delete(msg.correlationId); // release and forget
+      this.groups.delete(msg.correlationId); // release and forget; no dedupe, no deadline: a repeat counts twice, an incomplete group stays in memory
       this.onComplete(this.combine(parts));
     }
   }
@@ -132,7 +134,7 @@ class Aggregator<T, R> {
 
 - **Apache Camel aggregate()** — The aggregate() enterprise integration pattern (EIP) takes a correlation expression, an AggregationStrategy, and a completion condition — completionSize, completionTimeout, completionPredicate, or completionInterval. An optional AggregationRepository (Java Database Connectivity (JDBC), Infinispan, LevelDB) persists open groups so a restart does not lose them. {#wild-apache-camel-aggregate}
 - **Spring Integration Aggregator** — Groups messages by correlation key in a MessageStore and releases the combined message when its ReleaseStrategy is satisfied; a group-timeout forces release of a partial group so one missing message cannot hold it open indefinitely. {#wild-spring-integration-aggregator}
-- **Kafka Streams** — Windowed aggregations group records by key and fold them with an initializer and aggregator into one result. The window closes after a configured grace period, after which a late record is dropped rather than reopening the already-emitted window. {#wild-kafka-streams}
+- **Kafka Streams** — Windowed aggregations group records by key and fold them with an initializer and aggregator. By default a window emits an updated result for each record; `Suppressed.untilWindowCloses` emits one final result once the window closes after its grace period (how long to wait for late records). A record later than that is dropped and does not reopen the window. {#wild-kafka-streams}
 
 ## In production
 <!--meta block=production-->
@@ -141,17 +143,17 @@ class Aggregator<T, R> {
 <!--meta polarity=knob-->
 
 - **Completion condition** — What triggers release of a group — a message count, a predicate over the accumulated set, or a periodic interval (Camel completionSize / completionPredicate / completionInterval, Spring release strategy).
-- **Completion timeout** — A deadline after which an incomplete group is released anyway, so one lost or slow fragment cannot hold it open forever (Camel completionTimeout, Spring group-timeout).
+- **Completion timeout** — A deadline after which an incomplete group is released anyway, so one lost or slow fragment cannot hold it open forever (Camel completionTimeout, Spring group-timeout). Start a little above the p99 gap between a group's first and last fragment, then tune it from the timeout-vs-completion ratio.
 - **Correlation expression** — The key expression that decides which messages belong to the same group — the join key on which all bookkeeping hangs.
 - **Aggregation store** — Where open groups are held: an in-memory map, or a durable repository (Camel AggregationRepository backed by JDBC/Infinispan, Spring MessageStore) that survives a process restart.
-- **Open-group bound** — A ceiling on how many correlation groups may be in flight at once, so an unbounded stream of keys that never complete cannot exhaust memory — enforced by the store's capacity or an eviction/timeout policy rather than one dedicated switch.
+- **Open-group bound** — A ceiling on how many correlation groups may be in flight at once, so an unbounded stream of keys that never complete cannot exhaust memory — enforced by the store's capacity or an eviction/timeout policy rather than one dedicated switch. At the ceiling pick one action: release the oldest group as partial, dead-letter it, or slow the source. Size the ceiling as peak new keys per second times the timeout.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Open correlation groups** — Count of incomplete sets currently held in the store — a direct proxy for aggregation-state memory.
 - **Age of oldest open group** — How long the longest-waiting set has been incomplete; a rising floor means fragments are being lost or delayed.
-- **Timeout vs. completion releases** — Ratio of aggregates released on the deadline (incomplete) versus on the completion condition (whole) — a shift toward timeouts signals missing fragments.
+- **Timeout vs. completion releases** — Ratio of aggregates released on the deadline (incomplete) versus on the completion condition (whole) — a shift toward timeouts signals missing fragments; alert when timeout releases rise above a baseline from a healthy week or after a deploy. A timeout set too tight for current load gives the same shift.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -160,6 +162,7 @@ class Aggregator<T, R> {
 - **Partial state lost on restart** — An in-memory store drops every open group when the process restarts; fragments already consumed from the source channel are gone for good.
 - **Late fragment after release** — A message arriving after its group already released either opens a spurious new single-item group or is silently discarded.
 - **Timeout too tight** — Under load, fragments that are merely slow miss the deadline and the aggregator emits incomplete sets as if they were whole.
+- **Duplicate fragment counted twice** — At-least-once input redelivers a fragment; a count-based group counts it twice, completes early and releases an incomplete set as whole. Dedupe by fragment id inside the group.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -169,6 +172,7 @@ class Aggregator<T, R> {
 - Decide and implement behaviour for fragments that arrive after their group has completed.
 - Bound or alert on the number of concurrent open correlation groups to cap memory.
 - Emit whether each aggregate was released by its completion condition or by timeout.
+- Acknowledge each fragment to the source only after its store write commits; test by killing the process mid-group.
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -192,6 +196,7 @@ class Aggregator<T, R> {
 
 - [Splitter](./splitter.md) — Split out, process, then recombine
 - [Sliding Window](../distributed/coordination/sliding-window.md) — A window is the commonest way to decide an aggregate is complete enough to release
+- [Idempotency](./idempotency.md) — A redelivered fragment must not count twice, so each fragment id is recorded.
 
 **Requires**
 
