@@ -857,7 +857,7 @@
       },
       "scaling-reads": {
         "role": "Serve hot reads from an in-memory cache",
-        "tour": "Real read traffic is wildly skewed — millions hit the same viral post, thousands the same product page — so the same rows get re-fetched endlessly. A cache-aside layer checks an in-memory store first and falls back to the database on a miss, populating the cache on the way back; hot data stays resident at sub-millisecond latency while cold data expires by time to live (TTL). The hard part is invalidation — short TTLs as a safety net, plus active invalidation ([write-through](../patterns/caching/write-through.md), versioned keys) for data that must stay fresh.",
+        "tour": "Real read traffic is heavily skewed — millions hit the same viral post, thousands the same product page — so the same rows get re-fetched endlessly. A cache-aside layer checks an in-memory store first and falls back to the database on a miss, populating the cache on the way back; hot data stays resident at sub-millisecond latency while cold data expires by time to live (TTL). Set the TTL from the staleness budget and track the hit rate per key class. The hard part is invalidation — short TTLs as a safety net, plus active invalidation ([write-through](../patterns/caching/write-through.md), versioned keys) for data that must stay fresh.",
         "fluency": "Serve hot reads from an in-memory cache"
       },
       "caching": {
@@ -1170,7 +1170,7 @@
       },
       "scaling-reads": {
         "role": "Precompute an expensive read as a maintained table",
-        "tour": "The first rung is to do less work per read. A materialized view precomputes an expensive query — a multi-table join, or an aggregate like average rating per product — into a maintained table that a background job refreshes, so a page load reads one row instead of recomputing the join every time. It trades storage and write-time upkeep for reads that no longer pay the computation. Denormalization is the same move in miniature; a materialized view is denormalization the database keeps up to date for you.",
+        "tour": "The first rung is to do less work per read. A materialized view precomputes an expensive query — a multi-table join, or an aggregate like average rating per product — into a maintained table that a background job refreshes, so a page load reads one row instead of recomputing the join every time. It trades storage and refresh cost for reads that no longer pay the computation, and reads can lag the base tables between refreshes. Denormalization is the same move in miniature; a materialized view is denormalization stored by the database and refreshed on a schedule or on demand.",
         "fluency": "Precompute an expensive read as a maintained table"
       },
       "proximity-search": {
@@ -1266,7 +1266,7 @@
       },
       "scaling-reads": {
         "role": "Multiply read capacity with follower copies",
-        "tour": "When one primary can no longer serve the read volume — a rough interview trigger is somewhere around 50k–100k reads/sec on a well-indexed database — copy it. Leader–follower replication sends every write to the primary and spreads reads across read-only followers, so read capacity grows with the number of copies (and a follower can be promoted on failover). The catch is replication lag: an asynchronous follower can be seconds stale, so a user may not see their own just-written change — the classic trade of synchronous consistency against asynchronous speed.",
+        "tour": "When one primary can no longer serve the read volume (a rough rule of thumb is around 50k–100k reads/sec for simple lookups on a well-indexed database, and far fewer for heavy queries, such as the 4,000 a second in the explain example), copy it. Your own number is your primary's measured peak at target latency. Leader–follower replication sends every write to the primary and spreads reads across read-only followers, so read capacity grows with the number of copies, less than linearly as write volume rises, since every follower replays every write (and a follower can be promoted on failover). The catch is replication lag: an asynchronous follower can be seconds stale, so a user may not see their own just-written change — the classic trade of synchronous consistency against asynchronous speed.",
         "fluency": "Multiply read capacity with follower copies"
       },
       "scale-units-and-stamps": {
@@ -1692,7 +1692,7 @@
       },
       "scaling-reads": {
         "role": "Cache read-heavy responses at the edge, near users",
-        "tour": "The last rung pushes the cache out to the user. A content delivery network (CDN) caches read-heavy responses — modern ones cache application programming interface (API) responses and query results, not just static assets — at edge locations near the client, so a request is served nearby instead of round-tripping to a distant origin, and origin load drops sharply for shared content. It only pays off for data shared across users; personal, per-requester data gets no hit-rate benefit and should not be cached at the edge.",
+        "tour": "The last rung pushes the cache out to the user. A content delivery network (CDN) caches read-heavy responses — modern ones cache application programming interface (API) responses and query results, not just static assets — at edge locations near the client, so a request is served nearby instead of round-tripping to a distant origin, and origin load drops sharply for shared content. It only pays off for data shared across users; personal, per-requester data gets no shared hit rate, so keep it out of a shared edge cache.",
         "fluency": "Cache read-heavy responses at the edge, near users"
       },
       "caching": {
@@ -3198,7 +3198,7 @@
     "/patterns/distributed/coordination/inverted-index.html": {
       "scaling-reads": {
         "role": "Serve keyword reads from a term-to-document index",
-        "tour": "Reads for a keyword never scan the documents. The index lists the documents for each term, so the read touches only those lists and write cost is paid once at indexing time.",
+        "tour": "Reads for a keyword avoid scanning the documents. The index lists the documents for each term, so the read touches only those lists and write cost is paid when a document is indexed.",
         "fluency": "Answer keyword searches from a prebuilt term-to-document index instead of scanning."
       }
     },
