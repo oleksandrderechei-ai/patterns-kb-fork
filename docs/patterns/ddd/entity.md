@@ -21,9 +21,9 @@ Comparing objects by their fields merges two different customers named John Smit
 ## Explained
 <!--meta block=explain-->
 
-An entity is an object you tell apart by an id of its own, not by the values it holds, so it stays the same thing while its name, address and status change. Compare by fields and two different customers called John Smith merge, while one customer who changes address splits in two. Choose an entity only where continuity through change is part of the domain; a concept fully described by its attributes is a [value object](value-object.md), and giving everything an id and setters adds weight that buys nothing.
+An entity is an object you tell apart by an id of its own, not by the values it holds, so it stays the same thing while its name, address and status change. Choose an entity only where continuity through change is part of the domain; a concept fully described by its attributes is a [value object](value-object.md), and giving everything an id and setters adds weight that buys nothing.
 
-- **State drift** Mutable state can drift into illegal states; make the entity an aggregate root so every change enters through one method.
+- **State drift** Mutable state can drift into invalid values; enforce invariants in its methods, and make it an aggregate root when it guards a cluster.
 - **Key choice** A natural key like an email may change or be reused; use a generated id and keep the email as a unique field.
 - **Unsaved ids** A database-assigned id makes unsaved objects look identical and breaks sets and maps; assign the id in the constructor.
 
@@ -44,7 +44,7 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Surrogate key identity** — Identity is a generated value — a UUID (universally unique identifier) or auto-incremented number — with no business meaning. Stable forever, but opaque outside the system.
-- **Natural key identity** — Identity is a real business attribute, like an SSN or ISBN. Simpler to reason about, but fragile: natural keys can turn out to change or be reused, breaking the identity guarantee.
+- **Natural key identity** — Identity is a real business attribute, like an SSN or ISBN. Readable where the key is immutable and never reused; otherwise fragile: natural keys may change or be reused, breaking the identity guarantee.
 - **[Aggregate root](./aggregate.md)** — An entity that also serves as the sole entry point into a cluster of entities and values, responsible for enforcing invariants across the whole group.
 - **[Anemic](../../hazards/anemic-domain-model.md) vs. rich entity** — An anemic entity is just an id plus public getters and setters, with all behavior pushed into external services. A rich entity keeps the behavior that enforces its own invariants alongside its state — the model DDD favors.
 
@@ -57,7 +57,7 @@ flowchart LR
 - **Models real things** whose identity outlives any particular set of attribute values.
 - **Equality reduces to one stable comparison** — the id — instead of fragile attribute matching.
 - **Mutable by design**, so it naturally represents objects with a genuine lifecycle.
-- **Maps cleanly onto a database row** with a primary key.
+- **Maps one-to-one onto a database row** with a primary key, provided the id is assigned in the constructor and the key type suits write volume.
 
 ### Cons
 <!--meta polarity=con-->
@@ -95,28 +95,33 @@ class CustomerId {
 
 class Customer {
   readonly id: CustomerId; // identity, fixed for life
+  version = 0; // checked on save; a stale version rejects the write
   name: string;
   email: string;
 
-  constructor(id: CustomerId, name: string, email: string) {
-    this.id = id;
+  constructor(name: string, email: string) {
+    this.id = new CustomerId(crypto.randomUUID());
     this.name = name;
     this.email = email;
   }
 
   rename(name: string): void {
+    if (!name) throw new Error("name required"); // one invariant
     this.name = name; // attributes mutate freely
   }
+
+  changeEmail(email: string): void { this.email = email; }
 
   equals(other: Customer): boolean {
     return this.id.value === other.id.value; // identity only
   }
 }
 
-const c1 = new Customer(new CustomerId("42"), "Alice", "a@x.com");
-c1.rename("Alicia");
-const c2 = new Customer(new CustomerId("42"), "Alicia", "alicia@y.com");
-console.log(c1.equals(c2)); // true — same identity, different snapshots
+const c1 = new Customer("Alice", "a@x.com");
+c1.changeEmail("alicia@y.com");
+const byId = new Map<string, Customer>();
+byId.set(c1.id.value, c1); // sets and maps key on id.value, not on the object
+console.log(byId.get(c1.id.value)!.equals(c1)); // true: same identity, different snapshots
 ```
 
 ## In the wild
@@ -131,7 +136,7 @@ console.log(c1.equals(c2)); // true — same identity, different snapshots
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Identity generation strategy** — A generated surrogate key (a UUID or a database sequence) versus a natural business key. The choice binds you at write volume as well as in the model — sequential keys cluster inserts, random ones scatter them.
+- **Identity generation strategy** — A generated surrogate key (a UUID or a database sequence) versus a natural business key. It sets write behaviour as well as the model: sequential keys cluster inserts and expose creation order; random keys scatter inserts, costing page splits and cache locality.
 - **Where identity is assigned** — At construction (client-generated, for example a UUID created in code) versus at persistence (database-assigned). Client-side assignment lets a transient entity be compared and referenced before it is ever saved.
 - **Concurrency control on updates** — Whether the entity carries a version field checked on write (optimistic locking) or relies on row locks. A version check costs a column and a retry path; no check lets two writers overwrite each other.
 
@@ -145,7 +150,7 @@ console.log(c1.equals(c2)); // true — same identity, different snapshots
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Write hotspot on monotonic keys** — Auto-increment or otherwise monotonically increasing primary keys concentrate every insert on the rightmost leaf of the index, serializing writes under high insert throughput.
+- **Write hotspot on monotonic keys** — Auto-increment or other monotonically increasing keys on a B-tree primary index put every insert on the rightmost leaf, which can serialize writes at high insert rates.
 - **Natural key turns out mutable or reused** — A business attribute chosen for identity, such as an SSN, email, or ISBN, is later changed or reused upstream, breaking the identity guarantee and orphaning references.
 - **Lost update** — Two requests load the same entity, change different fields and save. The second write silently erases the first unless a version check rejects it.
 
@@ -188,5 +193,9 @@ console.log(c1.equals(c2)); // true — same identity, different snapshots
 
 - [Value Object](./value-object.md) — Identity matters vs. only the values matter
 - [Active Record](../enterprise/active-record.md) — Domain identity vs. an object that saves its own row
+
+**Prevents**
+
+- [Anemic Domain Model](../../hazards/anemic-domain-model.md) — A rich entity keeps its own invariants, so rules do not drift into services.
 
 <!-- relationships:end -->

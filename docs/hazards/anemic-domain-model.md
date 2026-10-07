@@ -87,6 +87,7 @@ Decide where a rule that spans two objects lives, before it decides itself. Such
 - [Aggregate](../patterns/ddd/aggregate.md) — Behavior on the aggregate keeps the model rich
 - [Data Mapper](../patterns/enterprise/data-mapper.md) — Keeping SQL out of the model removes the pressure to flatten it
 - [Encapsulation](../principles/encapsulation.md) — The anaemic model is precisely what its absence produces: public state, rules elsewhere
+- [Entity](../patterns/ddd/entity.md) — Behaviour on the entity, not only on the aggregate, keeps the model rich.
 
 **Threatens**
 

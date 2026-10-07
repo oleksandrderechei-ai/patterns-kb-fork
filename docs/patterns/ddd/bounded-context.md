@@ -16,7 +16,7 @@ Marks the boundary inside which a domain model's terms, rules, and invariants ho
 ## What it is
 <!--meta block=description-->
 
-No single model serves every subdomain: one shared Order class forced to fit sales, shipping and support fills with flags and empty fields. A bounded context is a boundary, such as a service or module, inside which a term like Order has one meaning, one set of rules and one implementation. Each seam to another context becomes a decision you make once, write down and pay for.
+No single model serves every subdomain: one shared Order class forced to fit sales, shipping and support fills with flags and empty fields. A bounded context is a boundary, such as a service or module, inside which a term like Order has one meaning, one set of rules and one implementation. Each seam to another context becomes a decision you make on purpose, write down and keep paying for.
 
 ## Explained
 <!--meta block=explain-->
@@ -25,10 +25,10 @@ A bounded context is a line around one part of your system inside which each wor
 
 - **Wrong line** A wrong boundary must be undone at every integration point at once, so split only when the vocabulary actually forks.
 - **Seam code** Every seam needs translation code; keep it where two languages really differ.
-- **Duplicated data** Duplication is the price of independence; send published facts that each context stores in its own shape, and never query across the line.
-- **Unenforced line** Enforce it with a separate schema and deploy; a line that exists only in a document disappears within months.
+- **Duplicated data** Each context stores copies of published facts in its own shape, updated from events, and never queries across the line.
+- **Unenforced line** A line held only in a document erodes; enforce it with a separate schema and deploy.
 
-**Example.** Sales needs an order with line items and a discount: 9 fields. Shipping needs the same order as parcels, weights and a destination: 8 fields. One shared Order would carry 17 fields, and neither team would use more than 9. With two contexts, Sales publishes OrderConfirmed with sku, quantity and address, and Shipping stores its own copy through a translator of about 20 lines. The cost is delay and duplication: if Sales corrects the address, Shipping learns seconds later, so a parcel already packed keeps the old address and needs a recall step.
+**Example.** Sales needs an order with line items and a discount: 9 fields. Shipping needs the same order as parcels, weights and a destination: 8 fields. One shared Order would carry 17 fields, and neither team would use more than 9. With two contexts, Sales publishes OrderConfirmed with sku, quantity and address, and Shipping stores its own copy through a translator of about 12 lines that looks up weights in Shipping's own catalog. The cost is delay and duplication: if Sales corrects the address, Shipping learns seconds later, so a parcel already packed keeps the old address and needs a recall step.
 
 ## How it works
 <!--meta block=structure-->
@@ -134,6 +134,27 @@ function toShippingOrder(
 }
 ```
 
+```typescript summary="TypeScript — the seam as an anti-corruption layer"
+type OrderConfirmed = {
+  orderId: string;
+  lines: { sku: string; qty: number }[];
+  address: Shipping.Order["destination"];
+};
+
+// Shipping's own catalog holds the weights; an unknown SKU is an error, not 0 grams
+function onOrderConfirmed(e: OrderConfirmed, catalog: Map<string, number>): Shipping.Order {
+  return {
+    id: e.orderId,
+    parcels: e.lines.map((l) => {
+      const weightGrams = catalog.get(l.sku);
+      if (weightGrams === undefined) throw new Error("unknown SKU " + l.sku);
+      return { sku: l.sku, qty: l.qty, weightGrams };
+    }),
+    destination: e.address,
+  };
+}
+```
+
 ## In the wild
 <!--meta block=wild-->
 
@@ -153,8 +174,8 @@ function toShippingOrder(
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Cross-context imports and joins** — Direct imports or queries from one context into another's internals. Each one is a boundary breach to review.
-- **Pull requests touching two contexts** — A high share means the boundary is in the wrong place or the contexts are coupled through a shared model.
+- **Cross-context imports and joins** — Direct imports or queries from one context into another's internals. Each one is a boundary breach to review. Fail CI on imports that cross a context directory except through its published interface, and search SQL for another context's tables.
+- **Pull requests touching two contexts** — A high share means the boundary is in the wrong place or the contexts are coupled through a shared model. Count pull requests per month whose changed paths span two context directories; a rising trend against the share when the contexts were drawn matters more than a fixed figure.
 - **Contract-test failures at the boundary** — Breaks in the published interface between contexts, caught before release.
 
 ### Failure modes under load
@@ -201,14 +222,11 @@ function toShippingOrder(
 - [Functional Partitioning](../distributed/routing/functional-partitioning.md) — Giving each context its own store is how the model boundary becomes a physical one rather than a convention
 - [Conway's Law](../../principles/conways-law.md) — A context boundary holds only if the team boundary matches it.
 - [High Cohesion, Low Coupling](../../principles/high-cohesion-low-coupling.md) — A bounded context is high cohesion and low coupling drawn at the scale of a team
+- [Context Map](./context-map.md) — A context map draws the contexts and names the relationship between each pair.
 
 **Alternative to**
 
 - [Canonical Data Model](../messaging/canonical-data-model.md) — Lets each context keep its own model and translate at the border
-
-**Generalizes**
-
-- [Context Map](./context-map.md) — A map of bounded contexts shows how each one relates to the others
 
 **Enables**
 

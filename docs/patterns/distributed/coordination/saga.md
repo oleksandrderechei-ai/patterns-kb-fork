@@ -281,6 +281,7 @@ async function runFlow(flowId: string, personaId: string): Promise<void> {
 - [Minimize Coordination](../../../principles/minimize-coordination.md) — A saga is what multi-step work looks like once the global lock is gone
 - [Functional Partitioning](../routing/functional-partitioning.md) — It is what a cross-area write becomes once data is split by function, because no store spans the boundary
 - [Microservices](../../architecture/microservices.md) — The saga exists because services own their data separately.
+- [Aggregate](../../ddd/aggregate.md) — Each saga step is one transaction on one aggregate.
 
 **Alternative to**
 

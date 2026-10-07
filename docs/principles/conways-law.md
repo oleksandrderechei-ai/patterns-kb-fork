@@ -73,6 +73,7 @@ Read the law as a prediction to test, not a rule to obey. When the system and th
 
 - [Bounded Context](../patterns/ddd/bounded-context.md) — Draw team boundaries along context boundaries so a team owns a whole slice.
 - [Design for Evolution](./design-for-evolution.md) — Reorganisations move boundaries, so keep each change inside one part.
+- [Context Map](../patterns/ddd/context-map.md) — A context map draws the team boundaries that Conway's law says the structure will follow.
 
 **Often confused with**
 

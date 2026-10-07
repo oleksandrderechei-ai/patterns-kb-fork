@@ -15,18 +15,18 @@ A fact the domain has already produced — past tense, immutable once raised, an
 ## What it is
 <!--meta block=description-->
 
-If an aggregate calls the logger, the cache and every other interested part itself, its transaction swells and each new listener means editing it again. A domain event is a fact that already happened, named in the past tense, such as OrderShipped. The owner records it and publishes it without knowing who listens. Once raised it never changes, and it carries enough data to be understood alone.
+If an aggregate calls the logger, the cache and every other interested part itself, its transaction swells and each new listener means editing it again. A domain event is a fact that already happened, named in the past tense, such as OrderShipped. The owner records it and publishes it without knowing who listens. Once raised it never changes, and it carries enough data to be understood alone (a thin event trades that for a callback).
 
 ## Explained
 <!--meta block=explain-->
 
-A domain event is a record that something already happened, named in the past tense, such as OrderShipped, which the owner of the change publishes without knowing who listens. Without it, the object that owns the change calls the logger, the cache and every other interested part itself, so its transaction grows with each new listener and each one means editing it again. Choose it when a change should cause work the owner has no business knowing about, and skip it when a listener must succeed or fail together with the change, because you cannot add that all-or-nothing guarantee afterwards.
+A domain event is a record that something already happened, named in the past tense, such as OrderShipped, which the owner of the change publishes without knowing who listens. Without it, the owner calls every listener itself and each new one means editing it. Choose it when a change should cause work the owner has no business knowing about, and skip it when a listener in another process must succeed or fail together with the change, because you cannot add that all-or-nothing guarantee afterwards.
 
-- **Delivery** Publish inside the transaction and a rollback leaves a fact you cannot take back; publish after and a crash loses it. Use an outbox.
+- **Delivery** Publish before commit and a rollback leaves a false fact; after commit, a crash loses it. An outbox in the same transaction closes both.
 - **Repeat handling** Delivery is at least once, so each handler must give the same result for a repeat, usually by remembering event ids.
 - **Contract** A published shape is a contract: add fields, never change them, and let readers ignore unknown fields.
 
-**Example.** Orders marks order 4417 shipped and, in the same transaction, saves an outbox row holding event e-91, OrderShipped for order 4417. A relay that polls once a second publishes it, then crashes before marking the row sent, so it publishes e-91 again. The email handler stores the ids it has seen and skips the second copy, so the customer gets one email. Without the outbox, a crash between the commit and the publish would leave a shipped order with no email and no record. The cost is delay: the email can lag the change by up to 1 s.
+**Example.** Orders marks order 4417 shipped and, in the same transaction, saves an outbox row holding event e-91, OrderShipped for order 4417. A relay that polls once a second publishes it, then crashes before marking the row sent, so it publishes e-91 again. The email handler stores the ids it has seen and skips the second copy, so the customer gets one email. Without the outbox, a crash between the commit and the publish would leave a shipped order with no email and no record. The cost is delay: the email lags the change by about 1 s, longer after a relay crash.
 
 ## How it works
 <!--meta block=structure-->
@@ -46,8 +46,9 @@ flowchart LR
 - **Notification event (thin)** — Carries only an id and an event type; subscribers call back for the details. Cheap to version, at the cost of a round trip.
 - **Event-carried state transfer (fat)** — Carries the full data a subscriber needs to act, so it never has to call back the source at all — decoupled at runtime, but the payload duplicates state and now has its own schema to maintain.
 - **[Event Sourcing](../architecture/event-sourcing.md)** — Stop treating the event as a side notification and make it the system of record — the aggregate's current state is only ever a fold over its own event history.
-- **Domain event vs. integration event** — Translate at the boundary rather than exporting the internal object: publish a separate versioned event built from it, so renaming an internal field never breaks another team. Inside its own bounded context a domain event can be a plain in-process value object; it earns the name integration event, with a stable, versioned public shape, once it crosses into another team's context.
+- **Domain event vs. integration event** — Publish a separate versioned integration event built from the domain event, so renaming an internal field never breaks another team.
 - **Dispatch timing** — Hand the collected events to in-process handlers just ahead of the commit and their work joins the same transaction, so a handler that throws takes the change down with it: atomic, and coupled again in exchange. An event that leaves the process cannot do that: it waits for the commit, and its reaction lands afterwards or not at all.
+- **In-process by default** — Inside one bounded context a domain event can be a plain value object. It becomes an integration event, with a stable versioned public shape, once it crosses to another team's context.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -65,7 +66,7 @@ flowchart LR
 
 - **Easy to leak persistence-model shape into the event**, coupling subscribers to internals.
 - **Delivery and ordering guarantees become the caller's problem** the moment events leave the process.
-- **Consumers see the fact after the fact** — [eventual consistency](../../themes/consistency-and-replication.md), never the original transaction.
+- **Consumers outside the transaction react after the commit**, so the system is [eventually consistent](../../themes/consistency-and-replication.md), unless an in-process handler runs just before commit.
 - **A published event's shape is a contract forever**; schema evolution has to be versioned, not edited.
 
 ## When to use it
@@ -112,7 +113,7 @@ class Order {
     this.events.push(new OrderShipped(this.id, trackingCode));
   }
 
-  // Infrastructure drains this at commit time.
+  // The repository saves the aggregate and these events to an outbox table in one transaction; a relay publishes them.
   pullEvents(): DomainEvent[] {
     const pending = this.events;
     this.events = [];
@@ -150,7 +151,7 @@ class Order {
 
 - **Phantom or lost event** — Dispatch is not tied to the commit, so a rollback leaves a published fact or a crash loses one — subscribers act on something that never durably happened.
 - **Schema break** — A published event shape is a contract. An edited or removed field silently breaks every subscriber still deserializing the old shape.
-- **Non-idempotent consumer under redelivery** — At-least-once delivery redelivers on failure or timeout, and a handler that is not idempotent double-applies its effect.
+- **Non-idempotent consumer under redelivery** — At-least-once delivery redelivers on failure or timeout, and a handler that is not idempotent double-applies its effect. Fix: record the event id with the effect in one transaction and skip an id already seen.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -187,6 +188,7 @@ class Order {
 - [Event Sourcing](../architecture/event-sourcing.md) — Persist the events the domain emits
 - [Publish-Subscribe](../messaging/pubsub.md) — Publish domain events to interested parties
 - [Bounded Context](./bounded-context.md) — Crossing a context boundary makes it an integration event
+- [Outbox](../distributed/coordination/outbox.md) — Write the event in the same transaction as the state change, so a crash cannot lose it and a rollback cannot leave it.
 
 **Part of**
 
