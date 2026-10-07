@@ -51,10 +51,11 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Consumer-driven contract** — The provider's obligation is the union of what its known consumers actually use, so it learns exactly what it may safely change. Authority moves from the provider to the aggregate of its consumers — which is the point, and also the risk.
+- **Consumer-driven contract** — The provider's obligation is the union of what its known consumers actually use, so it learns exactly what it may safely change. Authority moves from the provider to its consumers. That lets the provider change freely, but one unreasonable consumer can hold it back.
 - **Provider contract** — The provider publishes the complete set of what it exports; consumers take what they are given. Authoritative and simple, and it tells the provider nothing about which parts are safe to remove.
 - **Schema-registry compatibility checking** — A published schema is the contract, and compatibility is verified at publish time by a registry rather than by replaying interactions. Much cheaper to operate, and it cannot tell you that a field is unused.
 - **Bidirectional checking** — The provider publishes its own specification and the broker compares it against each recorded consumer expectation, with no provider-side replay at all. Removes the need to run the provider in verification, at the cost of trusting the specification to match the implementation.
+- **Message contract** — Consumers of events or queue messages record the message shape they read, and the producer's build checks that what it emits still fits.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -62,9 +63,9 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Interface breakage is caught** in the pipeline of the team causing it, before deployment rather than after.
-- **The two systems never have to run together**, so the check is fast and has none of an end-to-end suite's flakiness.
-- **The provider gets an explicit list** of what is actually used, so it can remove the rest with confidence.
+- **Interface breakage is caught** in the pipeline of the team causing it, before deployment rather than after, for every pair that has a published contract and a recent verification.
+- **The two systems never run together**, so the check is faster and far less flaky than an end-to-end suite, though provider state setup and the broker can still fail.
+- **The provider gets a list of what known consumers have recorded as used**, so it can remove the rest with more confidence, provided every consumer publishes and contracts are current.
 - **It makes coupling visible** without removing it, which is the first step to reducing it deliberately.
 
 ### Cons
@@ -76,6 +77,7 @@ flowchart LR
 - **Recorded expectations rot**: a consumer that stopped using a field but never updated its contract keeps the provider pinned to it.
 - **A failing verification needs a conversation** rather than a commit, so the process cost lands on cross-team coordination.
 - **An unreasonable consumer expectation**, once recorded, can pull a provider's interface out of shape and hold it there.
+- **Replay needs setup** — Each recorded request needs the provider put in a matching state (customer 42 must exist), and those setups need upkeep.
 
 ## When to use it
 <!--meta block=usage-->
@@ -84,7 +86,7 @@ flowchart LR
 <!--meta polarity=when-->
 
 - **Several independently deployed services are owned** by different teams and released on different schedules.
-- **End-to-end suite catches all breakage** — an end-to-end suite has become the only thing catching interface breakage, and it is slow and flaky.
+- **End-to-end suite is the only interface check** — it has become the only thing catching interface breakage, and it is slow and flaky.
 - **Knowing what is safe to remove** — a provider needs to know which parts of its interface are safe to remove.
 
 ### Avoid when
@@ -160,7 +162,7 @@ verifyProvider({
 - **Green pipelines, broken production** — A consumer records no contract, or the provider never verifies it, so the pair is unprotected while both builds pass — the failure this pattern exists to prevent, reappearing as a coverage gap.
 - **Provider blocked by a dead expectation** — A consumer stopped using a field but never updated its contract, so verification fails on a field nobody reads and the provider cannot remove it.
 - **Contract passes, semantics differ** — The provider returns the right fields with a changed meaning — a status code reused, a unit switched — and shape verification is blind to it.
-- **Broker outage blocks both pipelines** — The shared store sits in the middle of two teams builds, so its unavailability stops publishing and verification at once.
+- **Broker outage blocks both pipelines** — The shared store sits between two teams' builds, so an outage stops publishing and verification at once. Cache the last fetched contracts in the provider pipeline, and decide whether verification fails open or closed meanwhile.
 
 ### Readiness checklist
 <!--meta polarity=check-->
