@@ -13796,6 +13796,13 @@
       "b": "pipeline",
       "note_a": "Pipelines of pure stages are the usual way to chain transformations of immutable values",
       "note_b": "Pure stages only compose safely when values are never edited in place"
+    },
+    {
+      "a": "functor",
+      "verb": "combines-with",
+      "b": "lens-optics",
+      "note_a": "Optics generalize map to nested, many-focus targets",
+      "note_b": "Traversals and the van Laarhoven encoding are built on map over a context"
     }
   ],
   "group_order": {

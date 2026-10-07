@@ -1745,7 +1745,7 @@
       "definition": "A type you can map a function over",
       "route": "/patterns/functional/functor.html",
       "requires": [],
-      "related": ["pipeline", "immutability", "currying"]
+      "related": ["pipeline", "immutability", "currying", "lens-optics"]
     },
     {
       "id": "monad",
@@ -1777,7 +1777,7 @@
       "definition": "A composable getter/setter into nested data",
       "route": "/patterns/functional/lens-optics.html",
       "requires": [],
-      "related": ["immutability", "flux", "value-object"]
+      "related": ["immutability", "flux", "value-object", "functor"]
     },
     {
       "id": "currying",
