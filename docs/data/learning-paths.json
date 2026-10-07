@@ -1503,7 +1503,7 @@
     "/patterns/distributed/resilience/rate-limiter.html": {
       "system-design-interview": {
         "role": "Protect the system from overload",
-        "tour": "The protection layer, and a common infrastructure prompt in its own right. Capping how much any one client can send keeps a single abuser or a [retry storm](../hazards/retry-storm.md) from taking the system down for everyone.",
+        "tour": "The protection layer, and a common infrastructure prompt in its own right. Capping how much any one client can send keeps a single abuser or a [retry storm](../hazards/retry-storm.md) from taking the system down for everyone. It does so at the cost of rejecting some legitimate bursts.",
         "fluency": "Protect the system from overload by refusing what exceeds a rate it can actually serve."
       },
       "spike-handling": {
@@ -1677,7 +1677,7 @@
     "/patterns/distributed/routing/cdn.html": {
       "system-design-interview": {
         "role": "Serve content from the edge, near the user",
-        "tour": "A cache with geography. Copies of static and media content sit at edge locations near the user, so a request from India need not travel to a server in America. Pairs naturally with object storage for images and video.",
+        "tour": "A cache at edge locations near the user. Copies of static and media content are served from nearby instead of a distant server. Pairs naturally with object storage for images and video.",
         "fluency": "Serve content from the edge, near the user"
       },
       "spike-handling": {
@@ -1710,7 +1710,7 @@
     "/patterns/distributed/routing/consistent-hashing.html": {
       "system-design-interview": {
         "role": "Pick a shard with minimal reshuffle",
-        "tour": "The usual answer to \"how do you decide which shard a key lives on?\" A hash ring means adding or removing a node reshuffles only a fraction of keys instead of remapping everything — a favourite deep-dive follow-up.",
+        "tour": "The usual answer to \"how do you decide which shard a key lives on?\" A hash ring means adding or removing a node reshuffles only a fraction of keys instead of remapping everything.",
         "fluency": "Pick a shard with minimal reshuffle"
       },
       "performance": {
@@ -1821,7 +1821,7 @@
     "/patterns/distributed/routing/object-storage.html": {
       "system-design-interview": {
         "role": "Keep large blobs out of the database",
-        "tour": "Where images, video, and other large blobs belong — not in the database, which bloats and slows the moment you cram bytes into it. Keep a reference in the row and let a content delivery network (CDN) serve the object from the edge.",
+        "tour": "Where images, video, and other large blobs belong — not in the database, which bloats and slows as blobs grow. Keep a reference in the row and let the CDN serve the object from the edge.",
         "fluency": "Keep large blobs out of the database"
       }
     },
@@ -1854,7 +1854,7 @@
     "/patterns/distributed/routing/sharding.html": {
       "system-design-interview": {
         "role": "Split data when one database won't fit",
-        "tour": "Scaling storage, not compute. When one database can no longer hold or serve the data, split it across instances by a partition key — and be ready to defend your choice of key against hot-shard skew.",
+        "tour": "Scaling storage and write throughput. When one database can no longer hold or serve the data, split it across instances by a partition key — and be ready to defend your choice of key against hot-shard skew.",
         "fluency": "Split data when one database won't fit"
       },
       "scalability": {
@@ -1908,7 +1908,7 @@
       },
       "system-design-interview": {
         "role": "The precondition for horizontal scale",
-        "tour": "The precondition for everything else. Push per-client state out to a shared store and any instance can serve any request — which is what makes adding, removing, and replacing servers cheap. Almost every \"how does this scale?\" answer starts here.",
+        "tour": "Per-client state lives in a shared store, so any instance can serve any request, which makes adding, removing and replacing servers cheap. Almost every \"how does this scale?\" answer starts here.",
         "fluency": "The precondition for horizontal scale"
       },
       "realtime-updates": {
@@ -2224,7 +2224,7 @@
     "/patterns/messaging/message-queue.html": {
       "system-design-interview": {
         "role": "Decouple services and absorb bursts",
-        "tour": "The answer to \"what if this step is slow, or spikes?\" A queue lets one service hand work to another asynchronously, decoupling them and absorbing bursts — the seam where load-levelling, retries, and delivery guarantees all come up.",
+        "tour": "The answer to \"what if this step is slow, or spikes?\" A queue lets one service hand work to another asynchronously, decoupling them and absorbing bursts, at the price of added latency and possible duplicate delivery. Load-levelling, retries and delivery guarantees all come up here.",
         "fluency": "Decouple services and absorb bursts"
       },
       "streaming": {
