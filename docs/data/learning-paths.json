@@ -1056,7 +1056,7 @@
       },
       "approximate-answers": {
         "role": "Ask: is it in the set?",
-        "tour": "A bit array checked through k hashes. A no is authoritative and skips the expensive path; a yes only means it is worth checking. It is the gate in front of a cache or disk lookup, and it must be sized for a key count up front.",
+        "tour": "A bit array checked through k hash functions. A no is authoritative while every written key has been added, and it skips the expensive path; a yes only means it is worth checking. It is the gate in front of a cache or disk lookup, it must be sized for a key count up front, and the plain filter cannot delete a key.",
         "fluency": "Gate a slow lookup with a cheap check that never wrongly says no."
       }
     },
@@ -2840,14 +2840,14 @@
     "/patterns/distributed/coordination/count-min-sketch.html": {
       "approximate-answers": {
         "role": "Ask: how often did this key appear?",
-        "tour": "A d by w grid of counters with one hash per row. You take the minimum of a key's counters, so collisions can only push the estimate up. The footprint stays fixed however many distinct keys pour through, and rotating the counters keeps it current.",
+        "tour": "A grid of d rows and w columns of counters, one hash per row. You take the minimum of a key's counters, so collisions can only push the estimate up while counts only increase. The footprint stays fixed however many distinct keys pass through, and keeping one sketch per time window and dropping the old ones keeps the estimate current.",
         "fluency": "Estimate how often each key appears in fixed memory, never under-counting."
       }
     },
     "/patterns/distributed/coordination/hyperloglog.html": {
       "approximate-answers": {
         "role": "Ask: how many distinct items?",
-        "tour": "Hash each item and keep, per register, the longest run of leading zeros seen. A long run is rare, so the registers together estimate how many distinct items must have passed. Standard error is about 1.04 over the square root of the register count, and sketches merge by taking the maximum.",
+        "tour": "Hash each item and keep, per register, the longest run of leading zeros seen. A long run is rare, so the registers together estimate how many distinct items must have passed. Standard error is about 1.04 over the square root of the register count (16,384 registers give about 0.81%), and sketches merge by taking the maximum per register, so a merge counts the union of two streams.",
         "fluency": "Estimate how many distinct items a stream held in kilobytes."
       }
     },
@@ -2861,7 +2861,7 @@
     "/patterns/messaging/content-based-router.html": {
       "message-flow": {
         "role": "Choose the channel by what the body says",
-        "tour": "It opens the message and forwards by what it finds, with a short ordered rule set and a default channel. A payload that matches no rule goes to the dead-letter channel rather than nowhere.",
+        "tour": "It opens the message and forwards by what it finds, with a short ordered rule set and a default channel. A payload that matches no rule goes to the default channel, or to the dead-letter channel (where messages that cannot be delivered are parked) if none exists, rather than nowhere.",
         "fluency": "Route each message to a channel by inspecting its body."
       }
     },
@@ -2889,21 +2889,21 @@
     "/patterns/messaging/aggregator.html": {
       "message-flow": {
         "role": "Rejoin the parts into one message",
-        "tour": "A stateful step that recognises which messages belong together by a shared correlation identifier, folds their payloads and releases the result when a completeness rule says the set is done. A window over arrival time is the commonest rule.",
+        "tour": "A stateful step that recognises which messages belong together by a shared correlation identifier, folds their payloads and releases the result when a completeness rule says the set is done. A window over arrival time is one common rule, and a count from the splitter's total is another. Dedupe by sequence number before counting, so a repeated part cannot close the set early. Set a timeout for a set that never completes, then release the partial result or dead-letter it.",
         "fluency": "Collect related messages and release one combined message when the set is complete."
       }
     },
     "/patterns/messaging/scatter-gather.html": {
       "message-flow": {
         "role": "Ask many at once, wait for the slowest",
-        "tour": "It composes the earlier steps: scatter fans a request out, often through a recipient list, and gather is an aggregator. You wait for the slowest answer rather than the sum, and a correlation identifier ties the responses back to the request.",
+        "tour": "It composes the earlier steps: scatter fans a request out, often through a recipient list, and gather is an aggregator. You wait for the slowest answer rather than the sum, so set a deadline and decide whether to return the partial set or fail the request. A correlation identifier ties the responses back to the request.",
         "fluency": "Ask several parties at the same time and combine their answers into one."
       }
     },
     "/patterns/messaging/claim-check.html": {
       "message-flow": {
         "role": "Keep the big payload out of the channel",
-        "tour": "Store the large file once in a place built for files and put only a reference on the channel. The message stays small, the services that never open the file never touch it, and the store write and the publish are made atomic by an outbox.",
+        "tour": "Store the large file once in a place built for files and put only a reference on the channel. The message stays small, and the services that never open the file never touch it. Write the file first, then publish the reference through an outbox; a crash leaves an orphan file, which a lifecycle rule sweeps. Keep retention longer than the slowest consumer or a replay.",
         "fluency": "Put a reference on the channel and keep the large payload in storage."
       }
     },
@@ -3295,7 +3295,7 @@
     "/patterns/messaging/resequencer.html": {
       "message-flow": {
         "role": "Restore the original order",
-        "tour": "Messages that arrive out of order are held until the gap fills, then released in sequence. Each message passes on unchanged.",
+        "tour": "Messages that arrive out of order are held until the gap fills, then released in sequence. Each message passes on unchanged. A message that never arrives holds the rest, so bound the wait by time or buffer size, then release past the gap and log the skipped sequence number.",
         "fluency": "Put out-of-order messages back in sequence before passing them on."
       }
     },
@@ -3323,7 +3323,7 @@
     "/patterns/messaging/canonical-data-model.html": {
       "message-flow": {
         "role": "Agree one shared message format",
-        "tour": "Each application translates to and from one shared format instead of to every other application, so n applications need n translators, not n squared.",
+        "tour": "Each application translates to and from one shared format instead of to every other application, so n applications need about n translator pairs, not a pair for every two applications.",
         "fluency": "Translate every application to one shared format instead of to each other."
       }
     },

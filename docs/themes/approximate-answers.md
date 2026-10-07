@@ -14,21 +14,28 @@ A sketch answers one question about a huge set or stream from a fixed, small amo
 ## The question
 <!--meta block=description-->
 
-An exact answer about a very large set needs memory that grows with the set. Is this key in a set of billions? How often was this URL seen? How many distinct users came today? A sketch is a fixed-size summary built from hash functions (repeatable scramblers of a key into a number) that answers one question approximately: membership, frequency or cardinality. Each sketch is wrong in a known direction.
+An exact answer about a large set needs memory that grows with the set. Is this key in a set of billions? How often was this URL seen? How many distinct users came today? A sketch is a fixed-size summary built from hash functions (repeatable scramblers of a key into a number) that answers one question approximately: membership, frequency or cardinality (distinct count). Bloom and Count-Min err in one known direction; HyperLogLog errs either way, by a bounded amount.
 
 ## Explained
 <!--meta block=explain-->
 
-A sketch is a small fixed-size summary, built from hash functions, that answers one question about a huge set or stream and is wrong in a known direction. You choose by the question. A Bloom filter asks whether a key is in the set: it never wrongly says no, so a no lets you skip the slow lookup, and a yes only means check for real. A Count-Min Sketch asks how often a key was seen and can only over-count, so its answer is an upper bound. HyperLogLog asks how many distinct items passed, with an error that shrinks as you add registers. Use one when the exact answer needs memory that grows with the data. The costs have counter-moves. A Bloom filter must be sized for a key count up front, so size for peak with headroom and rebuild when you outgrow it. Pick the error rate from what a wasted lookup costs.
+A sketch is a small fixed-size summary, built from hash functions, that answers one question about a huge set or stream and is wrong in a known, bounded way. You choose by the question. A Bloom filter asks whether a key is in the set: it never wrongly says no, so a no lets you skip the slow lookup, and a yes only means check for real. A Count-Min Sketch asks how often a key was seen and can only over-count, so its answer is an upper bound. HyperLogLog asks how many distinct items passed and errs either way by a margin that shrinks as you add registers (small memory cells). Use one when the exact answer needs memory that grows with the data. Pick a Bloom filter's error rate from what a wasted lookup costs.
 
-**Example.** A store holds 10 million keys on disk, and a read costs 5 ms. Of 1,000 reads a second, 900 ask for missing keys, which costs 4.5 s of disk time every second. A Bloom filter at 10 bits per key takes 12.5 MB and wrongly says yes about 0.8% of the time, so those 900 misses cause about 7 wasted reads. Counting visits to billions of URLs would need a counter per URL, so a Count-Min Sketch of fixed width and depth holds the counts instead, over-counting a little. Counting distinct visitors with HyperLogLog's 16,384 registers lands near 0.81% error.
+- **Bloom sizing.** Past the sized key count the wrong-yes rate climbs, so size for peak with headroom and rebuild when you outgrow it.
+- **No deletes.** A plain filter cannot remove a key, so rebuild it as the set churns and add each new key as it is written.
+- **Count-Min error.** The error is a fraction of all items counted, so rare keys can be swamped; it suits heavy hitters.
+- **HyperLogLog error.** Expect about 1.04 over the square root of the register count either way; four times the registers halve it.
+
+**Example.** A store holds 10 million keys on disk, and a read costs 5 ms. Of 1,000 reads a second, 900 ask for missing keys, which costs 4.5 s of disk time every second. A Bloom filter at 10 bits per key takes 12.5 MB and wrongly says yes about 0.8% of the time, so those 900 misses cause about 7 wasted reads. Counting visits to billions of URLs would need a counter per URL, so a Count-Min Sketch of 5 rows by 2,000 four-byte counters (40 KB) holds them. Each count overshoots by at most 0.14% of all visits, with 99.3% confidence. Counting distinct visitors with HyperLogLog's 16,384 registers lands near 0.81% error.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-The dial is memory against error, and each sketch fixes the direction of the error. A Bloom filter says no with certainty and yes only with probability, so it is safe as a gate in front of an expensive lookup: a wrong yes costs one wasted call, and a wrong no never happens. A Count-Min Sketch can only over-count, because collisions push a counter up and never down, so its estimates are an upper bound. HyperLogLog estimates the number of distinct items with an error that shrinks predictably as you add registers.
+The dial is memory against error, and the error has a shape. Bloom and Count-Min fix its direction: a Bloom filter's wrong answer is always a yes, so it is safe as a gate in front of an expensive lookup, and a Count-Min Sketch's is always too high, because collisions push a counter up and never down while counts only increase. HyperLogLog has no such side: its estimate lands above or below the truth by a margin that shrinks predictably as you add registers.
 
-Size is the second cost. A Bloom filter must be sized for a key count up front, and past that count its wrong-yes rate climbs. A Count-Min Sketch's width sets the error per estimate and its depth sets the confidence. They answer different questions, so reaching for the wrong one gives a confident, useless number. Use one only when the exact answer costs more than the error you can tolerate.
+Size is the second cost, and each sketch prices it differently. A Bloom filter needs about 1.44 × log2(1/p) bits per key for a wrong-yes rate p, so 10 bits per key gives about 0.8% with 7 hashes, and past the sized key count the rate climbs. Watch the share of bits set, which sits near half at the sized count, and rebuild before the measured wasted-lookup rate drifts from the sized rate. A plain filter cannot delete a key, so a set that churns needs a periodic rebuild. A Count-Min Sketch's width sets the error and its depth sets the confidence: 2,000 columns by 5 rows hold the overshoot to about 0.14% of all items counted, exceeded about 0.7% of the time. The error is a fraction of the total, so rare keys can be swamped and the sketch suits heavy hitters.
+
+They answer different questions, so reaching for the wrong one gives a confident, useless number. Use one only when the exact answer costs more than the error you can tolerate.
 
 ## The tour
 <!--meta block=tour-->
@@ -39,15 +46,15 @@ Size is the second cost. A Bloom filter must be sized for a key count up front, 
 
 ### [Bloom Filter](../patterns/distributed/coordination/bloom-filter.md) {#tour-bloom-filter}
 
-A bit array checked through k hashes. A no is authoritative and skips the expensive path; a yes only means it is worth checking. It is the gate in front of a cache or disk lookup, and it must be sized for a key count up front.
+A bit array checked through k hash functions. A no is authoritative while every written key has been added, and it skips the expensive path; a yes only means it is worth checking. It is the gate in front of a cache or disk lookup, it must be sized for a key count up front, and the plain filter cannot delete a key.
 
 ### [Count-Min Sketch](../patterns/distributed/coordination/count-min-sketch.md) {#tour-count-min-sketch}
 
-A d by w grid of counters with one hash per row. You take the minimum of a key's counters, so collisions can only push the estimate up. The footprint stays fixed however many distinct keys pour through, and rotating the counters keeps it current.
+A grid of d rows and w columns of counters, one hash per row. You take the minimum of a key's counters, so collisions can only push the estimate up while counts only increase. The footprint stays fixed however many distinct keys pass through, and keeping one sketch per time window and dropping the old ones keeps the estimate current.
 
 ### [HyperLogLog](../patterns/distributed/coordination/hyperloglog.md) {#tour-hyperloglog}
 
-Hash each item and keep, per register, the longest run of leading zeros seen. A long run is rare, so the registers together estimate how many distinct items must have passed. Standard error is about 1.04 over the square root of the register count, and sketches merge by taking the maximum.
+Hash each item and keep, per register, the longest run of leading zeros seen. A long run is rare, so the registers together estimate how many distinct items must have passed. Standard error is about 1.04 over the square root of the register count (16,384 registers give about 0.81%), and sketches merge by taking the maximum per register, so a merge counts the union of two streams.
 
 <!-- tour:end -->
 
@@ -57,12 +64,15 @@ Hash each item and keep, per register, the longest run of leading zeros seen. A 
 | If the symptom is… | Lean | Reach for |
 | --- | --- | --- |
 | Most lookups ask for keys that were never stored, and each lookup is slow | Cheap gate that never wrongly says no | [Bloom Filter](../patterns/distributed/coordination/bloom-filter.md) |
-| You need per-item counts but there are too many keys for an exact counter each | Over-counting counters | [Count-Min Sketch](../patterns/distributed/coordination/count-min-sketch.md) |
-| You need how many distinct items passed, in kilobytes | Count by rare hash patterns | [HyperLogLog](../patterns/distributed/coordination/hyperloglog.md) |
+| You need per-item counts but there are too many keys for an exact counter each | Counts that can only come out too high | [Count-Min Sketch](../patterns/distributed/coordination/count-min-sketch.md) |
+| You need a count of unique users or IPs and cannot keep them all in memory | Estimate from the longest zero run in each hash | [HyperLogLog](../patterns/distributed/coordination/hyperloglog.md) |
+| You need the most frequent keys (hot keys, trending) in fixed memory | Over-counting counters, then read the top | [Count-Min Sketch](../patterns/distributed/coordination/count-min-sketch.md) |
+| Per-shard distinct counts must combine without double counting | Registers that merge by taking the maximum | [HyperLogLog](../patterns/distributed/coordination/hyperloglog.md) |
 
 ## Related areas
 <!--meta block=siblings-->
 
-- [Streaming](./streaming.md) — Windows and the stream they run over, where these sketches are usually fed from.
+- [Streaming](./streaming.md) — Windows age out old events; a sketch kept per window and dropped when it ages out keeps its counts current, and these sketches are usually fed from the stream.
 - [Performance](./performance.md) — The Bloom filter also appears there as a way to skip work that would miss.
 - [Scaling Reads](./scaling-reads.md) — Cutting the cost of a read at a larger scale, with copies and caches rather than error.
+- [Caching](./caching.md) — The Bloom filter sits in front of a cache or disk read; caching cuts the cost of a hit, the filter skips the miss.
