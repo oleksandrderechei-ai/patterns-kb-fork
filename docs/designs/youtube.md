@@ -22,13 +22,13 @@ A video platform accepts a file of tens of gigabytes, then stores, converts and 
 ## Explained
 <!--meta block=explain-->
 
-YouTube-style video is sized by bytes moved, not by requests: 1 million uploads a day is only 12 a second, yet it stores about 1.7 PB and plays about 5.6 PB. Uploads go straight from the client into object storage in parts, so no application server carries a byte, and converting a video runs as small segment jobs on a [queue](../patterns/messaging/message-queue.md). Playback is plain cacheable file fetches from a content delivery network ([CDN](../patterns/distributed/routing/cdn.md), a rented network of servers near viewers). Choose a queue over converting inside the upload request, because converting ten minutes of video takes thousands of core-seconds and a dropped connection at 90% would lose everything.
+YouTube-style video is sized by bytes moved, not by requests: 1 million uploads a day is only 12 a second, yet it stores about 1.7 PB and plays about 5.6 PB. Uploads go straight from the client into object storage in parts, so no application server carries a byte, and converting a video runs as small segment jobs on a [queue](../patterns/messaging/message-queue.md). Playback is plain cacheable file fetches from a content delivery network ([CDN](../patterns/distributed/routing/cdn.md), a rented network of servers near viewers). Choose a queue over converting inside the upload request, because converting ten minutes of video takes over a thousand core-seconds and a dropped connection at 90% would lose everything.
 
 - **Not watchable yet.** A video is not playable until its last segment is done. Show a processing state; use separate queues by upload length.
 - **CDN failure.** If the CDN fails, the origin gets about 20 times its load. Contract a second CDN.
 - **Endless storage.** Storage grows daily and is never deleted. Copy only the original to a second region; rebuild the rest.
 
-**Example.** A 10 GB master goes up in 10 MB parts, about 1,000 of them, and the server handles only the part list. Playback totals 100 million watches times 300 s times 1.5 Mbit/s, about 5.6 PB a day, or 520 Gbit/s. With a 95 percent CDN hit ratio the origin serves 26 Gbit/s. If the CDN went down, the origin would face the full 520, 20 times its design. The cost is that a lost CDN is an origin overload, not a slowdown.
+**Example.** A 10 GB master goes up in 10 MB parts, about 1,000 of them, and the server handles only the part list. Playback totals 100 million watches times 300 s times 1.5 Mbit/s, about 5.6 PB a day, or 520 Gbit/s. With a 95 percent CDN hit ratio the origin serves 26 Gbit/s. If the CDN went down, the origin would face the full 520, 20 times its design. The cost is that a lost CDN is an origin overload, not a slowdown. If the connection drops at part 900, the part list shows 100 unmarked parts and only those are sent again.
 
 ## Requirements
 <!--meta block=requirements-->
@@ -68,7 +68,7 @@ Out of scope: search, comments, recommendations, channel subscriptions, live str
 
 Two kinds of number decide this design and they point opposite ways. One is how many things happen — a million uploads and a hundred million watches a day, which for a computer is barely anything. The other is how many bytes move to make them happen, and that one is enormous. Everything here spends money to move bytes as few times, and as short a distance, as it can.
 
-**The problem:** a million uploads and a hundred million watches a day, where the load that decides the architecture is bytes moved rather than requests served. **The shape:** event-driven writes, synchronous reads — converting one upload is thousands of core-seconds that cannot sit inside a request, it arrives in bursts the workers should absorb, and completion is a fact told to the pipeline exactly once; a segment fetch changes no state and is answered in one hop. **The stores:** five that we run — the blob store, the metadata store, a durable work queue, the orchestrator's own workflow history, and a read cache in front of the metadata store — plus a rented edge cache, capacity bought rather than operated.
+**The problem:** a million uploads and a hundred million watches a day, where the load that decides the architecture is bytes moved rather than requests served. **The shape:** event-driven writes, synchronous reads — converting one upload is over a thousand core-seconds that cannot sit inside a request, it arrives in bursts the workers should absorb, and completion is a fact told to the pipeline exactly once; a segment fetch changes no state and is answered in one hop. **The stores:** five that we run — the blob store, the metadata store, a durable work queue, the orchestrator's own workflow history, and a read cache in front of the metadata store — plus a rented edge cache, capacity bought rather than operated.
 
 **Required capabilities:**
 
@@ -91,14 +91,14 @@ Two kinds of number decide this design and they point opposite ways. One is how 
 - Object count: ten minutes at four-second segments is 150 objects per rendition, × 5 renditions plus audio and manifests ≈ **~800 objects per upload**, ~800M a day. Object stores charge per request as well as per byte, so segment duration is a cost dial. → NFR: throughput.
 - Transcode compute: 600M video-seconds/day × ~2 core-seconds each for the ladder (assumed: the 1080p rung dominates) ≈ **~14,000 cores flat out**, or nearer 40,000 if sized for the peak hour instead of queued across the day. → NFR: throughput.
 - Read fan-out: a five-minute session (assumed median) pulls one manifest and ~75 segments; × 100M watches ≈ **~88k requests/s at the edge** against **~1,200 metadata reads/s**, both tripling at peak. → NFR: scale.
-- Egress: 100M watches × 300&nbsp;s × ~1.5&nbsp;Mbit/s delivered on average (assumed: a mobile-heavy audience settles below the top rung) ≈ **~5.6&nbsp;PB/day ≈ 520 Gbit/s**. At a 95% edge hit ratio the origin serves ~26 Gbit/s of it. → NFR: latency; throughput.
+- Egress: 100M watches × 300&nbsp;s × ~1.5&nbsp;Mbit/s delivered on average (assumed: a mobile-heavy audience settles below the top rung) ≈ **~5.6&nbsp;PB/day ≈ 520 Gbit/s**. At a 95% edge hit ratio (assumed: measured by bytes served; at 90% the origin serves ~52 Gbit/s, twice as much) the origin serves ~26 Gbit/s of it. → NFR: latency; throughput.
 - Metadata storage: 365M rows/year × ~1&nbsp;KB ≈ **365&nbsp;GB/year** — free, except while an upload runs, when a 10&nbsp;GB master at 10&nbsp;MB parts carries a ~120&nbsp;KB part list, a hundred times the finished row. → NFR: scale.
 - Latency geography: a viewer 15,000&nbsp;km away pays ~150&nbsp;ms per round trip in fibre; across 76 fetches that is **~11&nbsp;s of pure round-trip time** inside a five-minute watch. → NFR: latency.
 
 **Verdict per candidate:**
 
-- Synchronous request/response on the write path — **rejected**: converting ten minutes of video is thousands of core-seconds, so nothing can wait inside a request. → NFR: throughput.
-- Event-driven write path on a durable queue — **adopted**: completion is one fact told once to a pipeline that owns the work, and the queue turns a 14,000-core appetite into a fleet sized for the mean. → NFR: throughput; availability & resilience.
+- Synchronous request/response on the write path — **rejected**: converting ten minutes of video is over a thousand core-seconds, so nothing can wait inside a request. → NFR: throughput.
+- Event-driven write path on a durable queue — **adopted**: completion is one fact told once to a pipeline that owns the work, and the queue turns a 14,000-core appetite into a fleet sized a little above the mean, so a backlog drains instead of only queueing. → NFR: throughput; availability & resilience.
 - Synchronous request/response on the read path — **adopted**: a segment fetch is a cacheable GET with no state change to announce. → NFR: latency.
 - Object store — **adopted**: 1.7&nbsp;PB a day of write-once, read-by-URL blobs, and no other tier answers that shape. → NFR: throughput.
 - Scoped upload tokens — **adopted**: 95 Gbit/s of inbound that never touches an application process, paid for by trusting the store to enforce the token. → NFR: throughput; FR: upload.
@@ -154,13 +154,14 @@ POST /videos/{video_id}/complete
 GET /videos/{video_id}
 → 200 { "state": "Playable", "manifest_url": "https://cdn.example/{id}/primary.m3u8", ... }
 → 200 { "state": "Processing", "progress": 0.42 }   // while the pipeline runs
+→ 200 { "state": "Uploading", "parts": [...], "upload_urls": [fresh scoped URLs for the unmarked parts only] }   // a resume asks here after the first URLs expire
       (404 if it never existed, 410 if it was removed)
 
 POST /videos/{video_id}/views
 → 202 Accepted                    // counted off the playback path; the only call the player may drop
 ```
 
-Note what appears in no request or response body: video bytes. `POST /videos` returns write URLs the client uses against the store directly, and `GET /videos/{video_id}` returns a manifest URL pointing at the edge. The application tier issues locations and never carries content — which is why ~95 Gbit/s inbound and ~520 Gbit/s outbound never appear on a graph of its network usage.
+Note what appears in no request or response body: video bytes. `POST /videos` returns write URLs the client uses against the store directly, and `GET /videos/{video_id}` returns a manifest URL pointing at the edge. The application tier issues locations and never carries content — which is why ~95 Gbit/s inbound and ~520 Gbit/s outbound never appear on a graph of its network usage. A resume re-issues scoped URLs for unmarked parts only; the token lifetime is a deployment setting.
 
 `POST /videos/{video_id}/complete` answers **202 Accepted** rather than 200, because the work it starts outlives the request by minutes. That is also why `state` is a field rather than something the client infers: an uploader who has finished their part needs to see that the system has not. Repeating the call returns the current state and starts nothing, and its `409` carries the part numbers still missing — so recovery is a call the client already makes.
 
@@ -264,7 +265,7 @@ sequenceDiagram
 
 - **Naïve — one job per video.** A two-hour 1080p rung is hours of one core, a crash at 95% costs all of it, and jobs that long leave a fleet idle behind the longest one.
 - **One job per rendition, checkpointed.** Halves the loss on a crash and keeps the tail: the slowest rendition still sets the publish time, and nothing parallelises inside a rendition. Rejected as a smaller version of the same shape.
-- **Split first, then one job per segment (chosen).** Cutting on keyframes re-encodes nothing, so it is cheap, and the resulting segments have no dependencies on each other, so the run becomes a [pipeline](../patterns/architecture/pipe-filter.md) whose expensive stage is [embarrassingly parallel](../patterns/messaging/competing-consumers.md) across as many workers as you will pay for.
+- **Split first, then one job per segment (chosen).** Cutting at fixed segment boundaries, with a keyframe forced at each boundary in every rung, keeps the cut points aligned across rungs, and the resulting segments have no dependencies on each other, so the run becomes a [pipeline](../patterns/architecture/pipe-filter.md) whose expensive stage is [embarrassingly parallel](../patterns/messaging/competing-consumers.md) across as many workers as you will pay for.
 
 Something has to know when the video is done, and it will not be the process that started it: hundreds of tasks fan out, the manifests wait on the last ack, and the whole thing spans hours across workers that restart. That is durable [workflow state](../patterns/distributed/coordination/workflow-orchestration.md) — the orchestrator holds the graph, survives its own crashes, and owns the retries and timers. A counter row each worker decrements works until the first lost or double ack, and from there you are writing a scheduler.
 
@@ -298,7 +299,7 @@ Geography goes first because it is physics. A viewer 15,000&nbsp;km from the ori
 
 The ladder answers startup. A four-second 1080p segment at 5&nbsp;Mbit/s is 2.5&nbsp;MB, which takes four seconds to fetch on a 5&nbsp;Mbit/s link — the player would begin exactly at the edge of stalling. The same four seconds at 480p is 500&nbsp;KB and lands in under one. That is why a player starts low and steps up, and why the pipeline builds rungs nobody would choose to watch.
 
-Switching rungs mid-watch is a pipeline property rather than a player feature. Every rendition is cut at the same boundaries with aligned keyframes, so segment 40 of the 480p rung starts at the same instant as segment 40 of the 1080p rung and the player can change its mind at any boundary without re-buffering. Cut each rendition independently, the boundaries drift, and switching becomes impossible. Segment duration is the dial: four seconds starts faster and reacts sooner, at ~800M new objects a day; ten seconds halves that count and leaves the player stuck on a bad rung for longer.
+Switching rungs mid-watch is a pipeline property rather than a player feature. Every rendition is cut at the same boundaries with aligned keyframes, so segment 40 of the 480p rung starts at the same instant as segment 40 of the 1080p rung and the player can change its mind at any boundary without re-buffering. Cut each rendition independently, the boundaries drift, and switching becomes impossible. Segment duration is the dial: four seconds starts faster and reacts sooner, at ~800M new objects a day; ten seconds cuts that count by about 60% and leaves the player stuck on a bad rung for longer.
 
 Caching is unusually easy here because a published segment never changes. Every tier runs on a long TTL with no invalidation protocol — the only question at each hop is whether the object is present, never whether it is right. The exception is the first minute of a viral clip, when every edge location misses the same objects at once: a [thundering herd](../hazards/thundering-herd.md) aimed at one prefix. Edge request collapsing bounds it to one origin fetch per object per location, and works because the objects are immutable.
 
@@ -382,7 +383,7 @@ That asymmetry is what makes the exits in Right-sizing affordable: cold-tiering 
 <!--meta polarity=con-->
 
 - **Publish latency is unbounded from the uploader's side.** A long video waits behind the fleet, and the API promises only a state field (see dive 2).
-- **Losing the edge has no graceful version.** The origin is sized for ~5% of egress, so a CDN outage is a 20× overload rather than a degradation (see dive 3).
+- **Losing the edge has no graceful version.** The origin is sized for ~5% of egress, so a CDN outage is a 20× overload rather than a degradation. At 99.9% playback availability (requirements-nfr-4) the budget is about 43 minutes a month, and a second edge starts with an empty cache, so the origin still takes a burst of misses at failover (see dive 3).
 - **The client is a heavy participant.** Splitting, part bookkeeping, manifest parsing and rendition choice live in code you ship but do not run (see dive 1).
 - **The storage bill compounds and the revenue does not.** ~1.7&nbsp;PB a day is never deleted, while income tracks only today's watches (named in Right-sizing).
 - View totals trail by one flush interval and lose an instance's unflushed window when it dies (see dive 4).
@@ -421,6 +422,10 @@ That asymmetry is what makes the exits in Right-sizing affordable: cold-tiering 
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Thundering Herd](../hazards/thundering-herd.md) — the first minute of a viral clip makes every edge location miss the same objects at once
 
 **Demonstrates**
 

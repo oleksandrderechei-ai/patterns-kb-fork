@@ -14783,6 +14783,20 @@
       "b": "websocket",
       "note_a": "Every editing socket stays open to the document's owning server, so each keystroke goes out and each peer's edit comes back with no polling.",
       "note_b": "Collaborative editing holds one socket per editor open to the document's owning server."
+    },
+    {
+      "a": "youtube",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "the first minute of a viral clip makes every edge location miss the same objects at once",
+      "note_b": "a viral clip's first minute is the shape at CDN scale"
+    },
+    {
+      "a": "chatgpt",
+      "verb": "demonstrates",
+      "b": "server-sent-events",
+      "note_a": "one-way token flow, auto-reconnect and no protocol upgrade make SSE the transport for the answer",
+      "note_b": "streams a model answer to the browser, with a Redis Stream replaying missed tokens on reconnect"
     }
   ],
   "group_order": {
