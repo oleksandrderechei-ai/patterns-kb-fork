@@ -14,21 +14,21 @@ An enterprise application keeps business logic in one process and reaches a data
 ## The question
 <!--meta block=description-->
 
-Every business application meets two questions. Where does the business rule live: in a procedure, or on the objects it touches? And how does it reach storage or an outside system without depending on a table or a vendor's wire format? A **domain object** carries business behaviour. A **mapper** converts between objects and rows. A **gateway** wraps an external system behind your own interface.
+Every business application meets two questions. Where does the business rule live: in a procedure, or on the objects it touches? And how does it reach storage or an outside system without depending on a table or a vendor's wire format? A **domain object** carries business behaviour. A **mapper** converts between objects and rows. A **gateway** wraps an external system behind your own interface. Copy the same rule into several places and every change must be made again.
 
 ## Explained
 <!--meta block=explain-->
 
-An enterprise application keeps business logic in one process and reaches a database and other systems from it. The choices are where the rule lives and how data crosses each edge. A transaction script puts the rule in one procedure per request, which is the simplest start. Active record wraps a row in an object that saves itself, which is quick but ties the object to the table. A data mapper moves persistence into its own layer so the domain object carries no SQL, and a repository gives that layer a collection-like face. A unit of work records changes and writes them as one transaction. Start with the simplest and graduate only when rules start duplicating. Each step costs a layer to build, and the counter-move is to stop at the step your logic actually needs.
+An enterprise application keeps business logic in one process and reaches a database and other systems from it. The choices are where the rule lives and how data crosses each edge. A transaction script puts the rule in one procedure per request, which is the simplest start. Active record wraps a row in an object that saves itself, which is quick but ties the object to the table. A data mapper moves persistence into its own layer so the domain object carries no SQL, and a repository gives that layer an interface that works like an in-memory collection. A unit of work records changes and writes them as one transaction. Start with the simplest and graduate only when rules start duplicating. Active record adds little, but each step from the data mapper on costs a layer to build and learn, so stop at the step your logic needs.
 
-**Example.** A service has an order form with three rules: a discount, a stock check and a tax line. As a transaction script it is one function of about 40 lines, and that is fine for one form. When the same discount appears in 5 other scripts, you move the rule onto an Order object. That object should carry no SQL, so you add a data mapper to load and save it. A repository lets callers write findById, and a unit of work writes the order and its stock change in one transaction. The cost was three new layers, so you only pay it when the duplication appears.
+**Example.** A service has an order form with three rules: a discount, a stock check and a tax line. As a transaction script it is one function of, say, 40 lines, and that is fine for one form. When the same discount appears in, say, 5 other scripts, you move the rule onto an Order object. That object should carry no SQL, so you add a data mapper. A repository lets callers write findById and lets tests swap in a fake store. A unit of work writes the order and its stock change in one transaction, because the two writes must succeed or fail together. The cost was three new layers, each added for its own reason.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-The dial is how much machinery sits between your rules and the data, and the price is code you write and learn. At the simple end, a transaction script is one procedure per request and the rule lives in the procedure. Active record wraps one row in an object that saves itself, which is cheap and ties the object to the table. Pull persistence out into a data mapper and the domain object carries no SQL, so it is free to hold real behaviour, at the cost of a layer to build. A repository gives that layer a collection-like face, and a unit of work records changes and writes them out as one transaction. Two small patterns sit alongside them. An [Identity Map](../patterns/enterprise/identity-map.md) keeps one loaded object per row for the length of a unit of work, so two routes to the same row cannot disagree, at the cost of a map that goes stale and grows. A [Specification](../patterns/enterprise/specification.md) holds one business rule as a named object that checks one candidate or selects from a set, so the report, the job and the screen share a single definition.
+The trade is how many layers sit between your rules and the data, and the price is code you write and learn. A transaction script keeps the rule in one procedure per request. Active record wraps one row in an object that saves itself, which is cheap and ties the object to the table. A data mapper pulls persistence out so the domain object carries no SQL and is free to hold real behaviour, at the cost of a layer to build, mapping code to keep in step with the schema, and loading that can hide query cost as an [N+1 Query](../hazards/n-plus-1-query.md). A repository gives that layer an interface that works like an in-memory collection, and a [Query Object](../patterns/enterprise/query-object.md) lets callers state a search as an object instead of writing SQL. A unit of work records changes and writes them out as one transaction. Two small patterns sit alongside them. An [Identity Map](../patterns/enterprise/identity-map.md) keeps one loaded object per row for the length of a unit of work, so two routes to the same row in one process cannot disagree, at the cost of a map that goes stale during a long unit and grows; pair it with a version check on save. A [Specification](../patterns/enterprise/specification.md) holds one business rule as a named object that checks one candidate or selects from a set, so the report, the job and the screen share a single definition for as long as the rule can be translated to a query; when it cannot, the rule is kept in two forms and the cost grows with how complex the rule is.
 
-The advice that sits under all of them is to start simple. Choosing a script over a domain model is the simplicity call, until the rules start duplicating. Graduate when the duplication shows, and not before. A gateway applies the same idea at the other edge, to an external system rather than to your own database.
+The advice under all of them is to start simple. Graduate a rule onto an object when the same rule starts to be copied between scripts, and not before; a script that keeps absorbing logic while the domain classes stay bare data is how a codebase ends up with an [Anemic Domain Model](../hazards/anemic-domain-model.md). Other signs call for later steps: SQL creeping into the domain object calls for a data mapper, two objects for one row call for an identity map, changes that must land together call for a unit of work, and rules that interact enough to need testing without a database call for a domain model. A gateway applies the same idea at the other edge, to an external system rather than to your own database.
 
 ## The tour
 <!--meta block=tour-->
@@ -43,7 +43,7 @@ The simplest place to put a business rule: a single procedure runs from the requ
 
 ### [Active Record](../patterns/enterprise/active-record.md) {#tour-active-record}
 
-The object owns the row's fields and the code that persists them, with save, delete and finders on the class. It is the data access a script calls into, and it is cheap until the object's tie to the table starts to hurt.
+The object owns the row's fields and the code that persists them, with save, delete and finders on the class. A script can call it for data access. It is cheap until the object's tie to the table starts to hurt, as when SQL and table names creep into the domain object. Unit of Work is the other route: changes are collected and written together instead of each row saving itself.
 
 ### [Data Mapper](../patterns/enterprise/data-mapper.md) {#tour-data-mapper}
 
@@ -51,7 +51,7 @@ A dedicated layer moves data between domain objects and tables, so neither side 
 
 ### [Repository](../patterns/enterprise/repository.md) {#tour-repository}
 
-Callers ask for objects by identity or criteria and add or remove them as if the whole set lived in memory. It sits on top of a data mapper, with one repository per aggregate root, and the interface is what lets a fake stand in for storage.
+Callers ask for objects by identity or criteria and add or remove them as if the whole set lived in memory. It usually sits on top of a data mapper, with usually one repository per aggregate root (the entity that owns a cluster of objects), and the interface is what lets a fake stand in for storage.
 
 ### [Query Object](../patterns/enterprise/query-object.md) {#tour-query-object}
 
@@ -59,7 +59,7 @@ The caller builds criteria as an object and the repository or mapper turns it in
 
 ### [Specification](../patterns/enterprise/specification.md) {#tour-specification}
 
-A specification wraps one business rule in an object that answers match or no match, and and, or and not join specifications into bigger rules. A repository can test it in memory or turn it into a query, so the rule is written once. Translating to a query is the part that grows hard.
+A specification wraps one business rule in an object that answers match or no match, and the operators AND, OR and NOT combine specifications into bigger rules. A repository can test it in memory or turn it into a query, so the rule is written once. Translating to a query is the part that grows hard, and a rule that cannot be translated ends up written twice, once in memory and once in the query.
 
 ### [Unit of Work](../patterns/enterprise/unit-of-work.md) {#tour-unit-of-work}
 
@@ -88,6 +88,7 @@ The same insulation at the other edge: a single object encapsulates all access t
 | The same row loaded twice gives two objects that disagree | One object per row | [Identity Map](../patterns/enterprise/identity-map.md) |
 | The same business rule written differently in the report, the job and the screen | Name the rule | [Specification](../patterns/enterprise/specification.md) |
 | Your code is shaped around a vendor's protocol and field names | Wrap the outside system | [Gateway](../patterns/enterprise/gateway.md) |
+| Callers need many different searches and should not write SQL | Search as an object | [Query Object](../patterns/enterprise/query-object.md) |
 
 ## Related areas
 <!--meta block=siblings-->
@@ -95,3 +96,4 @@ The same insulation at the other edge: a single object encapsulates all access t
 - [Service Boundaries](./service-boundaries.md) — Entities, values and aggregates, the domain objects these patterns load and save.
 - [API Design](./api-design.md) — The service layer and the data transfer object, which face the caller rather than the database.
 - [Testing](./testing.md) — How a fake in place of storage lets you test logic without a database.
+- [Architecture Styles](./architecture-styles.md) — Layered and the other whole-system shapes; this page covers what happens inside the logic and data layers.

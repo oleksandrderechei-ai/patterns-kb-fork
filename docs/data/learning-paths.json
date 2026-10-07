@@ -2736,7 +2736,7 @@
     "/patterns/enterprise/active-record.html": {
       "enterprise-application-patterns": {
         "role": "An object wraps one row and saves itself",
-        "tour": "The object owns the row's fields and the code that persists them, with save, delete and finders on the class. It is the data access a script calls into, and it is cheap until the object's tie to the table starts to hurt.",
+        "tour": "The object owns the row's fields and the code that persists them, with save, delete and finders on the class. A script can call it for data access. It is cheap until the object's tie to the table starts to hurt, as when SQL and table names creep into the domain object. Unit of Work is the other route: changes are collected and written together instead of each row saving itself.",
         "fluency": "Wrap one table row in an object that owns its own persistence."
       }
     },
@@ -2750,7 +2750,7 @@
     "/patterns/enterprise/repository.html": {
       "enterprise-application-patterns": {
         "role": "A collection-like face over the store",
-        "tour": "Callers ask for objects by identity or criteria and add or remove them as if the whole set lived in memory. It sits on top of a data mapper, with one repository per aggregate root, and the interface is what lets a fake stand in for storage.",
+        "tour": "Callers ask for objects by identity or criteria and add or remove them as if the whole set lived in memory. It usually sits on top of a data mapper, with usually one repository per aggregate root (the entity that owns a cluster of objects), and the interface is what lets a fake stand in for storage.",
         "fluency": "Give domain objects a collection-like interface over the data store."
       }
     },
@@ -3107,7 +3107,7 @@
     "/patterns/enterprise/specification.html": {
       "enterprise-application-patterns": {
         "role": "Name a business rule once and reuse it to check and to query",
-        "tour": "A specification wraps one business rule in an object that answers match or no match, and and, or and not join specifications into bigger rules. A repository can test it in memory or turn it into a query, so the rule is written once. Translating to a query is the part that grows hard.",
+        "tour": "A specification wraps one business rule in an object that answers match or no match, and the operators AND, OR and NOT combine specifications into bigger rules. A repository can test it in memory or turn it into a query, so the rule is written once. Translating to a query is the part that grows hard, and a rule that cannot be translated ends up written twice, once in memory and once in the query.",
         "fluency": "Express a rule as a composable predicate that a repository can test or turn into a query."
       }
     },
