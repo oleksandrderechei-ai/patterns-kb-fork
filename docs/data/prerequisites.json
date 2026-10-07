@@ -1257,7 +1257,7 @@
       "definition": "A slow consumer signals upstream to slow down",
       "route": "/patterns/concurrency/backpressure.html",
       "requires": [],
-      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer", "thread-pool", "websocket", "splitter", "competing-consumers"]
+      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer", "thread-pool", "websocket", "splitter", "competing-consumers", "secure-logger"]
     },
     {
       "id": "semaphore",
@@ -1905,7 +1905,7 @@
       "definition": "Records events for audit without leaking sensitive data",
       "route": "/patterns/security/secure-logger.html",
       "requires": [],
-      "related": ["wire-tap", "intercepting-validator", "single-access-point", "design-for-operations"]
+      "related": ["wire-tap", "intercepting-validator", "single-access-point", "design-for-operations", "backpressure"]
     },
     {
       "id": "single-access-point",

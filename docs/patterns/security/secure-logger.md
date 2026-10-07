@@ -29,7 +29,7 @@ A secure logger is the one function every security-relevant event passes through
 - **Bypass.** One stray console.log skips it; add a lint rule that bans it.
 - **Log forging.** Outside text with line breaks can forge entries; strip control characters on the way in.
 
-**Example.** A login handler used to run console.log(request). The request holds the password and a session token, and the log aggregator is readable by 200 engineers while the database is open to 5. After the change, the handler calls audit with userId, ip and outcome, the only three fields the allowlist knows. The password field is not listed, so it is written as \\\[REDACTED\\\]. An attacker who submits the username bob followed by a line break and a fake success entry has the line break stripped, so the log shows one entry, not two. The cost is upkeep: a new field is invisible in logs until someone adds it to the list.
+**Example.** A login handler used to run console.log(request). The request holds the password and a session token, and the log aggregator is readable by 200 engineers while the database is open to 5. After the change, the handler calls audit with userId, ip and outcome, the only three fields on its allowlist. The password is not on the allowlist, so it is masked as \[REDACTED\]. An attacker who submits the username bob followed by a line break and a fake success entry has the line break stripped, so the log shows one entry. The cost is upkeep: a new field stays invisible in logs until someone adds it. The sketch below shows the denylist form; an allowlist inverts its test.
 
 ## How it works
 <!--meta block=structure-->
@@ -76,8 +76,8 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Centralizes masking and redaction** in one place instead of trusting every call site to remember it.
-- **Produces an audit trail auditors** and incident responders can actually trust for non-repudiation.
-- **Makes it safe** to ship logs to lower-trust systems — security information and event management systems (SIEMs), third-party aggregators, support tools.
+- **Gives auditors and incident responders a trail they can trust**; non-repudiation (the actor cannot later deny the action) needs the signed or hash-chained variant.
+- **Lowers the risk of shipping logs to lower-trust systems**, as far as the ruleset covers the fields: security information and event management systems (SIEMs), third-party aggregators, support tools.
 - **Tamper-evident variants turn the log itself** into forensic evidence, not just a debugging aid.
 
 ### Cons
@@ -89,6 +89,7 @@ flowchart LR
 - **Only as strong as its adoption** — one stray `console.log` bypasses it entirely, which makes this a lint rule and a review habit rather than a design you can install once.
 - **An asynchronous sink buys** the hot-path latency back and pays in records dropped under [backpressure](../concurrency/backpressure.md), exactly when an incident is producing them — so put security events on a durable path even where debug logs stay buffered.
 - **Redaction alone leaves the inbound direction open**: values from another trust zone can carry carriage returns, line feeds, or delimiters that forge log entries, so the same chokepoint must also neutralize control characters it did not generate — structured (e.g. JSON-lines) output closes the door structurally.
+- **Append-only, tamper-evident storage conflicts** with erasure duties, so keep personal data out of the trail (ids, tokens): an immutable record cannot be edited later.
 
 ## When to use it
 <!--meta block=usage-->
@@ -98,7 +99,7 @@ flowchart LR
 
 - **You log security-relevant events** — authentication, authorization decisions, admin actions, data access.
 - **Requests or domain objects carry passwords**, tokens, session IDs, or PII (personally identifiable information) that must never land in a general-purpose log store.
-- **Compliance requires a tamper-evident**, access-controlled audit trail — PCI-DSS, Health Insurance Portability and Accountability Act (HIPAA), SOC 2, GDPR (General Data Protection Regulation).
+- **Compliance asks for an access-controlled audit trail**, often one protected from alteration; check what PCI-DSS, Health Insurance Portability and Accountability Act (HIPAA), SOC 2 or GDPR (General Data Protection Regulation) requires of you.
 
 ### Avoid when
 <!--meta polarity=avoid-->
@@ -111,15 +112,17 @@ flowchart LR
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — one door, and it masks on the way through"
+// Denylist form. An allowlist inverts the test: keep only named keys, mask the rest. Nested values need the recursive redact below.
 const SENSITIVE = new Set(["password", "token", "ssn", "dateofbirth"]);
 
 // One function decides what is written down. Call sites do not get a vote.
 function audit(actor: string, action: string, details: Record<string, unknown>) {
   const safe: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(details)) {
-    safe[key] = SENSITIVE.has(key.toLowerCase()) ? "[REDACTED]" : value;
+    const v = typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, " ") : value;
+    safe[key] = SENSITIVE.has(key.toLowerCase()) ? "[REDACTED]" : v;
   }
-  auditStore.append(JSON.stringify({ ts: new Date().toISOString(), actor, action, ...safe }));
+  auditStore.append(JSON.stringify({ ...safe, ts: new Date().toISOString(), actor, action }));
 }
 
 audit("user-42", "login.succeeded", { ip: "203.0.113.7", password: "hunter2" });
@@ -230,11 +233,12 @@ new SecureLogger(line => auditStore.append(line)).audit({ flowId, personaId,
 - [Intercepting Validator](./intercepting-validator.md) — A rejected request is an event worth recording
 - [Single Access Point](./single-access-point.md) — One entry point is where the audit trail can be complete
 - [Design for Operations](../../principles/design-for-operations.md) — Operable logging is logging that is safe to keep and to share
+- [Backpressure](../concurrency/backpressure.md) — When the sink overflows, backpressure drops records; security events need a durable path beneath it.
 
 **Demonstrated by**
 
 - [Persona Identification & Sanction Check](../../designs/persona-identification.md) — redacting raw personally identifiable information (PII) from every log line in a persona-verification saga, emitting flowId/personaId references instead
-- [Persona Identification & Sanction Check (V2)](../../designs/persona-identification-v2.md) — the same reasoning that rejects a wire tap here: a monitoring surface is where access controls are weakest
+- [Persona Identification & Sanction Check (V2)](../../designs/persona-identification-v2.md) — a case study whose log lines carry only flow and person ids, never raw personal data, so the log is no second copy of the vault
 
 **Implemented by**
 
