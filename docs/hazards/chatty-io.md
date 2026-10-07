@@ -47,26 +47,28 @@ flowchart TB
 - **A loop crosses the boundary.** Any I/O placed inside an iteration makes the call count a function of the result-set size, which is small in development and large in production. The database form of this has its own name: the [N+1 Query](./n-plus-1-query.md).
 - **The unit of work is the record rather than the batch.** A writer that opens, appends and closes once per record pays the file-open and flush costs per record, and on a spinning or log-structured store also fragments what it writes, taxing every later read.
 - **Layers each add a hop nobody counted.** A helper that fetches what it needs is correct on its own terms; three of them composed into one request produce three round-trips, and no single author saw the total.
+- **Lazy loading hides the query.** A lazy-loaded association turns a plain field read into a database call, so the loop that makes many calls is invisible in code review.
 
 ## What it costs
 <!--meta block=cost-->
 
 - **Latency adds up in series.** Requests issued one after another sum their round-trips, so an operation made of forty 5&nbsp;ms calls takes 200&nbsp;ms of pure waiting — and the far side, timed per call, looks perfectly healthy throughout.
-- **Response time scales with item count, not data size.** The page that returned in a blink against ten rows takes seconds against a thousand, because the work per row was never the point.
-- **Throughput falls before latency alarms.** Each call holds a connection, a slot and a thread for its round-trip, so a chatty operation occupies far more of the pool than its work justifies and unrelated requests queue behind it — see [Connection Pool Exhaustion](./connection-pool-exhaustion.md).
+- **Response time scales with item count, not data size.** Ten rows return in a blink; a thousand take on the order of a second or more at a millisecond or two per call, because time follows call count.
+- **Throughput falls before latency alarms when the pool is shared and near its limit.** Each call holds a connection, a slot and a thread for its round-trip, so pool occupancy grows with call count times round-trip time and unrelated requests queue behind it. See [Connection Pool Exhaustion](./connection-pool-exhaustion.md).
 - **The far side pays the overhead too.** Parsing, planning, authorizing and logging happen once per request, so a caller that splits one question into forty spends forty times the server-side fixed cost to learn the same thing.
 - **Metered dependencies bill per call.** Where the dependency charges by request or enforces a per-second quota, chattiness converts directly into cost and into throttling that arrives long before the system is actually busy.
+- **Tail latency compounds.** An operation made of many calls is as slow as its slowest one, so the page is slow far more often than any single call.
 
 ## Getting out
 <!--meta block=mitigation-->
 
-Move the boundary crossing out of the loop and ask once for the whole set. For a data store that means one query with a join or an `IN` list in place of one query per row; for a remote service it means an endpoint shaped around what a caller actually does, so the six field reads become one object read; for a file it means buffering the records and writing them in a single pass. **[Batching](../patterns/concurrency/batching.md)** is the general form of all three — accumulate the requests, issue one call, distribute the answers.
+Move the boundary crossing out of the loop and ask once for the whole set. For a data store that means one query with a join or an `IN` list in place of one query per row; for a remote service it means an endpoint shaped around what a caller actually does, so the six field reads become one object read; for a file it means buffering the records and writing them in a single pass. **[Batching](../patterns/concurrency/batching.md)** is the general form of all three — accumulate the requests, issue one call, distribute the answers. When calls cannot be merged, issue them concurrently or over one multiplexed connection; that cuts the serial sum but not the server-side overhead per call. Cap each batch at the store's parameter or payload limit and chunk above it.
 
 When the chattiness lives between a client and a fleet of services rather than inside one process, put the aggregation where the calls are cheap. A **[Backend for Frontend](../patterns/distributed/routing/bff.md)** makes the several internal calls on a fast internal network and returns one client-shaped response, turning six round-trips over a mobile link into one. The price is a component that must be versioned alongside the screens it serves, and that becomes a bottleneck of its own if every team's aggregation lands in it.
 
-Do not overshoot. Fewer, larger calls is the fix only up to the point where the larger call carries data nobody reads, and past that point you have traded this hazard for [Extraneous Fetching](./extraneous-fetching.md). Split the object instead: return the small, frequently read part in the common call and leave the rare, bulky part behind a second one. Where the same answer is requested repeatedly, the cheapest call is the one not made at all — a cache removes the round-trip entirely rather than enlarging it.
+Do not overshoot. Fewer, larger calls is the fix only up to the point where the larger call carries data nobody reads, and past that point you have traded this hazard for [Extraneous Fetching](./extraneous-fetching.md). Split the object instead: return the small, frequently read part in the common call and leave the rare, bulky part behind a second one. Where the same answer is requested repeatedly, the cheapest call is the one not made at all — a cache removes the round-trip on a hit, at the price of stale data and an invalidation rule, rather than enlarging it.
 
-Make the count visible or it will grow back. Assert on calls per operation in a trace, not on average latency: chattiness is linear in a number your dashboards do not plot, and the first regression looks like a slightly slower page rather than a defect. Where the data-access layer can refuse an unplanned lazy load, turn that on — a reintroduced loop then fails in a test run instead of degrading quietly, at the cost of every association having to be declared by the query that needs it.
+Make the count visible or it will grow back. Assert on calls per operation in a trace, not on average latency: chattiness is linear in a number your dashboards do not plot, and the first regression looks like a slightly slower page rather than a defect. Where the data-access layer can refuse an unplanned lazy load, turn that on — a reintroduced loop then fails in a test run instead of degrading quietly, at the cost of every association having to be declared by the query that needs it. Read the count from trace spans per request, set the budget from the count at a known item count, and fail the test when it grows with item count.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -74,6 +76,10 @@ Make the count visible or it will grow back. Assert on calls per operation in a 
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Connection-Pool Exhaustion](./connection-pool-exhaustion.md) — Each call holds a connection for its round-trip, so a chatty operation drains the pool and unrelated requests queue.
 
 **Generalizes**
 
@@ -88,6 +94,7 @@ Make the count visible or it will grow back. Assert on calls per operation in a 
 - [Batching](../patterns/concurrency/batching.md) — Accumulate the per-item requests and issue one keyed call, so the count stops tracking the result size
 - [Backend-for-Frontend](../patterns/distributed/routing/bff.md) — Make the several calls on a fast internal network and return one client-shaped response
 - [Unit of Work](../patterns/enterprise/unit-of-work.md) — Write-side case: per-object saves are fixed by one tracked flush
+- [Cache-Aside](../patterns/caching/cache-aside.md) — A cache skips the round-trip for repeated requests, at the price of stale data and an invalidation rule.
 
 **Threatens**
 

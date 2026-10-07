@@ -14062,6 +14062,27 @@
       "b": "static-cling",
       "note_a": "Stands in for the static call only once a seam exists, so inject first",
       "note_b": "A canned collaborator can replace the static call only once a seam exists"
+    },
+    {
+      "a": "chatty-io",
+      "verb": "combines-with",
+      "b": "connection-pool-exhaustion",
+      "note_a": "Each call holds a connection for its round-trip, so a chatty operation drains the pool and unrelated requests queue.",
+      "note_b": "A chatty caller holds slots far longer than its work needs, so call count alone can exhaust the pool."
+    },
+    {
+      "a": "cache-aside",
+      "verb": "prevents-hazard",
+      "b": "chatty-io",
+      "note_a": "Answers repeated reads from memory, so on a hit the round-trip is not made.",
+      "note_b": "A cache skips the round-trip for repeated requests, at the price of stale data and an invalidation rule."
+    },
+    {
+      "a": "cqrs",
+      "verb": "prevents-hazard",
+      "b": "extraneous-fetching",
+      "note_a": "A read model shaped per screen returns only the fields and rows that screen shows",
+      "note_b": "A separate read model shaped per screen stops full-row and unbounded reads"
     }
   ],
   "group_order": {

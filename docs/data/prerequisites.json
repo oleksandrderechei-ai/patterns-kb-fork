@@ -2177,7 +2177,7 @@
       "definition": "Many small I/O calls where a few larger ones would do",
       "route": "/hazards/chatty-io.html",
       "requires": [],
-      "related": ["extraneous-fetching"]
+      "related": ["extraneous-fetching", "connection-pool-exhaustion"]
     },
     {
       "id": "extraneous-fetching",
@@ -2201,7 +2201,7 @@
       "definition": "Every pool slot is held by a slow call, so requests hang instead of failing",
       "route": "/hazards/connection-pool-exhaustion.html",
       "requires": [],
-      "related": ["deadlock"]
+      "related": ["deadlock", "chatty-io"]
     },
     {
       "id": "retry-storm",
