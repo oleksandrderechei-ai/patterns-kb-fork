@@ -20,23 +20,23 @@ Once a system keeps more than one copy of its data, a write on one copy raises a
 ## Explained
 <!--meta block=explain-->
 
-Replication keeps several copies of your data so you survive a lost machine and spread reads, and consistency is the promise about what a reader sees after a write lands on one copy. Without a deliberate choice, a user writes a post and then reads from a copy that has not heard of it yet, or two copies each believe they hold the latest value. The main dial is how many copies must confirm a write before you call it done. Wait for a majority and every later read sees it, but each write pays a network round trip. Confirm at once and copy in the background, and writes are fast and always accepted, but a lagging copy can return old data. [Quorums](../patterns/distributed/coordination/quorum-consensus.md) sit between: with N copies, if W confirm a write and R answer a read, and W plus R is more than N, every read meets at least one copy holding the latest write. Choose strong settings for money and uniqueness, loose ones for feeds.
+Replication keeps several copies of your data so you survive a lost machine and spread reads, and consistency is the promise about what a reader sees after a write lands on one copy. Without a deliberate choice, a user writes a post and then reads from a copy that has not heard of it yet, or two copies each believe they hold the latest value. The main dial is how many copies must confirm a write before you call it done. Wait for a majority and a read that asks the leader or a majority sees it, but each write pays a round trip. Confirm at once and copy in the background, and writes are fast and always accepted, but a lagging copy can return old data. [Quorums](../patterns/distributed/coordination/quorum-consensus.md) sit between: with N copies, if W confirm a write and R answer a read, and W plus R is more than N, every read meets at least one copy holding the latest write and returns the newest version. Choose strong settings for money and uniqueness, loose ones for feeds.
 
 - **Write latency.** A majority wait adds a round trip per write and stalls if the majority is unreachable, so reserve it for money.
-- **Stale reads.** Confirming at once lets a lagging copy return old data, so read your own writes from the leader.
+- **Stale reads.** Confirming at once lets a lagging copy return old data: send a writer's own reads to the leader until the copy catches up.
 - **Election pause.** One \[elected writer\](../patterns/distributed/coordination/leader-election.md) gives a clear order but stops writes until a new one is chosen, so keep the election fast.
 - **Conflicts.** Several writers need conflict rules, so decide the merge before launch.
 
-**Example.** A store has N = 3 copies in 3 zones, 2 ms apart. With W = 2 and R = 2, W + R = 4 is more than 3, so a read always meets a copy with the last write. A write returns after the second confirmation, about 2 ms, and one dead copy changes nothing. If two copies die, writes are refused, which is the availability you gave up. With W = 1 and R = 1, the total is 2, so a read can land on the one copy the write has not reached and return the old value. A user then misses their own post for the 200 ms the copy lags.
+**Example.** A store has N = 3 copies in 3 zones, 2 ms apart. With W = 2 and R = 2, W + R = 4 is more than 3, so a read of two copies meets one with the last write and returns the newest version. A write returns after the second confirmation, about 2 ms, and one dead copy changes nothing. If two copies die, writes are refused, which is the availability you gave up. With W = 1 and R = 1, the total is 2, so a read can land on the one copy the write has not reached and return the old value. A user then misses their own post until that copy catches up.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-The core dial is **synchronous versus asynchronous replication**. Wait for a majority of replicas to confirm a write before acknowledging it, and every subsequent read is guaranteed to see it — at the cost of an extra network round-trip on every write, and reduced availability if that majority can't be reached. Acknowledge the write immediately and ship it to replicas in the background, and writes stay fast and available — but a read against a lagging replica can return something older than what the client just wrote.
+The core dial is **synchronous versus asynchronous replication**. Wait for a majority of replicas to confirm a write before acknowledging it, and every subsequent read that goes to the leader or a read quorum sees it — at the cost of an extra network round-trip on every write, and reduced availability if that majority can't be reached. Acknowledge the write immediately and ship it to replicas in the background, and writes stay fast and available — but a read against a lagging replica can return something older than what the client just wrote.
 
-Quorums let you tune this rather than pick an extreme: require `W` replicas to confirm a write and `R` replicas to agree on a read, and if `W + R > N` (the total replica count) every read is guaranteed to overlap with the most recent write. Push `W` and `R` down and you get speed and availability with a wider staleness window; push them up and you get strong reads at the cost of latency and fault tolerance. Copies that drift anyway are found by comparing hash trees ([Merkle Tree](../patterns/distributed/coordination/merkle-tree.md)) rather than scanning every key, and downstream stores follow the primary through its change log ([Change Data Capture](../patterns/distributed/coordination/change-data-capture.md)) instead of a second write from the application.
+Quorums let you tune this rather than pick an extreme: require `W` replicas to confirm a write and `R` replicas to agree on a read, and if `W + R > N` (the total replica count) every read overlaps the most recent write, provided the reader takes the newest version and the quorum is strict (a sloppy quorum breaks the overlap). Push `W` and `R` down and you get speed and availability with a wider staleness window; push them up and you get strong reads at the cost of latency and fault tolerance. Copies that drift anyway are found by comparing hash trees ([Merkle Tree](../patterns/distributed/coordination/merkle-tree.md)) rather than scanning every key, and downstream stores follow the primary through its change log ([Change Data Capture](../patterns/distributed/coordination/change-data-capture.md)) instead of a second write from the application.
 
-The other half of the trade-space is **ordering**: with one writer (an elected leader) ordering is trivial but the leader is a bottleneck and a single point of failure until re-election completes. With multiple writers, ordering has to be reconstructed after the fact — through logical clocks, conflict resolution, or simply accepting that different replicas may briefly disagree and will converge later. A [Vector Clock](../patterns/distributed/coordination/vector-clock.md) tells you when two writes were concurrent, and a [conflict-free replicated data type (CRDT)](../patterns/distributed/coordination/crdt.md) is a data type whose merge needs no decision. When the single leader dies, [Failover](../patterns/distributed/coordination/failover.md) fences it before promoting a standby, so two nodes never both lead.
+The other half of the trade-space is **ordering**: with one writer (an elected leader) ordering is trivial but the leader is a bottleneck and a single point of failure until re-election completes. With multiple writers, ordering has to be reconstructed after the fact — through logical clocks, conflict resolution, or simply accepting that different replicas may briefly disagree and will converge later. A [Vector Clock](../patterns/distributed/coordination/vector-clock.md) tells you when two writes were concurrent, and a [conflict-free replicated data type (CRDT)](../patterns/distributed/coordination/crdt.md) is a data type whose merge needs no decision. When the single leader dies, [Failover](../patterns/distributed/coordination/failover.md) fences it before promoting a standby, so a stale leader's writes are rejected and two nodes lead only if detection or fencing fails.
 
 ```mermaid caption="Consistency is bought with latency and availability. Replication strategy decides the exchange rate."
 flowchart TB
@@ -60,11 +60,11 @@ Every change is appended to a durable, ordered log before it touches anything el
 
 ### [Replication](../patterns/distributed/coordination/replication.md) {#tour-replication}
 
-The copies themselves, kept on separate nodes so a single failure never loses the data. Whether those copies update synchronously or asynchronously is the dial this whole theme turns on.
+The copies themselves, kept on separate nodes so a single failure loses nothing already confirmed on another copy; with asynchronous copying, the lag window can still be lost. Whether those copies update synchronously or asynchronously is the dial this whole theme turns on.
 
 ### [Quorum & Consensus](../patterns/distributed/coordination/quorum-consensus.md) {#tour-quorum-consensus}
 
-A write, or a read, only counts once a majority of replicas agree — so no single lagging or partitioned node can silently answer with stale data. Tuning the quorum size trades latency against how strong the guarantee is.
+A write counts once W replicas confirm it and a read once R replicas answer. When W plus R is more than N, every read meets the latest write, so a lagging or partitioned node cannot silently answer a quorum read with stale data. Tuning W and R trades latency against how strong the guarantee is.
 
 ### [Vector Clock](../patterns/distributed/coordination/vector-clock.md) {#tour-vector-clock}
 
@@ -88,7 +88,7 @@ Log-based capture tails the database's own durable log, so a committed change ca
 
 ### [Outbox](../patterns/distributed/coordination/outbox.md) {#tour-outbox}
 
-Writing the state change and the event that announces it in the same local transaction, so a crash between the two can never leave replicas or downstream consumers with only half the picture.
+Writing the state change and the event that announces it in the same local transaction, so a crash between the two cannot leave replicas or downstream consumers with only the change or only the event. Delivery is still at least once, so the receiver must deduplicate.
 
 ### [Inbox](../patterns/distributed/coordination/inbox.md) {#tour-inbox}
 
@@ -119,8 +119,8 @@ Copies drift even when every write is sent to all of them. Two replicas compare 
 | A single, unambiguous order for writes | Elect one writer | [Leader Election](../patterns/distributed/coordination/leader-election.md) |
 | A dead primary replaced without waking anyone | Automated handover | [Failover](../patterns/distributed/coordination/failover.md) |
 | A search index or cache that keeps drifting from the database | Read the change log | [Change Data Capture](../patterns/distributed/coordination/change-data-capture.md) |
-| Replicas to survive a crash without losing data | Durable, ordered log | [Write-Ahead Log](../patterns/distributed/coordination/write-ahead-log.md) |
-| The write and its event to never split apart | Atomic local write | [Outbox](../patterns/distributed/coordination/outbox.md) |
+| Copies that survive a lost machine or a crash without losing data | Durable, ordered log, plus copies on other nodes | [Replication](../patterns/distributed/coordination/replication.md), [Write-Ahead Log](../patterns/distributed/coordination/write-ahead-log.md) |
+| The write and its event to never split apart, and a redelivered message applied once | Atomic local write, then record the id on receipt | [Outbox](../patterns/distributed/coordination/outbox.md), [Inbox](../patterns/distributed/coordination/inbox.md) |
 | A multi-service transaction without a global lock | Compensating steps | [Saga](../patterns/distributed/coordination/saga.md) |
 | Cluster state to converge without coordination | Peer-to-peer gossip | [Gossip Protocol](../patterns/distributed/coordination/gossip-protocol.md) |
 | Two big copies compared without sending all the data | Hash tree | [Merkle Tree](../patterns/distributed/coordination/merkle-tree.md) |
@@ -131,3 +131,4 @@ Copies drift even when every write is sent to all of them. Two replicas compare 
 - [CAP Theorem](./cap-theorem.md) — Names the trade-off replication makes explicit the moment the network partitions.
 - [Scalability](./scalability.md) — Sharding multiplies the replicas and quorums this theme has to keep in sync.
 - [Resilience](./resilience.md) — Durable, replicated state is what lets a system recover instead of losing data.
+- [Multi-Step Processes](./multi-step-processes.md) — Where one flow spans services with no shared copy: saga, outbox and inbox sequence local commits there, and here they keep copies and consumers in step.

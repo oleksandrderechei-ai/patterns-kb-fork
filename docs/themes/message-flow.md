@@ -14,14 +14,14 @@ Once systems talk through messages, each message still has to reach the right pl
 ## The question
 <!--meta block=description-->
 
-A queue moves a message from one producer to one consumer. Real integrations need more: routing to the right queue or several, translating mismatched fields, handling oversized payloads, bridging brokers. Each is a step added on the channel, leaving producer and consumer unchanged. A **channel** is the pipe messages travel. A **filter** reads from one channel and writes to another. A **correlation identifier** ties a set of messages together. A **payload** is the body. A **broker** holds the channels.
+Real integrations need more than a queue: routing to the right queue or several, translating mismatched fields, handling oversized payloads, bridging brokers. Each is a step added on the channel; most leave producer and consumer unchanged, but a claim check has the producer store the file and the consumer fetch it. A **channel** is the pipe messages travel. A **correlation identifier** ties a set of messages together. A **payload** is the body. A **broker** holds the channels.
 
 ## Explained
 <!--meta block=explain-->
 
-A queue moves a message from one producer to one consumer. Real integrations need more, and you add each step on the channel without changing producer or consumer. A router sends each message to exactly one channel by rules. A recipient list copies it to every channel in a list you keep as data. A translator reshapes fields and encodings in flight. A splitter breaks a composite message into one per element, and an aggregator rejoins them. Scatter-gather asks several parties at once and waits for the slowest, not the sum. A claim check keeps a large payload out of the channel. A bridge joins two brokers. Each step has a cost. Looking inside a body ties the router to the message's shape, so keep rules short with a default channel. An aggregator holds state, so give it a completeness rule. A bridge has no shared transaction, so make consumers safe to repeat.
+A queue moves a message from one producer to one consumer. Real integrations need more, and you add each step on the channel, mostly without changing producer or consumer. A router sends each message to exactly one channel by rules. A recipient list copies it to every channel in a list you keep as data. A translator reshapes fields and encodings in flight. A splitter breaks a composite message into one per element, and an aggregator rejoins them. Scatter-gather asks several parties at once and waits for the slowest, not the sum. A claim check keeps a large payload out of the channel. A bridge joins two brokers. Each step has a cost. Looking inside a body ties the router to the message's shape, so keep rules short with a default channel. An aggregator holds state, so give it a completeness rule. A bridge has no shared transaction, so make consumers safe to repeat.
 
-**Example.** A shipping quote needs five carriers, and each takes 400 ms. Asked in turn, the customer waits 2 s. Scatter-gather asks all five at once and waits about 400 ms for the slowest. A splitter turns an order of 20 line items into 20 messages, a content-based router sends the heavy ones to a freight queue, and an aggregator releases one combined message when all 20 replies have arrived, matching them by a shared order id. The cost is the aggregator's state, which holds up to 20 pending parts per order until the set is complete.
+**Example.** A shipping quote needs five carriers, and each takes 400 ms. Asked in turn, the customer waits 2 s. Scatter-gather asks all five at once and waits about 400 ms for the slowest, with a deadline that returns the quotes in hand if one carrier hangs. A splitter turns an order of 20 line items into 20 messages, a content-based router sends the heavy ones to a freight queue, and an aggregator releases one combined message when all 20 processed parts have arrived, matching them by a shared order id. The cost is the aggregator's state, which holds up to 20 pending parts per order until the set is complete.
 
 ## The trade-space
 <!--meta block=tradespace-->
@@ -43,7 +43,7 @@ A filter on a single input channel that forwards each message to one of several 
 
 ### [Content-Based Router](../patterns/messaging/content-based-router.md) {#tour-content-based-router}
 
-It opens the message and forwards by what it finds, with a short ordered rule set and a default channel. A payload that matches no rule goes to the dead-letter channel rather than nowhere.
+It opens the message and forwards by what it finds, with a short ordered rule set and a default channel. A payload that matches no rule goes to the default channel, or to the dead-letter channel (where messages that cannot be delivered are parked) if none exists, rather than nowhere.
 
 ### [Recipient List](../patterns/messaging/recipient-list.md) {#tour-recipient-list}
 
@@ -63,7 +63,7 @@ The step fetches missing data from another source and merges it into the message
 
 ### [Canonical Data Model](../patterns/messaging/canonical-data-model.md) {#tour-canonical-data-model}
 
-Each application translates to and from one shared format instead of to every other application, so n applications need n translators, not n squared.
+Each application translates to and from one shared format instead of to every other application, so n applications need about n translator pairs, not a pair for every two applications.
 
 ### [Splitter](../patterns/messaging/splitter.md) {#tour-splitter}
 
@@ -71,19 +71,19 @@ Takes a composite payload such as a batch, an order with line items or a repeati
 
 ### [Aggregator](../patterns/messaging/aggregator.md) {#tour-aggregator}
 
-A stateful step that recognises which messages belong together by a shared correlation identifier, folds their payloads and releases the result when a completeness rule says the set is done. A window over arrival time is the commonest rule.
+A stateful step that recognises which messages belong together by a shared correlation identifier, folds their payloads and releases the result when a completeness rule says the set is done. A window over arrival time is one common rule, and a count from the splitter's total is another. Dedupe by sequence number before counting, so a repeated part cannot close the set early. Set a timeout for a set that never completes, then release the partial result or dead-letter it.
 
 ### [Resequencer](../patterns/messaging/resequencer.md) {#tour-resequencer}
 
-Messages that arrive out of order are held until the gap fills, then released in sequence. Each message passes on unchanged.
+Messages that arrive out of order are held until the gap fills, then released in sequence. Each message passes on unchanged. A message that never arrives holds the rest, so bound the wait by time or buffer size, then release past the gap and log the skipped sequence number.
 
 ### [Scatter-Gather](../patterns/messaging/scatter-gather.md) {#tour-scatter-gather}
 
-It composes the earlier steps: scatter fans a request out, often through a recipient list, and gather is an aggregator. You wait for the slowest answer rather than the sum, and a correlation identifier ties the responses back to the request.
+It composes the earlier steps: scatter fans a request out, often through a recipient list, and gather is an aggregator. You wait for the slowest answer rather than the sum, so set a deadline and decide whether to return the partial set or fail the request. A correlation identifier ties the responses back to the request.
 
 ### [Claim Check](../patterns/messaging/claim-check.md) {#tour-claim-check}
 
-Store the large file once in a place built for files and put only a reference on the channel. The message stays small, the services that never open the file never touch it, and the store write and the publish are made atomic by an outbox.
+Store the large file once in a place built for files and put only a reference on the channel. The message stays small, and the services that never open the file never touch it. Write the file first, then publish the reference through an outbox; a crash leaves an orphan file, which a lifecycle rule sweeps. Keep retention longer than the slowest consumer or a replay.
 
 ### [Messaging Bridge](../patterns/messaging/messaging-bridge.md) {#tour-messaging-bridge}
 
