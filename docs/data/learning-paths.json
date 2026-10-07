@@ -764,7 +764,7 @@
       },
       "event-storming": {
         "role": "Read models for the questions the wall raised",
-        "tour": "The questions people ask during a session — \"how would you know that?\", \"where do you look that up?\" — are read models. They rarely line up with the aggregates beside them, which is the observation that makes separating the two sides worth its cost.",
+        "tour": "The questions people ask during a session — \"how would you know that?\", \"where do you look that up?\" — are read models. They rarely line up with the aggregates beside them, which is the observation that makes separating the two sides worth considering. A read model is a view built to answer one question; the aggregate is the side that accepts changes.",
         "fluency": "Read models for the questions the wall raised"
       },
       "event-modeling": {
@@ -789,7 +789,7 @@
       },
       "event-storming": {
         "role": "Keep the discovered events as the record",
-        "tour": "A session that produces a good event model makes this look inevitable, and that is a trap worth naming: discovering the domain in events does not oblige you to store it in events. The technique is a modelling tool, and the storage decision is separate and much more expensive.",
+        "tour": "A session that produces a good event model makes this look inevitable, but that is a trap: discovering the domain in events does not oblige you to store it in events. The technique is a modelling tool, and the storage decision is separate and costlier.",
         "fluency": "Keep the discovered events as the record"
       },
       "event-modeling": {
@@ -1005,7 +1005,7 @@
       },
       "event-storming": {
         "role": "The cluster of events sharing one consistency rule",
-        "tour": "Aggregates are not drawn, they are noticed: a group of events that must agree with each other, guarded by the same rule, accepting the same commands. Finding them late in the session rather than early is deliberate, because a boundary proposed before the events are on the wall is a guess.",
+        "tour": "Aggregates are added in a late pass: a group of data that must change together, guarded by the same rule, accepting the same commands. Adding them late rather than early is deliberate, because a boundary proposed before the events are on the wall is a guess.",
         "fluency": "The cluster of events sharing one consistency rule"
       }
     },
@@ -1017,14 +1017,14 @@
       },
       "event-storming": {
         "role": "Where the language changes along the timeline",
-        "tour": "The clearest signal on a wall is a word that changes meaning partway along it — an \"order\" in fulfilment is not the \"order\" in billing. That point is a context boundary, and it is visible in a way no amount of up-front modelling makes visible.",
+        "tour": "The clearest signal on a wall is a word that changes meaning partway along it: an \"order\" in fulfilment is not the \"order\" in billing. That point often marks a context boundary, one that up-front modelling alone rarely shows.",
         "fluency": "Where the language changes along the timeline"
       }
     },
     "/patterns/ddd/domain-event.html": {
       "event-storming": {
         "role": "The note on the wall, in the past tense",
-        "tour": "The orange note is the pattern. A past-tense statement of something the business considers to have happened is exactly what the workshop asks people to write, which is why the technique produces domain events rather than requirements — and why the names survive into the code unchanged.",
+        "tour": "A domain event is the orange note. A past-tense statement of something the business considers to have happened is what the workshop asks people to write, so the technique produces domain events rather than requirements. The names usually survive into the code.",
         "fluency": "The note on the wall, in the past tense"
       },
       "event-modeling": {
