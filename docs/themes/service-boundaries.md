@@ -22,7 +22,7 @@ A service should do one thing, but no procedure turns requirements into a bounda
 
 A service boundary is the line that says which work belongs in one service, and no procedure produces it from requirements, so you draw it from the business domain and test it against symptoms. Work through four steps: describe the business functions and how they depend on each other, define one [bounded context](../patterns/ddd/bounded-context.md) per subdomain (a part of the business with its own vocabulary), find the [entities](../patterns/ddd/entity.md) and [aggregates](../patterns/ddd/aggregate.md) inside each, then adjust for team size, scale and security. Cut too fine and services chatter, latency stacks per call, and two services must be released together. Cut too coarse and one service holds two meanings of the same word and one team blocks another. Prefer the coarse mistake, because splitting a service is a known refactor while pulling one capability out of four services is a data merge. When you must move off a wrong cut, migrate gradually with a [strangler fig](../patterns/distributed/coordination/strangler-fig.md).
 
-- **Boundaries expire.** A cut right at four capabilities is wrong at forty. Review boundaries on a schedule.
+- **Boundaries expire.** A cut that fits four capabilities can chat or block at forty. Review when a decide symptom appears or each planning cycle.
 - **Redrawing is expensive.** Moving a line costs real development work. Start coarser when the answer is unclear.
 - **Org chart drift.** Systems drift toward team structure. Align teams to contexts on purpose.
 
@@ -31,19 +31,15 @@ A service boundary is the line that says which work belongs in one service, and 
 ## The trade-space
 <!--meta block=tradespace-->
 
-There are two ways to get a boundary wrong, and they are not symmetric.
+Cut too finely and the services spend their time talking to each other. Chatty APIs between two services are the clearest evidence that the cut went through something cohesive: latency stacks up call by call, availability couples, and a change to one shape forces a matching change in the other. Interdependencies that make two services deploy together are the same fault further along. At that point you pay the operating cost of many services and get the independence of none.
 
-Cut too finely and the services spend their time talking to each other. Chatty APIs between two services are the clearest evidence that the cut went through something cohesive: latency stacks up call by call, availability couples, and a change to one shape forces a matching change in the other. Interdependencies that make two services deploy together are the same fault further along — at that point you are paying the operating cost of many services and collecting the independence of none.
+Cut too coarsely and you keep the monolith's problems with a network in the middle. A service holding two domain models has one word meaning two things inside it, one team's release blocking another's, and more surface than a small team can own end to end. Prefer the coarse mistake. Splitting a service that grew a second responsibility is a familiar refactor with a clear before and after when that responsibility already owns separable data; if both share tables, the split carries its own data migration. Pulling one capability back out of four services that each hold a piece of it is a migration with a data merge in the middle.
 
-Cut too coarsely and you keep the monolith's problems with a network in the middle. A service holding two domain models has one word meaning two things inside it, one team's release blocking another's, and more surface than a small team can own end to end.
+Consistency pulls toward coarser boundaries, and it does not always win. Grouping related functionality into one service avoids a class of integrity problems, but strong consistency is not required everywhere, and decomposing often outweighs the cost of eventual consistency when the stale window is tolerable and a compensating step exists. Decide it per invariant rather than per system. Price it as the work to reconcile or compensate when two services disagree for a while, plus the time a reader may see stale data.
 
-Prefer the coarse mistake. Splitting a service that grew a second responsibility is a familiar refactor with a clear before and after; pulling one capability back out of four services that each hold a piece of it is a migration with a data merge in the middle.
+Team structure is the other force, and it acts whether or not you invite it. Systems tend to mirror the communication structures of the organizations that build them ([Conway's Law](../principles/conways-law.md)), so boundaries drawn without reference to team ownership drift toward the org chart on their own. Define the contexts from the domain first, then align ownership to them. If one team owns several unrelated contexts, or one context needs coordination across many teams, revisit the boundaries or the team structure. Scale and security pull the same way: a part of the system with a different load profile or compliance boundary can justify a cut the domain alone would not, and you pay for it in the chatty-call cost above.
 
-Consistency pulls toward coarser boundaries, and it should not always win. Grouping related functionality into one service does avoid a class of integrity problems, but strong consistency is not required everywhere, and the benefit of decomposing often outweighs the cost of managing eventual consistency. Decide it per invariant rather than per system.
-
-Team structure is the other force, and it acts whether or not you invite it. Systems mirror the communication structures of the organizations that build them, so boundaries drawn without reference to team ownership drift toward the org chart on their own. Define the contexts from the domain first and align ownership to them deliberately — and when one team has to own several unrelated contexts, or one context needs coordination across many teams, revisit the boundaries or revisit the team structure.
-
-Two contexts can hold the same real-world thing and disagree about what it is, and that is the design working rather than failing. A maintenance context needs a vehicle's service history, mileage and model; a scheduling context needs only whether it is free and when it arrives. One shared model serving both is larger than either needs and cannot change without both teams agreeing — see [Bounded Context](../patterns/ddd/bounded-context.md). Build the vocabulary inside each boundary with the people who do that work, and let the same word mean two things across the line. Getting there needs no formal method: a whiteboard and the right people in the room is enough, and event storming is one way to run the session if the group wants a format.
+Two contexts can hold the same real-world thing and disagree about what it is, and that is the design working rather than failing. A maintenance context needs a vehicle's service history and mileage; a scheduling context needs only whether it is free and when it arrives. One shared model serving both is larger than either needs and cannot change without both teams agreeing; see [Bounded Context](../patterns/ddd/bounded-context.md). Build the vocabulary inside each boundary with the people who do that work, and let the same word mean two things across the line. A whiteboard and the right people is enough while one group holds the domain knowledge; when several groups disagree, run a structured session such as [event storming](./event-storming.md).
 
 ## The patterns that draw the line
 <!--meta block=tour-->
@@ -54,7 +50,7 @@ Two contexts can hold the same real-world thing and disagree about what it is, a
 
 ### [Bounded Context](../patterns/ddd/bounded-context.md) {#tour-bounded-context}
 
-This is the first cut, and the rule that follows from it is strict: a service should never span more than one bounded context. A candidate that mixes two domain models is telling you the analysis is unfinished — go back to the map, not forward to the code. Contexts are never isolated, so record how they meet: an upstream context supplying a downstream one under a negotiated contract, a published application programming interface (API) in a shared format that several downstream contexts consume, a translation layer where an upstream model would otherwise leak, or no integration at all.
+This is the first cut: a service should end up spanning no more than one bounded context. A candidate that mixes two domain models is telling you the analysis is unfinished, so go back to the map, not forward to the code. If the map cannot be finished yet, accept the coarse cut and split later. Contexts are rarely isolated, so record how they meet: an upstream context supplying a downstream one under a negotiated contract, a published application programming interface (API) in a shared format that several downstream contexts consume, a translation layer where an upstream model would otherwise leak, or no integration at all.
 
 ### [Context Map](../patterns/ddd/context-map.md) {#tour-context-map}
 
@@ -66,11 +62,11 @@ Inside a context, the first question about each concept is whether it has an ide
 
 ### [Value Object](../patterns/ddd/value-object.md) {#tour-value-object}
 
-The complement: a concept with no identity, equal to another whenever its attributes are equal — a money amount, a date range, a delivery address. Value objects settle a boundary question cheaply, because carrying no identity means they cross a service boundary as a copy rather than a reference. That is exactly what you want when a shipping context needs to know where to deliver but has no business owning the customer record.
+The complement: a concept with no identity, equal to another whenever its attributes are equal — a money amount, a date range, a delivery address. Value objects settle a boundary question cheaply, because carrying no identity means they cross a service boundary as a copy rather than a reference. That is exactly what you want when a shipping context needs to know where to deliver but has no business owning the customer record. The cost is that the copy can go stale, so decide who refreshes it.
 
 ### [Aggregate](../patterns/ddd/aggregate.md) {#tour-aggregate}
 
-An aggregate clusters entities and value objects behind one root that owns an invariant spanning them, which makes it the strongest service candidate you have — a well-drawn aggregate already carries the four properties a well-drawn service needs. It comes from business requirements rather than technical ones. It is functionally cohesive. It is a boundary of persistence. And it is loosely coupled to the other aggregates. Domain services are candidates too: stateless operations spanning several aggregates, which usually become a workflow across services.
+An aggregate clusters entities and value objects behind one root that owns an invariant spanning them, It is the smallest unit a boundary may not cut through, so it is a strong candidate to sit inside a service, not a service by default: one service per aggregate gives the chatty cut the tradespace warns about. Group aggregates that share an invariant or one team. A well-drawn aggregate comes from business requirements, is functionally cohesive, bounds persistence and is loosely coupled to the other aggregates, the four properties a well-drawn service needs. Domain services are candidates too: stateless operations spanning several aggregates, which usually become a workflow across services.
 
 ### [Domain Service](../patterns/ddd/domain-service.md) {#tour-domain-service}
 
@@ -78,7 +74,7 @@ A rule that belongs to no single aggregate or entity lives in a stateless servic
 
 ### [Anti-Corruption Layer](../patterns/ddd/acl.md) {#tour-acl}
 
-When the context across the boundary is a legacy system or a vendor, integrating directly lets its schema and vocabulary in one call at a time, until your model is a copy of theirs and you can no longer model your own domain. A translation layer on your side keeps your domain code seeing only its own types. It also answers a subtler boundary question: when your context needs something another context owns, you can call across directly, or stand up a mediating service inside your boundary that exposes a shape better suited to you. Weigh the network cost of the direct call, how well their schema fits yours, and how expensive cross-team coordination has become.
+When the context across the boundary is a legacy system or a vendor, integrating directly lets its schema and vocabulary in one call at a time, until your model is a copy of theirs and you can no longer model your own domain. A translation layer on your side keeps your domain code seeing only its own types. It also answers a subtler boundary question: when your context needs something another context owns, you can call across directly, or stand up a mediating service inside your boundary that exposes a shape better suited to you. Weigh the network cost of the direct call, how well their schema fits yours, and how expensive cross-team coordination has become. You pay in translation code to maintain and one more hop.
 
 ### [Strangler Fig](../patterns/distributed/coordination/strangler-fig.md) {#tour-strangler-fig}
 
@@ -89,18 +85,19 @@ Boundaries are usually drawn against a system that already exists, and a wholesa
 ## Validating a candidate design
 <!--meta block=decide-->
 
-Run a candidate decomposition against the symptoms below. Each one is observable — in a release calendar, a trace, or a team's standup — which is what makes it a better test than asking whether the design feels clean.
+Each symptom shows up in a release calendar, a trace or a standup: count calls per request in a trace, the share of releases that ship together, and whether one team can own and run the service.
 
 | The symptom | What it says about the boundary | What to do |
 | --- | --- | --- |
-| Two services have to be released together | The split does not follow the real dependency | Merge them, or move the shared decision into one of them |
+| Two services have to be released together | The split does not follow the real dependency, and the system drifts toward a [distributed monolith](../hazards/distributed-monolith.md) | Merge them, or move the shared decision into one of them |
 | Their APIs are chatty and constantly exchanging information | The cut went through something cohesive | Merge, or move the function to the side that calls it most |
-| One service contains two domain models | It spans more than one [bounded context](../patterns/ddd/bounded-context.md) | Go back to step two and split on the context line |
+| One service contains two domain models | It spans more than one [bounded context](../patterns/ddd/bounded-context.md) | Split on the [bounded context](../patterns/ddd/bounded-context.md) line, one context per service |
 | Only a large team could build and run it | The service is too big to be owned independently | Split it along the [aggregates](../patterns/ddd/aggregate.md) inside it |
-| A change to one service's shape forces a matching change next door | They are coupled through a shared model | Publish a contract, or put an [anti-corruption layer](../patterns/ddd/acl.md) between them |
-| An invariant spans two services | The boundary crosses a consistency requirement | Group them — unless eventual consistency is acceptable here, which you should price rather than assume |
+| A change to one service's shape forces a matching change next door | They are coupled through a shared model | Publish a contract, record the relationship in a [context map](../patterns/ddd/context-map.md), or put an [anti-corruption layer](../patterns/ddd/acl.md) between them |
+| An invariant spans two services | The boundary crosses a consistency requirement | Group them — unless eventual consistency is acceptable here, which you should price rather than assume: count the stale-read window and the repair path when the second write fails |
 | One team owns three unrelated contexts | Ownership does not match the domain | Revisit the boundaries, or revisit the team structure |
 | Nobody can agree where the line goes | The analysis is not finished | Draw it coarser and move on; splitting later is cheaper than merging later |
+| Two services read or write the same tables | The boundary leaks through storage | Give one service ownership of the data and expose it through a contract, or merge them |
 
 ## Related areas
 <!--meta block=siblings-->
@@ -108,3 +105,4 @@ Run a candidate decomposition against the symptoms below. Each one is observable
 - [Microservices Design](./microservices-design.md) — What you design once the boundaries are settled: communication, the client edge, and data.
 - [Architecture Styles](./architecture-styles.md) — Whether to decompose vertically at all, and what the alternatives cost.
 - [API Design](./api-design.md) — The contracts that make a boundary something other teams can build against.
+- [Event Storming](./event-storming.md) — How the group finds the seams before you test them: events on a wall, contexts where the language changes.

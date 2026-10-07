@@ -14,29 +14,30 @@ A frontend is not a page — it is a program that renders. As it grows from one 
 ## The question
 <!--meta block=description-->
 
-A thousand buttons wired to shared state, fetched from a dozen endpoints and shipped by several teams fail like any system: responsibilities blur and builds collide. Reason about three independent axes: what each component owns, how state and dependencies flow, and how the whole UI is composed, from shared building blocks to separately deployed slices. MVC, MVP and MVVM underlie all three, and the patterns here are finer moves inside them.
+A UI of a thousand buttons wired to shared state, fed by a dozen endpoints and shipped by several teams fails like any large system: responsibilities blur and builds collide. Reason about three independent axes: what each component owns, how state and dependencies flow, and how the whole UI is composed, from shared building blocks to separately deployed slices. Model-view-controller (MVC), model-view-presenter (MVP) and model-view-view-model (MVVM) set the responsibility split, and the patterns here are finer moves around it.
 
 ## Explained
 <!--meta block=explain-->
 
-Frontend architecture is the set of choices that keep a large UI changeable as it grows from a button into thousands of parts. Judge your pain on three axes, because a fix for one does not help another. The first is what each component owns. A component that both fetches and draws cannot be tested without a network, so split it into a [container](../patterns/frontend/container-presentational.md) that fetches and a view that only draws. The second is how a value travels. Passing it through five components that do not use it is fixed by a [provider](../patterns/frontend/provider.md) that publishes it to a whole subtree. State changed from everywhere is fixed by one store where changes flow one way, as in [flux](../patterns/frontend/flux.md). The third is how the whole is assembled. A shared set of building blocks keeps screens consistent, and [micro-frontends](../patterns/frontend/micro-frontends.md), slices that different teams deploy alone, end a shared build queue. For a small app with one team, local state and props are enough.
+Frontend architecture is the set of choices that keep a large UI changeable as it grows from a button into thousands of parts. Judge your pain on three axes, because a fix for one does not help another. The first is what each component owns. A component that both fetches and draws is hard to test without a network, so split it into a [container](../patterns/frontend/container-presentational.md) that fetches and a view that only draws. The second is how a value travels. Passing it through five components that do not use it is fixed by a [provider](../patterns/frontend/provider.md) that publishes it to a whole subtree. State changed from everywhere is fixed by one store where changes flow one way, as in [flux](../patterns/frontend/flux.md). The third is how the whole is assembled. A shared set of building blocks keeps screens consistent, and [micro-frontends](../patterns/frontend/micro-frontends.md), slices that different teams deploy alone, let each team ship without waiting on another's build, at the price of a shell and agreed contracts. For a small app with one team, local state and props are enough.
 
 - **More files.** Splitting fetching from drawing adds files, so split only components you must test alone.
 - **Ceremony.** One-way state flow adds steps to every change, so keep local state local.
-- **Duplicate code.** Slices may each bundle their own framework copy and need agreements between teams, so share the framework and agree on contracts.
+- **Duplicate code.** Slices may each bundle their own framework copy, so share one; that ties every slice to one framework version, so upgrades are agreed.
+- **Wide re-renders.** A changed provider value re-renders every consumer, so publish only slow-changing values and keep fast-changing state in a store.
 
-**Example.** A team of 5 has a product list that fetches and draws in one file. To test it they need a live server. They split it into a container that fetches and a view that takes data as input, and test the view with fake data in milliseconds. That is 2 files, not 1. A theme colour passes through 5 layers, so they add a provider. Later 4 teams share one 25-minute build and a Thursday release. They split into 4 slices, each shipped alone. The cost is that each slice may bundle its own copy of the framework, so they share one.
+**Example.** A team of 5 engineers has a product list that fetches and draws in one file. To test it they need a live server. They split it into a container that fetches and a view that takes data as input, and test the view with fake data in milliseconds. That is 2 files, not 1. A theme colour passes through 5 layers, so they add a provider. Later 4 teams share one 25-minute build and a Thursday release. They split into 4 slices, each shipped alone. The cost is that each slice may bundle its own copy of the framework, so they share one and agree to upgrade it together.
 
 ## The tradespace
 <!--meta block=tradespace-->
 
-Three axes carry the tension, and the first is **where a component's responsibility stops**. Let a component both fetch and render and it is impossible to test and reuse; split it — a container that knows where data comes from over a presentational component that only knows how it looks — and you gain pure, testable views at the cost of more files. The same instinct, applied to behavior rather than data, gives you render props (and its successor, hooks): hand a component a function and let it decide what to render, so one piece of stateful logic drives many different UIs.
+Three axes carry the tension, and the first is **where a component's responsibility stops**. Let a component both fetch and render and it is hard to test without a live server or a mock, and hard to reuse against another data source. Split it into a container that knows where data comes from and a presentational component that only knows how it looks, and you gain pure, testable views at the cost of more files. The same instinct, applied to behavior rather than data, gives you render props (and its successor, hooks): hand a component a function and let it decide what to render, so one piece of stateful logic drives many different UIs.
 
-The second axis is about **flow**, and it has two failure modes. Passing a value down through five components that don't use it — prop-drilling — is answered by a provider that publishes a value to a whole subtree so any descendant reads it directly; this is inversion of control for dependencies, the browser's version of [dependency injection](../patterns/gof/extra/dependency-injection.md). The opposite failure is state that mutates from everywhere and can't be traced: the answer is Flux, a single store where change flows one way — action → reducer → view — which is, essentially, event-sourcing running in the client. Underneath both sits the [observer](../patterns/gof/behavioral/observer.md): reactive re-rendering is just automatic notification on state change.
+The second axis is about **flow**, and it has two failure modes. Passing a value down through five components that don't use it (prop-drilling) is answered by a provider that publishes a value to a whole subtree so any descendant reads it directly. This is inversion of control for dependencies, the browser's version of [dependency injection](../patterns/gof/extra/dependency-injection.md), though the consumer looks the value up rather than receiving it. The opposite failure is state that mutates from everywhere and can't be traced: the answer is Flux, a single store where change flows one way (action → reducer → view), which resembles event-sourcing in the client: actions are the events, though only devtools keep them. Underneath both sits the [observer](../patterns/gof/behavioral/observer.md): reactive re-rendering is just automatic notification on state change.
 
 The third axis is **scale of composition**. At the small end, atomic design imposes a shared vocabulary — atoms compose into molecules into organisms — so a design system stays consistent across screens; it is the [composite](../patterns/gof/structural/composite.md) pattern applied to a UI. At the large end, when one giant build becomes a place teams collide, micro-frontends decompose the application itself into independently deployed slices — microservices for the browser — usually paired with a [backend-for-frontend](../patterns/distributed/routing/bff.md) per slice.
 
-```mermaid caption="Three independent axes. Pick the one your pain is on before reaching for a pattern — solving a flow problem with a composition tool is how frontends over-engineer."
+```mermaid caption="Three independent axes. Pick the one your pain is on before reaching for a pattern: solving a flow problem with a composition tool is a common way for frontends to over-engineer."
 flowchart TD
     Q{"Which question are you answering?"}
     Q -->|"A component owns too much"| R["Responsibility: container/presentational, render-props"]
@@ -61,7 +62,7 @@ The view does no deciding: it renders what the presenter sets and reports clicks
 
 ### [MVVM](../patterns/architecture/mvvm.md) {#tour-mvvm}
 
-The foundation the rest sits on. A view-model exposes state and commands, and the view binds to it declaratively, so you describe what the user interface (UI) should show rather than imperatively poking the document object model (DOM). Every modern reactive framework is a model-view-view-model (MVVM) engine with the binding automated — which is why the finer patterns below are all moves made inside this separation.
+The foundation the rest sits on. A view-model exposes state and commands, and the view binds to it declaratively, so you describe what the user interface (UI) should show rather than imperatively poking the document object model (DOM). Many reactive frameworks are model-view-view-model (MVVM) engines with the binding automated, so most of the finer patterns below are moves made inside this separation.
 
 ### [Container / Presentational](../patterns/frontend/container-presentational.md) {#tour-container-presentational}
 
@@ -73,11 +74,11 @@ Responsibility split applied to behavior instead of data. A component holds some
 
 ### [Provider](../patterns/frontend/provider.md) {#tour-provider}
 
-The dependency half of the flow axis. Instead of threading a value — theme, auth, a service — through every intermediate component as props, a provider publishes it at a subtree root and any descendant consumes it directly. It is dependency injection expressed in a component tree, and the right tool for genuinely cross-cutting values.
+The dependency half of the flow axis. Instead of threading a value — theme, auth, a service — through every intermediate component as props, a provider publishes it at a subtree root and any descendant consumes it directly. It is dependency injection expressed in a component tree, and the right tool for cross-cutting values that change rarely. A changed value re-renders every consumer, so fast-changing state belongs in a store.
 
 ### [Flux](../patterns/frontend/flux.md) {#tour-flux}
 
-The state half of the flow axis. When mutations come from everywhere and no one can trace a re-render, funnel every change through one store: a view dispatches an action, a pure reducer produces new state, the store pushes it back. One direction, fully traceable, replayable — [event-sourcing](../patterns/architecture/event-sourcing.md) in the browser, with devtools that let you scrub history.
+The state half of the flow axis. When mutations come from everywhere and no one can trace a re-render, funnel every change through one store: a view dispatches an action, a pure reducer produces new state, the store pushes it back. One direction, so every change is traceable, and replayable when reducers are pure and actions are recorded, like [event-sourcing](../patterns/architecture/event-sourcing.md) in the browser, with devtools that let you scrub history.
 
 ### [Observer](../patterns/gof/behavioral/observer.md) {#tour-observer}
 
@@ -104,18 +105,20 @@ Where the frontend meets the network. Rather than every client bending one gener
 ## How to decide
 <!--meta block=decide-->
 
-Name which axis your pain is on before reaching for a pattern — most frontend over-engineering is a flow problem solved with a composition tool, or a small app handed a big-app pattern. Start at the simplest row that meets the need and escalate only when it stops holding.
+Name which axis your pain is on before reaching for a pattern: a common cause of over-engineering is a flow problem solved with a composition tool, or a small app handed a big-app pattern. Rows are grouped by axis, not ordered by simplicity, so check the last row first: if it fits, stop. Otherwise take the row whose symptom matches and reach further only when it stops holding.
 
 | When the symptom is… | Axis | Reach for |
 | --- | --- | --- |
 | Screen logic buried in the click handlers and untestable without the UI | Responsibility | [MVC](../patterns/architecture/mvc.md) |
-| A screen that needs a window to test, with logic in the widget class | Responsibility | [MVP](../patterns/architecture/mvp.md) |
+| Screen logic lives in the widget class and needs a live window to test | Responsibility | [MVP](../patterns/architecture/mvp.md) |
+| Hand-written code keeps the screen in sync with state after every change | Responsibility | [MVVM](../patterns/architecture/mvvm.md) |
 | A component both fetches and renders and can't be tested | Responsibility | [Container / Presentational](../patterns/frontend/container-presentational.md) |
 | The same stateful logic is copied between unlike components | Responsibility | [Render props](../patterns/frontend/render-props.md) / hooks |
 | A value is threaded through layers that don't use it | Flow (dependencies) | [Provider](../patterns/frontend/provider.md) |
 | State mutates from everywhere and re-renders are untraceable | Flow (state) | [Flux](../patterns/frontend/flux.md) / a single store |
 | UI drifts inconsistent across screens and teams | Composition (small) | [Atomic design](../patterns/frontend/atomic-design.md) |
-| One build blocks many teams from shipping independently | Composition (large) | [Micro-frontends](../patterns/frontend/micro-frontends.md) + [BFF](../patterns/distributed/routing/bff.md) |
+| One build blocks many teams from shipping independently, such as a shared build queue or a shared release day | Composition (large) | [Micro-frontends](../patterns/frontend/micro-frontends.md) |
+| Every client bends one general-purpose API to its needs | Composition (large) | [Backend-for-frontend](../patterns/distributed/routing/bff.md) |
 | None of the above — it's a small app, one team | — | Local state and props; don't reach further |
 
 ## Related areas

@@ -14,21 +14,21 @@ Concurrency is more than one thing in flight at once, and the coordination that 
 ## The question
 <!--meta block=description-->
 
-A program with one thread cannot race itself. Once two threads touch the same data, the result depends on how their steps interleave, and a bug no single run reproduces appears. Two questions follow: how do you run many tasks without a thread each, and what do you do about shared state? A **race condition** is an interleaving-dependent result. A **lock** admits one thread at a time.
+A program with one thread of control cannot race on its own data. With two threads on the same data, the result depends on how their steps interleave. A [race condition](../hazards/race-condition.md) is a wrong result that depends on that interleaving, and a lock admits one thread at a time. Two questions follow: how to run many tasks without a thread each, and what to do about shared state? Symptoms: a lost update, a total wrong only under load.
 
 ## Explained
 <!--meta block=explain-->
 
-A race condition happens when two threads touch the same data and the result depends on how their steps interleave. You have three moves. Guard the data with a lock so one thread at a time gets in. Avoid the lock by letting readers see an unchanging version, or by retrying an atomic update until it lands. Or remove the sharing by giving each piece of state one owner. Choose the least powerful move that closes the race, since each step away from the lock trades obvious correctness for throughput. A lock costs waiting when many threads queue behind it, so keep the guarded section small and split read from write where reads dominate. A retry loop costs wasted work under contention and is harder to reason about, so reach for it only once you have measured the lock as the bottleneck. Confinement costs direct access to another thread's data, so pass messages instead. Separately, run the tasks on a bounded pool so thread count cannot grow without limit.
+A race condition happens when two threads touch the same data and the result depends on how their steps interleave. You have three moves. Guard the data with a lock so one thread at a time gets in. Avoid the lock by letting readers see an unchanging version, or by retrying an atomic update until it lands. Or remove the sharing by giving each piece of state one owner. Choose the least powerful move that closes the race, since each step away from the lock adds a cost of its own. A lock costs waiting when many threads queue behind it, so keep the guarded section small and split read from write where reads dominate. A retry loop costs wasted work under contention and is harder to reason about, so reach for it only once you have measured the lock as the bottleneck. Confinement costs direct access to another thread's data, so pass messages instead. Separately, run the tasks on a bounded pool so thread count cannot grow without limit.
 
-**Example.** Eight threads each add 1 to a shared counter 1,000 times. With no guard the total often lands below 8,000, because two threads read the same value and both write back the same increment. Put a lock around the update and the total is always 8,000, at the cost of threads waiting in line. Replace the lock with a compare-and-swap retry and the total is still 8,000 with no waiting, but a thread that loses a swap re-reads and tries again. Confine the counter to one thread that the other seven message and there is nothing to guard, and the cost moves to the mailbox every update passes through.
+**Example.** Eight threads each add 1 to a shared counter 1,000 times. With no guard the total often lands below 8,000, because two threads read the same value and both write back the same increment. Put a lock around the update and the total is always 8,000, at the cost of threads waiting in line. Replace the lock with a compare-and-swap retry and the total is still 8,000 with no lock, but a thread that loses a swap re-reads and tries again. Confine the counter to one thread that the other seven message and there is nothing to guard, and the cost moves to the mailbox every update passes through.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-There are three honest moves on shared mutable state, and they sit on one dial. **Guard** it: put a lock around it so one thread at a time gets in. **Avoid the lock**: let readers see an unchanging version, or retry an atomic update until it lands. **Remove the sharing**: give each piece of state one owner, so no race is possible. Moving along the dial trades simplicity for scale. A lock is correct by inspection and costs waiting when contention is high. A lock-free loop never blocks and costs a retry loop that is hard to reason about. Confinement removes the race by construction and costs you the ability to read another thread's data directly. The [Inventory Management](../designs/inventory-management.md) case study shows where the lock belongs in an object model.
+There are three moves on shared mutable state, and they sit on one dial: guard it, avoid the lock, or remove the sharing. Each move away from the lock costs something different. A lock is correct by inspection and costs waiting when contention is high; with two locks held at once it can [deadlock](../hazards/deadlock.md) unless every thread takes them in the same order. A lock-free loop never holds up the other threads and costs retries that are hard to reason about, and under heavy contention one thread can lose the swap again and again. Confinement removes the race on that state by construction and costs you the ability to read another thread's data directly. The [Inventory Management](../designs/inventory-management.md) case study shows where the lock belongs in an object model.
 
-Running the tasks is a separate axis. A fixed pool of workers bounds how many tasks run at once, and a future lets the caller move on and collect the result later. A semaphore bounds how many threads may hold a resource, which is a budget rather than a mutual exclusion. Pick the least powerful tool that closes the race, because each step down the dial trades obvious correctness for throughput.
+Running the tasks is a separate axis. A fixed pool of workers bounds how many tasks run at once, and a future lets the caller move on and collect the result later. A semaphore bounds how many threads may hold a resource, which is a budget rather than a mutual exclusion.
 
 ## The tour
 <!--meta block=tour-->
@@ -43,11 +43,11 @@ Before you share anything you decide how the work runs. A fixed set of worker th
 
 ### [Fork-Join](../patterns/concurrency/fork-join.md) {#tour-fork-join}
 
-A job splits into small pieces that run on a pool, often with work stealing, then the join waits for them and merges the results.
+A job splits into small pieces that run on a pool, often with work stealing (an idle worker takes queued pieces from a busy one), then the join waits for them and merges the results.
 
 ### [Future / Promise](../patterns/concurrency/future-promise.md) {#tour-future-promise}
 
-Submitting work to the pool hands back a placeholder at once. The caller carries on, and the value or the error is written into the placeholder when the work finishes, so the caller can wait for it only when it truly needs it.
+Submitting work to the pool hands back a placeholder at once. The caller carries on, and the value or the error is written into the placeholder when the work finishes, so the caller waits only when it needs the value.
 
 ### [Mutex](../patterns/concurrency/mutex.md) {#tour-mutex}
 
@@ -55,7 +55,7 @@ A lock with an owner guards the shared data, so two threads cannot interleave th
 
 ### [Semaphore](../patterns/concurrency/semaphore.md) {#tour-semaphore}
 
-A counter holding N permits: acquire takes one and blocks at zero, release returns one. It bounds concurrency as a budget rather than excluding everyone, and it sizes the pool's limit, so work waits at the cap instead of piling into memory.
+A counter holding N permits: acquire takes one and blocks at zero, release returns one. It bounds concurrency as a budget rather than excluding everyone, and it caps how many threads reach one scarce resource, so extra work waits at the cap instead of overloading it.
 
 ### [Monitor Object](../patterns/concurrency/monitor-object.md) {#tour-monitor-object}
 
@@ -63,11 +63,11 @@ The first answer to shared state: a lock plus condition variables around one obj
 
 ### [Double-Checked Locking](../patterns/concurrency/double-checked-locking.md) {#tour-double-checked-locking}
 
-Check for the object without a lock, then lock and check again before creating it. It is subtle: it needs a memory barrier to be correct.
+Check for the object without a lock, then lock and check again before creating it. It is subtle: without a memory barrier (a fence that orders memory writes), another thread can see the reference before the object is fully built.
 
 ### [Read-Write Lock](../patterns/concurrency/rw-lock.md) {#tour-rw-lock}
 
-A finer-grained monitor: any number of threads may hold read mode together, but a writer waits for every reader and then excludes everyone. It pays off when reads far outnumber writes and readers were queueing behind each other for no reason.
+A finer-grained monitor: any number of threads may hold read mode together, but a writer waits for every reader and then excludes everyone. It pays off when reads far outnumber writes and readers were queueing behind each other for no reason. Depending on the lock's policy, a steady stream of readers can starve a writer, and on short critical sections a plain mutex can be faster.
 
 ### [Barrier](../patterns/concurrency/barrier.md) {#tour-barrier}
 
@@ -75,19 +75,19 @@ Threads wait at a barrier until all arrive, so no thread starts the next phase b
 
 ### [Copy-on-Write](../patterns/concurrency/copy-on-write.md) {#tour-copy-on-write}
 
-Nobody edits the shared structure in place. A writer clones it, changes the clone and swaps the one reference, so readers take no lock and never meet a half-updated version. The cost moves to the writer, which copies, so it suits rare writes.
+Nobody edits the shared structure in place. A writer clones it, changes the clone and swaps the one reference, so readers take no lock and never meet a half-updated version. Writers still need one lock or a compare-and-swap on that reference, or two clones lose an update. The cost moves to the writer, which copies, so it suits rare writes.
 
 ### [Lock-Free](../patterns/concurrency/lock-free.md) {#tour-lock-free}
 
-A thread reads a word, computes the new value and commits with a single compare-and-swap that writes only if the word is unchanged. The loser re-reads and tries again, so no thread ever blocks. A mutex is simpler, so go lock-free only when contention proves it necessary.
+A thread reads a word, computes the new value and commits with a single compare-and-swap that writes only if the word is unchanged. The loser re-reads and tries again, so no thread holds up the others, though one thread can lose the swap repeatedly under heavy contention. A mutex is simpler, so go lock-free only when contention proves it necessary.
 
 ### [Thread Confinement](../patterns/concurrency/thread-confinement.md) {#tour-thread-confinement}
 
-Every race needs mutable state and more than one thread on it. Locks discipline the second; confinement removes the first. With a single owning thread per piece of state there is no lock to take and no interleaving to reason about.
+Every race needs mutable state and more than one thread on it. Locks discipline the second; confinement removes the first. With a single owning thread per piece of state there is no lock to take and no data race on that state; keep each invariant inside one message, because messages from different senders can still interleave.
 
 ### [Actor Model](../patterns/concurrency/actor-model.md) {#tour-actor-model}
 
-An actor has private state, a mailbox and a behavior, and never touches another actor's memory. It is confinement made concrete, with message passing as the only way in. Bounded mailboxes push back on a fast sender, and it is the alternative to guarding shared state with a lock.
+An actor has private state, a mailbox and a behavior, and never touches another actor's memory. It is confinement made concrete, with message passing as the only way in. A bounded mailbox pushes back on a fast sender; an unbounded one does not, so set the bound.
 
 ### [Active Object](../patterns/concurrency/active-object.md) {#tour-active-object}
 
@@ -116,6 +116,9 @@ The operating system completes the read or write and hands the finished result t
 | Readers must never wait, and writes are rare | Publish a new copy | [Copy-on-Write](../patterns/concurrency/copy-on-write.md) |
 | A lock is a proven bottleneck on one word of memory | Retry instead of waiting | [Lock-Free](../patterns/concurrency/lock-free.md) |
 | You can arrange for one thread to own the data | Remove the sharing | [Thread Confinement](../patterns/concurrency/thread-confinement.md), [Actor Model](../patterns/concurrency/actor-model.md) |
+| One big job splits into independent pieces | Split, run, merge | [Fork-Join](../patterns/concurrency/fork-join.md) |
+| A thread sits blocked waiting on I/O | Let the system finish the I/O first | [Proactor](../patterns/concurrency/proactor.md) |
+| Every thread must finish a phase before the next starts | Make them wait for each other | [Barrier](../patterns/concurrency/barrier.md) |
 
 ## Related areas
 <!--meta block=siblings-->
@@ -123,3 +126,4 @@ The operating system completes the read or write and hands the finished result t
 - [Resilience](./resilience.md) — Bounding concurrency per dependency is where this theme meets failure containment.
 - [Spike Handling](./spike-handling.md) — What to do when demand outruns the workers you have, rather than how workers share data.
 - [Dealing with Contention](./dealing-with-contention.md) — The same fight between writers, across processes and stores instead of threads in one process.
+- [Streaming](./streaming.md) — Events that arrive faster than they are consumed, where backpressure and buffering matter, rather than how threads share data in one process.

@@ -19,16 +19,16 @@ A program full of mutable objects makes every function a suspect: any call might
 ## Explained
 <!--meta block=explain-->
 
-Functional design builds a program from values that never change and from small functions that combine into larger ones. Because nothing is edited in place, you can read one piece alone and trust it, and shared state stops changing under a reader. Choose it over mutable objects when the bugs come from state that something else changed. It has costs, each with a counter-move. Every update returns a new value, so a deeply nested change becomes a tower of copies, which a lens avoids by making a path into the structure a reusable value. Abstract wrappers such as functors and monads add vocabulary, so add one only when you need to carry context like absence or failure through a chain, and stop when the next step costs your readers more than it saves. Currying and pipelines join functions with no new type, so start there.
+Functional design builds a program from values that never change and from small functions that combine into larger ones. Because nothing is edited in place, you can read one piece alone and trust it, and shared state stops changing under a reader. Choose it over mutable objects when the bugs come from state that something else changed. It has costs, each with a counter-move. Every update returns a new value, so a deeply nested change becomes a tower of copies, which a lens hides from the call site by making a path into the structure a reusable value. Abstract wrappers such as functors and monads add vocabulary, so add one only when you need to carry context like absence or failure through a chain, and stop when the next step costs your readers more than it saves. Currying and pipelines join functions with no new type, so start there.
 
-**Example.** A user record nests an address, which nests a city. To fix a typo in the city you copy the user and the address, three object copies for a one-field change, and the original record stays valid for any reader still holding it. A lens for user.address.city is built once from the lens for address and the lens for city, so the same one-line set is reused at every call site. Chain the cleaning steps as trim, lowercase, validate in a pipeline and each step is a separate function you can test alone. The price is the copying and the three or four new words your team must learn.
+**Example.** A user record nests an address, which holds a city name. To fix a typo in the city you copy the user and the address, two object copies plus the new city name for a one-field change, and the original record stays valid for any reader still holding it. A lens for user.address.city is built once from the lens for address and the lens for city, so the same one-line set is reused at every call site, though the copies are still made underneath. The price is that copying and one new word, lens, for your team to learn.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-The dial is how much structure you add around plain functions, and each step buys composition at the price of a concept to learn. At one end sit immutable values and unary functions. Currying and pipelines let you join those functions with no new type. Functors, then monads, add a wrapper that carries context such as absence, failure or a value not yet arrived, and they keep chains composable regardless of how you group them. Each step buys safer composition and costs a vocabulary your team has to share.
+The dial is how much structure you add around plain functions, and each step buys composition at the price of a concept to learn. At one end sit immutable values and one-argument functions. Currying and pipelines let you join those functions with no new type. Functors, then monads, add a wrapper that carries context such as absence, failure or a value not yet arrived. Monads add one more guarantee: their associativity law keeps a chain composable however you group the steps.
 
-Immutability has its own price: every update returns a new value, so a deeply nested change becomes a tower of copies. Lenses pay that cost down by making a path into the structure a reusable value. Read the abstract words narrowly. A functor and a monad name shapes with laws, not particular classes, and the same wrapper may be both. Stop adding structure at the point where the next step costs your readers more than it saves.
+Immutability has its own price: every update returns a new value, so a deeply nested change becomes a tower of copies. Lenses hide that cost from the call site by making a path into the structure a reusable value; the copies are still built underneath. Read the abstract words narrowly. A functor and a monad name shapes with laws, not particular classes, and the same wrapper may be both: an array is. Stop adding structure at the point where the next step costs your readers more than it saves; a wrapper that carries no absence or failure is already past it.
 
 ## The tour
 <!--meta block=tour-->
@@ -43,7 +43,7 @@ The ground everything else stands on. Once a value is created nothing about it c
 
 ### [Currying](../patterns/functional/currying.md) {#tour-currying}
 
-A function of several arguments becomes a chain of one-argument functions. Calling it with fewer arguments returns a new function holding what you gave, which turns a general function into a ready-made stage you can compose.
+A function of several arguments becomes a chain of one-argument functions. Calling it with fewer arguments returns a new function holding what you gave, which turns a general function into a ready-made stage you can compose. Put the arguments you fix first and the one that varies per call last, so the finished function takes the value and slots into a pipeline.
 
 ### [Pipeline / Composition](../patterns/functional/pipeline.md) {#tour-pipeline}
 
@@ -51,11 +51,11 @@ Given unary functions, pipe(f, g, h) is the function that sends a value through 
 
 ### [Functor](../patterns/functional/functor.md) {#tour-functor}
 
-Any type with a lawful map applies a plain function to the contents and leaves the surrounding shape alone. Arrays, optional values and promises qualify, and map turns a stage into a step that works on wrapped values.
+Any type with a map that obeys the functor laws applies a plain function to the contents and leaves the surrounding shape alone. Arrays and optional values qualify, and map turns a plain function into one that works on wrapped values.
 
 ### [Monad](../patterns/functional/monad.md) {#tour-monad}
 
-Bind runs a function that returns a wrapped value against an existing one and flattens the result, so the caller never unwraps by hand. It is pipeline composition with context, and its three laws keep chains composable however you group them. Every monad is a functor with more structure.
+Bind takes a wrapped value and a function that returns a wrapped value, runs the function on the contents and flattens the result, so the caller never unwraps by hand. It is pipeline composition with context, and its associativity law lets you regroup a chain without changing the result. Use an optional value to carry absence and a wrapper that holds the error to carry failure; the caller reads the final value once. Every monad is a functor with more structure.
 
 ### [Lens / Optics](../patterns/functional/lens-optics.md) {#tour-lens-optics}
 
@@ -79,5 +79,5 @@ A lens pairs a get with a set that returns a new structure. It composes, so the 
 <!--meta block=siblings-->
 
 - [Concurrency](./concurrency.md) — Immutable values are one way to remove the sharing that concurrency has to guard.
-- [Object Design: Behavior](./object-behavior.md) — The same variation handled by objects instead of functions.
+- [Object Behavior](./object-behavior.md) — Behaviour that varies, held in objects instead of passed as functions.
 - [Frontend Architecture](./frontend-architecture.md) — Where immutable state and reducers meet a screen.

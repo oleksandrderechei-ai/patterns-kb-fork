@@ -14,21 +14,23 @@ Every object has to come from somewhere. These patterns decide who creates it, w
 ## The question
 <!--meta block=description-->
 
-Writing new SomeConcreteClass() mid-method is the simplest way to get an object, and it welds that method to that class. Swapping the class, building one in steps, sharing one instance or testing with a stand-in all mean editing the call site. A **product** is what a creation step returns. A **creator** decides which product to build. A **family** is products used together. A **collaborator** is an object a class needs. **Lifecycle** is when an object is made, shared and discarded.
+Writing new SomeConcreteClass() mid-method is the simplest way to get an object, and it welds that method to that class. Swapping the class, building one in steps, sharing one instance or testing with a stand-in all mean editing the call site. A **product** is what a creation step returns. A **creator** decides which product to build. A **family** is products used together. A **collaborator** is an object a class needs. **Lifecycle** is when an object is made and shared.
 
 ## Explained
 <!--meta block=explain-->
 
 Writing new SomeConcreteClass() inside a method welds that method to that class. Creation patterns move the decision out of the caller. A factory method lets a subclass pick the class. An abstract factory returns a matching family of objects. A prototype clones a configured example, and a builder assembles one complex object in named steps. A second group decides how many instances exist and how a class gets its collaborators: a singleton allows one, lazy initialization delays creation until first use, and dependency injection hands the collaborator in. Choose one of these over a plain new when the class must vary, the object is built in steps, or tests need a stand-in. The cost is an extra type to read, and a singleton adds a global. Prefer injection to a global, and use the global on purpose.
 
-**Example.** A report class builds a PdfExporter with new inside its run method. To add a CSV export you edit run, and a test cannot avoid writing a real file. Pass an Exporter in through the constructor and run no longer names a class, so a test hands in a fake that records the call. If the exporter takes a dozen options, a builder sets only the three you need by name instead of 12 positional arguments. If the exporter is costly to start, a lazy accessor builds it on first use and then returns the same one. The cost is three extra types.
+**Example.** A report class builds a PdfExporter with new inside its run method. To add a CSV export you edit run, and a test cannot avoid writing a real file. Pass an Exporter in through the constructor and run no longer names a class, so a test hands in a fake that records the call. If the exporter takes 12 options, a builder sets only the three you need by name instead of 12 positional arguments. If it is costly to start, pass in a provider that builds it on first call and returns the same one afterwards. The cost is an Exporter interface, a builder and a provider, plus wiring them in at startup.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-The patterns split along two questions. The first is who decides the class. A factory method leaves it to a subclass. An abstract factory hands back a matching family. A prototype clones a configured example. A builder separates assembling one complex object from the finished result, so a call names each part instead of passing an unreadable list of arguments. Each moves the decision out of the caller and costs an extra type to read.
+The patterns split along two questions. The first is who decides the class. A factory method leaves it to a subclass. An abstract factory hands back a matching family. A prototype clones a configured example. A builder separates assembling one complex object from the finished result, so a call names each part instead of passing an unreadable list of arguments. Each moves the decision out of the caller. Factory method, abstract factory and builder cost an extra type to read, and abstract factory also edits every factory when a product kind is added.
 
 The second question is how many instances exist and how a class gets its collaborators. A singleton allows one and a monostate shares one state behind ordinary instances, and both put a global in the code. Lazy initialization delays creation until first use. Dependency injection hands the collaborator in, and a service locator makes the class ask a registry for it, which hides the dependency from the signature. Prefer injection when you want tests to substitute a collaborator, and treat a global as a price you pay on purpose.
+
+Two costs are easy to miss. Injection needs one place that builds and passes every collaborator, and a long constructor list shows where it has grown too wide. Lazy initialization, and a singleton reached through an accessor, need a lock or an eager build once threads call them, or two callers can each create an instance.
 
 ## The tour
 <!--meta block=tour-->
@@ -47,15 +49,15 @@ An interface for a family of related objects, such as button and checkbox for on
 
 ### [Builder](../patterns/gof/creational/builder.md) {#tour-builder}
 
-Drive the builder through small named steps and ask it for the finished product, instead of one constructor taking every field. It is the alternative to a family factory when you want one product built in steps, and named steps make an unexpected argument order impossible.
+Drive the builder through small named steps and ask it for the finished product, instead of one constructor taking every field. It is the alternative to a family factory when you want one product built in steps, and named steps remove the positional argument-order mistake, though a wrong value in the right step is still possible.
 
 ### [Prototype](../patterns/gof/creational/prototype.md) {#tour-prototype}
 
-Each object knows how to clone itself, so the client asks an example for a copy of the right concrete type without naming it. A family factory can clone registered prototypes instead of newing them.
+Each object knows how to clone itself, so the client asks an example for a copy of the right concrete type without naming it. A family factory can clone registered prototypes instead of calling new on them. A shallow copy shares nested objects, so copy deeply any field that must stay separate.
 
 ### [Singleton](../patterns/gof/creational/singleton.md) {#tour-singleton}
 
-The class hides its constructor, keeps the sole instance in a static field and hands it out through an accessor. It answers how many instances exist, and it costs you a global, which the next steps offer ways around.
+The class hides its constructor, keeps the sole instance in a static field and hands it out through an accessor. It answers how many instances exist, and it costs you a global, which dependency injection avoids.
 
 ### [Monostate](../patterns/gof/extra/monostate.md) {#tour-monostate}
 
@@ -63,7 +65,7 @@ Every instance looks independent but all data sits in static storage, so any ins
 
 ### [Lazy Initialization](../patterns/gof/extra/lazy-initialization.md) {#tour-lazy-initialization}
 
-An accessor checks whether the value exists, creates and stores it if not, and returns the cached one afterwards. It is the classic way a single instance is created, and it spares you the cost when the value is never needed.
+An accessor checks whether the value exists, creates and stores it if not, and returns the cached one afterwards. It is the classic way a single instance is created, and it spares you the cost when the value is never needed. Two threads reaching it first can each build it unless you add locking, and the first caller pays the full build time.
 
 ### [Service Locator](../patterns/gof/extra/service-locator.md) {#tour-service-locator}
 
@@ -84,10 +86,10 @@ The class declares what it needs, usually as an interface, and an outside party 
 | A client must get a matching set of objects, such as one platform's widgets | Create a family | [Abstract Factory](../patterns/gof/creational/abstract-factory.md) |
 | A constructor takes a dozen arguments and the order is easy to get wrong | Build in named steps | [Builder](../patterns/gof/creational/builder.md) |
 | A configured object exists and you need more like it | Copy it | [Prototype](../patterns/gof/creational/prototype.md) |
-| Exactly one instance must exist and be reachable | One shared instance | [Singleton](../patterns/gof/creational/singleton.md), [Monostate](../patterns/gof/extra/monostate.md) |
+| Exactly one instance must exist and be reachable | One shared instance, only if injecting it is impossible | [Singleton](../patterns/gof/creational/singleton.md), or [Monostate](../patterns/gof/extra/monostate.md) when callers must keep calling new |
 | Building the object is costly and it may never be used | Delay until needed | [Lazy Initialization](../patterns/gof/extra/lazy-initialization.md) |
 | A class creates its own collaborators and tests cannot replace them | Hand them in | [Dependency Injection](../patterns/gof/extra/dependency-injection.md) |
-| Many classes need a shared service and passing it down is clumsy | Look it up | [Service Locator](../patterns/gof/extra/service-locator.md) |
+| Many classes need a shared service and passing it down is clumsy | Look it up, which hides the dependency from the signature; prefer injection when you can pass it | [Service Locator](../patterns/gof/extra/service-locator.md) |
 
 ## Related areas
 <!--meta block=siblings-->

@@ -21,14 +21,14 @@ A method that branches on a type grows a case each time the business adds one. A
 
 A method that branches on a type or a mode grows a case every time the business adds one, and a class that calls five neighbours directly cannot change without touching all five. Behavioural patterns move that variation into objects. Strategy lets the client swap an algorithm, state changes behaviour as the object's own mode changes, and template method fixes a skeleton and lets subclasses fill the steps. A chain passes a request along handlers, and a mediator is the one place colleagues interact. An iterator hides how a collection is walked, a visitor adds an operation without editing the classes, and a memento saves state to restore. Choose by who decides what varies. The cost is more small objects and more indirection to follow, so introduce one only after the second or third case, and keep each to a single reason to change.
 
-**Example.** A checkout method has an if-else on the shipping type: standard, express, pickup. Adding a fourth type means editing it and re-testing all three. Move each into a ShippingStrategy and the checkout holds one reference and calls it, so the fourth type is one new class. A cart that must be undoable keeps a snapshot before each change, so ten changes cost ten snapshots in memory. A request that must pass validation, then auth, then rate limit becomes three handlers in a chain. The price is about 5 small classes where one method with a switch stood.
+**Example.** A checkout method has an if-else on the shipping type: standard, express, pickup. Adding a fourth type means editing it and re-testing all three. Move each into a ShippingStrategy and the checkout holds one reference and calls it, so the fourth type is one new class. A cart that must be undoable keeps a snapshot before each change, so ten changes cost ten snapshots in memory. A request that must pass validation, then auth, then rate limit becomes three handlers in a chain. The price is a strategy interface and a class per case where one method with a switch stood.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
 The patterns sit on three questions. The first is what varies. Strategy swaps an algorithm the client picks, state changes behaviour as the object's own state changes, and template method fixes the skeleton and lets subclasses fill steps. A null object is a do-nothing member of the family that stands in where a caller would otherwise test for null. The shapes look alike, so choose by who decides: the client, the object's own state, or a subclass. The [Elevator](../designs/elevator.md) and [Connect Four](../designs/connect-four.md) case studies work state and a swappable policy through, and the [Rate Limiter](../designs/design-rate-limiter.md) case study swaps limiting algorithms behind one interface.
 
-The second question is where a request goes. A chain lets each handler deal with it or pass it on, and a mediator makes one object the only place colleagues interact. The third is how you work over a structure. An iterator walks a collection, a visitor adds an operation without editing the classes, an interpreter gives a small language its own tree, and a memento saves state so you can restore it. The cost is more small objects and more indirection to follow.
+The second question is where a request goes. A chain lets each handler deal with it or pass it on, and a mediator makes one object the only place colleagues interact. The third is how you work over a structure. An iterator walks a collection, a visitor adds an operation without editing the classes, and an interpreter gives a small language its own tree. A memento is the odd one out: it saves one object's state so you can restore it. The costs differ by member. Most add more small objects and more indirection to follow, a mediator pulls all the coupling into one object that can grow into a god class, and a chain lets a request fall off the end unhandled. Stop when a strategy has one implementation, or when two stable cases still read fine as a plain if.
 
 ## The tour
 <!--meta block=tour-->
@@ -43,7 +43,7 @@ A family of algorithms behind one interface, and the context holds a reference a
 
 ### [State](../patterns/gof/behavioral/state.md) {#tour-state}
 
-The context holds a state object and delegates to it, and each concrete state is a class implementing the same interface. One call does something different depending on which state is plugged in. It is often confused with strategy, which swaps an algorithm rather than following state.
+The context holds a state object and delegates to it, and each concrete state is a class implementing the same interface. One call does something different depending on which state is plugged in. It is often confused with strategy. Here the states usually pick the next state themselves, while a strategy is chosen by the client and stays put.
 
 ### [Template Method](../patterns/gof/behavioral/template-method.md) {#tour-template-method}
 
@@ -51,11 +51,11 @@ One method in a base class calls a fixed sequence of concrete steps, abstract bl
 
 ### [Null Object](../patterns/gof/extra/null-object.md) {#tour-null-object}
 
-A real object with the same interface whose methods do nothing or return a neutral value, handed back instead of null. It is a neutral strategy, it holds no state so one shared instance serves every call site, and it is valid only where the contract allows doing nothing.
+A real object with the same interface whose methods do nothing or return a neutral value, handed back instead of null. It is a neutral strategy. Because it holds no state it can be one shared instance serving every call site; if it records anything, give each caller its own. It is valid only where the contract allows doing nothing.
 
 ### [Chain of Responsibility](../patterns/gof/behavioral/chain-of-responsibility.md) {#tour-chain-of-responsibility}
 
-Handlers line up, and each deals with the request or forwards it to its successor, so the sender never knows which one answers. One handler may stop the request, which a decorator never does. A validator chain is the textbook use.
+Handlers line up, and each deals with the request or forwards it to its successor, so the sender never knows which one answers. One handler may stop the request, which a decorator usually does not, since it normally still calls the object it wraps. Decide what an unhandled request does, because the order of the handlers changes the outcome. A validator chain is the usual use.
 
 ### [Mediator](../patterns/gof/behavioral/mediator.md) {#tour-mediator}
 
@@ -67,7 +67,7 @@ The iterator holds the traversal position and exposes a tiny protocol such as ha
 
 ### [Visitor](../patterns/gof/behavioral/visitor.md) {#tour-visitor}
 
-Each element exposes accept, and the visitor carries one method per element type. A new operation is a new visitor and the element classes never change. A traversal walks the structure and hands each node to the visitor.
+Each element exposes accept, and the visitor carries one method per element type. A new operation is a new visitor and the element classes stay as they are. The price runs the other way: a new element type means editing every visitor, so use it when the hierarchy is stable and the operations change. A traversal walks the structure and hands each node to the visitor.
 
 ### [Interpreter](../patterns/gof/behavioral/interpreter.md) {#tour-interpreter}
 
@@ -75,7 +75,7 @@ One class per grammar rule, and a sentence becomes a syntax tree whose nodes eac
 
 ### [Memento](../patterns/gof/behavioral/memento.md) {#tour-memento}
 
-The originator snapshots its state into an opaque memento, and a caretaker holds mementos without looking inside. Command does and memento captures the state to undo, and immutable snapshots make undo trivial.
+The originator snapshots its state into an opaque memento, and a caretaker holds mementos without looking inside. Command records the action to undo; memento captures the state to restore. Immutable snapshots make restoring simple, but each one costs memory, so cap the history or snapshot only the change.
 
 <!-- tour:end -->
 
@@ -101,3 +101,5 @@ The originator snapshots its state into an opaque memento, and a caretaker holds
 - [Object Creation](./object-creation.md) — Who builds the objects whose behaviour varies.
 - [Object Structure](./object-structure.md) — How objects are wrapped and joined, where this theme varies what they do.
 - [Functional Programming](./functional-programming.md) — The same variation handled by passing functions instead of objects.
+- [Event Modeling](./event-modeling.md) — Where an operation is a command, the user's intent as its own object on a timeline; here a memento only saves state to restore.
+- [Frontend Architecture](./frontend-architecture.md) — Where an observer re-renders views when state changes; here a mediator centralises how objects talk instead of broadcasting.

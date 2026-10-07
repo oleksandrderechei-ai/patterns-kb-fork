@@ -734,7 +734,7 @@
     "/patterns/architecture/ai-agent.html": {
       "harness-engineering": {
         "role": "The loop the harness is built around",
-        "tour": "Start here, because everything else on this page is a decision about this loop. Reason, act, observe, repeat until a stop condition fires — and the stop condition, the tool list and the transcript are all harness, not model.",
+        "tour": "Start here, because everything else on this page is a decision about this loop. Reason, act, observe, repeat until a stop condition fires. The stop condition, the tool list and the transcript are all harness, not model. A turn cap and a token cap set in the runtime are stop conditions the model cannot skip.",
         "fluency": "The loop the harness is built around"
       }
     },
@@ -777,7 +777,7 @@
     "/patterns/architecture/eda.html": {
       "architecture-styles": {
         "role": "Producers assert facts, consumers react on their own clock",
-        "tour": "Producers emit streams of events and consumers react in near real time, joined by a channel rather than by an address. Adding a consumer touches no producer, and a consumer that is down delays nobody. What you inherit is delivery and ordering as explicit design problems, plus eventual consistency in every view built from the stream.",
+        "tour": "Producers emit streams of events and consumers react in near real time, joined by a channel rather than by an address. Adding a consumer touches no producer, and a consumer that is down delays no producer, though the views it feeds fall behind until it returns. What you inherit is delivery and ordering as explicit design problems, plus eventual consistency in every view built from the stream.",
         "fluency": "Producers assert facts, consumers react on their own clock",
         "heading": "Event-Driven"
       }
@@ -817,7 +817,7 @@
     "/patterns/architecture/mvvm.html": {
       "frontend-architecture": {
         "role": "Bind the view declaratively to a view-model",
-        "tour": "The foundation the rest sits on. A view-model exposes state and commands, and the view binds to it declaratively, so you describe what the user interface (UI) should show rather than imperatively poking the document object model (DOM). Every modern reactive framework is a model-view-view-model (MVVM) engine with the binding automated — which is why the finer patterns below are all moves made inside this separation.",
+        "tour": "The foundation the rest sits on. A view-model exposes state and commands, and the view binds to it declaratively, so you describe what the user interface (UI) should show rather than imperatively poking the document object model (DOM). Many reactive frameworks are model-view-view-model (MVVM) engines with the binding automated, so most of the finer patterns below are moves made inside this separation.",
         "fluency": "Bind the view declaratively to a view-model"
       }
     },
@@ -836,7 +836,7 @@
       },
       "architecture-styles": {
         "role": "Put the slow work behind a queue",
-        "tour": "A web front end takes requests, a queue holds the work, and a back-end worker does whatever is resource-intensive, long-running or batch. The two halves scale independently and neither blocks the other, which is the whole benefit. Left unwatched, both halves accrete features until each is a monolith of its own.",
+        "tour": "A web front end takes requests, a queue holds the work, and a back-end worker does whatever is resource-intensive, long-running or batch. The two halves scale independently and the front end does not wait on the worker, which is the benefit. The queue can deliver a message twice, so the worker must tolerate a repeat, and a full queue still backs up the front end. Left unwatched, both halves keep gaining features until each is a monolith of its own.",
         "fluency": "Put the slow work behind a queue"
       }
     },
@@ -989,7 +989,7 @@
     "/patterns/ddd/acl.html": {
       "service-boundaries": {
         "role": "Translate at the seam so a foreign model stays foreign",
-        "tour": "When the context across the boundary is a legacy system or a vendor, integrating directly lets its schema and vocabulary in one call at a time, until your model is a copy of theirs and you can no longer model your own domain. A translation layer on your side keeps your domain code seeing only its own types. It also answers a subtler boundary question: when your context needs something another context owns, you can call across directly, or stand up a mediating service inside your boundary that exposes a shape better suited to you. Weigh the network cost of the direct call, how well their schema fits yours, and how expensive cross-team coordination has become.",
+        "tour": "When the context across the boundary is a legacy system or a vendor, integrating directly lets its schema and vocabulary in one call at a time, until your model is a copy of theirs and you can no longer model your own domain. A translation layer on your side keeps your domain code seeing only its own types. It also answers a subtler boundary question: when your context needs something another context owns, you can call across directly, or stand up a mediating service inside your boundary that exposes a shape better suited to you. Weigh the network cost of the direct call, how well their schema fits yours, and how expensive cross-team coordination has become. You pay in translation code to maintain and one more hop.",
         "fluency": "Translate at the seam so a foreign model stays foreign"
       },
       "event-storming": {
@@ -1001,7 +1001,7 @@
     "/patterns/ddd/aggregate.html": {
       "service-boundaries": {
         "role": "The strongest service candidate already on the board",
-        "tour": "An aggregate clusters entities and value objects behind one root that owns an invariant spanning them, which makes it the strongest service candidate you have — a well-drawn aggregate already carries the four properties a well-drawn service needs. It comes from business requirements rather than technical ones. It is functionally cohesive. It is a boundary of persistence. And it is loosely coupled to the other aggregates. Domain services are candidates too: stateless operations spanning several aggregates, which usually become a workflow across services.",
+        "tour": "An aggregate clusters entities and value objects behind one root that owns an invariant spanning them, It is the smallest unit a boundary may not cut through, so it is a strong candidate to sit inside a service, not a service by default: one service per aggregate gives the chatty cut the tradespace warns about. Group aggregates that share an invariant or one team. A well-drawn aggregate comes from business requirements, is functionally cohesive, bounds persistence and is loosely coupled to the other aggregates, the four properties a well-drawn service needs. Domain services are candidates too: stateless operations spanning several aggregates, which usually become a workflow across services.",
         "fluency": "The strongest service candidate already on the board"
       },
       "event-storming": {
@@ -1013,7 +1013,7 @@
     "/patterns/ddd/bounded-context.html": {
       "service-boundaries": {
         "role": "The first cut — a service never spans two of these",
-        "tour": "This is the first cut, and the rule that follows from it is strict: a service should never span more than one bounded context. A candidate that mixes two domain models is telling you the analysis is unfinished — go back to the map, not forward to the code. Contexts are never isolated, so record how they meet: an upstream context supplying a downstream one under a negotiated contract, a published application programming interface (API) in a shared format that several downstream contexts consume, a translation layer where an upstream model would otherwise leak, or no integration at all.",
+        "tour": "This is the first cut: a service should end up spanning no more than one bounded context. A candidate that mixes two domain models is telling you the analysis is unfinished, so go back to the map, not forward to the code. If the map cannot be finished yet, accept the coarse cut and split later. Contexts are rarely isolated, so record how they meet: an upstream context supplying a downstream one under a negotiated contract, a published application programming interface (API) in a shared format that several downstream contexts consume, a translation layer where an upstream model would otherwise leak, or no integration at all.",
         "fluency": "The first cut — a service never spans two of these"
       },
       "event-storming": {
@@ -1044,7 +1044,7 @@
     "/patterns/ddd/value-object.html": {
       "service-boundaries": {
         "role": "No identity, so it crosses a boundary as a copy",
-        "tour": "The complement: a concept with no identity, equal to another whenever its attributes are equal — a money amount, a date range, a delivery address. Value objects settle a boundary question cheaply, because carrying no identity means they cross a service boundary as a copy rather than a reference. That is exactly what you want when a shipping context needs to know where to deliver but has no business owning the customer record.",
+        "tour": "The complement: a concept with no identity, equal to another whenever its attributes are equal — a money amount, a date range, a delivery address. Value objects settle a boundary question cheaply, because carrying no identity means they cross a service boundary as a copy rather than a reference. That is exactly what you want when a shipping context needs to know where to deliver but has no business owning the customer record. The cost is that the copy can go stale, so decide who refreshes it.",
         "fluency": "No identity, so it crosses a boundary as a copy"
       }
     },
@@ -1181,7 +1181,7 @@
       },
       "microservices-design": {
         "role": "Keep a local read copy of another service's data",
-        "tour": "When a service needs data another service owns, calling across on every read is chatty and ties your availability to theirs. Subscribe to the owner's published events instead and maintain a local view shaped for the query you actually run — explicitly a copy, explicitly behind, with the owner remaining the single source of truth. Publish a schema for those events so serialization is generated rather than hand-written, store only the fields your context needs, and aggregate or batch at high volume, where the event flow itself becomes the bottleneck. Inside one service, the same read-model split is [CQRS](../patterns/architecture/cqrs.md).",
+        "tour": "When a service needs data another service owns, calling across on every read is chatty and ties your availability to theirs. Subscribe to the owner's published events instead and maintain a local view shaped for the query you actually run: a copy that is behind the owner, which remains the single source of truth. Keep a version or sequence number per key and drop any event older than the one applied, so a late event cannot overwrite newer state. To seed or rebuild the view, replay the owner's events or load a snapshot from the owner. Publish a schema for those events so serialization is generated rather than hand-written, store only the fields your context needs, and aggregate or batch at high volume, where the event flow itself becomes the bottleneck. Inside one service, the same read-model split is [CQRS](../patterns/architecture/cqrs.md).",
         "fluency": "Keep a local read copy of another service's data"
       },
       "event-modeling": {
@@ -1215,7 +1215,7 @@
       },
       "microservices-design": {
         "role": "Commit the state change and its event together",
-        "tour": "A service that changes its own state and announces the change does two writes with no shared transaction between them. If the row commits and the publish fails, downstream services never learn; if the publish succeeds and the row rolls back, they act on something that did not happen. Write the event into an outbox table inside the same local commit, and let a relay publish it afterwards — turning two writes into one.",
+        "tour": "A service that changes its own state and announces the change does two writes with no shared transaction between them. If the row commits and the publish fails, downstream services never learn; if the publish succeeds and the row rolls back, they act on something that did not happen. Write the event into an outbox table inside the same local commit, and let a relay publish it afterwards, so the one local commit is the only write that must succeed. The relay can crash after publishing and before marking the row sent, so it delivers at least once and consumers still need idempotency.",
         "fluency": "Commit the state change and its event together",
         "heading": "Transactional Outbox"
       },
@@ -1588,7 +1588,7 @@
     "/patterns/distributed/routing/async-request-reply.html": {
       "api-design": {
         "role": "Answer slow work with a handle instead of a held connection",
-        "tour": "Some operations take longer than any connection between you and the caller will survive. Accepting the request, returning the address of a status resource, and doing the work elsewhere keeps the boundary responsive — and makes the idempotency key above mandatory rather than advisable.",
+        "tour": "Some operations take longer than any connection between you and the caller will survive. Accepting the request, returning the address of a status resource, and doing the work elsewhere keeps the boundary responsive. It also makes the idempotency key on the accepting request close to mandatory, because a timed-out accept is otherwise retried blind.",
         "fluency": "Answer slow work with a handle instead of a held connection"
       }
     },
@@ -1769,7 +1769,7 @@
     "/patterns/distributed/routing/gatekeeper.html": {
       "auth-and-access": {
         "role": "Validate and screen at that entry",
-        "tour": "Validate and screen at that entry. Sitting at the single access point, it performs the actual check — validating credentials and requests before they're allowed further in, so the services behind it can assume what arrives has already been screened.",
+        "tour": "Validate and screen at that entry. At the single access point it checks credentials and requests before they go further. Services behind it can assume what arrives is screened only while no request can skip the gate, so services that hold sensitive data should still verify the token themselves.",
         "fluency": "Validate and screen at that entry"
       },
       "global-traffic-and-ingress": {
@@ -1829,7 +1829,7 @@
     "/patterns/distributed/routing/pagination.html": {
       "api-design": {
         "role": "Bound what one request can return, however much data exists",
-        "tour": "A collection endpoint with no upper bound is a promise you cannot keep once the table grows. Handing back a bounded page plus a way to ask for the next one caps what any single request costs — and choosing a cursor over an offset is what keeps the last page as cheap as the first.",
+        "tour": "A collection endpoint with no upper bound is a promise you cannot keep once the table grows. Handing back a bounded page plus a way to ask for the next one caps what any single request costs. Choosing a cursor over an offset keeps the last page as cheap as the first, when the cursor column is indexed.",
         "fluency": "Bound what one request can return, however much data exists"
       }
     },
@@ -2005,7 +2005,7 @@
     "/patterns/frontend/flux.html": {
       "frontend-architecture": {
         "role": "Route all state changes through one unidirectional loop",
-        "tour": "The state half of the flow axis. When mutations come from everywhere and no one can trace a re-render, funnel every change through one store: a view dispatches an action, a pure reducer produces new state, the store pushes it back. One direction, fully traceable, replayable — [event-sourcing](../patterns/architecture/event-sourcing.md) in the browser, with devtools that let you scrub history.",
+        "tour": "The state half of the flow axis. When mutations come from everywhere and no one can trace a re-render, funnel every change through one store: a view dispatches an action, a pure reducer produces new state, the store pushes it back. One direction, so every change is traceable, and replayable when reducers are pure and actions are recorded, like [event-sourcing](../patterns/architecture/event-sourcing.md) in the browser, with devtools that let you scrub history.",
         "fluency": "Route all state changes through one unidirectional loop"
       }
     },
@@ -2019,7 +2019,7 @@
     "/patterns/frontend/provider.html": {
       "frontend-architecture": {
         "role": "Push shared dependencies down the tree without prop-drilling",
-        "tour": "The dependency half of the flow axis. Instead of threading a value — theme, auth, a service — through every intermediate component as props, a provider publishes it at a subtree root and any descendant consumes it directly. It is dependency injection expressed in a component tree, and the right tool for genuinely cross-cutting values.",
+        "tour": "The dependency half of the flow axis. Instead of threading a value — theme, auth, a service — through every intermediate component as props, a provider publishes it at a subtree root and any descendant consumes it directly. It is dependency injection expressed in a component tree, and the right tool for cross-cutting values that change rarely. A changed value re-renders every consumer, so fast-changing state belongs in a store.",
         "fluency": "Push shared dependencies down the tree without prop-drilling"
       }
     },
@@ -2059,7 +2059,7 @@
       },
       "object-structure": {
         "role": "Treat one and many the same",
-        "tour": "Leaves and containers share one component interface, and containers hold children that may be other containers. Client code calls the same operations on both, and an iterator or a visitor can run across the whole tree.",
+        "tour": "Leaves and containers share one component interface, and containers hold children that may be other containers. Client code calls the same operations on both, and an iterator or a visitor can run across the whole tree. The trade is where child-management calls live: on the shared interface the leaf exposes calls it cannot honour, and on the container only, callers must check the type.",
         "fluency": "Build a tree so a single element and a group answer the same calls."
       }
     },
@@ -2071,7 +2071,7 @@
       },
       "object-structure": {
         "role": "Offer a few calls over many classes",
-        "tour": "One object with a small, high-level interface named after the tasks callers want, over several lower-level parts. It simplifies many interfaces where an adapter converts one, and it is the single surface callers need so they stop chaining through collaborators.",
+        "tour": "One object with a small, high-level interface named after the tasks callers repeat, over several lower-level parts. It simplifies many interfaces where an adapter converts one. Callers can use it instead of chaining through collaborators, and the parts stay reachable for the tasks it does not cover.",
         "fluency": "Give callers a few task-shaped calls over a subsystem."
       }
     },
@@ -2083,7 +2083,7 @@
       },
       "object-structure": {
         "role": "Share the unchanging part",
-        "tour": "Split an object into shared intrinsic state and per-use extrinsic state that the caller passes in. Shared leaves let one tree hold millions of nodes cheaply, and a factory hands back the shared instances.",
+        "tour": "Split an object into shared intrinsic state, which must never change, and per-use extrinsic state that the caller passes in on every call. Shared leaves let one tree hold millions of nodes when most state is intrinsic and few distinct values exist, and a factory hands back the shared instances.",
         "fluency": "Share the unchanging part of many similar objects to save memory."
       }
     },
@@ -2201,7 +2201,7 @@
       },
       "microservices-design": {
         "role": "Make a repeated call apply once",
-        "tour": "A retry is safe only when applying the operation twice has the effect of applying it once, which is why blindly retrying a POST or a PATCH is not safe: the original call may have succeeded with the caller never seeing the response. Have each service build a key from the correlation identifier plus a service-specific qualifier, store the key before processing, and on a retry find it and skip. Because each service builds its own key from the one shared id, retries are safe across the whole transaction with no separate key-generation mechanism, and a service whose earlier attempt failed before storing its key still processes the retry correctly.",
+        "tour": "A retry is safe only when applying the operation twice has the effect of applying it once, which is why blindly retrying a POST or a PATCH is not safe: the original call may have succeeded with the caller never seeing the response. Have each service build a key from the correlation identifier plus a service-specific qualifier, store the key before processing, and on a retry find it and skip. Because each service builds its own key from the one shared id, retries are safe across the whole transaction with no separate key-generation mechanism, provided the id stays the same when a client retries. Store the key and apply the effect in one local transaction, because a crash between the two would make the retry skip work that never ran. The correlation identifier is assigned when a request enters the system, so a client that retries a timed-out call needs a client-supplied idempotency key, or the edge must reuse the original id on replay; otherwise the duplicate gets a new id and runs again.",
         "fluency": "Make a repeated call apply once"
       },
       "workload-composition": {
@@ -2278,7 +2278,7 @@
     "/patterns/ml/context-engineering.html": {
       "harness-engineering": {
         "role": "What enters the window, and what leaves it",
-        "tour": "The other half of the guides: not what the agent may do, but what it can see while deciding. This is where a long session is either kept coherent or quietly allowed to forget the goal it was given.",
+        "tour": "The other half of the guides: not what the agent may do, but what it can see while deciding. This is where a long session keeps its goal or loses it as early instructions leave the window.",
         "fluency": "What enters the window, and what leaves it"
       }
     },
@@ -2307,7 +2307,7 @@
     "/patterns/ml/evaluation.html": {
       "harness-engineering": {
         "role": "How you know the harness improved anything",
-        "tour": "The sensors half, generalised. A harness change is a change to a non-deterministic system, so the only honest before-and-after is a suite you can run — otherwise you are tuning token counts and calling it progress.",
+        "tour": "The sensors half, applied to the harness itself. A harness change alters a non-deterministic system, so a suite you can rerun is how you show whether it helped.",
         "fluency": "How you know a harness change improved anything"
       },
       "ml-system-design": {
@@ -2378,7 +2378,7 @@
     "/patterns/security/agent-sandboxing.html": {
       "harness-engineering": {
         "role": "The boundary that buys autonomy",
-        "tour": "The permission half. Declaring the boundary once is what lets routine work proceed unasked, which is the only way the prompts that remain get read rather than clicked through.",
+        "tour": "The permission half. Declaring the boundary once lets routine work proceed unasked, which keeps the prompts that remain few enough to be read rather than clicked through.",
         "fluency": "The boundary that buys autonomy"
       }
     },
@@ -2452,7 +2452,7 @@
     "/patterns/security/single-access-point.html": {
       "auth-and-access": {
         "role": "Funnel access through one guarded entry",
-        "tour": "Funnel access through one guarded entry. Every request into the system passes through one place, which is what makes it possible to guarantee that no request skips the checks that follow.",
+        "tour": "Funnel access through one guarded entry. Every request that enters through this one place gets the checks that follow, which makes it easy to audit. A forgotten internal endpoint or a route around it gets none.",
         "fluency": "Funnel access through one guarded entry"
       },
       "securing-availability": {
@@ -2609,7 +2609,7 @@
     "/patterns/architecture/microkernel.html": {
       "architecture-styles": {
         "role": "A small core and plug-ins for everything volatile",
-        "tour": "The core stays small enough to audit and changes almost never, while every feature arrives as a plug-in behind a contract. A bad feature then ships broken to nobody but its own users, and you can sandbox each plug-in so one crash cannot take the host down.",
+        "tour": "The core stays small enough to audit and changes almost never, while every feature arrives as a plug-in behind a contract. A bad feature can then be unloaded or isolated without editing the core, and a crash stays out of the host only if you pay for sandboxing or process isolation.",
         "fluency": "Keep a minimal core and ship each feature as a plug-in."
       }
     },
@@ -2637,14 +2637,14 @@
     "/patterns/concurrency/future-promise.html": {
       "concurrency": {
         "role": "Let the caller move on and collect the result later",
-        "tour": "Submitting work to the pool hands back a placeholder at once. The caller carries on, and the value or the error is written into the placeholder when the work finishes, so the caller can wait for it only when it truly needs it.",
+        "tour": "Submitting work to the pool hands back a placeholder at once. The caller carries on, and the value or the error is written into the placeholder when the work finishes, so the caller waits only when it needs the value.",
         "fluency": "Get a placeholder now and read the result when the work finishes."
       }
     },
     "/patterns/concurrency/semaphore.html": {
       "concurrency": {
         "role": "Cap how many threads hold a resource",
-        "tour": "A counter holding N permits: acquire takes one and blocks at zero, release returns one. It bounds concurrency as a budget rather than excluding everyone, and it sizes the pool's limit, so work waits at the cap instead of piling into memory.",
+        "tour": "A counter holding N permits: acquire takes one and blocks at zero, release returns one. It bounds concurrency as a budget rather than excluding everyone, and it caps how many threads reach one scarce resource, so extra work waits at the cap instead of overloading it.",
         "fluency": "Allow only N threads at a time into a resource."
       }
     },
@@ -2658,35 +2658,35 @@
     "/patterns/concurrency/rw-lock.html": {
       "concurrency": {
         "role": "Let readers share, make writers exclusive",
-        "tour": "A finer-grained monitor: any number of threads may hold read mode together, but a writer waits for every reader and then excludes everyone. It pays off when reads far outnumber writes and readers were queueing behind each other for no reason.",
+        "tour": "A finer-grained monitor: any number of threads may hold read mode together, but a writer waits for every reader and then excludes everyone. It pays off when reads far outnumber writes and readers were queueing behind each other for no reason. Depending on the lock's policy, a steady stream of readers can starve a writer, and on short critical sections a plain mutex can be faster.",
         "fluency": "Allow many simultaneous readers or one writer, never both."
       }
     },
     "/patterns/concurrency/copy-on-write.html": {
       "concurrency": {
         "role": "Take the lock off the read path entirely",
-        "tour": "Nobody edits the shared structure in place. A writer clones it, changes the clone and swaps the one reference, so readers take no lock and never meet a half-updated version. The cost moves to the writer, which copies, so it suits rare writes.",
+        "tour": "Nobody edits the shared structure in place. A writer clones it, changes the clone and swaps the one reference, so readers take no lock and never meet a half-updated version. Writers still need one lock or a compare-and-swap on that reference, or two clones lose an update. The cost moves to the writer, which copies, so it suits rare writes.",
         "fluency": "Let readers run lock-free by publishing a new copy for each write."
       }
     },
     "/patterns/concurrency/lock-free.html": {
       "concurrency": {
         "role": "Retry an atomic update instead of waiting",
-        "tour": "A thread reads a word, computes the new value and commits with a single compare-and-swap that writes only if the word is unchanged. The loser re-reads and tries again, so no thread ever blocks. A mutex is simpler, so go lock-free only when contention proves it necessary.",
+        "tour": "A thread reads a word, computes the new value and commits with a single compare-and-swap that writes only if the word is unchanged. The loser re-reads and tries again, so no thread holds up the others, though one thread can lose the swap repeatedly under heavy contention. A mutex is simpler, so go lock-free only when contention proves it necessary.",
         "fluency": "Update shared memory with an atomic retry loop instead of a lock."
       }
     },
     "/patterns/concurrency/thread-confinement.html": {
       "concurrency": {
         "role": "Make the race impossible by giving state one owner",
-        "tour": "Every race needs mutable state and more than one thread on it. Locks discipline the second; confinement removes the first. With a single owning thread per piece of state there is no lock to take and no interleaving to reason about.",
+        "tour": "Every race needs mutable state and more than one thread on it. Locks discipline the second; confinement removes the first. With a single owning thread per piece of state there is no lock to take and no data race on that state; keep each invariant inside one message, because messages from different senders can still interleave.",
         "fluency": "Give each piece of mutable state a single owning thread."
       }
     },
     "/patterns/concurrency/actor-model.html": {
       "concurrency": {
         "role": "Confinement with messages between owners",
-        "tour": "An actor has private state, a mailbox and a behavior, and never touches another actor's memory. It is confinement made concrete, with message passing as the only way in. Bounded mailboxes push back on a fast sender, and it is the alternative to guarding shared state with a lock.",
+        "tour": "An actor has private state, a mailbox and a behavior, and never touches another actor's memory. It is confinement made concrete, with message passing as the only way in. A bounded mailbox pushes back on a fast sender; an unbounded one does not, so set the bound.",
         "fluency": "Isolated actors that share nothing and communicate only by messages."
       }
     },
@@ -2700,7 +2700,7 @@
     "/patterns/functional/currying.html": {
       "functional-programming": {
         "role": "Fix some arguments now, supply the rest later",
-        "tour": "A function of several arguments becomes a chain of one-argument functions. Calling it with fewer arguments returns a new function holding what you gave, which turns a general function into a ready-made stage you can compose.",
+        "tour": "A function of several arguments becomes a chain of one-argument functions. Calling it with fewer arguments returns a new function holding what you gave, which turns a general function into a ready-made stage you can compose. Put the arguments you fix first and the one that varies per call last, so the finished function takes the value and slots into a pipeline.",
         "fluency": "Turn a many-argument function into a chain of one-argument functions."
       }
     },
@@ -2714,14 +2714,14 @@
     "/patterns/functional/functor.html": {
       "functional-programming": {
         "role": "Transform what is inside a wrapper, keep the wrapper",
-        "tour": "Any type with a lawful map applies a plain function to the contents and leaves the surrounding shape alone. Arrays, optional values and promises qualify, and map turns a stage into a step that works on wrapped values.",
+        "tour": "Any type with a map that obeys the functor laws applies a plain function to the contents and leaves the surrounding shape alone. Arrays and optional values qualify, and map turns a plain function into one that works on wrapped values.",
         "fluency": "Apply a plain function inside a wrapper without unwrapping it."
       }
     },
     "/patterns/functional/monad.html": {
       "functional-programming": {
         "role": "Sequence steps that each return a wrapped result",
-        "tour": "Bind runs a function that returns a wrapped value against an existing one and flattens the result, so the caller never unwraps by hand. It is pipeline composition with context, and its three laws keep chains composable however you group them. Every monad is a functor with more structure.",
+        "tour": "Bind takes a wrapped value and a function that returns a wrapped value, runs the function on the contents and flattens the result, so the caller never unwraps by hand. It is pipeline composition with context, and its associativity law lets you regroup a chain without changing the result. Use an optional value to carry absence and a wrapper that holds the error to carry failure; the caller reads the final value once. Every monad is a functor with more structure.",
         "fluency": "Chain wrapped steps with bind so context flows through without manual unwrapping."
       }
     },
@@ -2742,7 +2742,7 @@
     "/patterns/enterprise/active-record.html": {
       "enterprise-application-patterns": {
         "role": "An object wraps one row and saves itself",
-        "tour": "The object owns the row's fields and the code that persists them, with save, delete and finders on the class. It is the data access a script calls into, and it is cheap until the object's tie to the table starts to hurt.",
+        "tour": "The object owns the row's fields and the code that persists them, with save, delete and finders on the class. A script can call it for data access. It is cheap until the object's tie to the table starts to hurt, as when SQL and table names creep into the domain object. Unit of Work is the other route: changes are collected and written together instead of each row saving itself.",
         "fluency": "Wrap one table row in an object that owns its own persistence."
       }
     },
@@ -2756,7 +2756,7 @@
     "/patterns/enterprise/repository.html": {
       "enterprise-application-patterns": {
         "role": "A collection-like face over the store",
-        "tour": "Callers ask for objects by identity or criteria and add or remove them as if the whole set lived in memory. It sits on top of a data mapper, with one repository per aggregate root, and the interface is what lets a fake stand in for storage.",
+        "tour": "Callers ask for objects by identity or criteria and add or remove them as if the whole set lived in memory. It usually sits on top of a data mapper, with usually one repository per aggregate root (the entity that owns a cluster of objects), and the interface is what lets a fake stand in for storage.",
         "fluency": "Give domain objects a collection-like interface over the data store."
       }
     },
@@ -2791,14 +2791,14 @@
     "/patterns/testing/dummy-object.html": {
       "testing": {
         "role": "Fill a slot nobody reads",
-        "tour": "The simplest stand-in: an object passed because a signature demands one, with no expectation that it is read or called. It is never used, where a stub returns canned values and a mock verifies calls.",
+        "tour": "The simplest stand-in: an object passed because a signature demands one, never read or called, where a stub returns canned values and a mock verifies calls.",
         "fluency": "Pass a placeholder where a signature needs an argument the test never uses."
       }
     },
     "/patterns/testing/test-stub.html": {
       "testing": {
         "role": "Hand back canned answers",
-        "tour": "A stand-in that returns pre-arranged answers whenever the code calls it, regardless of arguments or how often. It verifies state, not behaviour, and the canned answers are exactly what can drift from the real service.",
+        "tour": "A stand-in that returns pre-arranged answers whenever the code calls it, regardless of arguments or how often. The test then asserts on the result, not on the calls, and the canned answers are exactly what can drift from the real service.",
         "fluency": "Replace a collaborator with one that returns fixed answers."
       }
     },
@@ -2819,21 +2819,21 @@
     "/patterns/testing/mock-object.html": {
       "testing": {
         "role": "Fail on a call you did not expect",
-        "tour": "It is programmed before the run with the calls it expects, and verify confirms they all happened. An unexpected call, a wrong argument or a missing call fails the test, so it checks behaviour up front where a spy records and checks later.",
+        "tour": "It is programmed before the run with the calls it expects, and a verify call confirms they all happened. An unexpected call, a wrong argument or a missing call fails the test, so it checks behaviour up front where a spy records and checks later.",
         "fluency": "Script the calls a collaborator should receive and fail on any mismatch."
       }
     },
     "/patterns/testing/contract-testing.html": {
       "testing": {
         "role": "Keep the stand-ins honest",
-        "tour": "A separate small test set checks that calls against your double return the same shape as calls against the real service. It is what stops a stub or fake from passing while the provider has moved, and lets services deploy separately.",
+        "tour": "A separate small test set checks that calls against your double return the same shape as calls against the real service, replayed in the provider's build. It catches a stub or fake whose answers no longer match the provider's shape, though not changed behaviour behind the same shape, and lets services deploy separately.",
         "fluency": "Check that your test double answers in the same shape as the real service."
       }
     },
     "/patterns/testing/page-object.html": {
       "testing": {
         "role": "Keep screen tests readable",
-        "tour": "A class models one screen, owns its locators and exposes methods such as login and addToCart, so tests never touch a selector. Its methods keep the act step to one line.",
+        "tour": "A class models one screen, owns its selectors and exposes methods such as login and addToCart, so tests never touch a selector. Its methods keep the act step to one line.",
         "fluency": "Wrap a screen's selectors in intention-revealing methods the tests call."
       }
     },
@@ -2931,21 +2931,21 @@
     "/patterns/gof/creational/builder.html": {
       "object-creation": {
         "role": "Assemble one complex object in steps",
-        "tour": "Drive the builder through small named steps and ask it for the finished product, instead of one constructor taking every field. It is the alternative to a family factory when you want one product built in steps, and named steps make an unexpected argument order impossible.",
+        "tour": "Drive the builder through small named steps and ask it for the finished product, instead of one constructor taking every field. It is the alternative to a family factory when you want one product built in steps, and named steps remove the positional argument-order mistake, though a wrong value in the right step is still possible.",
         "fluency": "Construct a complex object step by step instead of one huge constructor."
       }
     },
     "/patterns/gof/creational/prototype.html": {
       "object-creation": {
         "role": "Copy a configured example",
-        "tour": "Each object knows how to clone itself, so the client asks an example for a copy of the right concrete type without naming it. A family factory can clone registered prototypes instead of newing them.",
+        "tour": "Each object knows how to clone itself, so the client asks an example for a copy of the right concrete type without naming it. A family factory can clone registered prototypes instead of calling new on them. A shallow copy shares nested objects, so copy deeply any field that must stay separate.",
         "fluency": "Make new objects by copying an existing instance."
       }
     },
     "/patterns/gof/creational/singleton.html": {
       "object-creation": {
         "role": "Allow exactly one instance",
-        "tour": "The class hides its constructor, keeps the sole instance in a static field and hands it out through an accessor. It answers how many instances exist, and it costs you a global, which the next steps offer ways around.",
+        "tour": "The class hides its constructor, keeps the sole instance in a static field and hands it out through an accessor. It answers how many instances exist, and it costs you a global, which dependency injection avoids.",
         "fluency": "Permit only one instance of a class and give it a well-known access point."
       }
     },
@@ -2959,7 +2959,7 @@
     "/patterns/gof/extra/lazy-initialization.html": {
       "object-creation": {
         "role": "Build on first use",
-        "tour": "An accessor checks whether the value exists, creates and stores it if not, and returns the cached one afterwards. It is the classic way a single instance is created, and it spares you the cost when the value is never needed.",
+        "tour": "An accessor checks whether the value exists, creates and stores it if not, and returns the cached one afterwards. It is the classic way a single instance is created, and it spares you the cost when the value is never needed. Two threads reaching it first can each build it unless you add locking, and the first caller pays the full build time.",
         "fluency": "Defer building a value until the first moment it is needed."
       }
     },
@@ -2994,7 +2994,7 @@
     "/patterns/gof/structural/decorator.html": {
       "object-structure": {
         "role": "Wrap to add behaviour",
-        "tour": "A wrapper has the same interface as the thing it wraps and adds behaviour before or after the forwarded call. Callers cannot tell the layers apart, and stacking works because each wrapper stays substitutable for the original.",
+        "tour": "A wrapper has the same interface as the thing it wraps and adds behaviour before or after the forwarded call. Callers cannot tell the layers apart, and stacking works because each wrapper stays substitutable for the original. Order matters: the outermost wrapper runs first on the way in and last on the way out, and a wrong order raises no error.",
         "fluency": "Add behaviour to an object by wrapping it in one with the same interface."
       }
     },
@@ -3015,7 +3015,7 @@
     "/patterns/gof/behavioral/state.html": {
       "object-behavior": {
         "role": "Change behaviour as the object's own state changes",
-        "tour": "The context holds a state object and delegates to it, and each concrete state is a class implementing the same interface. One call does something different depending on which state is plugged in. It is often confused with strategy, which swaps an algorithm rather than following state.",
+        "tour": "The context holds a state object and delegates to it, and each concrete state is a class implementing the same interface. One call does something different depending on which state is plugged in. It is often confused with strategy. Here the states usually pick the next state themselves, while a strategy is chosen by the client and stays put.",
         "fluency": "Let an object change what it does when its internal state changes."
       }
     },
@@ -3029,14 +3029,14 @@
     "/patterns/gof/extra/null-object.html": {
       "object-behavior": {
         "role": "A do-nothing member of the family",
-        "tour": "A real object with the same interface whose methods do nothing or return a neutral value, handed back instead of null. It is a neutral strategy, it holds no state so one shared instance serves every call site, and it is valid only where the contract allows doing nothing.",
+        "tour": "A real object with the same interface whose methods do nothing or return a neutral value, handed back instead of null. It is a neutral strategy. Because it holds no state it can be one shared instance serving every call site; if it records anything, give each caller its own. It is valid only where the contract allows doing nothing.",
         "fluency": "Return a harmless do-nothing object instead of null."
       }
     },
     "/patterns/gof/behavioral/chain-of-responsibility.html": {
       "object-behavior": {
         "role": "Pass the request along until someone handles it",
-        "tour": "Handlers line up, and each deals with the request or forwards it to its successor, so the sender never knows which one answers. One handler may stop the request, which a decorator never does. A validator chain is the textbook use.",
+        "tour": "Handlers line up, and each deals with the request or forwards it to its successor, so the sender never knows which one answers. One handler may stop the request, which a decorator usually does not, since it normally still calls the object it wraps. Decide what an unhandled request does, because the order of the handlers changes the outcome. A validator chain is the usual use.",
         "fluency": "Send a request through a line of handlers until one deals with it."
       }
     },
@@ -3057,7 +3057,7 @@
     "/patterns/gof/behavioral/visitor.html": {
       "object-behavior": {
         "role": "Add an operation without editing the classes",
-        "tour": "Each element exposes accept, and the visitor carries one method per element type. A new operation is a new visitor and the element classes never change. A traversal walks the structure and hands each node to the visitor.",
+        "tour": "Each element exposes accept, and the visitor carries one method per element type. A new operation is a new visitor and the element classes stay as they are. The price runs the other way: a new element type means editing every visitor, so use it when the hierarchy is stable and the operations change. A traversal walks the structure and hands each node to the visitor.",
         "fluency": "Move an operation out of a class hierarchy into a separate object."
       }
     },
@@ -3071,7 +3071,7 @@
     "/patterns/gof/behavioral/memento.html": {
       "object-behavior": {
         "role": "Save a snapshot you can restore",
-        "tour": "The originator snapshots its state into an opaque memento, and a caretaker holds mementos without looking inside. Command does and memento captures the state to undo, and immutable snapshots make undo trivial.",
+        "tour": "The originator snapshots its state into an opaque memento, and a caretaker holds mementos without looking inside. Command records the action to undo; memento captures the state to restore. Immutable snapshots make restoring simple, but each one costs memory, so cap the history or snapshot only the change.",
         "fluency": "Capture an object's state in a separate object so you can restore it later."
       }
     },
@@ -3113,7 +3113,7 @@
     "/patterns/enterprise/specification.html": {
       "enterprise-application-patterns": {
         "role": "Name a business rule once and reuse it to check and to query",
-        "tour": "A specification wraps one business rule in an object that answers match or no match, and and, or and not join specifications into bigger rules. A repository can test it in memory or turn it into a query, so the rule is written once. Translating to a query is the part that grows hard.",
+        "tour": "A specification wraps one business rule in an object that answers match or no match, and the operators AND, OR and NOT combine specifications into bigger rules. A repository can test it in memory or turn it into a query, so the rule is written once. Translating to a query is the part that grows hard, and a rule that cannot be translated ends up written twice, once in memory and once in the query.",
         "fluency": "Express a rule as a composable predicate that a repository can test or turn into a query."
       }
     },
@@ -3281,7 +3281,7 @@
     "/patterns/concurrency/double-checked-locking.html": {
       "concurrency": {
         "role": "Skip the lock on the fast path of lazy creation",
-        "tour": "Check for the object without a lock, then lock and check again before creating it. It is subtle: it needs a memory barrier to be correct.",
+        "tour": "Check for the object without a lock, then lock and check again before creating it. It is subtle: without a memory barrier (a fence that orders memory writes), another thread can see the reference before the object is fully built.",
         "fluency": "Avoid taking a lock on every read of a lazily created value, and know why it is subtle."
       }
     },
@@ -3344,7 +3344,7 @@
     "/patterns/concurrency/fork-join.html": {
       "concurrency": {
         "role": "Split a job, run the pieces, merge the results",
-        "tour": "A job splits into small pieces that run on a pool, often with work stealing, then the join waits for them and merges the results.",
+        "tour": "A job splits into small pieces that run on a pool, often with work stealing (an idle worker takes queued pieces from a busy one), then the join waits for them and merges the results.",
         "fluency": "Split work into pieces, run them in parallel and merge the results."
       }
     }
