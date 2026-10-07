@@ -28,7 +28,7 @@ Generalization is how well a model does on data it never saw during training, an
 - **Leaky random splits** Random splits leak when rows are linked in time, so split by date.
 - **Ongoing retraining** Drift is never fixed once, so monitor live results and retrain.
 
-**Example.** A churn model trains on 5,000 rows with 4,000 for training and 1,000 for validation. At full size it scores 99% on training and 71% on validation, a 28-point gap, so it is overfitting. Shrinking the model and stopping training when validation stops improving gives 84% and 80%, a 4-point gap. After 30 tuning rounds on that validation set, you read a final 1,000-row test set once and get 79%, the number you can quote. The cost is that 1,000 rows sit unused for tuning, and the 79% needs retraining and checking again when live data shifts.
+**Example.** A churn model trains on 6,000 rows: 4,000 for training, 1,000 for validation and 1,000 held back for testing. At full size it scores 99% on training and 71% on validation, a 28-point gap, so it is overfitting. Shrinking the model and stopping training when validation stops improving gives 84% and 80%, a 4-point gap. After 30 tuning rounds on that validation set, you read the test set once and get 79%, give or take about 1.3 points on 1,000 rows, the number you can quote. The cost is that 1,000 rows sit unused for tuning, and the 79% needs retraining and checking again when live data shifts.
 
 ## How it works
 <!--meta block=structure-->
@@ -44,11 +44,11 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Regularization** — Constrain the model during training so memorizing noise is harder. L2 (weight decay) keeps weights small and evenly spread — the cheap default; L1 pushes weights to zero for feature selection; dropout disables random neurons to force redundant representations; early stopping halts when validation loss stops improving. Layer normalization stabilizes training with a mild regularizing effect.
-- **Cross-validation** — When there is too little data for one held-out split to be trusted, rotate the split: divide the training set into k parts, fit k times holding each part out in turn, and read the spread of the k scores as well as their mean — a wide spread says the single number you would otherwise have reported was luck. It costs k times the training compute, and the folds have to respect the structure of the data: keep every row from one patient or one user inside a single fold, and for a time series train only on the past, or the rotation leaks exactly what the split existed to prevent.
+- **Regularization** — Constrain the model during training so memorizing noise is harder. L2 (weight decay) keeps weights small and evenly spread, and is the cheap default; L1 pushes weights to zero for feature selection; dropout disables random neurons to force redundant representations; early stopping halts when validation loss stops improving.
+- **Cross-validation** — When there is too little data for one held-out split to be trusted, rotate the split. Divide the training set into k parts, fit k times holding each part out in turn, and read the spread of the k scores as well as their mean. A wide spread says the single number you would otherwise have reported was luck. It costs k times the training compute. Keep every row from one patient or one user inside a single fold, and for a time series train only on the past, or the rotation leaks what the split existed to prevent.
 - **Transfer learning and small data** — When data is limited, fine-tune a model pretrained on a large corpus rather than training from scratch. Freeze the general lower layers and train only a new head or adapter — BERT fine-tunes on a few thousand examples; a vision backbone classifies from a few hundred per category.
 - **Self- and semi-supervised learning** — Learn representations from abundant unlabelled data first (predict masked tokens, reconstruct corrupted inputs), then fine-tune on the scarce labels; or combine a small labelled set with a large unlabelled pool via pseudo-labelling and consistency regularization.
-- **Handling drift** — Covariate, label, and concept shift call for retraining on fresh data, online learning for rapid adaptation (at the risk of catastrophic forgetting), or ensembles weighted toward whichever period matches current data. Online embedding updates freeze the weights while the embeddings keep moving.
+- **Handling drift** — Covariate shift (the inputs change), label shift (the mix of outcomes changes) and concept shift (the link from inputs to outcome changes) call for retraining on fresh data, online learning for rapid adaptation (at the risk of catastrophic forgetting, where new data overwrites what the model learned), or ensembles weighted toward whichever period matches current data.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -57,7 +57,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **A held-out validation split** and a loss-curve plot give a concrete, measurable read on whether a model is over- or underfitting, instead of hand-waving "avoid overfitting".
-- **Cheap robustness** — regularization (L2, dropout, early stopping) is cheap and adds robustness that also helps a model degrade gracefully under drift.
+- **Cheap variance control** — regularization (L2, dropout, early stopping) costs little and lowers variance on the training distribution; it does not remove the need to retrain under drift.
 - **Transfer learning makes small-data problems** tractable, reaching useful accuracy from hundreds or thousands of examples.
 - **Matching model capacity to available data** is a simple, high-value guard — a smaller model or a logistic-regression baseline resists overfitting.
 
@@ -86,6 +86,7 @@ flowchart LR
 
 - **You would reach for heavy regularization** or a complex drift strategy before confirming, from the loss curves, which failure mode you actually have.
 - **The task is a one-off analysis** on a fixed dataset with no deployment, where production drift simply does not apply.
+- **Training and validation scores are both low**, so the model underfits: add capacity or features before adding regularization.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -132,8 +133,8 @@ function trainWithEarlyStopping(
 
 - **Regularization strength** — L2 weight decay, dropout rate or tree depth limits. More lowers variance and raises bias; too much underfits.
 - **Model capacity** — Depth, width or number of parameters against the amount of data you have.
-- **Early stopping patience** — How many epochs without validation improvement before training stops and the best checkpoint is restored.
-- **Data size and augmentation** — More examples or transformed copies. This is the most reliable way to close a train-validation gap.
+- **Early stopping patience** — How many epochs without validation improvement before training stops and the best checkpoint is restored. Choose it from a first run's validation curve: longer than the usual noisy bump, shorter than the stretch where loss only rises.
+- **Data size and augmentation** — More examples or transformed copies. Usually the most dependable way to close a train-validation gap, provided the new rows match the live distribution.
 
 ### Signals to watch
 <!--meta polarity=signal-->
