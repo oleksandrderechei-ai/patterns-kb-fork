@@ -2694,7 +2694,7 @@
     "/patterns/functional/currying.html": {
       "functional-programming": {
         "role": "Fix some arguments now, supply the rest later",
-        "tour": "A function of several arguments becomes a chain of one-argument functions. Calling it with fewer arguments returns a new function holding what you gave, which turns a general function into a ready-made stage you can compose.",
+        "tour": "A function of several arguments becomes a chain of one-argument functions. Calling it with fewer arguments returns a new function holding what you gave, which turns a general function into a ready-made stage you can compose. Put the arguments you fix first and the one that varies per call last, so the finished function takes the value and slots into a pipeline.",
         "fluency": "Turn a many-argument function into a chain of one-argument functions."
       }
     },
@@ -2708,14 +2708,14 @@
     "/patterns/functional/functor.html": {
       "functional-programming": {
         "role": "Transform what is inside a wrapper, keep the wrapper",
-        "tour": "Any type with a lawful map applies a plain function to the contents and leaves the surrounding shape alone. Arrays, optional values and promises qualify, and map turns a stage into a step that works on wrapped values.",
+        "tour": "Any type with a map that obeys the functor laws applies a plain function to the contents and leaves the surrounding shape alone. Arrays and optional values qualify, and map turns a plain function into one that works on wrapped values.",
         "fluency": "Apply a plain function inside a wrapper without unwrapping it."
       }
     },
     "/patterns/functional/monad.html": {
       "functional-programming": {
         "role": "Sequence steps that each return a wrapped result",
-        "tour": "Bind runs a function that returns a wrapped value against an existing one and flattens the result, so the caller never unwraps by hand. It is pipeline composition with context, and its three laws keep chains composable however you group them. Every monad is a functor with more structure.",
+        "tour": "Bind takes a wrapped value and a function that returns a wrapped value, runs the function on the contents and flattens the result, so the caller never unwraps by hand. It is pipeline composition with context, and its associativity law lets you regroup a chain without changing the result. Use an optional value to carry absence and a wrapper that holds the error to carry failure; the caller reads the final value once. Every monad is a functor with more structure.",
         "fluency": "Chain wrapped steps with bind so context flows through without manual unwrapping."
       }
     },
