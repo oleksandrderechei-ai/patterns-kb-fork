@@ -95,5 +95,6 @@ Recovery deserves its own plan, because that is when the herd is largest and the
 - [Lease](../patterns/distributed/coordination/lease.md) — Leases granted together expire together, and the holders all renew in the same instant
 - [Distributed Lock](../patterns/distributed/coordination/distributed-lock.md) — A popular lock freeing wakes every waiter at once and hammers the lock store
 - [Scheduling](../patterns/concurrency/scheduling.md) — Shared schedules such as midnight release the crowd at once
+- [WebSocket](../patterns/messaging/websocket.md) — A deploy or balancer reset makes every dropped socket reconnect in the same instant.
 
 <!-- relationships:end -->

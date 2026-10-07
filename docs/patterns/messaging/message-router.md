@@ -24,14 +24,14 @@ A message router reads each message from one input channel and forwards it uncha
 
 - **Coupling point.** Every message crosses it, so keep it stateless and run several copies.
 - **Rule sprawl.** Keep rules in one ordered table with a test per rule.
-- **Misrouting.** Log which rule matched, and send unmatched messages to a dead-letter channel (a side queue for failures), not a default queue.
+- **Misrouting.** Log which rule matched, and send unmatched messages to a [dead-letter channel](./dead-letter-channel.md) (a side queue for failures), not a default queue.
 
-**Example.** A router reads 300 messages a second and sorts them by a tenant-tier header: premium (10%, so 30 a second) goes to a fast queue and the rest (270 a second) to a standard queue. One router copy handles 500 a second, so at a launch of 900 a second you need 2 copies. Then a release misspells the header on every premium message. With a default queue, those 30 messages a second would wait in the standard queue unnoticed. With a dead-letter channel for unmatched messages, its depth alarm fires within a minute.
+**Example.** A router reads 300 messages a second and sorts them by a tenant-tier header with two rules: premium (10%, so 30 a second) goes to a fast queue and standard (the other 270 a second) goes to a standard queue. Assume one router copy handles 500 a second: at a launch of 900 a second that is 2 copies at 90% busy, so plan a third for headroom. Then a release misspells the header on every premium message, so neither rule matches. With the standard queue as the default, those 30 messages a second would sit there unnoticed. With a dead-letter channel for unmatched messages, its depth alarm fires once the depth passes its threshold.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="How does a sender reach the right handler without knowing that handler exists? It writes to one address (1), and the router decides from the labels alone (2–3), so the body crosses the boundary unparsed and unchanged. Exactly one output wins (4 or 5) — and the message no rule claims lands in the default queue (6) instead of disappearing."
+```mermaid caption="How does a sender reach the right handler without knowing that handler exists? It writes to one address (1), and the router decides from the labels alone (2–3), so the body crosses the boundary unparsed and unchanged. Exactly one output wins (4 or 5), and a message no rule claims goes to the dead-letter channel (6), not a default queue, instead of disappearing."
 flowchart LR
     S["Order service"]
     subgraph Decide["Decision surface: labels only"]
@@ -40,7 +40,7 @@ flowchart LR
     end
     A["Refunds queue"]
     B["Support queue"]
-    D[("Default queue")]:::ext
+    D[("Dead-letter channel")]:::ext
     S -->|"1 publish to one address"| R
     R -->|"2 match headers, never the body"| T
     T -->|"3 first rule that matches wins"| R
@@ -53,7 +53,7 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **[Content-Based Router](./content-based-router.md)** — Routes by inspecting the message body itself, rather than a header or an external rule table.
+- **[Content-Based Router](./content-based-router.md)** — Routes on values inside the message body instead of header, type or sender. The body is read but still forwarded unchanged, so the router must parse it and is coupled to the message schema.
 - **Static / rule-table router** — A fixed, config-file or hardcoded mapping from condition to channel — simplest form, but adding a route means a redeploy.
 - **Dynamic router** — Rules are loaded from a registry or control channel and can be changed or reloaded at runtime without touching the router's code.
 - **[Recipient list](./recipient-list.md)** — Sends the message to every channel that matches, not just one — a [fan-out](./fan-out.md) cousin rather than an exclusive routing decision.
@@ -66,7 +66,7 @@ flowchart LR
 
 - **Centralizes routing logic**, so producers stay decoupled from the number and identity of consumers.
 - **New destinations are added** by changing the router's rules, not the sender's code.
-- **Leaves the message body untouched** — routing stays a separate, easily reasoned-about concern.
+- **Leaves the message body untouched**, so routing stays a separate concern, reasoned about from headers alone.
 - **Rules live in one place**, so they're testable and auditable instead of scattered across senders.
 
 ### Cons
@@ -76,6 +76,7 @@ flowchart LR
 - **Rule sprawl turns a simple router** into an unmaintainable decision tree over time.
 - **Debugging a misrouted message** means auditing the router's rules, not just the message.
 - **Rules that depend on external** or mutable state make routing behavior harder to predict statically.
+- **Ordering across channels is lost** when a stream is split across output channels or several router copies run, unless the router partitions by key.
 
 ## When to use it
 <!--meta block=usage-->
@@ -98,7 +99,7 @@ flowchart LR
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — a rule-based router"
-type Channel = "orders" | "refunds" | "support";
+type Channel = "orders" | "refunds" | "support" | "dead-letter";
 interface Message { headers: Record<string, string>; body: unknown }
 type Rule = { matches: (m: Message) => boolean; channel: Channel };
 
@@ -109,10 +110,10 @@ class MessageRouter {
   ) {}
 
   route(message: Message): Channel {
-    for (const rule of this.rules) {
+    for (const rule of this.rules) { // first match wins
       if (rule.matches(message)) return rule.channel;
     }
-    return this.fallback; // nothing matched
+    return this.fallback; // nothing matched: dead-letter, not a business queue
   }
 }
 
@@ -121,7 +122,7 @@ const router = new MessageRouter(
     { matches: (m) => m.headers["type"] === "refund", channel: "refunds" },
     { matches: (m) => m.headers["priority"] === "vip", channel: "support" },
   ],
-  "orders",
+  "dead-letter",
 );
 
 publish(router.route(incoming), incoming); // decide once, forward unchanged
@@ -140,29 +141,29 @@ publish(router.route(incoming), incoming); // decide once, forward unchanged
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Default / fallback channel** — Where a message matching no rule goes; without one, unmatched messages are dropped or dead-ended.
-- **Rule evaluation order** — First-match vs. evaluate-all ordering of the rule list decides which of several matching rules wins.
-- **Rule reload interval** — For a dynamic router, how often rules are re-read from the registry or control channel without a redeploy.
+- **Default / fallback channel** — Where a message matching no rule goes. Point it at a dead-letter channel with a depth alarm, not a working queue; without one, unmatched messages are dropped or sit unread.
+- **Rule evaluation order** — First-match vs. evaluate-all ordering of the rule list decides which of several matching rules wins. Default to first-match with the most specific rule first; use evaluate-all only when you mean a recipient list.
+- **Rule reload interval** — For a dynamic router, how often rules are re-read from the registry or control channel without a redeploy. Set it from how long a wrong route is tolerable, and keep the last good rule set when a reload fails.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Unroutable / fallback rate** — Fraction of messages hitting the default channel or matching no rule; a spike means the rules have drifted from the traffic.
-- **Per-channel distribution** — Message counts per output channel; a channel that suddenly drops to zero flags a broken or shadowed rule.
+- **Unroutable / fallback rate** — Fraction of messages hitting the fallback channel or matching no rule; a spike means the rules or the producers' headers have drifted from the traffic. For a closed set of message types, a sustained rate above zero is a bug.
+- **Per-channel distribution** — Message counts per output channel; a channel that suddenly drops to zero flags a broken rule, or one that an earlier rule in the list always matches first (a shadowed rule).
 - **Routing latency per message** — Time to evaluate the rule set, which matters when a rule consults external or mutable state.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Silent misroute** — A wrong rule forwards a message to the wrong channel; because the body is untouched, nothing downstream signals the error.
-- **No match, no fallback** — A message that satisfies no rule and has no default channel is dropped or dead-ended.
+- **Silent misroute** — A wrong rule forwards a message to the wrong channel; the body is untouched, so no downstream error appears unless the consumer validates. Per-channel counts and the matched-rule log are the main signals.
+- **No match, no fallback** — A message that satisfies no rule and has no fallback channel is dropped or sits unread; the fallback-rate signal is the only warning.
 - **Stale external rule table** — Rules that depend on mutable state route to a decommissioned or renamed channel after the topology changes underneath them.
 - **Router bottleneck** — All traffic funnels through one router; heavy per-message rule evaluation makes it the throughput ceiling for everything downstream.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- A default or fallback channel exists for messages that match no rule
+- A dead-letter channel serves as the fallback for messages that match no rule, with a depth alarm.
 - Rules are tested in isolation against representative messages
 - Unroutable-message rate is monitored and alerted
 - Rule changes are versioned and reviewable, not edited live without a record
@@ -189,6 +190,7 @@ publish(router.route(incoming), incoming); // decide once, forward unchanged
 
 - [Message Queue](./message-queue.md) — Rules read from one input queue and forward to destination queues
 - [Splitter](./splitter.md) — Split first, then route each fragment to the endpoint that handles it
+- [Dead Letter Channel](./dead-letter-channel.md) — Messages that match no rule go to the dead-letter channel, not a default queue.
 
 **Has variant**
 

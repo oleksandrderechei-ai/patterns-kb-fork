@@ -27,7 +27,7 @@ A priority queue serves urgent messages before the rest: the producer marks each
 - **Priority inflation.** Every caller will mark its work urgent. Keep a written rule for each class and a time target for the urgent one.
 - **Queue count.** Queues multiply with classes, so use two or three.
 
-**Example.** Ten workers finish 10 one-second jobs a second. Password resets (high) arrive at 4 a second and exports (low) at 8 a second, 12 in all, so the pool is 2 a second short. Resets are served at once and exports get the other 6 a second, so the export backlog grows by 2 a second: 1,200 waiting after 10 minutes. Priority did not remove the overload, it chose who waits. Promoting any export that has waited over 60 s bounds its delay, and adding 2 workers closes the gap, since 12 workers finish 12 a second.
+**Example.** Ten workers finish 10 one-second jobs a second. Password resets (high) arrive at 4 a second and exports (low) at 8 a second, 12 in all, so the pool is 2 a second short. Resets are served at once and exports get the other 6 a second, so the export backlog grows by 2 a second: 1,200 waiting after 10 minutes. Priority did not remove the overload; it chose who waits. Promoting exports that waited over 60 s only moves the shortfall onto the resets. Adding 2 workers closes the gap, since 12 workers finish 12 a second, and then aging bounds the export wait.
 
 ## How it works
 <!--meta block=structure-->
@@ -86,8 +86,8 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Differentiated service levels become enforceable**. A promise of faster handling for one client class stops being a hope about capacity and becomes a property of the routing.
-- **Critical work stops sharing a fate** with bulk work. A batch flood delays the batch queue, and the urgent queue does not notice.
+- **Differentiated service levels become enforceable**. Faster handling for one client class is guaranteed by the routing, provided urgent arrivals stay within the capacity serving that class.
+- **Critical work stops sharing a fate** with bulk work. A batch flood delays the batch queue; with dedicated pools, or a shared pool with spare consumers, the urgent queue does not notice.
 - **Reliability and performance effort can be concentrated**. You can afford to over-provision, monitor tightly and alert aggressively on one class rather than on everything.
 - **With dedicated pools**, each class is a separate blast radius — a poison message or a stuck consumer in one lane leaves the others draining.
 
@@ -96,10 +96,11 @@ sequenceDiagram
 
 - **Starvation is built in**. Under sustained high-priority load a strictly preemptive shared pool can defer low-priority work indefinitely, so you need aging or a reserved slice of capacity to bound the wait.
 - **It does not absorb bursts**. Reordering an overload still leaves an overload; pair it with load leveling or the whole system falls behind in priority order.
-- **Each queue costs money and attention**. Brokers charge to post, retrieve and poll, and the bill and the dashboard both grow with the number of classes.
+- **Each queue costs money and attention**. A managed broker bills per request and a self-run one costs operating time; either way the bill and the dashboard grow with the number of classes.
 - **The classification rule becomes a permanent argument**. Every caller believes their work is urgent, and a priority field that everyone sets to high is a plain queue with extra steps.
 - **Static pool sizing decays**. Consumers should scale on the depth of the queue they serve; a pool sized for last quarter's mix silently misses this quarter's target.
 - **Ordering within a class is not guaranteed** once several consumers share it. Where it must be, you need [Sequential Convoy](./sequential-convoy.md) inside the priority level.
+- **Priority is not preemptive**. It orders only what is still queued. In-flight jobs and a consumer's prefetch buffer are not overtaken, so keep jobs short and prefetch small.
 
 ## When to use it
 <!--meta block=usage-->
@@ -137,7 +138,10 @@ async function drainOnce(high: Queue, low: Queue): Promise<Job | null> {
 }
 
 // The counter-move to starvation: anything that has waited past the threshold
-// is promoted, so the low queue's worst case is bounded rather than unbounded.
+// is promoted. The worst case is bounded only while this runs on a timer and
+// high has spare capacity. receive() removes the job, so re-sending a young one
+// puts it behind younger ones and a crash between the two calls loses it; a real
+// broker needs a peek, or an ack after the send.
 async function promoteAged(low: Queue, high: Queue, now: number): Promise<number> {
   let promoted = 0
   for (;;) {
@@ -165,15 +169,15 @@ async function promoteAged(low: Queue, high: Queue, now: number): Promise<number
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Number of priority classes** — Each class is another queue to pay for, monitor and staff. Two is usually enough; five is usually an argument nobody won.
+- **Number of priority classes** — Each class is another queue to pay for, monitor and staff. Start at two or three; add another only when a class has its own written target.
 - **Consumers per class** — Size each pool against its own class target, and scale it on that queue depth rather than a fixed count.
-- **Aging threshold** — How long low-priority work may wait before it is promoted — this is what bounds the starvation window.
+- **Aging threshold** — How long low-priority work may wait before it is promoted; this bounds the starvation window. Set it below the low class's own deadline minus its processing time; with no deadline, pick the longest wait the business accepts and tune it against oldest-message age.
 - **Poll ratio for a shared pool** — Strict preemption is the simple setting; serving low every Nth poll trades the hard guarantee for a floor under low-priority throughput.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Age of the oldest message per class** — The number that says whether the high-priority promise is being kept, and the first place starvation shows.
+- **Age of the oldest message per class** — The number that says whether the high-priority promise is being kept, and the first place starvation shows. Alert before it reaches the class target; for the low class, age past the aging threshold means promotion is failing.
 - **Queue depth per class** — Depth diverging between classes means the pool sizing no longer matches the mix.
 - **End-to-end latency percentiles per class** — Track them separately, because a blended percentile hides exactly the difference the pattern exists to create.
 - **Share of traffic marked high priority** — Climbing toward everything means the classification has stopped meaning anything.
@@ -220,6 +224,7 @@ async function promoteAged(low: Queue, high: Queue, now: number): Promise<number
 - [Competing Consumers](./competing-consumers.md) — Each priority class is drained by its own pool of interchangeable workers
 - [Rate Limiter](../distributed/resilience/rate-limiter.md) — Limit the low classes first, so shedding load costs the cheapest work
 - [Sequential Convoy](./sequential-convoy.md) — Keep per-entity order inside a class when the class alone is not enough
+- [Bulkhead](../distributed/resilience/bulkhead.md) — Dedicated pools per class are bulkheads: a stuck lane cannot drain the others, at the cost of idle capacity.
 
 **Variant of**
 

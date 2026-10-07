@@ -13530,6 +13530,55 @@
       "b": "server-sent-events",
       "note_a": "A held SSE stream is the traffic that proxy buffering and idle timeouts break.",
       "note_b": "Turn buffering off on the stream route and keep its idle timeout above the keepalive interval."
+    },
+    {
+      "a": "websocket",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "Can fall into thundering herd when a deploy drops many sockets and every client reconnects at the same instant.",
+      "note_b": "A deploy or balancer reset makes every dropped socket reconnect in the same instant."
+    },
+    {
+      "a": "retry-backoff",
+      "verb": "combines-with",
+      "b": "websocket",
+      "note_a": "Reconnecting WebSocket clients are the case where jitter matters most.",
+      "note_b": "The client reconnects after a jittered, growing delay."
+    },
+    {
+      "a": "backpressure",
+      "verb": "combines-with",
+      "b": "websocket",
+      "note_a": "A socket's output buffer is where a slow client's lag shows first.",
+      "note_b": "A send-buffer cap is how you push back on a slow reader."
+    },
+    {
+      "a": "materialized-view",
+      "verb": "combines-with",
+      "b": "event-carried-state-transfer",
+      "note_a": "Events carrying full state let a consumer build and refresh the view with no call back.",
+      "note_b": "The events are one way to feed a local view of the owner's data."
+    },
+    {
+      "a": "idempotency",
+      "verb": "combines-with",
+      "b": "message-queue",
+      "note_a": "The queue redelivers, so repeats must be harmless.",
+      "note_b": "At-least-once delivery makes every consumer owe a safe repeat."
+    },
+    {
+      "a": "bulkhead",
+      "verb": "combines-with",
+      "b": "priority-queue",
+      "note_a": "Per-class queues with their own pools are the messaging form of the compartment.",
+      "note_b": "Dedicated pools per class are bulkheads: a stuck lane cannot drain the others, at the cost of idle capacity."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "message-router",
+      "note_a": "Unroutable messages arrive from the router's no-match path.",
+      "note_b": "Messages that match no rule go to the dead-letter channel, not a default queue."
     }
   ],
   "group_order": {

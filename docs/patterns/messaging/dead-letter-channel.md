@@ -208,6 +208,7 @@ async function runTask(task: Task): Promise<void> {
 - [Publish-Subscribe](./pubsub.md) — Each subscription gets its own dead-letter destination, not one shared per topic
 - [Competing Consumers](./competing-consumers.md) — The cap is what stops a poison message circulating through the whole pool
 - [Message Encoding](./message-encoding.md) — An undecodable payload is the most common thing a dead-letter channel catches
+- [Message Router](./message-router.md) — Unroutable messages arrive from the router's no-match path.
 
 **Enables**
 

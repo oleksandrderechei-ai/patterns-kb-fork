@@ -489,7 +489,7 @@
       "definition": "Retries transient failures with a growing delay",
       "route": "/patterns/distributed/resilience/retry-backoff.html",
       "requires": ["idempotency", "timeout-deadline"],
-      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control"]
+      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control", "websocket"]
     },
     {
       "id": "bulkhead",
@@ -497,7 +497,7 @@
       "definition": "Isolates resources so one failure can't sink all",
       "route": "/patterns/distributed/resilience/bulkhead.html",
       "requires": [],
-      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline", "multi-tenancy", "semaphore"]
+      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline", "multi-tenancy", "semaphore", "priority-queue"]
     },
     {
       "id": "health-endpoint",
@@ -1073,7 +1073,7 @@
       "definition": "Precomputes a query's result so reads don't recompute it",
       "route": "/patterns/distributed/coordination/materialized-view.html",
       "requires": [],
-      "related": ["cqrs", "event-sourcing", "cache-aside", "index-table", "big-data", "rag", "change-data-capture", "sliding-window"]
+      "related": ["cqrs", "event-sourcing", "cache-aside", "index-table", "big-data", "rag", "change-data-capture", "sliding-window", "event-carried-state-transfer"]
     },
     {
       "id": "index-table",
@@ -1257,7 +1257,7 @@
       "definition": "A slow consumer signals upstream to slow down",
       "route": "/patterns/concurrency/backpressure.html",
       "requires": [],
-      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer", "thread-pool"]
+      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer", "thread-pool", "websocket"]
     },
     {
       "id": "semaphore",
@@ -1401,7 +1401,7 @@
       "definition": "A two-way connection upgraded from HTTP (RFC 6455); either side sends at any time, at the cost of server-held connection state",
       "route": "/patterns/messaging/websocket.html",
       "requires": [],
-      "related": ["long-polling", "server-sent-events", "pubsub", "sticky-session", "fan-out", "stateless-service"]
+      "related": ["long-polling", "server-sent-events", "pubsub", "sticky-session", "fan-out", "stateless-service", "retry-backoff", "backpressure"]
     },
     {
       "id": "event-carried-state-transfer",
@@ -1409,7 +1409,7 @@
       "definition": "Events carry the data consumers need, so each keeps a local copy and never calls the owner back; Fowler's name for it",
       "route": "/patterns/messaging/event-carried-state-transfer.html",
       "requires": [],
-      "related": ["domain-event", "pubsub", "event-sourcing", "outbox", "idempotency", "content-enricher"]
+      "related": ["domain-event", "pubsub", "event-sourcing", "outbox", "idempotency", "content-enricher", "materialized-view"]
     },
     {
       "id": "message-queue",
@@ -1417,7 +1417,7 @@
       "definition": "Point-to-point channel, each message consumed once",
       "route": "/patterns/messaging/message-queue.html",
       "requires": [],
-      "related": ["outbox", "inbox", "producer-consumer", "actor-model", "claim-check", "message-router", "managed-services", "pubsub", "channels", "polling-consumer"]
+      "related": ["outbox", "inbox", "producer-consumer", "actor-model", "claim-check", "message-router", "managed-services", "pubsub", "channels", "polling-consumer", "idempotency"]
     },
     {
       "id": "priority-queue",
@@ -1425,7 +1425,7 @@
       "definition": "Serves queued work by importance, not by arrival order",
       "route": "/patterns/messaging/priority-queue.html",
       "requires": [],
-      "related": ["load-leveling", "competing-consumers", "rate-limiter", "sequential-convoy", "priority-inversion"]
+      "related": ["load-leveling", "competing-consumers", "rate-limiter", "sequential-convoy", "priority-inversion", "bulkhead"]
     },
     {
       "id": "message-router",
@@ -1433,7 +1433,7 @@
       "definition": "Directs a message to the right channel based on rules",
       "route": "/patterns/messaging/message-router.html",
       "requires": [],
-      "related": ["message-queue", "fan-out", "splitter"]
+      "related": ["message-queue", "fan-out", "splitter", "dead-letter-channel"]
     },
     {
       "id": "content-based-router",
@@ -1505,7 +1505,7 @@
       "definition": "Undeliverable messages land somewhere visible, not lost",
       "route": "/patterns/messaging/dead-letter-channel.html",
       "requires": ["message-queue"],
-      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding"]
+      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router"]
     },
     {
       "id": "correlation-identifier",
@@ -1545,7 +1545,7 @@
       "definition": "The same request applied twice has the same effect as once",
       "route": "/patterns/messaging/idempotency.html",
       "requires": [],
-      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer", "fencing-token", "pubsub"]
+      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer", "fencing-token", "pubsub", "message-queue"]
     },
     {
       "id": "fan-in",

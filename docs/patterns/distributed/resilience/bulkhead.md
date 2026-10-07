@@ -228,6 +228,7 @@ for (const [type, pool] of Object.entries(pools)) {
 - [Timeout / Deadline](./timeout-deadline.md) — A permit held by a hung call is only freed when a deadline expires
 - [Multi-Tenancy](../routing/multi-tenancy.md) — Compartments per tenant keep one tenant's load from spending another's capacity.
 - [Semaphore](../../concurrency/semaphore.md) — A bulkhead's permit is a counting semaphore sized per dependency
+- [Priority Queue](../../messaging/priority-queue.md) — Per-class queues with their own pools are the messaging form of the compartment.
 
 **Alternative to**
 

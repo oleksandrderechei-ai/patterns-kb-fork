@@ -23,8 +23,8 @@ A WebSocket is an HTTP connection that both sides agree to upgrade into a long-l
 
 A WebSocket is an HTTP connection that both sides agree to turn into a two-way message channel. The client sends a GET asking to upgrade, the server answers 101, and the same connection then carries small frames in both directions until one side closes it. Choose it over Server-Sent Events when the client also sends often, as in chat, games or shared editing, and over long polling when messages are frequent, because a frame costs a few bytes where a request costs full headers.
 
-- **Server-bound state.** The socket lives on one server. Carry events to it over a shared bus, or pin each client to its server.
-- **No reconnect or replay.** Write backoff and resume-from-id yourself.
+- **Server-bound state.** The socket lives on one server. Carry events to it over a shared publish-subscribe bus, or pin each client to its server.
+- **No reconnect or replay.** Write backoff and resume-from-id yourself, and keep recent messages by id, since a plain bus cannot replay a gap.
 - **No backpressure.** Cap each client's output buffer and disconnect slow readers.
 - **Liveness and deploys.** Send pings so dead peers are found, and stagger restarts, since a deploy drops every socket on a server.
 
@@ -97,6 +97,7 @@ sequenceDiagram
 - **No built-in reconnect or replay** — after a drop you write reconnect, backoff and resume-from-id yourself, or a client misses messages.
 - **No automatic backpressure** — a fast sender can fill a slow reader's buffer, so you bound queues and drop or disconnect slow clients.
 - **Costs at the edge** — each socket is a held connection that load balancers, proxies and idle timeouts must allow, and a connection flood is a denial-of-service route.
+- **Handshake auth and Origin** — a browser sends no custom headers on the upgrade, so authenticate by cookie or a first message and check the Origin header, or any site can open a socket with the user's cookies; a token can also expire while the socket stays open, so re-check it on a timer.
 
 ## When to use it
 <!--meta block=usage-->
@@ -111,7 +112,7 @@ sequenceDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The server only pushes** — a feed or dashboard gets reconnect and replay free from [Server-Sent Events](./server-sent-events.md), with no stateful protocol to run.
+- **The server only pushes** — a feed or dashboard gets automatic reconnect and a resume id from [Server-Sent Events](./server-sent-events.md), so you keep a window of recent events but run no two-way protocol.
 - **Updates are rare** — a held socket per client for one event an hour is waste, so use [long polling](./long-polling.md) or plain polling.
 - **You cannot keep connections open** — serverless functions and some proxies end long connections, so use [long polling](./long-polling.md) or a managed gateway that holds them.
 
@@ -130,11 +131,11 @@ wss.on("connection", (ws, req) => {
   (rooms.get(room) ?? rooms.set(room, new Set()).get(room)!).add(ws);
   alive.add(ws);
   ws.on("pong", () => alive.add(ws));              // peer answered the ping
-  ws.on("message", (data) => {                     // fan out to the room
+  ws.on("message", (data, isBinary) => {           // fan out to the room
     for (const peer of rooms.get(room)!) {
       if (peer === ws || peer.readyState !== WebSocket.OPEN) continue;
       if (peer.bufferedAmount > 1_000_000) peer.terminate(); // slow reader
-      else peer.send(data.toString());
+      else peer.send(data, { binary: isBinary });
     }
   });
   ws.on("close", () => rooms.get(room)!.delete(ws));
@@ -163,17 +164,18 @@ setInterval(() => {                                // heartbeat every 30 s
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **ping interval and timeout** — How often the server pings and how long it waits for the pong before it closes the socket. Keep the interval below proxy idle timeouts.
+- **ping interval and timeout** — How often the server pings and how long it waits for the pong before it closes the socket. Keep the interval well below the shortest proxy idle timeout on the path; the sketch pings every 30 s.
 - **max message size** — A cap on one frame or message, so one client cannot make the server allocate large buffers.
-- **send buffer limit** — The queued output allowed per connection before you drop messages or disconnect the client.
+- **send buffer limit** — The queued output allowed per connection before you drop messages or disconnect the client. The sketch cuts at 1,000,000 bytes; size it from your largest message times how many you allow queued.
 - **reconnect backoff with jitter** — The client delay after a drop, randomised so a restart does not trigger a synchronised wave.
+- **replay window** — How many messages or seconds of history per room the server keeps for resume-from-id; a client that asks for an older id gets a full resync.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **open connections per node** — The main capacity number; sockets use memory and file descriptors.
+- **open connections per node** — The main capacity number; each socket takes memory and a file descriptor, so set the alert from the limit you measure on one node under load.
 - **connects and disconnects per second** — A rise after a deploy or a network fault shows churn and the reconnect wave.
-- **output buffer size per connection** — Growing buffers identify slow clients before they take down a node.
+- **output buffer size per connection** — Growing buffers show slow clients before they exhaust a node's memory.
 - **message delivery latency** — Time from publish to frame written; it should stay in milliseconds, and bus lag shows here first.
 
 ### Failure modes under load
@@ -181,7 +183,7 @@ setInterval(() => {                                // heartbeat every 30 s
 
 - **reconnect storm** — A deploy or balancer reset drops many sockets, and all clients return at once, overloading the auth and handshake path.
 - **slow reader** — A client that cannot keep up makes queued output grow until the node runs out of memory.
-- **idle timeout cuts the socket** — A proxy or balancer closes a quiet connection, so clients look connected until the next send fails without pings.
+- **idle timeout cuts the socket** — A proxy or balancer closes a quiet connection. Without pings, clients look connected until their next send fails.
 - **lost messages across a reconnect** — Nothing replays by itself, so messages sent while the client was away are gone unless the app resumes from an id.
 
 ### Readiness checklist
@@ -218,6 +220,8 @@ setInterval(() => {                                // heartbeat every 30 s
 - [Sticky Session](../distributed/routing/sticky-session.md) — Pinning a client to one server keeps its socket and per-user state together.
 - [Fan-Out](./fan-out.md) — A message to a room is fan-out over the sockets that joined it.
 - [Stateless Service](../distributed/routing/stateless-service.md) — A thin connection tier holds the sockets while the rest stays stateless.
+- [Retry with Backoff](../distributed/resilience/retry-backoff.md) — The client reconnects after a jittered, growing delay.
+- [Backpressure](../concurrency/backpressure.md) — A send-buffer cap is how you push back on a slow reader.
 
 **Alternative to**
 
@@ -227,6 +231,7 @@ setInterval(() => {                                // heartbeat every 30 s
 **Exposed to**
 
 - [Head-of-Line Blocking](../../hazards/head-of-line-blocking.md) — Can fall into head of line blocking when one multiplexed ordered connection lets one slow message delay all the others behind it
+- [Thundering Herd](../../hazards/thundering-herd.md) — Can fall into thundering herd when a deploy drops many sockets and every client reconnects at the same instant.
 
 **Implemented by**
 
