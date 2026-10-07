@@ -955,7 +955,7 @@
       },
       "genai-scale": {
         "role": "Keep the graphics processing unit (GPU) busy",
-        "tour": "Inference throughput lives and dies on batch size. Grouping requests amortizes the fixed cost of a forward pass across many of them, and continuous batching keeps the batch full by swapping requests in and out at every decoding step instead of waiting for the slowest one to finish. Asynchronous batch application programming interfaces (APIs) push the same idea further, trading up to a day of latency for a lower price per token.",
+        "tour": "Batch size sets inference throughput, until memory or latency limits bite. A batch shares the fixed cost of one forward pass across all its requests, and continuous batching keeps the batch full by swapping requests in and out at every decoding step instead of waiting for the slowest one to finish. Asynchronous batch application programming interfaces (APIs) push the same idea further, trading up to a day of latency, set by the provider, for a lower price per token. Batch only when requests are queued while the GPU is under-used, so check queue depth and GPU utilization first.",
         "fluency": "Keep the graphics processing unit (GPU) busy"
       }
     },
@@ -1609,7 +1609,7 @@
       },
       "genai-scale": {
         "role": "Resize the graphics processing unit (GPU) fleet with demand",
-        "tour": "Inference load is spiky and graphics processing units (GPUs) are the most expensive line in the budget, so the serving fleet is resized against a signal — queue depth, latency, tokens in flight — instead of paying year-round for a peak that shows up occasionally. It is the precondition that lets every pattern above actually pay off.",
+        "tour": "Inference load is spiky and GPUs are the most expensive line in the budget, so the serving fleet is resized against a signal (queue depth, latency, tokens in flight) instead of paying year-round for a peak that shows up occasionally. A new replica must load its model weights before it serves, so scale on a leading signal and keep some headroom; a sudden burst can still outrun it.",
         "fluency": "Resize the graphics processing unit (GPU) fleet with demand"
       },
       "workload-composition": {
@@ -1879,7 +1879,7 @@
       },
       "genai-scale": {
         "role": "Split a model too big for one device",
-        "tour": "When a model's weights, gradients, and optimizer state outgrow a single graphics processing unit (GPU), they are partitioned across many — the same partition-by-key idea as a sharded database, applied to tensors. The data side shards too: billion-vector embedding indexes are split across nodes and answered by a fan-out query.",
+        "tour": "When a model's weights (plus gradients and optimizer state, when training) outgrow a single graphics processing unit (GPU), they are partitioned across many — the same partition-by-key idea as a sharded database, applied to tensors. The data side shards too: billion-vector embedding indexes are split across nodes and answered by a fan-out query. When serving, one lost GPU takes its whole replica down, so plan restart and failover per group.",
         "fluency": "Split a model too big for one device"
       },
       "scale-units-and-stamps": {
