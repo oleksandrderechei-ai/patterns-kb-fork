@@ -245,6 +245,7 @@ await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
 - [Leaky Abstraction](../../../hazards/leaky-abstraction.md) — Forces a substrate's latency and failure into the interface, where it cannot be forgotten
 - [Metastable Failure](../../../hazards/metastable-failure.md) — Dropping expired requests stops the work done for callers who have left.
 - [Head-of-Line Blocking](../../../hazards/head-of-line-blocking.md) — A timeout stops a hung item from blocking the lane forever.
+- [Resource Leak](../../../hazards/resource-leak.md) — An acquire timeout turns a silent hang from a leak into a loud error; it does not return the lost resource.
 
 **Demonstrated by**
 

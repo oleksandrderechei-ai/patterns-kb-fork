@@ -211,4 +211,8 @@ function mergeSet(a: ORSet, b: ORSet): ORSet {
 
 - [Split-Brain](../../../hazards/split-brain.md) — Both sides keep writing during a partition and the merge needs no choice of winner.
 
+**Exposed to**
+
+- [Clock Skew](../../../hazards/clock-skew.md) — A last-write-wins register keeps the value with the higher timestamp, so skewed clocks pick the wrong winner.
+
 <!-- relationships:end -->

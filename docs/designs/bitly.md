@@ -384,7 +384,7 @@ flowchart TB
 **Exposed to**
 
 - [Cache Stampede](../hazards/cache-stampede.md) — Every edge location holds a hot code under the same TTL, so expiries line up and every miss becomes a read of the same row.
-- [Hot Key](../hazards/hot-key.md) — One viral code draws hundreds of thousands of requests a second onto a single row.
+- [Hot Key](../hazards/hot-key.md) — Can fall into hot key when one viral code puts hundreds of thousands of reads a second on a single row
 
 **Demonstrates**
 

@@ -26,7 +26,7 @@ A golden hammer is a favourite tool that a team applies to every problem, whethe
 - **Decision time.** Naming a second candidate adds a short meeting; cap it at one sentence per loser.
 - **Extra interface.** The wrapper is code to maintain; wrap only tools that touch many call sites.
 
-**Example.** A team that runs Kafka well needs to save 5 settings changes a day from an admin screen. Out of habit they publish each change to a topic, and a consumer service writes it to the database, so two extra processes need deployment, monitoring and on-call. Asked for a second candidate, someone says a direct database write in the same request does the job. A one-week trial on this one screen confirms it. The team keeps Kafka for cases with a second consumer or over 1,000 events a second.
+**Example.** A team that runs Kafka well needs to save 5 settings changes a day from an admin screen. Out of habit they publish each change to a topic, and a consumer service writes it to the database, so two extra processes need deployment, monitoring and on-call. Asked for a second candidate, someone says a direct database write in the same request does the job. A one-week trial on this one screen confirms it. The team keeps Kafka for cases with a second consumer or a sustained high event rate.
 
 ## How it happens
 <!--meta block=causes-->
@@ -41,7 +41,7 @@ flowchart TB
 ```
 
 - The tool had a genuine early win, and that win quietly becomes the default answer to every later question.
-- Learning a second tool well has a real cost, so sticking with the familiar one avoids that cost — one time too many.
+- Learning a second tool well takes time, so people stay with the familiar one and skip that cost, and the skill gap widens with every project.
 - Nobody owns cross-cutting technology choices, so each new decision-maker just reaches for what they already know.
 - "We shipped with X" is a fact about one project; it quietly turns into "we always ship with X" for every project after it.
 - Internal advocates and past success stories reinforce the tool as the one true answer, beyond the scope it actually earned.
@@ -50,20 +50,21 @@ flowchart TB
 <!--meta block=cost-->
 
 - Simple problems get complex machinery: one write goes through a distributed queue, one conditional runs through a rules engine.
-- The stretched tool needs workarounds and escape hatches to do a job it wasn't built for, adding complexity nowhere else in the system needs.
-- Operational cost compounds — every problem now inherits the chosen tool's failure modes, latency, and ops burden, even the trivial ones.
-- Skill with alternatives keeps shrinking, so the "default" becomes the only realistic option, deepening the lock-in with each choice.
+- The stretched tool needs workarounds and escape hatches for a job it was not built for, and they add complexity the rest of the system does not need.
+- Operational cost compounds: every problem the tool is applied to inherits its failure modes, latency and ops burden, even the trivial ones.
+- Without deliberate practice on alternatives, skill with them tends to fade, so the default can become the only option the team can staff, and each choice deepens the lock-in.
 - Problems that genuinely need a different tool get bent to fit the familiar one, producing designs that fight the grain of the problem.
 - Reviews judge fit against habit rather than against the problem's actual shape, so the mismatch passes unquestioned.
+- One tool everywhere is a shared dependency, so a single outage, upgrade or licence change hits every system built on it.
 
 ## How to avoid it
 <!--meta block=mitigation-->
 
-Make someone name a second candidate. Before the choice is settled, one person names another way to solve it and says in a sentence why it loses — an hour of comparison is what turns a reflex back into a decision. If nobody can name an alternative, you have found the problem, not a formality to skip.
+Make someone name a second candidate. Before the choice is settled, one person names another way to solve it and says in a sentence why it loses. An hour of comparison for a small, reversible choice is what turns a reflex back into a decision. If nobody can name an alternative, you have found the problem, not a formality to skip. Keep this step for choices that are costly to reverse, and name a real rival, because a strawman loser makes it a ritual.
 
-Then make the choice reversible before it becomes permanent. Put the tool behind an interface your own code owns and keep its vocabulary out of the callers, so replacing it later is one implementation rather than a rewrite. And try the alternative on a real slice of work instead of in a document, because the argument is usually about fluency, and a week of using the other thing is the only honest price for it.
+Then make the choice reversible before it becomes permanent. Put the tool behind an interface your own code owns and keep its vocabulary out of the callers, so replacing it later is one implementation rather than a rewrite. And try the alternative on a real slice of work instead of in a document, because the argument is usually about fluency, and a week of using the other thing is the only honest price for it. Wrap only where the tool touches many call sites; one call site needs no wrapper. Before the trial, write one measurable pass criterion, such as deploy steps or ops load, and judge the slice against it.
 
-Someone has to own the defaults, or the reflex owns them. Keep a short written list of what the team reaches for by default and, against each entry, the boundary where it stops applying — a default with a stated edge is a decision, and one without an edge is the habit again in writing. Revisit that list on a fixed cadence rather than when a project is late, because a deadline is exactly when the familiar tool wins every argument.
+Someone has to own the defaults, or the reflex owns them. Keep a short written list of what the team reaches for by default and, against each entry, the boundary where it stops applying. A default with a stated edge is a decision, and one without an edge is the habit again in writing. Revisit that list on a fixed cadence rather than when a project is late, because a deadline is exactly when the familiar tool wins every argument.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -72,9 +73,14 @@ Someone has to own the defaults, or the reflex owns them. Keep a short written l
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
 
+**Combines with**
+
+- [Leaky Abstraction](./leaky-abstraction.md) — A hammer applied to a new workload shows its substrate through
+
 **Mitigated by**
 
 - [Microkernel / Plugin](../patterns/architecture/microkernel.md) — A plug-in per need resists forcing one tool everywhere
+- [Hexagonal](../patterns/architecture/hexagonal.md) — A port owned by your code means replacing the favourite tool is one adapter, not a rewrite
 
 **Threatens**
 

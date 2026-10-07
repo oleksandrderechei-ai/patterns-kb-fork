@@ -233,6 +233,10 @@ class Replica {
 
 - [Hot Key](../../../hazards/hot-key.md) — Replicate the hot entry across nodes and spread reads over the copies
 
+**Exposed to**
+
+- [Split-Brain](../../../hazards/split-brain.md) — Replicas that each accept writes after a cut link can diverge into two histories.
+
 **Demonstrated by**
 
 - [Bitly](../../../designs/bitly.md) — Bitly keeps a replica of its 500 GB store for availability

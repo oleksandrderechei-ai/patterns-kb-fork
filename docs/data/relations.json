@@ -4363,13 +4363,6 @@
       "note_b": "Make lifetime a declared registration a reviewer can read, not an accident of where the constructor sits"
     },
     {
-      "a": "containerization",
-      "verb": "prevents-hazard",
-      "b": "improper-instantiation",
-      "note_a": "Building once and promoting the artifact removes the per-environment rebuild that makes two environments differ",
-      "note_b": "Building once and promoting the artifact removes the per-environment rebuild that makes two environments differ"
-    },
-    {
       "a": "thread-pool",
       "verb": "prevents-hazard",
       "b": "resource-leak",
@@ -4599,13 +4592,6 @@
       "b": "split-brain",
       "note_a": "Promotion on timeout alone is exactly what produces two leaders",
       "note_b": "Election with terms and fencing stops a stale leader writing"
-    },
-    {
-      "a": "write-through",
-      "verb": "prevents-hazard",
-      "b": "stale-cache",
-      "note_a": "Write the cache and store together, so a read after a write can't be stale",
-      "note_b": "Write the cache and store together, so a read after a write can't be stale"
     },
     {
       "a": "cache-aside",
@@ -4872,13 +4858,6 @@
       "b": "leaky-abstraction",
       "note_a": "An abstraction that reports its real failure is one a caller can handle",
       "note_b": "Surfacing the substrate's failure beats a generic error the caller cannot act on"
-    },
-    {
-      "a": "distributed-tracing",
-      "verb": "prevents-hazard",
-      "b": "leaky-abstraction",
-      "note_a": "Reveals the cost an abstraction's interface never mentions",
-      "note_b": "Where the leak is a cost model, measuring at the boundary is the only defence left"
     },
     {
       "a": "ai-agent",
@@ -10196,13 +10175,6 @@
     {
       "a": "priority-inversion",
       "verb": "often-confused-with",
-      "b": "starvation",
-      "note_a": "The low task is outcompeted by unrelated work, not denied by policy.",
-      "note_b": "Priority inversion is one way a task is starved of central processing unit (CPU) time."
-    },
-    {
-      "a": "priority-inversion",
-      "verb": "often-confused-with",
       "b": "priority-queue",
       "note_a": "Priority is set on messages there and on locking tasks here.",
       "note_b": "A priority queue avoids the shared lock but starvation can still follow."
@@ -10509,13 +10481,6 @@
       "note_b": "Hedging hides a slow server at the front by sending the request elsewhere."
     },
     {
-      "a": "hedged-request",
-      "verb": "prevents-hazard",
-      "b": "metastable-failure",
-      "note_a": "Used with a budget it adds little load, and without one it can sustain an overload.",
-      "note_b": "Unbudgeted hedges are one more way extra load sustains an outage, so cap them."
-    },
-    {
       "a": "leaky-bucket",
       "verb": "alternative-to",
       "b": "token-bucket",
@@ -10591,13 +10556,6 @@
       "b": "metastable-failure",
       "note_a": "Coalescing blunts the cold-cache load that sustains a metastable overload.",
       "note_b": "Sharing one fetch per key keeps a cold cache from sending every read to the database."
-    },
-    {
-      "a": "cache-stampede",
-      "verb": "often-confused-with",
-      "b": "metastable-failure",
-      "note_a": "A stampede that keeps the cache from refilling can become a metastable failure.",
-      "note_b": "A cold cache is one trigger and one sustaining effect among several."
     },
     {
       "a": "priority-queue",
@@ -11473,13 +11431,6 @@
       "b": "lava-flow",
       "note_a": "Does not build for needs that may never come, so less speculative code is left to cool",
       "note_b": "Code written for an unproven need is what turns into lava when the need never comes"
-    },
-    {
-      "a": "boat-anchor",
-      "verb": "combines-with",
-      "b": "lava-flow",
-      "note_a": "A component built for a future that never arrives and is kept anyway becomes lava flow",
-      "note_b": "Dead code that stays because nobody dares delete it"
     },
     {
       "a": "big-ball-of-mud",
@@ -12586,13 +12537,6 @@
       "note_b": "A design where one expiry puts every edge miss on a single row."
     },
     {
-      "a": "bitly",
-      "verb": "exposed-to",
-      "b": "hot-key",
-      "note_a": "One viral code draws hundreds of thousands of requests a second onto a single row.",
-      "note_b": "A design where one link carries most of the read load."
-    },
-    {
       "a": "cqrs",
       "verb": "combines-with",
       "b": "repository",
@@ -13011,13 +12955,6 @@
       "b": "vector-clock",
       "note_a": "Where there is no single leader, a vector clock tells concurrent writes apart.",
       "note_b": "A leader gives one write order, so no clock is needed; a vector clock serves replicas with no leader."
-    },
-    {
-      "a": "heartbeat",
-      "verb": "prevents-hazard",
-      "b": "split-brain",
-      "note_a": "Only a tuned detector, with a long timeout and confirmers, avoids declaring a live node dead and promoting a second leader; a naive one causes the split, and fencing is still needed.",
-      "note_b": "Careful failure detection keeps a pause from being read as a death that splits the cluster."
     },
     {
       "a": "heartbeat",
@@ -13915,6 +13852,356 @@
       "b": "context-engineering",
       "note_a": "Holds declared data such as the repository scope an agent workspace loads, rather than leaving the agent to infer it at run time.",
       "note_b": "A multi-repository scope registry is declared data, like a config store, not inferred at run time."
+    },
+    {
+      "a": "big-ball-of-mud",
+      "verb": "combines-with",
+      "b": "spaghetti-code",
+      "note_a": "The same tangle inside one module; once it spreads across modules it is mud",
+      "note_b": "Left alone, tangled control flow spreads until no boundary in the system holds"
+    },
+    {
+      "a": "god-object",
+      "verb": "often-confused-with",
+      "b": "spaghetti-code",
+      "note_a": "One class holding many unrelated jobs, whatever the control flow",
+      "note_b": "Tangled control flow in any code, not one class holding many jobs"
+    },
+    {
+      "a": "big-ball-of-mud",
+      "verb": "often-confused-with",
+      "b": "god-object",
+      "note_a": "A whole system with no structure, not one class that swallowed the rest",
+      "note_b": "One class that does most of the work, inside a system that may be otherwise tidy"
+    },
+    {
+      "a": "high-cohesion-low-coupling",
+      "verb": "prevents-hazard",
+      "b": "big-ball-of-mud",
+      "note_a": "Low coupling keeps a change from spreading into a ball of mud",
+      "note_b": "Low coupling is what keeps a change inside its boundary"
+    },
+    {
+      "a": "entity",
+      "verb": "exposed-to",
+      "b": "anemic-domain-model",
+      "note_a": "Can fall into anemic domain model when it is only an id plus accessors and its rules live in services",
+      "note_b": "An entity reduced to fields and accessors is the anemic form"
+    },
+    {
+      "a": "make-illegal-states-unrepresentable",
+      "verb": "prevents-hazard",
+      "b": "partial-object",
+      "note_a": "Required constructor fields make the half-filled instance impossible to build",
+      "note_b": "A type that cannot be built incomplete cannot be partially populated"
+    },
+    {
+      "a": "hexagonal",
+      "verb": "prevents-hazard",
+      "b": "golden-hammer",
+      "note_a": "Ports your own code owns keep one tool's vocabulary out of callers, so swapping the tool is one adapter",
+      "note_b": "A port owned by your code means replacing the favourite tool is one adapter, not a rewrite"
+    },
+    {
+      "a": "cache-stampede",
+      "verb": "often-confused-with",
+      "b": "hot-key",
+      "note_a": "A stampede is a hot entry vanishing and every reader rebuilding it; a hot key is that entry overloading its node",
+      "note_b": "A hot key is a popular entry overloading one node; a stampede is that entry expiring so every reader rebuilds it"
+    },
+    {
+      "a": "cache-stampede",
+      "verb": "often-confused-with",
+      "b": "metastable-failure",
+      "note_a": "A stampede that saturates the source can keep the cache from refilling, so the overload outlives its trigger",
+      "note_b": "A cold cache is one trigger and one sustaining effect among several."
+    },
+    {
+      "a": "acl",
+      "verb": "prevents-hazard",
+      "b": "leaky-abstraction",
+      "note_a": "Contains the leak in one reviewed boundary instead of spreading it through the domain",
+      "note_b": "An abstraction over something hostile leaks by construction; the layer keeps the leak in one reviewed place"
+    },
+    {
+      "a": "golden-hammer",
+      "verb": "combines-with",
+      "b": "leaky-abstraction",
+      "note_a": "A hammer applied to a new workload shows its substrate through",
+      "note_b": "Reaching for one abstraction beyond its range creates a leak"
+    },
+    {
+      "a": "distributed-tracing",
+      "verb": "prevents-hazard",
+      "b": "leaky-abstraction",
+      "note_a": "Reveals the cost an abstraction's interface never mentions",
+      "note_b": "Where the leak is a cost model, per-request time and call counts across layers find it; they do not prevent it"
+    },
+    {
+      "a": "boat-anchor",
+      "verb": "combines-with",
+      "b": "lava-flow",
+      "note_a": "Both are dead code kept out of fear; a boat anchor was built on purpose and never removed, lava flow is accidental residue nobody can explain. Often found together.",
+      "note_b": "Both are dead code kept out of fear; lava flow is residue of unknown purpose, a boat anchor was built on purpose and left in. Often found together."
+    },
+    {
+      "a": "bitly",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "Can fall into hot key when one viral code puts hundreds of thousands of reads a second on a single row",
+      "note_b": "One link carries most of the read load"
+    },
+    {
+      "a": "write-through",
+      "verb": "prevents-hazard",
+      "b": "stale-cache",
+      "note_a": "Write the cache and store together, so a read after a write sees the new value in this cache",
+      "note_b": "Write the cache and store together, so a read after a write sees the new value in this cache unless another layer or replica holds a copy"
+    },
+    {
+      "a": "in-process-cache",
+      "verb": "prevents-hazard",
+      "b": "no-caching",
+      "note_a": "Keeps the repeated read in the app's own memory, the fastest hit",
+      "note_b": "The fastest placement, with a separate copy in every instance"
+    },
+    {
+      "a": "ad-click-aggregator",
+      "verb": "exposed-to",
+      "b": "hot-partition",
+      "note_a": "Falls into it when one ad_id takes most clicks; key-salting spreads it.",
+      "note_b": "Click aggregation keyed by ad_id hits it when one ad is hot."
+    },
+    {
+      "a": "heartbeat",
+      "verb": "prevents-hazard",
+      "b": "split-brain",
+      "note_a": "Only a tuned detector, with a long timeout and confirmers, avoids declaring a live node dead and promoting a second leader; fencing is still needed.",
+      "note_b": "Tuned timeouts reduce needless failovers but cannot tell a pause from a death; fencing covers the rest."
+    },
+    {
+      "a": "replication",
+      "verb": "exposed-to",
+      "b": "split-brain",
+      "note_a": "Replicas that each accept writes after a cut link can diverge into two histories.",
+      "note_b": "Replicas that each accept writes after a cut link diverge into two histories."
+    },
+    {
+      "a": "rate-limiter",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "A counter read on two threads at once admits request 101 past the limit",
+      "note_b": "Rate Limiter's check-then-count is a check-then-act race when its counter is shared"
+    },
+    {
+      "a": "connection-pool-exhaustion",
+      "verb": "often-confused-with",
+      "b": "deadlock",
+      "note_a": "Nested checkouts can deadlock a pool; plain exhaustion needs no cycle, only holders slower than demand",
+      "note_b": "Both freeze a request path at idle CPU; deadlock needs a lock cycle, pool exhaustion needs only slow holders"
+    },
+    {
+      "a": "semaphore",
+      "verb": "exposed-to",
+      "b": "starvation",
+      "note_a": "Barging permit release lets a fresh thread retake the permit and starve queued waiters.",
+      "note_b": "A semaphore whose release lets the releasing thread retake the permit starves the queued waiters."
+    },
+    {
+      "a": "load-shedding",
+      "verb": "prevents-hazard",
+      "b": "unbounded-queue",
+      "note_a": "Refuses new work past a busy level, so the queue never builds a backlog.",
+      "note_b": "Refusing work past a limit keeps the queue shallow."
+    },
+    {
+      "a": "load-leveling",
+      "verb": "exposed-to",
+      "b": "unbounded-queue",
+      "note_a": "Its buffer absorbs bursts, so with no depth cap it can grow until memory runs out.",
+      "note_b": "A burst-absorbing buffer with no cap becomes the outage."
+    },
+    {
+      "a": "timeout-deadline",
+      "verb": "prevents-hazard",
+      "b": "resource-leak",
+      "note_a": "An acquire timeout turns a silent hang from a leak into a loud error; it does not return the lost resource.",
+      "note_b": "A caller that cannot get a resource fails fast instead of blocking forever."
+    },
+    {
+      "a": "chatty-io",
+      "verb": "combines-with",
+      "b": "connection-pool-exhaustion",
+      "note_a": "Each call holds a connection for its round-trip, so a chatty operation drains the pool and unrelated requests queue.",
+      "note_b": "A chatty caller holds slots far longer than its work needs, so call count alone can exhaust the pool."
+    },
+    {
+      "a": "cache-aside",
+      "verb": "prevents-hazard",
+      "b": "chatty-io",
+      "note_a": "Answers repeated reads from memory, so on a hit the round-trip is not made.",
+      "note_b": "A cache skips the round-trip for repeated requests, at the price of stale data and an invalidation rule."
+    },
+    {
+      "a": "cqrs",
+      "verb": "prevents-hazard",
+      "b": "extraneous-fetching",
+      "note_a": "A read model shaped per screen returns only the fields and rows that screen shows",
+      "note_b": "A separate read model shaped per screen stops full-row and unbounded reads"
+    },
+    {
+      "a": "materialized-view",
+      "verb": "prevents-hazard",
+      "b": "busy-database",
+      "note_a": "Computes the costly shape once on a schedule, so a read becomes a lookup; staleness must be bounded",
+      "note_b": "Precompute near-data work on a schedule, so it stops costing store CPU per request"
+    },
+    {
+      "a": "monolithic-persistence",
+      "verb": "combines-with",
+      "b": "noisy-neighbour",
+      "note_a": "The single-store case: unlike workloads in one engine throttle each other.",
+      "note_b": "Monolithic Persistence is the same effect inside one data store."
+    },
+    {
+      "a": "dual-write-inconsistency",
+      "verb": "combines-with",
+      "b": "monolithic-persistence",
+      "note_a": "A split away from a single store is where this hazard arrives.",
+      "note_b": "Splitting stores breaks the shared transaction, and unsynchronised writes then diverge."
+    },
+    {
+      "a": "busy-front-end",
+      "verb": "combines-with",
+      "b": "unbounded-queue",
+      "note_a": "A queue added to relieve the front end grows without limit unless it is capped and rejects at the front door",
+      "note_b": "Adding a queue to relieve a busy front end recreates this hazard unless the depth is capped"
+    },
+    {
+      "a": "bulkhead",
+      "verb": "prevents-hazard",
+      "b": "synchronous-io",
+      "note_a": "Gives blocking work its own bounded pool so it cannot starve request workers",
+      "note_b": "Blocking calls that exhaust a pool are what the compartment contains"
+    },
+    {
+      "a": "cascading-failure",
+      "verb": "combines-with",
+      "b": "synchronous-io",
+      "note_a": "A blocking caller is one way a cascade crosses a hop: parked threads pass the slowness on",
+      "note_b": "Exhausted workers turn a slow dependency's latency into the caller's outage, which then spreads upstream"
+    },
+    {
+      "a": "connection-pool-exhaustion",
+      "verb": "often-confused-with",
+      "b": "resource-leak",
+      "note_a": "A leak stays full after traffic stops; exhaustion recovers once slow holders return their slots.",
+      "note_b": "A leak never recovers when traffic stops; exhaustion drains once load drops, so check pool use after the spike."
+    },
+    {
+      "a": "sticky-session",
+      "verb": "exposed-to",
+      "b": "host-header-rewriting",
+      "note_a": "Cookie affinity breaks when the proxy rewrites the host, so the balancer sees a first-time visitor",
+      "note_b": "Sticky-session affinity stops working once the host is rewritten"
+    },
+    {
+      "a": "cascading-failure",
+      "verb": "combines-with",
+      "b": "retry-storm",
+      "note_a": "A retry storm is one way a failing peer is re-fed until the failure spreads.",
+      "note_b": "Retries holding threads and connections spread a dependency's failure to callers that never touch it."
+    },
+    {
+      "a": "retry-storm",
+      "verb": "combines-with",
+      "b": "thundering-herd",
+      "note_a": "A herd released after an outage is the first wave; the retries after its failures are the storm.",
+      "note_b": "A recovery wave of synchronized retries is the herd's second round; backoff without jitter feeds both."
+    },
+    {
+      "a": "cascading-failure",
+      "verb": "combines-with",
+      "b": "connection-pool-exhaustion",
+      "note_a": "A shared pool lets pressure on one call path starve every other path, which is how the cascade crosses services.",
+      "note_b": "A pool starved on one path can spread to every service sharing it, turning one stalled caller into a cascade."
+    },
+    {
+      "a": "noisy-neighbour",
+      "verb": "combines-with",
+      "b": "starvation",
+      "note_a": "A noisy neighbour is one cause of starvation: a heavy tenant holding the shared pool.",
+      "note_b": "Starvation is the victim's symptom; a noisy neighbour is one way to produce it."
+    },
+    {
+      "a": "connection-pool-exhaustion",
+      "verb": "combines-with",
+      "b": "noisy-neighbour",
+      "note_a": "Connection pool exhaustion is what a noisy neighbour looks like when the shared resource is a connection pool.",
+      "note_b": "One tenant's burst holding every pooled connection is a noisy neighbour at the connection pool."
+    },
+    {
+      "a": "crdt",
+      "verb": "exposed-to",
+      "b": "clock-skew",
+      "note_a": "A last-write-wins register keeps the value with the higher timestamp, so skewed clocks pick the wrong winner.",
+      "note_b": "Skewed clocks make a last-write-wins register keep the wrong value."
+    },
+    {
+      "a": "fault-injection",
+      "verb": "prevents-hazard",
+      "b": "metastable-failure",
+      "note_a": "Applying a trigger, removing it and checking that goodput returns exposes a loop before an incident does.",
+      "note_b": "Applying a trigger, removing it and checking that goodput returns shows whether a loop sustains the outage."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "prevents-hazard",
+      "b": "head-of-line-blocking",
+      "note_a": "A dead-letter channel moves a repeatedly failing head aside so the lane keeps moving.",
+      "note_b": "Dead-letter channel is the exit for a stuck head that retries cannot clear."
+    },
+    {
+      "a": "competing-consumers",
+      "verb": "prevents-hazard",
+      "b": "head-of-line-blocking",
+      "note_a": "Competing consumers mean a stuck item holds one worker, not the whole lane.",
+      "note_b": "Competing consumers is the multi-worker form of the fix for a stuck head."
+    },
+    {
+      "a": "hedged-request",
+      "verb": "prevents-hazard",
+      "b": "metastable-failure",
+      "note_a": "Used with a budget it adds little load, and without one it can sustain an overload.",
+      "note_b": "A hedge adds little load under a budget, but unbudgeted hedges sustain an overload, so cap them."
+    },
+    {
+      "a": "god-object",
+      "verb": "combines-with",
+      "b": "shotgun-surgery",
+      "note_a": "A class that takes every client's special case is where one change must be repeated for each client.",
+      "note_b": "Shared code that grows a case for every client becomes one class everything leans on, while the clients still need edits together."
+    },
+    {
+      "a": "architecture-documentation",
+      "verb": "prevents-hazard",
+      "b": "lava-flow",
+      "note_a": "A dated record of why code was kept lets a reader tell live code from dead.",
+      "note_b": "Fear of removal fades when a record says why the code exists."
+    },
+    {
+      "a": "priority-inversion",
+      "verb": "often-confused-with",
+      "b": "starvation",
+      "note_a": "Here an unrelated task outcompetes the lock holder; starvation is the wider case, and inversion is one way into it.",
+      "note_b": "Priority inversion is one way a task is starved of central processing unit (CPU) time."
+    },
+    {
+      "a": "lock-free",
+      "verb": "prevents-hazard",
+      "b": "priority-inversion",
+      "note_a": "Takes no lock, so no low-priority holder can be preempted while a high-priority task waits.",
+      "note_b": "No lock means no holder to preempt, at the price of retries."
     }
   ],
   "group_order": {

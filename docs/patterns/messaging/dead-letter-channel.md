@@ -231,6 +231,7 @@ async function runTask(task: Task): Promise<void> {
 **Prevents**
 
 - [Poison Message](../../hazards/poison-message.md) — The dead letter channel exists to hold the messages that always fail.
+- [Head-of-Line Blocking](../../hazards/head-of-line-blocking.md) — A dead-letter channel moves a repeatedly failing head aside so the lane keeps moving.
 
 **Demonstrated by**
 

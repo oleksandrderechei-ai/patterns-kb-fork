@@ -221,6 +221,7 @@ async function rebuild(
 - [N+1 Query](../../../hazards/n-plus-1-query.md) — Precompute the joined result so the N follow-up queries disappear entirely
 - [Extraneous Fetching](../../../hazards/extraneous-fetching.md) — Turns a per-request scan into a lookup, paid for with a bounded staleness
 - [Distributed Monolith](../../../hazards/distributed-monolith.md) — Refusing to duplicate any data forces every service to call the owner, which is shared state by another name.
+- [Busy Database](../../../hazards/busy-database.md) — Computes the costly shape once on a schedule, so a read becomes a lookup; staleness must be bounded
 
 **Demonstrated by**
 

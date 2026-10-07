@@ -21,9 +21,9 @@ Code from an old experiment or departed team hardens in place, because nobody kn
 ## Explained
 <!--meta block=explain-->
 
-Lava flow is dead or poorly understood code that stays in the system because nobody dares delete it. It is left by prototypes that shipped, abandoned experiments and people who left without notes. It is not defined by age but by fear: there are no tests to prove removal is safe and no owner to ask. It gets worse with time, because new code is built on or around it, and a deletion that was safe in year one becomes a risky project in year four. Choose measuring over guessing: find out from production traffic what is actually unused, then delete in small reversible steps. Where code is used but not understood, write tests that record its current behaviour first, so a rewrite has a net under it.
+Lava flow is dead or poorly understood code that stays in the system because nobody dares delete it. It is left by prototypes that shipped, abandoned experiments and people who left without notes. It is not defined by age but by fear: there are no tests to prove removal is safe and no owner to ask. It gets worse as new code is built on or around it, so each year makes removal harder. Measure first: find out from production traffic what is unused, over a window as long as the longest business cycle, then delete in small reversible steps. Where code is used but not understood, write tests that record its current behaviour first, so a rewrite has a net under it.
 
-**Example.** A 4,000-line reporting module has no owner and no tests, and the team says it might feed finance. A counter added to its entry points shows 0 calls in 6 weeks across 3 month-end closes. The team deletes one sub-module per week behind version control, and watches errors after each. In 5 weeks they remove 3,100 lines and 11 dependencies, and the build drops from 14 to 11 minutes. One removal broke a quarterly job and was restored in an hour from version history. The cost was 5 weeks of cautious work, and the counter-move to the risk was small steps.
+**Example.** A 4,000-line reporting module has no owner and no tests, and the team says it might feed finance. A counter added to its entry points shows 0 calls in 6 weeks across 2 month-end closes. The team deletes one sub-module per week behind version control, and watches errors after each. In 5 weeks they remove 3,100 lines and 11 dependencies, and the build drops from 14 to 11 minutes. One removal broke a quarterly job, which the 6-week window never reached, and it was restored in an hour from version history. Next time the counter runs for a full quarter before anything is deleted.
 
 ## How it happens
 <!--meta block=causes-->
@@ -39,7 +39,7 @@ flowchart TB
 - **Prototype becomes product.** Code written to try an idea ships under a deadline, and the cleanup that was promised never gets scheduled.
 - **Turnover without handover.** The person who knew why a branch exists leaves, and what remains is code that works and cannot be explained.
 - **No tests to prove it is safe.** Without tests, nobody can show that deleting a module changes nothing, so the safe choice is to keep it.
-- **Commented-out and flagged-off code.** Developers keep old versions "just in case", and a feature flag stays in the code long after its rollout ended. Kept with no use, such code is a [boat anchor](./boat-anchor.md).
+- **Commented-out and flagged-off code.** Developers keep old versions "just in case", and a feature flag stays in the code long after its rollout ended. Once nobody remembers why it was kept, such code is lava flow; a [boat anchor](./boat-anchor.md), code built on purpose and never used, is its deliberate cousin.
 - **Pressure to add, not remove.** Features are tracked and rewarded, while deletion is invisible work with only downside if something breaks.
 
 ## What it costs
@@ -48,17 +48,18 @@ flowchart TB
 - **Readers waste time.** Each new developer reads the dead code to learn that it is dead, and some build on it by mistake.
 - **Dependencies pile up.** Unused code keeps its libraries in the build, so security patches and upgrades apply to something nobody uses.
 - **Tests and builds slow down.** Dead paths are compiled, scanned and sometimes tested on every run, with no benefit.
-- **It hides real structure.** A search for how a feature works returns five candidates, and the reader cannot tell which one runs.
-- **It grows more dangerous with time.** The longer it sits, the more live code is attached to it, and a removal that was safe in year one is a risky project in year four.
+- **It hides real structure.** A search for a feature returns five candidates, and the reader cannot tell which one runs.
+- **It grows more dangerous with time.** The longer it sits, the more live code is attached to it, and a removal that is safe early can become a risky project years later.
+- **Attack surface widens.** Dead code that can still be reached, such as an old endpoint, can be triggered by accident or by an attacker.
 
 ## Getting out
 <!--meta block=mitigation-->
 
-Find out what is really unused before you delete anything. Production telemetry, coverage from real traffic or a counter added to the suspect function answers the question with evidence, and a few weeks of zero calls is a stronger reason than a code review.
+Find out what is really unused before you delete anything. Production telemetry, coverage from real traffic or a counter added to the suspect function answers the question with evidence, and zero calls over a window longer than the longest business cycle (month-end, quarter-end, year-end) is a stronger reason than a code review, though it proves only unused so far.
 
 Then remove in small, reversible steps. Delete one module at a time, behind version control so that it can be restored, and watch the error rate afterwards. For code that is still referenced but not understood, write characterisation tests that record what it does today, and then refactor or replace it with the tests as a safety net. For a whole legacy area, the [strangler fig](../patterns/distributed/coordination/strangler-fig.md) approach replaces it one slice at a time.
 
-Stop new lava from forming. Give every module an owner, delete a feature flag in the same sprint that finishes its rollout, and treat a prototype's ship date as the start of a cleanup deadline. Make deleting code a visible, praised piece of work, because a team that is never rewarded for removal will not do it.
+Stop new lava from forming. Give every module an owner, delete a feature flag in the same sprint that finishes its rollout, and treat a prototype's ship date as the start of a cleanup deadline. Delete commented-out code outright, since version control keeps it. Make deleting code a visible, praised piece of work, because a team that is never rewarded for removal will not do it.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -69,13 +70,14 @@ Stop new lava from forming. Give every module an owner, delete a feature flag in
 
 **Combines with**
 
-- [Boat Anchor](./boat-anchor.md) — Dead code that stays because nobody dares delete it
 - [Big Ball of Mud](./big-ball-of-mud.md) — Unowned code nobody dares remove keeps piling up
+- [Boat Anchor](./boat-anchor.md) — Both are dead code kept out of fear; lava flow is residue of unknown purpose, a boat anchor was built on purpose and left in. Often found together.
 
 **Mitigated by**
 
 - [Golden Master](../patterns/testing/golden-master.md) — Fear of removal fades when a recorded baseline shows nothing changed
 - [You Aren't Gonna Need It (YAGNI)](../principles/yagni.md) — Code written for an unproven need is what turns into lava when the need never comes
+- [Record Architecture Decisions](../principles/architecture-documentation.md) — Fear of removal fades when a record says why the code exists.
 
 **Threatens**
 

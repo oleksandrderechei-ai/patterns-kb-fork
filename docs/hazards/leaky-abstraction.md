@@ -31,11 +31,11 @@ A leaky abstraction is a simple interface that hides a layer below it, but canno
 ## How it happens
 <!--meta block=causes-->
 
-Every leak is an abstraction modelling most of its substrate and quietly not modelling the rest. The happy path exercises the part it got right, so the gap is invisible until production finds the case the model does not cover. The forms below are the recurring ones, and they fail in different ways: two hide something that breaks, two hide something that costs.
+Every leak is an abstraction modelling most of its substrate and quietly not modelling the rest. The happy path exercises the part it got right, so the gap is invisible until production finds the case the model does not cover. The forms below are the recurring ones: some hide something that breaks, some hide something that costs, and some mark where the model ends or stops fitting.
 
 The structural reason they persist is that plugging a leak widens the interface. Report every failure mode the substrate has and the abstraction stops being simpler than the raw thing; report none and callers cannot handle them. Most abstractions settle somewhere in between without writing down where, and the undocumented middle is exactly the surface callers guess at.
 
-```mermaid caption="Step 4 is the whole hazard: the abstraction has no vocabulary for what happened at step 3, so it returns something uninformative — and step 5 is the cost, because understanding the failure means reasoning about a layer the caller was told to ignore."
+```mermaid caption="Step 4 is the whole hazard: the abstraction has no vocabulary for what happened at step 3, so it returns something uninformative, and step 5 is the cost, because understanding the failure means reasoning about a layer the caller was told to ignore."
 flowchart LR
     C["Caller, written against the promise"] -->|"1 ordinary call"| A["Abstraction"]
     A -->|"2 delegates"| S["Substrate"]
@@ -48,7 +48,7 @@ flowchart LR
 - **A cost model rather than a behaviour.** A declarative query language promises the result and says nothing about the procedure, so equivalent queries differ by orders of magnitude.
 - **Remote presented as local.** A file on another machine reads like a local file, so calling code inherits none of the latency or partial-failure handling it needs.
 - **A non-uniform substrate presented as uniform.** A flat address space hides paging, so iterating an array along one axis and the other differ enormously while both look identical in the source.
-- **The abstraction stops at its own edge.** A string type cannot make two adjacent literals concatenate, because at that point they are not yet its type — the leak is at the boundary where the abstraction has not started.
+- **The abstraction stops at its own edge.** A string type cannot make two adjacent literals concatenate, because they are not yet its type; the caller hits a boundary the abstraction never covered.
 - **Reached for beyond the range it models.** An abstraction that fits one workload gets applied to a second whose substrate behaves differently, which is a [golden hammer](./golden-hammer.md) producing a leak that was never in the original design.
 
 ## What it costs
@@ -60,16 +60,16 @@ flowchart LR
 - **The interface widens anyway.** Callers grow the defensive code the abstraction was meant to make unnecessary, so you end up with the raw thing's complexity and a layer on top of it.
 - **Knowledge concentrates in one person.** Whoever last debugged through the leak becomes the only person who can, and that is a dependency nobody chose.
 
-The one cost you cannot design away is that you pay it either way. Leave the leak and callers meet it unprepared; widen the abstraction until it reports everything the substrate can do and it is as complicated as the substrate, plus indirection — which is why the useful question is never "how do we stop it leaking" but "which leaks does this thing have, and can we afford them". That reframing has a practical consequence: the leak inventory belongs in the abstraction's documentation as a first-class section, and an abstraction whose author cannot list its leaks has not finished designing it.
+You usually pay the cost either way. Leave the leak and callers meet it unprepared; widen the abstraction until it reports everything the substrate can do and it is as complicated as the substrate, plus indirection. So the useful question is rarely "how do we stop it leaking" but "which leaks does this thing have, and can we afford them". List the leaks in the abstraction's documentation as a first-class section; an author who cannot list them has not finished designing it.
 
 ## Getting out
 <!--meta block=mitigation-->
 
-Start by narrowing the promise rather than the leak. Write down what the abstraction does not cover, so callers stop treating the gaps as guarantees — and where the substrate can fail, put that failure in the signature. A remote call whose type admits it can time out cannot be forgotten about; one that looks like a local call will be.
+Start by narrowing the promise rather than the leak. Write down what the abstraction does not cover, so callers stop treating the gaps as guarantees. Where the substrate can fail, put that failure in the signature: a remote call whose type admits it can time out cannot be forgotten about; one that looks like a local call will be.
 
-Keep the escape hatch open. An abstraction over a query language should let a caller drop to the raw form where cost matters, because the alternative is a workaround pushed through the abstraction, which is slower and harder to read than the thing it was avoiding. Where what leaks is a cost model, no interface change helps: measure at the boundary, because real cost is observable and the interface will never tell you.
+Keep the escape hatch open. An abstraction over a query language should let a caller drop to the raw form where cost matters, because the alternative is a workaround pushed through the abstraction, which is slower and harder to read than the thing it was avoiding. Where what leaks is a cost model, no interface change helps: measure at the boundary, because real cost is observable and the interface rarely tells you.
 
-Then choose deliberately. Prefer the abstraction that hides less over the one that hides more but hides it imperfectly, and treat [simplicity](../principles/kiss.md) as the tiebreaker it exists to be. An [anti-corruption layer](../patterns/ddd/acl.md) is worth calling out here: it is an abstraction deliberately placed over something hostile, so it leaks by construction, and its value is that the leak is contained in one reviewed place instead of spread through the domain.
+Then choose deliberately. Prefer the abstraction that hides less over the one that hides more but hides it imperfectly, and treat [simplicity](../principles/kiss.md) as the tiebreaker it exists to be. An [anti-corruption layer](../patterns/ddd/acl.md) is an abstraction placed over something hostile, so it leaks by construction; its value is that the leak stays in one reviewed place instead of spreading through the domain.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -78,12 +78,17 @@ Then choose deliberately. Prefer the abstraction that hides less over the one th
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
 
+**Combines with**
+
+- [Golden Hammer](./golden-hammer.md) — Reaching for one abstraction beyond its range creates a leak
+
 **Mitigated by**
 
 - [Keep It Simple (KISS)](../principles/kiss.md) — Prefer the abstraction that hides less over the one that hides more, imperfectly
 - [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) — Puts the remote failure mode in the signature, so a caller cannot inherit the local-call assumption
 - [Fail Fast](../principles/fail-fast.md) — Surfacing the substrate's failure beats a generic error the caller cannot act on
-- [Distributed Tracing](../patterns/distributed/resilience/distributed-tracing.md) — Where the leak is a cost model, measuring at the boundary is the only defence left
+- [Anti-Corruption Layer](../patterns/ddd/acl.md) — An abstraction over something hostile leaks by construction; the layer keeps the leak in one reviewed place
+- [Distributed Tracing](../patterns/distributed/resilience/distributed-tracing.md) — Where the leak is a cost model, per-request time and call counts across layers find it; they do not prevent it
 
 **Threatens**
 

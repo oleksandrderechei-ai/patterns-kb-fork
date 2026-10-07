@@ -208,8 +208,4 @@ CMD ["dist/server.js"]
 - [Compute](../../../capabilities/compute.md) — Serverless container runtimes and managed Kubernetes both start from an image; the platform runs it and never builds it.
 - [Container Orchestration](./container-orchestration.md) — The orchestrator schedules and replaces images; this is what decides what is inside one
 
-**Prevents**
-
-- [Improper Instantiation](../../../hazards/improper-instantiation.md) — Building once and promoting the artifact removes the per-environment rebuild that makes two environments differ
-
 <!-- relationships:end -->

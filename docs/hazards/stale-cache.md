@@ -16,17 +16,17 @@ Because most systems read from the cache but write to the store, every write ope
 ## What it is
 <!--meta block=description-->
 
-A stale cache is a cached copy that no longer matches the source of truth while reads keep being served from it. Systems read from the cache but write to the store, so every write leaves the copy wrong until it is invalidated or expires. Nothing raises an error, so monitors stay green and the first signal is a user insisting they already changed something.
+A stale cache is a cached copy that no longer matches the source of truth while reads keep being served from it. Systems read from the cache but write to the store, so every write leaves the copy wrong until it is invalidated or expires. Unless freshness is measured, nothing raises an error, so monitors usually stay green and the first signal is a user insisting they already changed something.
 
 ## Explained
 <!--meta block=explain-->
 
-A stale cache is a cache holding a copy that no longer matches the source, while reads keep being served from the copy. Writes go to the store and reads come from the cache, so a write leaves the cached copy wrong until something deletes it or it expires. No error is raised and no alarm fires, so the first signal is a user insisting they already changed something. This is a trade you bought, not a defect: serving the truth on every read is too expensive, so ask how wrong each kind of data may be. A feed can lag minutes, a price or a permission cannot. Write that budget down per kind of data, because one global expiry treats them all alike. Delete the cached key in the same code path that writes to the store, as [cache-aside](../patterns/caching/cache-aside.md) does, so the next read reloads the current value. Keep a short expiry as a backstop for a missed delete and for a reader who re-cached the old value just before the write.
+A stale cache is a cache holding a copy that no longer matches the source, while reads keep being served from the copy. Writes go to the store and reads come from the cache, so a write leaves the cached copy wrong until something deletes it or it expires. No error is raised and no alarm fires, so the first signal is a user insisting they already changed something. Staleness is the price of caching, not a bug: serving the truth on every read is too expensive, so ask how wrong each kind of data may be. A feed can lag minutes, a price or a permission cannot. Write that budget down per kind of data, because one global expiry treats them all alike. Delete the cached key in the same code path that writes to the store, as [cache-aside](../patterns/caching/cache-aside.md) does, so the next read reloads the current value. Keep a short expiry as a backstop for a missed delete and for a reader who re-cached the old value just before the write.
 
 - **Hit rate.** Each tightening of expiry lowers hit rate and raises source load, so tighten only where staleness does harm.
 - **Reload after write.** The first read after every write misses and pays the full fetch.
 
-**Example.** A product price falls from 20 to 15 at 12:00. The page is read 100 times a second and cached for 10 minutes, so about 60,000 reads show 20 until 12:10 while checkout charges 15. Deleting the key on every price write cuts that to the reads that land before the write is seen. A 60 s expiry caps the damage from a missed delete or a reader who re-cached the old value at 6,000 reads, at the cost of 10 times as many reloads from expiry alone.
+**Example.** A product price falls from 20 to 15 at 12:00. The page is read 100 times a second and cached for 10 minutes, so about 60,000 reads show 20 until 12:10 while checkout charges 15. Deleting the key on every price write cuts that to the reads that land in the gap between the store write and the key delete, at most 100 for each second of gap. A 60 s expiry caps the damage from a missed delete or a reader who re-cached the old value at 6,000 reads, at the cost of 10 times as many reloads from expiry alone.
 
 ## How it happens
 <!--meta block=causes-->
@@ -42,19 +42,22 @@ flowchart TB
 - No invalidation on write: the store is updated but the cache key is left in place, so it keeps serving the old value until its TTL (time to live) runs out.
 - Long TTLs chosen for hit rate: the longer an entry is allowed to live, the wider the window in which it can be wrong.
 - Multiple cache layers or replicas: a client cache, a CDN (content delivery network), and a [shared cache](../patterns/caching/distributed-cache.md) each hold their own copy, and they expire on their own schedules.
+- Read-write race: a reader fetches the old value, a writer updates the store and deletes the key, then the reader stores the old value, which stays until its TTL.
+- Reload from a lagging replica: an invalidated key refills from a replica that has not yet applied the write, so the old value goes back into the cache.
 
 ## What it costs
 <!--meta block=cost-->
 
-- **Users see the wrong thing, confidently.** A stale read looks exactly like a fresh one — there's no error, so a user acts on data that's already changed underneath them.
+- **Users see the wrong thing, confidently.** A stale read looks exactly like a fresh one, so a user acts on data that has already changed underneath them.
 - **The impact scales with how much staleness hurts.** A slightly old profile photo is harmless; a stale price, permission, or account balance can be a correctness or safety problem.
 - **It's inconsistent across readers.** One user hits a freshly-invalidated key and sees the new value while another still hits a cached copy and sees the old one, which is confusing and hard to reproduce.
 - **Tightening it isn't free.** Cutting the window means invalidating aggressively or shortening TTLs, both of which trade away the hit rate the cache was there to provide.
+- **Reload after write has a price.** Invalidating on write makes the first read after each write miss and pay the full fetch, which hurts most on keys written often.
 
 ## How to avoid it
 <!--meta block=mitigation-->
 
-There's no perfect fix — how much staleness is acceptable is a per-datum judgment. The strongest option is to **invalidate on write**: when the store changes, delete (or update) the cached key in the same path, so the next read misses and reloads the current value. Where a bounded lag is fine, a **short TTL** caps how long any entry can be wrong. And in many cases the honest answer is to **accept [eventual consistency](../themes/consistency-and-replication.md)** — decide the stale window is harmless for this data (a feed, a metric, a profile image) and document it — rather than pay for a guarantee the use case doesn't need. Writing through the cache synchronously removes the window entirely at the cost of write latency. Dropping the cache instead is [no caching](./no-caching.md): every read hits the source again.
+Staleness has no perfect fix. How much is acceptable is a per-datum judgment, so set a budget per kind of data. **Invalidate on write**: delete the cached key in the same path that writes to the store, so the next read misses and reloads the current value. Prefer delete to update in place, because concurrent writers can apply an update out of order. Keep a **short TTL** as a backstop: it caps how long any entry can be wrong, including after a missed delete or a reader who re-cached the old value just before the write. Where a bounded lag is fine, **accept [eventual consistency](../themes/consistency-and-replication.md)**: decide the stale window is harmless for this data (a feed, a metric, a profile image) and document it. Writing through the cache synchronously narrows the window to the write itself for that one cache, at the cost of write latency; other layers and replicas still need invalidating. Dropping the cache instead is [no caching](./no-caching.md): staleness goes away, but every read hits the source again.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -65,9 +68,9 @@ There's no perfect fix — how much staleness is acceptable is a per-datum judgm
 
 **Mitigated by**
 
-- [Write-Through](../patterns/caching/write-through.md) — Write the cache and store together, so a read after a write can't be stale
 - [Refresh-Ahead](../patterns/caching/refresh-ahead.md) — Background refresh keeps the entry close to the source, bounding the stale window
 - [Cache-Aside](../patterns/caching/cache-aside.md) — Delete the key on write so the next read reloads; a late refill can still re-cache the old value until the TTL ends
+- [Write-Through](../patterns/caching/write-through.md) — Write the cache and store together, so a read after a write sees the new value in this cache unless another layer or replica holds a copy
 
 **Threatens**
 

@@ -2044,12 +2044,20 @@
       "related": ["ai-agent", "agent-memory", "claim-check", "rag", "external-configuration-store"]
     },
     {
+      "id": "god-object",
+      "label": "God Object",
+      "definition": "One class knows and does almost everything",
+      "route": "/hazards/god-object.html",
+      "requires": [],
+      "related": ["spaghetti-code", "big-ball-of-mud", "shotgun-surgery"]
+    },
+    {
       "id": "spaghetti-code",
       "label": "Spaghetti Code",
       "definition": "Control flow too tangled to follow",
       "route": "/hazards/spaghetti-code.html",
       "requires": [],
-      "related": ["premature-optimization"]
+      "related": ["premature-optimization", "big-ball-of-mud", "god-object"]
     },
     {
       "id": "big-ball-of-mud",
@@ -2057,7 +2065,7 @@
       "definition": "No discernible architecture at all",
       "route": "/hazards/big-ball-of-mud.html",
       "requires": [],
-      "related": ["distributed-monolith", "lava-flow"]
+      "related": ["distributed-monolith", "lava-flow", "spaghetti-code", "god-object"]
     },
     {
       "id": "distributed-monolith",
@@ -2076,6 +2084,14 @@
       "related": ["transaction-script", "primitive-obsession"]
     },
     {
+      "id": "golden-hammer",
+      "label": "Golden Hammer",
+      "definition": "One familiar tool applied to every problem",
+      "route": "/hazards/golden-hammer.html",
+      "requires": [],
+      "related": ["leaky-abstraction"]
+    },
+    {
       "id": "boat-anchor",
       "label": "Boat Anchor",
       "definition": "Dead code or hardware kept around unused",
@@ -2084,12 +2100,20 @@
       "related": ["lava-flow"]
     },
     {
+      "id": "leaky-abstraction",
+      "label": "Leaky Abstraction",
+      "definition": "The abstraction's promise breaks, and the substrate it hid shows through",
+      "route": "/hazards/leaky-abstraction.html",
+      "requires": [],
+      "related": ["golden-hammer"]
+    },
+    {
       "id": "cache-stampede",
       "label": "Cache Stampede",
       "definition": "A popular key expires and a herd of misses hits the source at once",
       "route": "/hazards/cache-stampede.html",
       "requires": [],
-      "related": ["thundering-herd", "metastable-failure"]
+      "related": ["thundering-herd", "hot-key", "metastable-failure"]
     },
     {
       "id": "hot-key",
@@ -2097,7 +2121,7 @@
       "definition": "One key draws so much traffic it overloads the single node that owns it",
       "route": "/hazards/hot-key.html",
       "requires": [],
-      "related": ["hot-partition"]
+      "related": ["hot-partition", "cache-stampede"]
     },
     {
       "id": "hot-partition",
@@ -2116,12 +2140,20 @@
       "related": ["clock-skew"]
     },
     {
+      "id": "dual-write-inconsistency",
+      "label": "Dual-Write Inconsistency",
+      "definition": "Two systems updated by two calls, and one of them does not land",
+      "route": "/hazards/dual-write-inconsistency.html",
+      "requires": [],
+      "related": ["monolithic-persistence"]
+    },
+    {
       "id": "deadlock",
       "label": "Deadlock",
       "definition": "Two holders each wait for a lock the other holds, forever",
       "route": "/hazards/deadlock.html",
       "requires": [],
-      "related": ["starvation", "priority-inversion"]
+      "related": ["starvation", "priority-inversion", "connection-pool-exhaustion"]
     },
     {
       "id": "starvation",
@@ -2129,7 +2161,7 @@
       "definition": "Some work waits without bound while everything else keeps being served",
       "route": "/hazards/starvation.html",
       "requires": [],
-      "related": ["deadlock", "priority-inversion", "head-of-line-blocking"]
+      "related": ["deadlock", "head-of-line-blocking", "noisy-neighbour", "priority-inversion"]
     },
     {
       "id": "unbounded-queue",
@@ -2137,7 +2169,7 @@
       "definition": "A queue with no capacity cap grows until the process runs out of memory",
       "route": "/hazards/unbounded-queue.html",
       "requires": [],
-      "related": ["poison-message"]
+      "related": ["poison-message", "busy-front-end"]
     },
     {
       "id": "poison-message",
@@ -2148,12 +2180,20 @@
       "related": ["head-of-line-blocking", "unbounded-queue", "retry-storm"]
     },
     {
+      "id": "resource-leak",
+      "label": "Resource Leak",
+      "definition": "A resource acquired but never released, shrinking capacity until everything blocks",
+      "route": "/hazards/resource-leak.html",
+      "requires": [],
+      "related": ["connection-pool-exhaustion"]
+    },
+    {
       "id": "chatty-io",
       "label": "Chatty I/O",
       "definition": "Many small I/O calls where a few larger ones would do",
       "route": "/hazards/chatty-io.html",
       "requires": [],
-      "related": ["extraneous-fetching"]
+      "related": ["extraneous-fetching", "connection-pool-exhaustion"]
     },
     {
       "id": "extraneous-fetching",
@@ -2172,12 +2212,44 @@
       "related": ["extraneous-fetching"]
     },
     {
+      "id": "monolithic-persistence",
+      "label": "Monolithic Persistence",
+      "definition": "Every kind of data in one store, whatever its access shape",
+      "route": "/hazards/monolithic-persistence.html",
+      "requires": [],
+      "related": ["noisy-neighbour", "dual-write-inconsistency"]
+    },
+    {
+      "id": "synchronous-io",
+      "label": "Synchronous I/O",
+      "definition": "A thread sits blocked while I/O completes, doing no work",
+      "route": "/hazards/synchronous-io.html",
+      "requires": [],
+      "related": ["cascading-failure"]
+    },
+    {
+      "id": "busy-front-end",
+      "label": "Busy Front End",
+      "definition": "Background work on the threads meant to answer requests",
+      "route": "/hazards/busy-front-end.html",
+      "requires": [],
+      "related": ["unbounded-queue"]
+    },
+    {
+      "id": "connection-pool-exhaustion",
+      "label": "Connection-Pool Exhaustion",
+      "definition": "Every pool slot is held by a slow call, so requests hang instead of failing",
+      "route": "/hazards/connection-pool-exhaustion.html",
+      "requires": [],
+      "related": ["deadlock", "chatty-io", "resource-leak", "cascading-failure", "noisy-neighbour"]
+    },
+    {
       "id": "retry-storm",
       "label": "Retry Storm",
       "definition": "Clients retry in unison, multiplying load on a service already failing",
       "route": "/hazards/retry-storm.html",
       "requires": [],
-      "related": ["poison-message", "metastable-failure"]
+      "related": ["poison-message", "metastable-failure", "cascading-failure", "thundering-herd"]
     },
     {
       "id": "thundering-herd",
@@ -2185,7 +2257,7 @@
       "definition": "One event releases every waiter at once and they all rush the same resource",
       "route": "/hazards/thundering-herd.html",
       "requires": [],
-      "related": ["cache-stampede"]
+      "related": ["cache-stampede", "retry-storm"]
     },
     {
       "id": "cascading-failure",
@@ -2193,7 +2265,15 @@
       "definition": "One failure's load lands on its peers and takes them down in turn",
       "route": "/hazards/cascading-failure.html",
       "requires": [],
-      "related": ["metastable-failure"]
+      "related": ["metastable-failure", "synchronous-io", "retry-storm", "connection-pool-exhaustion"]
+    },
+    {
+      "id": "noisy-neighbour",
+      "label": "Noisy Neighbour",
+      "definition": "One tenant's load degrades everyone sharing the same pool",
+      "route": "/hazards/noisy-neighbour.html",
+      "requires": [],
+      "related": ["monolithic-persistence", "starvation", "connection-pool-exhaustion"]
     },
     {
       "id": "clock-skew",
@@ -2209,7 +2289,7 @@
       "definition": "An outage that outlasts its trigger because the system's own retries, cold caches and late answers keep the overload going",
       "route": "/hazards/metastable-failure.html",
       "requires": [],
-      "related": ["cascading-failure", "cache-stampede", "retry-storm"]
+      "related": ["cascading-failure", "retry-storm", "cache-stampede"]
     },
     {
       "id": "head-of-line-blocking",
@@ -2225,7 +2305,7 @@
       "definition": "A high-priority task waits on a lock held by a low-priority one while medium-priority work runs",
       "route": "/hazards/priority-inversion.html",
       "requires": [],
-      "related": ["deadlock", "starvation", "priority-queue"]
+      "related": ["deadlock", "priority-queue", "starvation"]
     },
     {
       "id": "shotgun-surgery",
@@ -2233,7 +2313,7 @@
       "definition": "One small change needs many small edits in many places, and a missed one breaks the system",
       "route": "/hazards/shotgun-surgery.html",
       "requires": [],
-      "related": ["primitive-obsession"]
+      "related": ["primitive-obsession", "god-object"]
     },
     {
       "id": "lava-flow",
@@ -2241,7 +2321,7 @@
       "definition": "Dead or unexplained code kept in place because nobody dares remove it",
       "route": "/hazards/lava-flow.html",
       "requires": [],
-      "related": ["boat-anchor", "big-ball-of-mud"]
+      "related": ["big-ball-of-mud", "boat-anchor"]
     },
     {
       "id": "premature-optimization",

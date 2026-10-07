@@ -20,9 +20,9 @@ One small change forces you to edit many files in many places, and missing one l
 ## Explained
 <!--meta block=explain-->
 
-Shotgun surgery is when one logical change, such as adding a payment type or a field, forces small edits in many files. It happens because one responsibility is spread across the code instead of living in one module, often as copied rules or one \`if\` branch per variant in every function. You spot it in a pull request that touches 15 files with a few lines each. Choose to gather the responsibility over adding a checklist, because a checklist only manages the scatter while a single owner removes it. Pick the cut from version history: files that changed together in past commits belong in one module. The cost is a move that touches the same files you wanted to avoid, so do it one copy at a time, with the old copy deleted in the same commit.
+Shotgun surgery is when one logical change, such as adding a payment type or a field, forces small edits in many files. It happens because one responsibility is spread across the code instead of living in one module, often as copied rules or one \`if\` branch per variant in every function. Gather the responsibility into one owner rather than adding a checklist. A checklist only manages the scatter; a single owner removes it. Pick the cut from version history: files that changed together in past commits belong in one module. The cost is that the move edits the same scattered files, so do it one copy at a time and delete the old copy in the same commit.
 
-**Example.** Adding a new order status, SHIPPED_LATE, touches 14 files: two enums, three switch statements, a mapper, a report query, an email template and 6 tests. A developer finds 13 by searching and misses the dashboard filter, so late orders vanish from it for 9 days. The team then moves the status rules into one OrderStatus module that owns labels, transitions and filters. The next status touches 2 files. The move cost 3 days and 22 edits, and the counter-move to the risk was doing it one status at a time with tests.
+**Example.** Adding a new order status, SHIPPED_LATE, touches 14 files: two enums, three switch statements, a mapper, a dashboard filter, an email template and 6 tests. A developer finds 13 by searching and misses the dashboard filter, so late orders vanish from it for 9 days. The team then moves the status rules into one OrderStatus module that owns labels, transitions and filters, one status at a time with tests. The next status touches 2 files. The move cost 3 days.
 
 ## How it happens
 <!--meta block=causes-->
@@ -36,15 +36,15 @@ flowchart TB
 ```
 
 - **Duplicated knowledge.** The same rule, such as a status list or a tax calculation, is written out in several modules, so a change to the rule is a change to every copy.
-- **Responsibility cut by layer, not by reason to change.** A feature needs a controller, a service, a mapper and a validator edited together, because the cut follows technical tiers instead of the concept.
+- **Responsibility cut by layer, not by reason to change.** A feature needs a controller, a service, a mapper and a validator edited together, because the cut follows technical tiers instead of the concept (the [single-responsibility](../principles/single-responsibility.md) idea).
 - **Missing abstraction for a varying concept.** Each new payment type or document format adds an `if` branch in every function that handles it, instead of one new class.
-- **Over-eager splitting.** A class broken into tiny pieces to keep each small leaves one idea spread across a dozen of them.
+- **Over-eager splitting.** One idea cut into a dozen tiny classes leaves its change spread across all of them.
 - **Weak module boundaries.** Nothing stops a feature's logic from leaking into shared utilities, so the shared code grows a case for every client.
 
 ## What it costs
 <!--meta block=cost-->
 
-- **Missed edits become production bugs.** A change that reaches 11 of 12 places works in tests that cover the 11 and fails for the one user on the twelfth path.
+- **Missed edits become production bugs.** A change that reaches 11 of 12 places passes the tests that cover the 11 and fails on the twelfth path.
 - **Every change costs more than it looks.** A one-line feature turns into a day of search, edit and re-test, and estimates stop matching the visible size of the work.
 - **Reviews get shallow.** Reviewers cannot hold 15 small diffs in mind, so they check each hunk and miss the one that is absent.
 - **Merge conflicts spread out.** Many small edits in many files collide with every other branch that touches the same concept.
@@ -53,11 +53,11 @@ flowchart TB
 ## Getting out
 <!--meta block=mitigation-->
 
-Bring the scattered responsibility back into one place before you make the next change. Use your version history to find it: the files that changed together in the last ten commits for this concept are the pieces to gather. Move the logic, with its tests, into one module that owns the rule, and make the other files call it.
+Bring the scattered responsibility back into one place before you make the next change. Use your version history to find it: the files that changed together in recent commits for this concept (`git log --name-only` on the concept's path lists them; start with ten and widen until the set stops growing) are the pieces to gather. Move the logic, with its tests, into one module that owns the rule, and make the other files call it.
 
-Do it in small steps that keep the system working. Move one copy at a time, run the tests, and delete the old copy in the same commit, so the old and new versions never both live. Where a concept varies, such as payment types, replace the repeated `if` branches with one interface and a class per variant, so a new variant is one new file.
+Do it in small steps that keep the system working. Move one copy at a time, run the tests, and delete the old copy in the same commit, so the old and new versions never both live. Where a concept varies, such as payment types, replace the repeated `if` branches with one interface and a class per variant, so a new variant is one new file. Where a class was cut too fine, merge the pieces back into one before you add the next variant.
 
-Then put up a guard so the scatter does not return. A short list of which module owns which rule, and a review habit of asking "where else does this change?", catch it early. If a change still needs more than a handful of files after the move, the boundary is in the wrong place.
+Then put up a guard so the scatter does not return. A short list of which module owns which rule, and a review habit of asking "where else does this change?", or a test or CI grep that fails when a rule appears outside its owning module, catch it early. If one new variant still needs more than the owning module and its tests after the move, the boundary is in the wrong place.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -69,6 +69,7 @@ Then put up a guard so the scatter does not return. A short list of which module
 **Combines with**
 
 - [Primitive Obsession](./primitive-obsession.md) — Repeating the same rule at many call sites is a common cause of scattered edits
+- [God Object](./god-object.md) — Shared code that grows a case for every client becomes one class everything leans on, while the clients still need edits together.
 
 **Mitigated by**
 

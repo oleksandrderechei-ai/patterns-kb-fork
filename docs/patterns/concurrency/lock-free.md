@@ -225,6 +225,7 @@ func increment() { slot.Add(1) }
 **Prevents**
 
 - [Deadlock](../../hazards/deadlock.md) — No locks are held, so no cycle of waiters can form
+- [Priority Inversion](../../hazards/priority-inversion.md) — Takes no lock, so no low-priority holder can be preempted while a high-priority task waits.
 
 **Exposed to**
 

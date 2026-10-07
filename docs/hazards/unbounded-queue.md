@@ -21,12 +21,12 @@ An unbounded queue is an in-memory buffer with no ceiling on how many items it h
 ## Explained
 <!--meta block=explain-->
 
-An unbounded queue is an in-memory buffer with no ceiling on how many items it holds. While workers keep up, it stays shallow and looks fine. When work arrives faster than workers drain it, the backlog grows until memory runs out and the process dies, taking every queued item with it. A quieter form is a map keyed by client or session that only ever adds entries. Long before memory is gone, the waits grow too, so you serve work whose value expired. Choose a bound over a bigger machine: more memory only delays the crash and lengthens the wait. Size the bound from how long an item is still worth doing, as drain rate times that time, not from the memory you have. Then choose what happens when the queue is full: block the producer for internal pipelines, reject at once for outside requests, or drop the oldest where only the latest matters. Where no queue object exists, cap in-flight work with a [semaphore](../patterns/concurrency/semaphore.md), and let [backpressure](../patterns/concurrency/backpressure.md) carry the full signal upstream.
+An unbounded queue stays shallow while workers keep up, and looks fine. When work arrives faster than workers drain it, the backlog grows until memory runs out and the process dies, taking every queued item with it. A quieter form is a map keyed by client or session that only ever adds entries. Long before memory is gone, the waits grow too, so you serve work whose value expired. Choose a bound over a bigger machine: more memory only delays the crash and lengthens the wait. Size the bound from how long an item is still worth doing, as drain rate times that time, not from the memory you have. Then choose what happens when the queue is full: block the producer for internal pipelines, reject at once for outside requests, or drop the oldest where only the latest matters. Where no queue object exists, cap in-flight work with a [semaphore](../patterns/concurrency/semaphore.md), and let [backpressure](../patterns/concurrency/backpressure.md) carry the full signal upstream.
 
 - **Lost work.** A bound turns overload into refused or dropped items, so tell clients how to retry and decide which work may be lost.
 - **Sizing.** Too small a bound rejects normal bursts, so size it from drain rate times the time an item stays worth doing.
 
-**Example.** A pool of 4 workers resizes images at 10 a second each, so 40 a second. A 10-minute spike brings 100 a second, so the queue grows by 60 a second. After 600 s it holds 36,000 items of 50 KB, 1.8 GB, on a 1 GB heap, so the process crashes and loses every job. A job is worth doing for 5 s, so a bound of 40 x 5 = 200 items is enough. During the spike 60 a second are refused with a 503, and admitted jobs finish within 5 s.
+**Example.** A pool of 4 workers resizes images at 10 a second each, so 40 a second. A 10-minute spike brings 100 a second, so the queue grows by 60 a second. At 50 KB an item, a 1 GB heap fills at 20,000 items, about 333 s in, and the process crashes and loses every job. A job is worth doing for 5 s, so a bound of 40 x 5 = 200 items, plus a small burst allowance, is enough. During the spike 60 a second are refused with a 503, and admitted jobs wait at most about 5 s, plus run time.
 
 ## How it happens
 <!--meta block=causes-->
@@ -40,25 +40,25 @@ flowchart TB
     D -->|"memory exhausted"| O["OutOfMemoryError kills the whole process"]
 ```
 
-- **A queue created with no capacity argument.** The default constructor of many blocking queues — a `LinkedBlockingQueue` with no size, a plain in-memory list — imposes no upper limit at all. The code looks correct and works fine at low load; the missing ceiling only matters once the queue starts to back up.
-- **Producers outpacing consumers.** A spike — a marketing blast, a viral event, a [retry storm](./retry-storm.md) — enqueues work far faster than a fixed pool of workers can drain it. Depth climbs from thousands to millions in the width of the burst, and each item sits in memory until a worker finally reaches it.
-- **A per-key state map that is never evicted.** One entry per unique client, session, or key — added on first sight, never removed. Because the map grows with the cardinality of the keyspace rather than with instantaneous load, it leaks slowly and invisibly for as long as new keys keep arriving.
+- **A queue created with no capacity argument.** The default constructor of many blocking queues, such as `LinkedBlockingQueue` with no size, or a plain in-memory list, imposes no upper limit. A fixed worker count does not bound the queue: `Executors.newFixedThreadPool` puts an unbounded `LinkedBlockingQueue` behind its threads. The missing ceiling only matters once the queue backs up.
+- **Producers outpacing consumers.** A spike, such as a marketing blast, a viral event or a [retry storm](./retry-storm.md), enqueues work far faster than a fixed pool of workers can drain it. Depth climbs from thousands to millions during the burst, and each item sits in memory until a worker finally reaches it.
+- **A per-key state map that is never evicted.** One entry per unique client, session, or key — added on first sight, never removed. Because the map grows with the cardinality of the keyspace rather than with instantaneous load, it leaks for as long as new keys arrive.
 - **No [backpressure](../patterns/concurrency/backpressure.md) in the accept path.** Work is taken in unconditionally, with no signal back to the producer to slow down when the buffer is already deep. Nothing couples the rate of arrival to the rate of drain, so the buffer is free to absorb an unlimited backlog.
 
 ## What it costs
 <!--meta block=cost-->
 
-- **The whole process dies, not just the pipeline.** An `OutOfMemoryError` is not scoped to the background queue that caused it — it takes down everything sharing that heap. The API handlers, the request threads, the health endpoint all die together, so a runaway background buffer produces a total, foreground outage.
-- **The failure is gradual and easy to miss.** Memory creeps up over hours or days while every dashboard looks healthy; there is no error, no slow query, just a line trending upward that nobody is watching. The system gives almost no warning until the heap is exhausted and it crashes all at once.
-- **Latency and garbage collection (GC) pressure degrade well before the crash.** As depth grows, queued work waits minutes instead of milliseconds, and the garbage collector burns more and more CPU trying to manage a heap that keeps filling — so the service is already limping before it finally falls over.
+- **The whole process dies, not just the pipeline.** An `OutOfMemoryError` is not scoped to the queue that caused it; it takes down everything sharing the heap: API handlers, request threads, the health endpoint.
+- **The failure is gradual and easy to miss.** For a per-key map: memory creeps up over days while dashboards look healthy and no error fires. Under a spike, depth climbs within minutes. Either way the process crashes all at once, unless queue depth or heap use is graphed.
+- **Latency and garbage collection (GC) pressure degrade well before the crash.** As depth grows, queued work waits minutes instead of milliseconds: in the example, 5 s at 200 deep, about 8 minutes at 20,000 deep. Queued work may also be finished after its caller gave up. The garbage collector uses more CPU on a heap that keeps filling, so the service is slow before it crashes.
 - **Recovery can loop.** The crash loses everything buffered in memory, and if the load that caused it hasn't subsided, the restarted process refills the same unbounded buffer and crashes again — a crash loop that only ends when the upstream pressure relents.
 
 ## Getting out
 <!--meta block=mitigation-->
 
-The root fix is to **give the queue a bounded capacity** and decide explicitly what happens when it is full — an overflow policy. There are three honest choices, matched to the workload: block the producer until space frees up, which slows a fast producer down and is right for internal pipelines that can afford to wait; reject the item with an immediate "system busy" response (a 503), which is right for request paths that must answer fast rather than stall; or drop the oldest or newest item and log it, which is right for lossy streams like analytics where shedding load under pressure is acceptable. The one policy that is never acceptable is "accept forever."
+The root fix is to **give the queue a bounded capacity** and decide what happens when it is full: an overflow policy. There are three choices, matched to the workload. Block the producer until space frees up, which slows a fast producer and suits internal pipelines that can afford to wait. Reject the item at once with a "system busy" response (a 503), which suits request paths that must answer fast. Drop an item and log it, which suits lossy streams like analytics: drop the oldest when only the latest value matters, drop the newest to keep order and fairness for work already admitted. Accepting forever with no overflow rule is the one policy to avoid, because the failure is a crash, not a choice.
 
-A bounded queue also gives you **backpressure** for free: when the buffer is full a blocking put slows the producer before memory can overflow, coupling the rate of arrival to the rate of drain. Where there is no queue object to bound — a burst of concurrent operations rather than a stream of tasks — cap the in-flight work with a fixed number of **permits** so only so much can be outstanding at once. And for the per-key state map, the equivalent of a capacity limit is an **eviction policy**: a TTL (time to live), an LRU (least recently used) cap, or idle-eviction, so entries expire instead of accumulating for the lifetime of the process. In every case the move is the same — put a ceiling on the structure, then choose deliberately what happens when it is reached.
+A bounded queue also gives **backpressure**, at the price of blocked producers or refused work: when the buffer is full, a blocking put slows the producer before memory can overflow, coupling arrival rate to drain rate. Where there is no queue object to bound, such as a burst of concurrent operations, cap in-flight work with a fixed number of **permits**. For the per-key state map, the equivalent of a capacity limit is an **eviction policy**: a TTL (time to live), an LRU (least recently used) cap, or idle-eviction. Size an LRU cap from the keys active in one TTL window times the entry size, within a share of the heap. Alert on queue depth against its bound, the age of the oldest item, and heap use after garbage collection, so a climb is seen before the crash.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -70,6 +70,7 @@ A bounded queue also gives you **backpressure** for free: when the buffer is ful
 **Combines with**
 
 - [Poison Message](./poison-message.md) — A stuck consumer lets an unbounded queue grow without limit.
+- [Busy Front End](./busy-front-end.md) — Adding a queue to relieve a busy front end recreates this hazard unless the depth is capped
 
 **Mitigated by**
 
@@ -79,6 +80,7 @@ A bounded queue also gives you **backpressure** for free: when the buffer is ful
 - [Fail Fast](../principles/fail-fast.md) — Rejecting at the cap is failing fast instead of buffering forever
 - [Ring Buffer](../patterns/concurrency/ring-buffer.md) — A ring buffer is one way to bound the queue
 - [Semaphore](../patterns/concurrency/semaphore.md) — Fixed permits cap in-flight work when there's no queue object to bound
+- [Load Shedding](../patterns/distributed/resilience/load-shedding.md) — Refusing work past a limit keeps the queue shallow.
 
 **Threatens**
 
@@ -88,5 +90,6 @@ A bounded queue also gives you **backpressure** for free: when the buffer is ful
 - [Pipe-and-Filter](../patterns/architecture/pipe-filter.md) — Between pipeline stages it grows silently when one filter is slower than the one before.
 - [Fan-In](../patterns/messaging/fan-in.md) — A fan-in collector is a common place it appears.
 - [Routing Slip](../patterns/messaging/routing-slip.md) — A route of many steps has a queue per step, and any one of them can back up
+- [Queue-Based Load Leveling](../patterns/distributed/resilience/load-leveling.md) — A burst-absorbing buffer with no cap becomes the outage.
 
 <!-- relationships:end -->

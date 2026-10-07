@@ -22,21 +22,21 @@ Split brain is a cluster divided into two groups that each believe they are the 
 ## Explained
 <!--meta block=explain-->
 
-Split brain is a cluster that breaks into two groups that each think they are the survivor, so both elect a leader and both accept writes. A silent machine looks the same whether it crashed, is paused by a long garbage-collection cycle, or sits behind a broken link, so a rule that promotes a new leader when the old one goes quiet gives you two leaders when the link is cut. Both halves report healthy, so nobody notices until they rejoin and the same records hold two values. Decide per workload which side of the trade it sits on. Ledgers and stock should stop writing on the smaller side. Carts and telemetry can stay available and merge later. To stop writes, require a majority with [quorum consensus](../patterns/distributed/coordination/quorum-consensus.md): an odd number of voters, and only the side holding more than half elects a leader. To stop a resumed old leader, give each term an increasing number and have storage reject lower ones, as a [fencing token](../patterns/distributed/coordination/fencing-token.md) does.
+Split brain is a cluster that breaks into two groups that each think they are the survivor, so both elect a leader and both accept writes. A silent machine looks the same whether it crashed, is paused by a long garbage-collection cycle, or sits behind a broken link, so a rule that promotes a new leader when the old one goes quiet gives you two leaders when the link is cut. Both halves report healthy, so nobody notices until they rejoin and the same records hold two values. Decide per workload whether it favours consistency or availability. Ledgers and stock should stop writing on the smaller side. Carts and telemetry can stay available and merge later. To stop writes, require a majority with [quorum consensus](../patterns/distributed/coordination/quorum-consensus.md): an odd number of voters, and only the side holding more than half elects a leader. To stop a resumed old leader, give each term an increasing number and have storage reject lower ones, as a [fencing token](../patterns/distributed/coordination/fencing-token.md) does.
 
 - **Minority outage.** The smaller side refuses writes until the link heals; that bounded outage is the price of nothing to reconcile.
 - **Detector tuning.** Aggressive failure-detector timeouts cause needless failovers; slow ones prolong real outages.
 
-**Example.** A 5-node database has a 3-node group in one data centre and 2 nodes in another, and the link drops for 10 minutes. With promote-on-timeout, both groups elect a leader and accept 20 orders a second, so about 12,000 orders on each side conflict at the merge. With a majority rule, the 3-node side keeps the leader and the 2-node side refuses writes. The old leader, paused 30 s, wakes with term 7 and storage has seen term 8, so its writes are refused.
+**Example.** A 5-node database has a 3-node group in one data centre and 2 nodes in another, and the link drops for 10 minutes. With promote-on-timeout, both groups elect a leader and accept 20 orders a second, so about 12,000 orders are written on each side, and those touching the same records conflict at the merge. With a majority rule, the 3-node side keeps the leader and the 2-node side refuses about 12,000 orders, the bounded outage. The old leader, paused 30 s, wakes with term 7 and storage has seen term 8, so its writes are refused.
 
 ## How it happens
 <!--meta block=causes-->
 
-It starts with silence. One machine stops answering the others, and nobody can tell whether it died or the wire to it did. If the rule is "when the boss goes quiet, pick a new boss", then a broken wire between two rooms full of machines produces a boss in each room — and both of them start giving orders. The moves below are the ordinary ways a cluster ends up with that rule and no way to stop the second boss.
+It starts with silence. One machine stops answering the others, and nobody can tell whether it died or the wire to it did. The moves below are the ordinary ways a cluster ends up with that rule and no way to stop the second leader.
 
 Promotion on timeout alone is what lets both sides promote: each sees only its own side and a failure detector reporting that the rest is gone, and neither holds proof that the old leader has actually stopped. A partition is not observable from inside a partition, so no amount of waiting turns that guess into knowledge.
 
-Underneath sits the impossibility result the design has to respect: with asynchronous messaging you cannot both guarantee progress and guarantee agreement in the presence of failures, so a cluster must give one of them up on purpose. Split brain is what happens when nobody made that choice explicitly — availability was assumed and consistency was assumed, so the failure detector was tuned for the former and the write path was written for the latter.
+Underneath sits the impossibility result the design has to respect: during a network partition a system cannot be both available and consistent (the CAP theorem), so a cluster must give one of them up on purpose. Split brain is what happens when nobody made that choice explicitly — availability was assumed and consistency was assumed, so the failure detector was tuned for the former and the write path was written for the latter.
 
 ```mermaid caption="One failure, two leaders: each side applies the same promotion rule to the same evidence, and the divergence is only discovered when the halves rejoin."
 flowchart TB
@@ -61,19 +61,22 @@ flowchart TB
 - **Two versions of the truth, and no way to compute the right one.** Both halves accepted valid writes, so the merge is not a technical question but a business one: someone has to decide which customer's order survives.
 - **Silent damage while it runs.** Each side answers requests successfully and reports itself healthy, so the incident starts at the moment of the partition and is discovered at the moment of the merge — often hours later.
 - **Mutual exclusion stops holding.** A [distributed lock](../patterns/distributed/coordination/distributed-lock.md) or a leader-only job granted on one side is granted again on the other, so two processes run a supposedly single-writer task and corrupt what it touches.
-- **Recovery costs more than the outage would have.** Reconciling divergent histories means comparing records, replaying logs and calling customers; refusing writes on the minority side for the same period would have been a bounded, understood loss of availability.
+- **Recovery can cost more than the outage.** For ledgers and stock, reconciling means comparing records, replaying logs and calling customers; refusing minority writes would have been a bounded loss.
 - **Downstream systems keep the damage.** Both halves emitted events, sent notifications and charged cards; you can roll back a database row, but not an email or a payment already captured.
+- **Stale reads.** A deposed leader answers reads from local state until its [lease](../patterns/distributed/coordination/lease.md) expires or it confirms leadership with a [quorum](../patterns/distributed/coordination/quorum-consensus.md), so clients see old data though writes are fenced.
 
-Split brain converts the minority side’s bounded, self-healing availability loss into an unbounded correctness loss, and correctness losses do not expire when the network recovers: they surface as disputed invoices, duplicate shipments and a ledger that no longer reconciles months later. That asymmetry is why mature systems choose to stop rather than to guess, and why the argument for staying available during a partition has to be made per workload, not per cluster.
+Split brain converts the minority side’s bounded, self-healing availability loss into an unbounded correctness loss. For ledgers and stock a correctness loss outlasts the partition, while carts and telemetry can merge instead, so argue availability per workload, not per cluster.
 
 ## Getting out
 <!--meta block=mitigation-->
 
 Require a majority before anyone acts. Give the cluster an odd number of voting members and let only the side holding more than half of them elect a leader or accept a write; a partition can produce at most one majority, so the minority side stops instead of diverging. This is the whole point of the consensus protocols — a quorum turns "I cannot hear them" into "I do not have the right to proceed", which is the distinction a timeout alone can never make.
 
-Then make an old leader harmless, because a quorum decides who may write and does not by itself stop who was writing. Fence the resource: attach a monotonically increasing token to the leadership term, have the storage or lock service record the highest token it has seen, and reject anything arriving with a lower one — so a leader that wakes up from a long pause finds its writes refused rather than applied. Where the resource cannot check a token, the blunt equivalent is to cut the old node off entirely — power it down or revoke its network access before promoting a replacement — so that exclusion is enforced by something outside the node's own judgment.
+Then make an old leader harmless, because a quorum decides who may write and does not by itself stop who was writing. Fence the resource: attach a monotonically increasing token to the leadership term, have the storage or lock service record the highest token it has seen, and reject anything arriving with a lower one — so a leader that wakes up from a long pause finds its writes refused rather than applied. Where the resource cannot check a token, the blunt equivalent is to cut the old node off entirely — power it down or revoke its network access before promoting a replacement — so that exclusion is enforced by something outside the node's own judgment. The token is the consensus term; storage compares it on every write and rejects any lower one.
 
-Choose the failure detector's timeouts with the cost of both mistakes in view: too short and a garbage-collection pause triggers a needless failover, too long and every real crash costs that much downtime. Where a majority is structurally impossible — two data centres with equal votes — add a small third voter in a third location whose only job is to break ties, rather than letting an even split decide by luck. And decide in advance what a workload does on the minority side: rejecting writes is the safe default, while accepting them is a deliberate choice that obliges you to design the merge, which means conflict-free data types or a recorded resolution policy, not a hope that timestamps will settle it.
+Set failure-detector timeouts longer than the longest pause you have measured (garbage-collection logs, gaps between heartbeats), so a pause is not promoted into a failover; slow timeouts prolong real outages. Where a majority is structurally impossible — two data centres with equal votes — add a small third voter in a third location whose only job is to break ties, rather than letting an even split decide by luck. And decide in advance what a workload does on the minority side: rejecting writes is the safe default, while accepting them is a deliberate choice that obliges you to design the merge, which means conflict-free data types or a recorded resolution policy, not a hope that timestamps will settle it.
+
+Require a candidate to win votes from a majority, and have a node that cannot reach a quorum step down even if some peers still reach it, so a partial partition cannot keep two leaders. Alert while it runs when two nodes claim leadership or when nodes report different term numbers.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -93,8 +96,12 @@ Choose the failure detector's timeouts with the cost of both mistakes in view: t
 - [CRDT](../patterns/distributed/coordination/crdt.md) — Conflict-free merging makes divergent writes harmless where availability must be kept.
 - [Failover](../patterns/distributed/coordination/failover.md) — Failover with fencing is the guard against a returning old primary writing alongside the new one.
 - [Fencing Token](../patterns/distributed/coordination/fencing-token.md) — A rising token checked at storage stops a stale node from writing after a split.
-- [Heartbeat](../patterns/distributed/coordination/heartbeat.md) — Careful failure detection keeps a pause from being read as a death that splits the cluster.
 - [Lease](../patterns/distributed/coordination/lease.md) — A lease stops a holder that can see its own clock, but a paused holder still acts, so add a fencing token checked at the resource.
 - [Distributed Lock](../patterns/distributed/coordination/distributed-lock.md) — A fencing token gets a resumed leader's writes rejected
+- [Heartbeat](../patterns/distributed/coordination/heartbeat.md) — Tuned timeouts reduce needless failovers but cannot tell a pause from a death; fencing covers the rest.
+
+**Threatens**
+
+- [Replication](../patterns/distributed/coordination/replication.md) — Replicas that each accept writes after a cut link diverge into two histories.
 
 <!-- relationships:end -->

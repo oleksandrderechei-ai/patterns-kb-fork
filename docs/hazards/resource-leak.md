@@ -40,25 +40,26 @@ flowchart TB
     E -->|"acquire waits for a return that never comes"| F["Every caller hangs, with no exception raised"]
 ```
 
-- **No guaranteed release on the error path.** The acquire and the release sit in separate statements, and an exception thrown between them — or an early `return` that skips the release — jumps past the hand-back entirely. Without a `finally`, a `with`/`using` block, or resource acquisition is initialization (RAII) to bind the release to the scope, the resource is orphaned the moment anything goes wrong.
-- **A slow operation holding the resource too long.** No bug is even required. A query that stalls, or a downstream that hangs, keeps a connection checked out for seconds instead of milliseconds, so the pool drains under ordinary load simply because each borrow lasts far longer than the design assumed.
-- **Unbounded, on-demand acquisition.** Creating resources on demand with no cap turns the leak into a different failure rather than preventing it: instead of blocking when the pool is empty, the code keeps opening new connections or handles that are never freed, exhausting the database's or OS's own limits.
+- **No guaranteed release on the error path.** The acquire and the release sit in separate statements, so an exception or early return between them skips the hand-back and orphans the resource.
+- **A slow operation holding the resource too long.** No bug is required, and this is exhaustion rather than a leak: a stalled query or a hung downstream keeps a connection checked out for seconds instead of milliseconds, so the pool drains under load and recovers when the stall ends. It looks like a leak from outside.
+- **Unbounded, on-demand acquisition makes it worse.** With no cap, the code opens new connections or handles that are never freed, instead of blocking when the pool is empty, and exhausts the database's or OS's own limits.
 - **Confused ownership.** A resource passed across threads or call boundaries, where it is unclear who is responsible for releasing it, gets released by nobody — or, just as damaging, released twice.
 
 ## What it costs
 <!--meta block=cost-->
 
 - **The pool exhausts and every caller blocks forever.** Once the last resource has leaked, an acquire that blocks until one is free will block indefinitely — because none ever will be. Callers pile up behind a queue that never advances, and the service stops responding entirely.
-- **No errors anywhere — the tell-tale that makes it so hard to spot.** Nothing crashed, so monitoring shows zero exceptions; the database is healthy and nearly idle because almost nothing is reaching it. The dashboards say everything is fine while users see only timeouts: the database is fine, but your service is dead.
+- **No errors anywhere, which is what makes it hard to spot.** With no acquire timeout, monitoring usually shows zero exceptions and the database is nearly idle, because almost nothing reaches it, yet users see only timeouts.
 - **Request threads are consumed too.** Each blocked caller holds the worker thread it is running on, so the web tier's own [thread pool](../patterns/concurrency/thread-pool.md) fills with parked threads waiting on the drained resource pool — and the server stops accepting new work, spreading the stall outward from the leaked resource.
-- **It is cumulative and delayed.** One leaked resource per error is invisible; capacity erodes slowly, request by request, until under load it reaches zero and the service falls over all at once — long after, and far from, the line of code that failed to release, which makes the cause maddening to trace.
+- **The leak is cumulative and delayed.** One orphaned resource per error is invisible; capacity erodes until load drives it to zero and the service fails all at once, far from the line that skipped the release.
+- **Double release corrupts the pool.** A second release can hand one resource to two callers or inflate the permit count.
 
 ## Getting out
 <!--meta block=mitigation-->
 
-The one fix that prevents the leak outright is to **bind the release to the scope** so the error path frees the resource just as surely as the happy path. A `finally` block, a `with`/`using` context manager, RAII, or a `defer` keeps the acquire and its guaranteed release together, so no exception or early return can slip between them. Acquire and release are a single unit; write them as one.
+Bind the release to the scope so the error path frees the resource as surely as the normal path. A `finally` block, a `with`/`using` context manager, RAII or a `defer` keeps the acquire and its release together, so no exception or early return can slip between them. This closes the most common path. It does not cover a resource handed to another thread, so pass ownership explicitly.
 
-Then make the wait survivable. Add an **acquisition timeout** so a caller that cannot get a resource fails fast — returns a clear error or a 503 — instead of blocking forever; this alone converts the worst symptom of a leak, a service that hangs silently with no errors, into a handful of loud, visible failures you can alert on. **Validate or health-check** pooled resources before handing them out, discarding and replacing dead ones, so a stale connection is not mistaken for a leaked one. And **bound acquisition** and watch pool utilization: an in-use count that only ever climbs and never falls back is the unmistakable signature of a leak, and it is visible long before the pool hits zero.
+Then bound the wait. Add an acquisition timeout so a caller that cannot get a resource fails fast with a clear error or a 503 instead of blocking forever. This turns a silent hang into loud failures you can alert on; it does not return the leaked resources. Add a hold limit that reclaims a borrow held past your worst honest use, and log the acquirer's stack trace when it fires, so the leaking code can be found. Validate pooled resources before handing them out, discarding dead ones. Bound acquisition and watch pool utilization: an in-use count that only climbs and never falls back is the signature of a leak, visible long before the pool hits zero.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -67,11 +68,16 @@ Then make the wait survivable. Add an **acquisition timeout** so a caller that c
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
 
+**Often confused with**
+
+- [Connection-Pool Exhaustion](./connection-pool-exhaustion.md) — A leak never recovers when traffic stops; exhaustion drains once load drops, so check pool use after the spike.
+
 **Mitigated by**
 
 - [Thread Pool](../patterns/concurrency/thread-pool.md) — Bounded, reused, lifecycle-managed workers instead of leak-prone ad-hoc threads
 - [Object Pool](../patterns/gof/extra/object-pool.md) — Centralised checkout and return plus leak detection bound and surface a missed release; an object never returned is still lost
 - [Semaphore](../patterns/concurrency/semaphore.md) — Acquire-with-timeout and a guaranteed release keep permits from draining away
+- [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) — A caller that cannot get a resource fails fast instead of blocking forever.
 
 **Threatens**
 

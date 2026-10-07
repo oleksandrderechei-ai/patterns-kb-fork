@@ -218,5 +218,6 @@ const placeOrder = new PlaceOrder(new PostgresOrderRepository(pool));
 **Prevents**
 
 - [Big Ball of Mud](../../hazards/big-ball-of-mud.md) — Isolating the core keeps the mud out
+- [Golden Hammer](../../hazards/golden-hammer.md) — Ports your own code owns keep one tool's vocabulary out of callers, so swapping the tool is one adapter
 
 <!-- relationships:end -->

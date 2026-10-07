@@ -20,7 +20,7 @@ You model domain ideas as bare strings and numbers, so the compiler cannot tell 
 ## Explained
 <!--meta block=explain-->
 
-Primitive obsession is holding domain ideas, such as money, an email address or a customer id, in plain strings and numbers. The type then says nothing, so the compiler cannot stop you passing an order id where a customer id belongs, and the rules for the value, such as a valid format or a currency, have no home. Each caller checks them again or trusts the input. Choose a small type per rule-bearing concept over a plain primitive when a wrong value would cost more than a short wrapper. The usual form is a [value object](../patterns/ddd/value-object.md), which checks itself once on creation. The cost is more types and conversions at the edges. Keep it small by wrapping only values with rules, and by parsing raw input once at the boundary.
+Primitive obsession is holding domain ideas, such as money, an email address or a customer id, in plain strings and numbers. The type then says nothing, so the compiler cannot stop you passing an order id where a customer id belongs, and the rules for the value, such as a valid format or a currency, have no home. Each caller checks them again or trusts the input. Use a small type for each concept that has rules. Do it when a wrong value would cost more than a short wrapper. The usual form is a [value object](../patterns/ddd/value-object.md), which checks itself once on creation. The cost is more types and conversions at the edges. Keep it small by wrapping only values with rules, and by parsing raw input once at the boundary.
 
 **Example.** A billing function takes (customerId: string, invoiceId: string, amount: number). A caller swaps the two ids, the types match, and 38 invoices attach to the wrong account before a customer calls. A second function treats amount as dollars while the first treats it as cents, so one refund is 100 times too big. With CustomerId, InvoiceId and Money types, the swapped call fails to compile and Money carries its currency. The price is three small types, about 40 lines, and a parse step where requests enter the service.
 
@@ -37,17 +37,17 @@ flowchart TB
 
 - **A primitive is the shortest code.** Declaring `email: string` takes five characters, while a new type takes a file, a constructor and a decision about its name.
 - **Data arrives as primitives.** JSON, database columns and form fields are strings and numbers, so the code keeps them in that shape all the way inside.
-- **Classes feel heavy.** Developers fear that a wrapper per concept means a class explosion, so they skip the wrapper and accept the looseness.
+- **Classes feel heavy.** Developers fear that a wrapper per concept will bury the code in tiny classes, so they skip it.
 - **Rules have no owner.** Nobody is assigned to the rule "an email has one at-sign", so each caller writes its own check or none at all.
-- **Languages differ in cost.** Where a wrapper type costs runtime memory or boilerplate, the shortcut tempts more than where it is nearly free.
+- **Languages differ in cost.** Where a wrapper type needs a lot of code or an extra object per value, the shortcut tempts more than where it is nearly free, as with a branded type.
 
 ## What it costs
 <!--meta block=cost-->
 
 - **Swapped arguments compile.** A call to `transfer(from, to, amount)` with `from` and `to` reversed, or an id passed where a name is expected, passes the type checker and fails in production.
 - **Validation is repeated or absent.** Each place that receives a raw string either re-checks it, paying the cost many times, or trusts it and meets bad data late.
-- **Units get confused.** A `number` for money may hold dollars in one function and cents in another, and the difference shows up as a charge a hundred times too large.
-- **Behaviour is scattered.** Formatting, comparison and arithmetic for the concept live in helper functions across the code, which is the setup for [shotgun surgery](shotgun-surgery.md).
+- **Units get confused.** A number for money may hold dollars in one function and cents in another, and the mix-up shows up as a charge 100 times too large.
+- **Behaviour is scattered.** Formatting, comparison and arithmetic for the concept live in helper functions across the code, so one change touches many files ([shotgun surgery](shotgun-surgery.md)).
 - **Signatures hide intent.** A reader must open the body, or a comment, to learn that `string` means a customer id and not an order id.
 
 ## Getting out
@@ -57,7 +57,7 @@ Give each concept that has rules its own small type and let it check itself on c
 
 Convert at the boundary. Parse raw input into the type once, where it enters the system, and let the code inside work with the type only. This turns repeated validation into a single check, and the compiler rejects the swapped-argument calls.
 
-Do it where the pain is. Start with the values that carry money, identity or units, and leave plain counters and labels alone. In TypeScript, a branded type or a small class gets most of the benefit for a few lines. Stop when a wrapper has no rule to hold, because a type that only renames `string` adds a layer and no safety.
+Do it where the pain is. Start with the values that carry money, identity or units, and leave plain counters and labels alone. To find them, count the functions that take two or more ids of the same primitive type and the callers that re-check the same field, and wrap the highest counts first. In TypeScript, a branded type (a string tagged with a marker, made only by a parse function) stops swapped ids at compile time, and the parse function holds the format rules. Hold money as whole cents plus a currency. Let the compiler list the call sites that break, and fix them one by one. Stop when a wrapper has no rule to hold, because a type that only renames `string` adds a layer and no safety.
 
 ## How it relates
 <!--meta block=relationships-->

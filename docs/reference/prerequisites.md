@@ -13,8 +13,8 @@ source: docs/data/relations.json
 # Prerequisites
 
 A **prerequisite record** is one page with the pages to read before it and the pages to
-read beside it. There are 333 records: 44 of them name something to read first, through 51
-requires edges, and 915 pairs of pages are related both ways.
+read beside it. There are 343 records: 44 of them name something to read first, through 51
+requires edges, and 933 pairs of pages are related both ways.
 
 Everything here is built from [`relations.json`](../data/relations.json), through its
 second form [`prerequisites.json`](../data/prerequisites.json). **Read first** lists a
@@ -288,31 +288,41 @@ record reached.
 
 | Page | What it is | Read first | Related |
 | --- | --- | --- | --- |
-| [Spaghetti Code](../hazards/spaghetti-code.md) | Control flow too tangled to follow | — | [Premature Optimization](../hazards/premature-optimization.md) |
-| [Big Ball of Mud](../hazards/big-ball-of-mud.md) | No discernible architecture at all | — | [Distributed Monolith](../hazards/distributed-monolith.md), [Lava Flow](../hazards/lava-flow.md) |
+| [God Object](../hazards/god-object.md) | One class knows and does almost everything | — | [Spaghetti Code](../hazards/spaghetti-code.md), [Big Ball of Mud](../hazards/big-ball-of-mud.md), [Shotgun Surgery](../hazards/shotgun-surgery.md) |
+| [Spaghetti Code](../hazards/spaghetti-code.md) | Control flow too tangled to follow | — | [Premature Optimization](../hazards/premature-optimization.md), [Big Ball of Mud](../hazards/big-ball-of-mud.md), [God Object](../hazards/god-object.md) |
+| [Big Ball of Mud](../hazards/big-ball-of-mud.md) | No discernible architecture at all | — | [Distributed Monolith](../hazards/distributed-monolith.md), [Lava Flow](../hazards/lava-flow.md), [Spaghetti Code](../hazards/spaghetti-code.md), [God Object](../hazards/god-object.md) |
 | [Distributed Monolith](../hazards/distributed-monolith.md) | Separate services that still have to be released together | — | [Big Ball of Mud](../hazards/big-ball-of-mud.md) |
 | [Anemic Domain Model](../hazards/anemic-domain-model.md) | Data objects with no real behavior of their own | — | [Transaction Script](../patterns/enterprise/transaction-script.md), [Primitive Obsession](../hazards/primitive-obsession.md) |
+| [Golden Hammer](../hazards/golden-hammer.md) | One familiar tool applied to every problem | — | [Leaky Abstraction](../hazards/leaky-abstraction.md) |
 | [Boat Anchor](../hazards/boat-anchor.md) | Dead code or hardware kept around unused | — | [Lava Flow](../hazards/lava-flow.md) |
-| [Cache Stampede](../hazards/cache-stampede.md) | A popular key expires and a herd of misses hits the source at once | — | [Thundering Herd](../hazards/thundering-herd.md), [Metastable Failure](../hazards/metastable-failure.md) |
-| [Hot Key](../hazards/hot-key.md) | One key draws so much traffic it overloads the single node that owns it | — | [Hot Partition](../hazards/hot-partition.md) |
+| [Leaky Abstraction](../hazards/leaky-abstraction.md) | The abstraction's promise breaks, and the substrate it hid shows through | — | [Golden Hammer](../hazards/golden-hammer.md) |
+| [Cache Stampede](../hazards/cache-stampede.md) | A popular key expires and a herd of misses hits the source at once | — | [Thundering Herd](../hazards/thundering-herd.md), [Hot Key](../hazards/hot-key.md), [Metastable Failure](../hazards/metastable-failure.md) |
+| [Hot Key](../hazards/hot-key.md) | One key draws so much traffic it overloads the single node that owns it | — | [Hot Partition](../hazards/hot-partition.md), [Cache Stampede](../hazards/cache-stampede.md) |
 | [Hot Partition](../hazards/hot-partition.md) | One shard takes most of the traffic while its peers sit idle | — | [Hot Key](../hazards/hot-key.md) |
 | [Split-Brain](../hazards/split-brain.md) | A partition leaves two leaders, both accepting writes that will not merge | — | [Clock Skew](../hazards/clock-skew.md) |
-| [Deadlock](../hazards/deadlock.md) | Two holders each wait for a lock the other holds, forever | — | [Starvation](../hazards/starvation.md), [Priority Inversion](../hazards/priority-inversion.md) |
-| [Starvation](../hazards/starvation.md) | Some work waits without bound while everything else keeps being served | — | [Deadlock](../hazards/deadlock.md), [Priority Inversion](../hazards/priority-inversion.md), [Head-of-Line Blocking](../hazards/head-of-line-blocking.md) |
-| [Unbounded Queue](../hazards/unbounded-queue.md) | A queue with no capacity cap grows until the process runs out of memory | — | [Poison Message](../hazards/poison-message.md) |
+| [Dual-Write Inconsistency](../hazards/dual-write-inconsistency.md) | Two systems updated by two calls, and one of them does not land | — | [Monolithic Persistence](../hazards/monolithic-persistence.md) |
+| [Deadlock](../hazards/deadlock.md) | Two holders each wait for a lock the other holds, forever | — | [Starvation](../hazards/starvation.md), [Priority Inversion](../hazards/priority-inversion.md), [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) |
+| [Starvation](../hazards/starvation.md) | Some work waits without bound while everything else keeps being served | — | [Deadlock](../hazards/deadlock.md), [Head-of-Line Blocking](../hazards/head-of-line-blocking.md), [Noisy Neighbour](../hazards/noisy-neighbour.md), [Priority Inversion](../hazards/priority-inversion.md) |
+| [Unbounded Queue](../hazards/unbounded-queue.md) | A queue with no capacity cap grows until the process runs out of memory | — | [Poison Message](../hazards/poison-message.md), [Busy Front End](../hazards/busy-front-end.md) |
 | [Poison Message](../hazards/poison-message.md) | One message that always fails its consumer is redelivered forever, blocking the queue or burning capacity | — | [Head-of-Line Blocking](../hazards/head-of-line-blocking.md), [Unbounded Queue](../hazards/unbounded-queue.md), [Retry Storm](../hazards/retry-storm.md) |
-| [Chatty I/O](../hazards/chatty-io.md) | Many small I/O calls where a few larger ones would do | — | [Extraneous Fetching](../hazards/extraneous-fetching.md) |
+| [Resource Leak](../hazards/resource-leak.md) | A resource acquired but never released, shrinking capacity until everything blocks | — | [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) |
+| [Chatty I/O](../hazards/chatty-io.md) | Many small I/O calls where a few larger ones would do | — | [Extraneous Fetching](../hazards/extraneous-fetching.md), [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) |
 | [Extraneous Fetching](../hazards/extraneous-fetching.md) | Reading far more data than the operation actually uses | — | [Chatty I/O](../hazards/chatty-io.md), [Busy Database](../hazards/busy-database.md) |
 | [Busy Database](../hazards/busy-database.md) | The database spends its shared capacity running application logic | — | [Extraneous Fetching](../hazards/extraneous-fetching.md) |
-| [Retry Storm](../hazards/retry-storm.md) | Clients retry in unison, multiplying load on a service already failing | — | [Poison Message](../hazards/poison-message.md), [Metastable Failure](../hazards/metastable-failure.md) |
-| [Thundering Herd](../hazards/thundering-herd.md) | One event releases every waiter at once and they all rush the same resource | — | [Cache Stampede](../hazards/cache-stampede.md) |
-| [Cascading Failure](../hazards/cascading-failure.md) | One failure's load lands on its peers and takes them down in turn | — | [Metastable Failure](../hazards/metastable-failure.md) |
+| [Monolithic Persistence](../hazards/monolithic-persistence.md) | Every kind of data in one store, whatever its access shape | — | [Noisy Neighbour](../hazards/noisy-neighbour.md), [Dual-Write Inconsistency](../hazards/dual-write-inconsistency.md) |
+| [Synchronous I/O](../hazards/synchronous-io.md) | A thread sits blocked while I/O completes, doing no work | — | [Cascading Failure](../hazards/cascading-failure.md) |
+| [Busy Front End](../hazards/busy-front-end.md) | Background work on the threads meant to answer requests | — | [Unbounded Queue](../hazards/unbounded-queue.md) |
+| [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) | Every pool slot is held by a slow call, so requests hang instead of failing | — | [Deadlock](../hazards/deadlock.md), [Chatty I/O](../hazards/chatty-io.md), [Resource Leak](../hazards/resource-leak.md), [Cascading Failure](../hazards/cascading-failure.md), [Noisy Neighbour](../hazards/noisy-neighbour.md) |
+| [Retry Storm](../hazards/retry-storm.md) | Clients retry in unison, multiplying load on a service already failing | — | [Poison Message](../hazards/poison-message.md), [Metastable Failure](../hazards/metastable-failure.md), [Cascading Failure](../hazards/cascading-failure.md), [Thundering Herd](../hazards/thundering-herd.md) |
+| [Thundering Herd](../hazards/thundering-herd.md) | One event releases every waiter at once and they all rush the same resource | — | [Cache Stampede](../hazards/cache-stampede.md), [Retry Storm](../hazards/retry-storm.md) |
+| [Cascading Failure](../hazards/cascading-failure.md) | One failure's load lands on its peers and takes them down in turn | — | [Metastable Failure](../hazards/metastable-failure.md), [Synchronous I/O](../hazards/synchronous-io.md), [Retry Storm](../hazards/retry-storm.md), [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) |
+| [Noisy Neighbour](../hazards/noisy-neighbour.md) | One tenant's load degrades everyone sharing the same pool | — | [Monolithic Persistence](../hazards/monolithic-persistence.md), [Starvation](../hazards/starvation.md), [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) |
 | [Clock Skew](../hazards/clock-skew.md) | Machines disagree about the time, so ordering by wall clock, lease expiry and last-write-wins give wrong answers | — | [Split-Brain](../hazards/split-brain.md) |
-| [Metastable Failure](../hazards/metastable-failure.md) | An outage that outlasts its trigger because the system's own retries, cold caches and late answers keep the overload going | — | [Cascading Failure](../hazards/cascading-failure.md), [Cache Stampede](../hazards/cache-stampede.md), [Retry Storm](../hazards/retry-storm.md) |
+| [Metastable Failure](../hazards/metastable-failure.md) | An outage that outlasts its trigger because the system's own retries, cold caches and late answers keep the overload going | — | [Cascading Failure](../hazards/cascading-failure.md), [Retry Storm](../hazards/retry-storm.md), [Cache Stampede](../hazards/cache-stampede.md) |
 | [Head-of-Line Blocking](../hazards/head-of-line-blocking.md) | One stuck item at the front of an ordered lane holds up everything behind it, though none of those items is slow | — | [Poison Message](../hazards/poison-message.md), [Starvation](../hazards/starvation.md) |
-| [Priority Inversion](../hazards/priority-inversion.md) | A high-priority task waits on a lock held by a low-priority one while medium-priority work runs | — | [Deadlock](../hazards/deadlock.md), [Starvation](../hazards/starvation.md), [Priority Queue](../patterns/messaging/priority-queue.md) |
-| [Shotgun Surgery](../hazards/shotgun-surgery.md) | One small change needs many small edits in many places, and a missed one breaks the system | — | [Primitive Obsession](../hazards/primitive-obsession.md) |
-| [Lava Flow](../hazards/lava-flow.md) | Dead or unexplained code kept in place because nobody dares remove it | — | [Boat Anchor](../hazards/boat-anchor.md), [Big Ball of Mud](../hazards/big-ball-of-mud.md) |
+| [Priority Inversion](../hazards/priority-inversion.md) | A high-priority task waits on a lock held by a low-priority one while medium-priority work runs | — | [Deadlock](../hazards/deadlock.md), [Priority Queue](../patterns/messaging/priority-queue.md), [Starvation](../hazards/starvation.md) |
+| [Shotgun Surgery](../hazards/shotgun-surgery.md) | One small change needs many small edits in many places, and a missed one breaks the system | — | [Primitive Obsession](../hazards/primitive-obsession.md), [God Object](../hazards/god-object.md) |
+| [Lava Flow](../hazards/lava-flow.md) | Dead or unexplained code kept in place because nobody dares remove it | — | [Big Ball of Mud](../hazards/big-ball-of-mud.md), [Boat Anchor](../hazards/boat-anchor.md) |
 | [Premature Optimization](../hazards/premature-optimization.md) | Speed work done before measuring, which adds complexity and misses the real bottleneck | — | [Spaghetti Code](../hazards/spaghetti-code.md) |
 | [Primitive Obsession](../hazards/primitive-obsession.md) | Domain concepts held as bare strings and numbers, so the type checker cannot catch mix-ups | — | [Shotgun Surgery](../hazards/shotgun-surgery.md), [Anemic Domain Model](../hazards/anemic-domain-model.md) |
 

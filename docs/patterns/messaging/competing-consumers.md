@@ -241,6 +241,7 @@ for (let i = 0; i < workerCount; i++) runConsumer(taskQueue, runKycStep);
 **Prevents**
 
 - [Busy Front End](../../hazards/busy-front-end.md) — Gives offloaded work a throughput dial that does not touch the request path
+- [Head-of-Line Blocking](../../hazards/head-of-line-blocking.md) — Competing consumers mean a stuck item holds one worker, not the whole lane.
 
 **Exposed to**
 

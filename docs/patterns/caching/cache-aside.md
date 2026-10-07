@@ -241,6 +241,7 @@ async function updateUser(id: string, patch: Partial<User>): Promise<void> {
 
 - [No Caching](../../hazards/no-caching.md) — The usual first answer when the same unchanged value is fetched on every request
 - [Stale Cache](../../hazards/stale-cache.md) — Delete the key on write so the next read reloads; a late refill can still re-cache the old value until the TTL ends
+- [Chatty I/O](../../hazards/chatty-io.md) — Answers repeated reads from memory, so on a hit the round-trip is not made.
 
 **Exposed to**
 

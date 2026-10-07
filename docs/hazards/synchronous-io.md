@@ -21,12 +21,12 @@ Synchronous I/O blocks the calling thread until a read, a remote call or a queue
 ## Explained
 <!--meta block=explain-->
 
-Synchronous I/O makes the calling thread wait, doing nothing, until a read, a remote call or a queue message completes, and the thread cannot serve anyone else meanwhile. That is fine when waits are microseconds and callers few. When waits reach milliseconds and callers reach thousands, you run out of threads long before you run out of processor, so the system is saturated but not busy. The request must wait for its answer, but the thread need not. Choose non-blocking calls over a bigger pool, since each thread costs memory and scheduling and a larger pool only moves the ceiling. A [reactor](../patterns/concurrency/reactor.md) (a few threads waiting on many sources, handling each event as it is ready) holds tens of thousands of open calls on a handful of workers, and a [future](../patterns/concurrency/future-promise.md) names the pending answer. Run unavoidable blocking libraries on a separate bounded pool, a [bulkhead](../patterns/distributed/resilience/bulkhead.md), so they cannot stall the event thread.
+Synchronous I/O makes the calling thread wait, doing nothing, until a read, a remote call or a queue message completes, and the thread cannot serve anyone else meanwhile. That is fine when waits are microseconds and callers few. When waits reach milliseconds and callers reach thousands, you run out of threads long before you run out of processor, so the system is saturated but not busy. The request must wait for its answer, but the thread need not. For waits that reach milliseconds, choose non-blocking calls over a bigger pool, since each thread costs memory and scheduling and a larger pool only moves the ceiling; measure first for very short calls. A [reactor](../patterns/concurrency/reactor.md) (a few threads waiting on many sources, handling each event as it is ready) can hold tens of thousands of open calls on a handful of workers, given small per-call state and enough memory. A [future](../patterns/concurrency/future-promise.md) names the pending answer. Run unavoidable blocking libraries on a separate bounded pool, a [bulkhead](../patterns/distributed/resilience/bulkhead.md), so they cannot stall the event thread.
 
 - **Clarity.** Straight-line code becomes continuations and stack traces stop showing the path, so carry a correlation id explicitly.
 - **Moved bottleneck.** Unblocked threads send more concurrent calls downstream, so cap in-flight calls and set a deadline on each.
 
-**Example.** A service has 200 request threads, and each request blocks 200 ms on a database call. It finishes 200 / 0.2 = 1,000 requests a second. Traffic reaches 1,200 a second, which needs 240 threads, so requests queue while the processor sits near 5%. If the database slows to 1 s, capacity falls to 200 a second. With non-blocking calls on 4 event threads, 240 calls in flight are just 240 small records, and the threads stay free. The database now receives all 1,200 a second, so cap it.
+**Example.** A service has 200 request threads, and each request blocks 200 ms on a database call. It finishes 200 / 0.2 = 1,000 requests a second. Traffic reaches 1,200 a second, which needs 240 threads, so requests queue while the processor sits near 5%, since the 200 ms is almost all waiting. If the database slows to 1 s, capacity falls to 200 a second. With non-blocking calls on 4 event threads, 240 calls in flight are just 240 small records, and the threads stay free. The database now receives all 1,200 a second, so cap it.
 
 ## How it happens
 <!--meta block=causes-->
@@ -50,11 +50,12 @@ flowchart TB
 ## What it costs
 <!--meta block=cost-->
 
-- **Concurrency is capped by threads, not by work.** The number of requests the process can have in flight equals the number of workers, so a wait of tens of milliseconds sets a ceiling on throughput that no amount of spare processor can lift.
-- **The machine idles while the queue grows.** Utilization stays low and requests still time out, which is the most misleading pair of numbers in an incident — the system looks under-loaded exactly as it fails.
+- **Concurrency is capped by threads, not by work.** The number of requests the process can have in flight equals the number of workers, so a wait of tens of milliseconds sets a ceiling on throughput that spare processor alone cannot lift; only more threads or non-blocking calls do.
+- **The machine idles while the queue grows.** Utilization stays low and requests still time out. The system looks under-loaded exactly as it fails.
 - **Each blocked worker holds memory it is not using.** Its stack stays allocated for the whole wait, so raising the pool size to compensate buys concurrency in exchange for footprint and for scheduler time spent switching between threads that are all doing nothing.
-- **It couples your availability to theirs.** A dependency that slows down converts directly into exhausted workers here, so their latency becomes your outage — the mechanism behind [Cascading Failure](./cascading-failure.md).
+- **It couples your availability to theirs.** A dependency that slows down exhausts your workers, so its latency becomes your outage, and each blocked worker may also hold a connection or lock. This is the mechanism behind [Cascading Failure](./cascading-failure.md).
 - **The collapse is a cliff.** While a worker is free, latency is the dependency's latency; once the last one is taken, every arrival waits for a whole round-trip before it even starts, and response time steps up by a multiple rather than drifting.
+- **No deadline, no recovery.** A blocking call with no deadline turns a slow dependency into a permanent worker leak: the thread never returns.
 
 ## Getting out
 <!--meta block=mitigation-->
@@ -65,7 +66,9 @@ Underneath, this is the **[Reactor](../patterns/concurrency/reactor.md)**: a sma
 
 Wrapping a blocking call in an asynchronous signature does not remove the block; it moves it to another thread, and that thread is now blocked instead. Done deliberately — on a bounded pool kept separate from the request path — it is a reasonable containment for a library you cannot change, and it is a form of [Bulkhead](../patterns/distributed/resilience/bulkhead.md): the blocking work can exhaust its own pool without touching the workers answering requests. Done accidentally, it adds a hop and a context switch to buy nothing.
 
-Not every call should change. An operation that is genuinely short and uncontended can cost more to dispatch and re-synchronize than it costs to wait for, so measure before converting; the general rule holds because most I/O is neither. And expect the bottleneck to move rather than vanish: unblocking the threads raises how many requests reach the dependency at once, which turns a thread-starved caller into a saturated store or a throttled downstream. Pair the change with a limit on concurrent calls and a deadline on each one, or you have simply relocated the queue to somewhere with less control over it.
+Not every call should change. An operation that is genuinely short and uncontended can cost more to dispatch and re-synchronize than it costs to wait for, so measure before converting; the rule holds wherever waits are long or callers many; short uncontended calls are the exception. Measure wait time against dispatch overhead and how often the call blocks a worker. And expect the bottleneck to move rather than vanish: unblocking the threads raises how many requests reach the dependency at once, which turns a thread-starved caller into a saturated store or a throttled downstream. Pair the change with a limit on concurrent calls and a deadline on each one.
+
+To confirm it, take a thread dump and look for workers parked on one call, and watch pool queue depth and pool-wait time while CPU stays low. Size the cap on in-flight calls as concurrency = throughput x latency, as in the worked example; give a bulkhead pool the same sizing, bound its queue and reject on overflow. [Reactor](../patterns/concurrency/reactor.md) reports that a handle is ready and you do the read; [Proactor](../patterns/concurrency/proactor.md) reports that the operation has finished.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -74,11 +77,16 @@ Not every call should change. An operation that is genuinely short and uncontend
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
 
+**Combines with**
+
+- [Cascading Failure](./cascading-failure.md) — Exhausted workers turn a slow dependency's latency into the caller's outage, which then spreads upstream
+
 **Mitigated by**
 
 - [Reactor](../patterns/concurrency/reactor.md) — A few threads wait on many I/O sources at once, so concurrency stops being capped by thread count
 - [Future / Promise](../patterns/concurrency/future-promise.md) — Name the pending answer so the request can wait without its thread waiting too
 - [Proactor](../patterns/concurrency/proactor.md) — Starting I/O without waiting for it keeps the loop thread free to serve other work
+- [Bulkhead](../patterns/distributed/resilience/bulkhead.md) — Blocking calls that exhaust a pool are what the compartment contains
 
 **Threatens**
 

@@ -237,6 +237,7 @@ async function getOrderSummary(orderId: string, view: OrderSummaryStore) {
 
 - [Monolithic Persistence](../../hazards/monolithic-persistence.md) — Separates the read model from the write store, so one engine no longer serves both shapes
 - [Partial Object](../../hazards/partial-object.md) — A read shaped for a screen stops being the domain type, so the domain type keeps its invariants
+- [Extraneous Fetching](../../hazards/extraneous-fetching.md) — A read model shaped per screen returns only the fields and rows that screen shows
 
 **Exposed to**
 

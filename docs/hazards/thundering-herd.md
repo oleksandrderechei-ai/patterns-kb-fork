@@ -20,21 +20,19 @@ A thundering herd is many waiters released at the same instant who all rush one 
 ## Explained
 <!--meta block=explain-->
 
-A thundering herd is many waiters released at the same instant who all rush the same resource. The crowd builds while callers are blocked, then one event lets it go, so the resource sees the depth of the queue instead of the normal arrival rate. Winners are served, and the rest wait, fail or repeat work someone else is already doing. The deeper cause is that systems synchronize themselves: clients that start together stay together, and values written together expire together. Decide first whether it hurts, since fifty aligned pollers on a database serving thousands can be ignored. Where it hurts, wake one waiter instead of all, or put a gate in front that admits a fixed number at a time. Spread expiries, schedules and reconnect delays over a random window. Where all waiters want the same answer, let one do the work and hand its result to the others, which is [request coalescing](../patterns/distributed/resilience/request-coalescing.md). After an outage, ramp traffic back in steps, since recovery is when the herd is biggest. The cache form is a [cache stampede](cache-stampede.md).
+A thundering herd is many waiters released at the same instant who all rush the same resource. The crowd builds while callers are blocked, then one event lets it go, so the resource sees the depth of the queue instead of the normal arrival rate. Winners are served, and the rest wait, fail or repeat work someone else is already doing. Systems synchronize themselves: clients that start together stay together, and values written together expire together. Fifty aligned pollers on a database serving thousands can be ignored, so act where it hurts. Wake one waiter instead of all, or put a gate in front that admits a fixed number at a time. Spread expiries, schedules and reconnect delays over a random window. Where all waiters want the same answer, let one do the work and hand its result to the others, which is [request coalescing](../patterns/distributed/resilience/request-coalescing.md). After an outage, ramp traffic back in steps, since recovery is when the herd is biggest. The cache form is a [cache stampede](cache-stampede.md).
 
 - **Follower wait.** Coalesced waiters wait for the one rebuild, and share its failure, so cap the wait with a timeout.
 - **Slower recovery.** Ramping traffic in steps lengthens an outage, so size the steps from what the resource can serve warm.
 
-**Example.** A hot cache entry gets 2,000 requests a second and takes 500 ms to rebuild from the database. When it expires, every request in the next 0.5 s misses, so 1,000 rebuilds start together against a database that handles 100 at a time. With coalescing, the first request rebuilds and the other 999 wait on its result, so the database sees 1 query. Random jitter on the expiry keeps hot entries from expiring together. Waiters can wait up to 500 ms, and if the rebuild fails all 1,000 fail with it.
+**Example.** A hot cache entry gets 2,000 requests a second and takes 500 ms to rebuild from the database. When it expires, every request in the next 0.5 s misses, so 1,000 rebuilds start together against a database that handles 100 at a time. With coalescing shared across the fleet, the first request rebuilds and the other 999 wait on its result, so the database sees 1 query; coalescing per instance leaves one query per instance. Jitter staggers many entries' expiries, but one hot entry needs coalescing. Waiters can wait up to 500 ms, and if the rebuild fails all 1,000 fail with it.
 
 ## How it happens
 <!--meta block=causes-->
 
-The herd is made while you are not looking. Anything that makes callers wait quietly collects a crowd, and then one event lets the whole crowd go at once. The resource sees none of that build-up — it sees only the moment everybody arrives. The events below do the releasing.
+Two ingredients are needed: a queue of waiters, and a release that is broadcast rather than handed to one of them. Waiters accumulate at the rate arrivals exceed service; the release converts that accumulated queue into instantaneous concurrency, so the resource is offered the depth of the queue rather than the rate of the traffic.
 
-Two ingredients are needed: a queue of waiters, and a release that is broadcast rather than handed to one of them. Waiters accumulate at the rate arrivals exceed service; the release converts that accumulated queue into instantaneous concurrency, so the resource is offered the depth of the queue rather than the rate of the traffic. The mechanisms below supply the release.
-
-The deeper cause is that distributed systems acquire synchronization on their own. Clients that start together stay together, values written together expire together, and instances deployed together warm together — so phase alignment builds up quietly and is only spent during an incident. Nothing on this list is a bug: each one is a correct mechanism whose cost is paid by whoever owns the shared resource.
+The deeper cause is that distributed systems acquire synchronization on their own. Clients that start together stay together, values written together expire together, and instances deployed together warm together, so phase alignment builds up quietly and is often first spent during an incident. Each item below is a correct mechanism whose cost is paid by whoever owns the shared resource.
 
 ```mermaid caption="The herd re-forms while it is being served: a resource slowed by the crowd makes the next wave of waiters bigger than the last."
 flowchart LR
@@ -48,6 +46,7 @@ flowchart LR
 - Clock alignment: a schedule on the hour, a nightly batch, a poll interval that every client set to the same value — the timers fire in the same second across the fleet.
 - Recovery: a dependency comes back and every client that was blocked reconnects at once, so the first thing a just-healthy service sees is peak concurrency.
 - Cold start: a deploy or a scale-up brings instances up together, and they load the same configuration, warm the same caches and open the same connections in parallel.
+- Synchronized retry: callers that fail together retry on the same fixed delay, so each failed wave returns as the next, larger one.
 
 ## What it costs
 <!--meta block=cost-->
@@ -56,9 +55,9 @@ flowchart LR
 - **Nearly all the work is wasted.** When only one waiter can win, the others spend context switches, connections or a full recomputation to discover that someone else already did the job.
 - **Latency goes bimodal.** A few callers are served at the usual speed and the rest wait behind the crowd, so the average looks fine while the tail is a different system entirely.
 - **Recovery is the worst moment for it.** A dependency that just came back has cold caches and empty pools, and the reconnect wave arrives before any of that is warm — so the first thing it does after recovering is fall over again.
-- **It repeats on a schedule.** Everyone served together gets a value that expires together, so unless something breaks the alignment the same spike returns every interval, forever.
+- **It repeats on a schedule.** Everyone served together gets a value that expires together, so the same spike returns every interval for as long as the alignment holds.
 
-The uncomfortable part is that synchronization accumulates for free while desynchronization has to be bought. Every shared deadline, every deploy, every recovery re-aligns the fleet a little more, and no ordinary load test reveals it because a test rig starts its clients at random. So you provision either for the peak concurrency of the herd — capacity you use for one second in every interval — or you spend engineering on jitter, coalescing and staged admission and provision for the mean. The second is almost always cheaper, but it is work someone has to own, whereas the first is just a bigger bill.
+Synchronization accumulates for free; desynchronization has to be bought. Every shared deadline, deploy and recovery re-aligns the fleet a little more, and a load rig that starts its clients at random rarely shows it. You provision for the herd's peak concurrency, capacity used for one second in each interval, or you pay for jitter, coalescing and staged admission and provision for the mean. When the herd recurs the second is usually cheaper, but someone has to own the work.
 
 ## Getting out
 <!--meta block=mitigation-->
@@ -69,12 +68,18 @@ Then break the alignment that formed the crowd. Spread expiries, schedules and r
 
 Recovery deserves its own plan, because that is when the herd is largest and the resource is weakest. Ramp traffic back rather than opening the gate — a fraction at a time, watched, until the caches and pools are warm. Stagger the probes too: breakers across a fleet share one cooldown, so every client's trial call lands in the same instant unless you randomize it. And watch concurrency at the resource, not request rate, because the rate that averages fine over a minute is exactly the metric that hides this.
 
+Size the window from the resource's rate. In the example, 100 at a time with 0.5 s per rebuild is 200 rebuilds a second, so 1,000 waiters need about 5 s; spread over at least that. To detect it, alarm on in-flight requests at the resource against its limit (100 in the example), and on a widening gap between median and tail latency. Each fix has a price. A gate trades latency for survival, since waiters queue and can time out. Jitter delays some clients by up to the window. A ramp lengthens recovery.
+
 ## How it relates
 <!--meta block=relationships-->
 
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Retry Storm](./retry-storm.md) — A recovery wave of synchronized retries is the herd's second round; backoff without jitter feeds both.
 
 **Often confused with**
 

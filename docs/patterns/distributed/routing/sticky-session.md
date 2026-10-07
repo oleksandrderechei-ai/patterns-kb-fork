@@ -204,6 +204,10 @@ class StickyBalancer {
 
 - [Load Balancer](./load-balancer.md) — Sticky sessions are a load-balancing policy that pins a client to one backend, trading even spread for session locality.
 
+**Exposed to**
+
+- [Host Header Rewriting](../../../hazards/host-header-rewriting.md) — Cookie affinity breaks when the proxy rewrites the host, so the balancer sees a first-time visitor
+
 **Demonstrated by**
 
 - [Google Docs](../../../designs/google-docs.md) — all connections belonging to one session deterministically land on the same backend instance so shared state stays local

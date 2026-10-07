@@ -21,7 +21,7 @@ Static cling is a caller stuck to one implementation because it reached it throu
 ## Explained
 <!--meta block=explain-->
 
-Static cling is code stuck to one specific implementation because it reached it through a static call, a call on a class rather than on an object you were given. There is no object to swap, no parameter to pass a stand-in through and no interface to implement, so no test or configuration can get between the caller and the thing it calls. The hazard is not the keyword but what the member touches. A pure function, one that returns the same output for the same input and touches nothing else, should stay static. A static member that reads the clock, opens a connection or reads settings has hidden inputs, and learning what a method depends on means reading its body. It spreads because a static call needs no wiring, so the first person who must test around it pays for all of them. Move anything whose answer depends on the world behind a dependency the caller declares, using [dependency injection](../patterns/gof/extra/dependency-injection.md). Wrap a third-party static API in a thin adapter.
+A static call names a class, not an object you were given, so nothing can stand in for it, and no test or configuration can get between the caller and the thing it calls. There is no parameter to pass a stand-in through and no interface to implement, so the caller has no seam (a place where another implementation can be swapped in). The hazard is not the keyword but what the member touches. A pure function, one that returns the same output for the same input and touches nothing else, should stay static. A static member that reads the clock, opens a connection or reads settings has hidden inputs. It spreads because a static call needs no wiring, so the first person who must test around it pays for all of them. Move anything whose answer depends on the world behind a dependency the caller declares, using [dependency injection](../patterns/gof/extra/dependency-injection.md). Wrap a third-party static API in a thin adapter.
 
 - **More parameters.** Constructors gain collaborators and every builder must supply them; a composition root keeps the wiring in one place.
 - **Service locator trap.** Swapping a static call for a global lookup is the same hazard behind an interface.
@@ -31,11 +31,11 @@ Static cling is code stuck to one specific implementation because it reached it 
 ## How it happens
 <!--meta block=causes-->
 
-Nobody sets out to hide a dependency. Every instance starts as the shortest way to get something the code needs — the current time, a configuration value, a shared connection — and a static call is genuinely the shortest way. The forms below are the ones that recur, and they differ in how obvious the hidden dependency is: the first two look harmless, the last two are usually adopted on purpose.
+Nobody sets out to hide a dependency. Every instance starts as the shortest way to get something the code needs — the current time, a configuration value, a shared connection — and a static call is the shortest way. The forms below are the ones that recur: the first three hide the dependency from the signature, items 4 and 5 are usually adopted on purpose, and item 6 is imposed by a library.
 
-A static call is also asymmetric in effort in a way that shapes codebases over time. Adding one is free; the first person who needs to test around it pays for all of them. That imbalance means the hazard is almost never introduced by the person who has to remove it, which is why it survives code review and shows up as an untestable module later.
+The person who adds a static call is rarely the person who removes it, so it survives review.
 
-```mermaid caption="Steps 1 to 3 are invisible from the signature at the top, which is the whole hazard — and step 4 is the bill: a test can construct the caller but cannot get between it and any of the three, so the only way to exercise it is to make the real clock, real config and real shared state cooperate."
+```mermaid caption="Steps 1 to 3 are invisible from the signature, which is the whole hazard. Step 4 is the cost: a test can construct the caller but cannot get between it and the real clock, config or shared state."
 flowchart LR
     subgraph Vis["What the signature says"]
         C["Caller.process(order)"]
@@ -62,12 +62,12 @@ flowchart LR
 <!--meta block=cost-->
 
 - **The unit cannot be tested in isolation.** Exercising the caller means making the real clock, connection or file cooperate, so a unit test becomes an integration test by force.
-- **Tests stop being independent.** Static state carries between tests in the same process, so a suite passes in one order and fails in another — and the failure is attributed to the wrong test.
+- **Tests stop being independent.** In a shared process, static state carries between tests, so a suite can pass in one order and fail in another.
 - **The dependency graph is no longer readable.** Signatures stop telling you what a class needs, so estimating the blast radius of a change means reading implementations.
-- **Removal is a wide change.** Every call site is its own edit, and there are more of them than an injected dependency would have accumulated, because adding each one was free.
+- **Removal is a wide change.** Every call site is its own edit, and adding each one was free, so there are usually many.
 - **Temporal coupling fails at run time.** Calls that must happen in a particular order have no compile-time protection, so the break lands on the paths tests exercise least.
 
-Against all of that, be honest about what makes it attractive: a static call is the cheapest thing to write and among the easiest to read, and a codebase that injects every last thing pays in ceremony and indirection that has its own real cost. That is why the useful rule is narrow rather than absolute — purity, not the keyword. Deterministic static helpers are good design and should not be refactored into injected collaborators to satisfy a lint rule; what has to move is anything whose answer depends on the world. Drawing the line there keeps the convenience where it is free and pays only where it buys a seam.
+A static call is still the cheapest thing to write, and a codebase that injects everything pays in ceremony and indirection. So the rule is narrow: purity, not the keyword. Deterministic static helpers should not be refactored into injected collaborators to satisfy a lint rule; what has to move is anything whose answer depends on the world.
 
 ## Getting out
 <!--meta block=mitigation-->
@@ -77,6 +77,8 @@ Sort the static members into two piles first. Deterministic functions of their a
 Make signatures honest as you go. Pass what a method needs and return what it produces, rather than reading and writing shared state, which removes the ordering constraint along with the hidden dependency. For a third-party static API you cannot change, wrap it in a thin instance-level adapter and depend on the adapter — the wrapper is not tested, and does not need to be, because it contains no decisions.
 
 Two traps on the way out. A global lookup registry is the same hazard wearing an interface, so replacing a static accessor with a static locator call moves nothing. And where a single shared instance really is needed, own its lifetime in the composition root rather than in a static field, so exactly one place decides when it exists — which also gives tests somewhere to substitute.
+
+In legacy code, do not convert everything at once. Add the seam at one call site, with the old static call as the default, and move the other callers as each is touched. To find offenders, search for static clock, environment and connection reads, and run the suite in random order to expose shared static state.
 
 ## How it relates
 <!--meta block=relationships-->

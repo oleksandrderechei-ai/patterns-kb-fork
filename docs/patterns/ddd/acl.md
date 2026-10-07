@@ -198,6 +198,7 @@ class CustomerAcl {
 **Prevents**
 
 - [Distributed Monolith](../../hazards/distributed-monolith.md) — Without translation, two contexts share a model and have to be redeployed in step.
+- [Leaky Abstraction](../../hazards/leaky-abstraction.md) — Contains the leak in one reviewed boundary instead of spreading it through the domain
 
 **Demonstrated by**
 

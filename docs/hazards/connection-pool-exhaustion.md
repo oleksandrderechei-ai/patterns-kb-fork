@@ -16,7 +16,7 @@ A downstream dependency slows down, so every borrowed connection is held longer,
 ## What it is
 <!--meta block=description-->
 
-Connection-pool exhaustion is the state where every connection in a pool is checked out, so the next caller waits for one to come back. You recognize it when requests hang rather than fail: CPU is low, nothing logs an error, and threads are parked on the same acquire call. The defining trait separating it from a resource leak is that stopping traffic lets the pool recover.
+Connection-pool exhaustion is the state where every connection in a pool is checked out, so the next caller waits for one to come back. You recognize it when requests hang rather than fail: CPU is low, nothing logs an error, and threads are parked on the same acquire call. The defining trait separating it from a resource leak is that stopping traffic lets the pool recover, unless nested acquisition has deadlocked it.
 
 ## Explained
 <!--meta block=explain-->
@@ -31,11 +31,11 @@ Connection-pool exhaustion is the state where every connection in a shared pool 
 ## How it happens
 <!--meta block=causes-->
 
-Nothing has to break for this to happen. Traffic stays the same and something downstream simply gets slower, so each request keeps its connection a little longer than it used to. Borrowed slots pile up, the last free one is taken, and everyone who arrives after that stands in line. The ordinary conditions below get you there.
+Nothing has to break: traffic stays flat and a slower downstream makes each request hold its connection longer.
 
-The governing relation is concurrency equals arrival rate times holding time, so the pool saturates when downstream latency rises even though the offered rate has not moved. What turns saturation into a hang is the absence of a bound on the wait: with no acquire timeout the queue in front of the pool is unbounded, and overload is converted into latency rather than into errors. Each condition below supplies either the extra holding time or the missing bound.
+Concurrency equals arrival rate times holding time, and with no acquire timeout the queue is unbounded, so overload becomes latency rather than errors.
 
-The design mistake underneath is treating the pool as a buffer when it is really an admission control device: its size is the maximum concurrency you have decided to send downstream. The conditions below are how that decision goes unmade.
+Treat the pool as admission control, not a buffer: its size is the most concurrency you have decided to send downstream, and the causes below are how that decision goes unmade.
 
 ```mermaid caption="Slow, not broken: an unbounded wait for a slot turns one sluggish dependency into a service that answers nothing."
 flowchart LR
@@ -47,29 +47,31 @@ flowchart LR
 - Downstream latency rising: at the same traffic, a query that takes ten times longer needs ten times the slots, so a slow dependency exhausts the pool without any change in load.
 - No timeout on acquiring a connection: the caller waits indefinitely for a slot, which is what converts overload into a hang instead of a fast, visible error.
 - No statement or transaction timeout: a query blocked on a lock or a table scan holds its connection until the database decides to end it, and until then the slot is gone.
-- Holding a slot across work that does not need it — an external API call, a file write, user think-time inside a transaction — which multiplies holding time for no benefit.
+- Holding a slot across work that does not need it, such as an external API call, a file write or user think-time inside a transaction, which multiplies holding time.
 - Nested acquisition: a request holding one connection asks for a second, so with enough concurrent requests every slot is held by someone waiting for a slot and the pool deadlocks.
 - A size chosen by default rather than by measurement, with no relation to how many workers can be in flight or how much concurrency the database can actually serve.
+- Per-instance pools multiplied by replica count can exceed the database's session limit, and scaling out under load deepens the squeeze.
+- Retries on timeouts add arrivals just as holders slow, so a fast error can feed the queue it was meant to shorten.
 
 ## What it costs
 <!--meta block=cost-->
 
-- **Requests hang instead of failing.** No error is returned, so no breaker trips, no retry budget is spent and no alert on error rate fires — the failure is invisible to every mechanism you built to catch failures.
+- **Requests hang instead of failing.** No error is returned, so no error-rate breaker trips, no retry budget is spent and no alert on error rate fires. The failure stays invisible to the mechanisms built to catch errors.
 - **The stall propagates upstream.** Callers waiting on your unanswered response hold their own threads and connections, so one slow query can occupy resources several services away from it.
-- **The outage is total, not proportional.** Endpoints that never touch the slow query fail as well, because they draw from the same pool — a report page can take down the login path.
+- **The outage is total, not proportional.** Endpoints that never touch the slow query fail as well, because they draw from the same pool. A report page can take down the login path.
 - **Health checks report the wrong thing.** A check that does not use the pool says the instance is fine while it serves nothing; a check that does use it fails, and the instance is evicted just as its peers are getting the redistributed load.
-- **Diagnosis is slow at the worst time.** CPU, memory and error rate all look healthy, so the answer only appears in pool metrics or a thread dump — evidence many teams first collect during the incident.
+- **Diagnosis is slow at the worst time.** CPU, memory and error rate all look healthy, so the answer only appears in pool metrics or a thread dump — evidence a team without pool metrics first collects during the incident.
 
-Sizing is where this gets expensive, because the intuitive fix is the wrong one. Every connection is memory and a session on the database, which is the scarcer, shared resource, so enlarging the pool to stop the waiting hands the same queue to the server where it slows every other client too — past a point, more concurrency buys less throughput, since the work spends its time contending rather than executing. A rejection you can see costs a retry; a wait you cannot see costs the whole service.
+Sizing is where this gets expensive, because the intuitive fix is the wrong one. Every connection is memory and a session on the database, which is the scarcer, shared resource, so enlarging the pool to stop the waiting hands the same queue to the server where it slows every other client too — past a point, more concurrency buys less throughput, since the work spends its time contending rather than executing.
 
 ## Getting out
 <!--meta block=mitigation-->
 
-Put a bound on every wait. A timeout on acquiring a connection, a timeout on the statement, a deadline on the request as a whole — each one turns an invisible hang into a fast error that your alerts, your breakers and your callers can all act on. Choose the acquire timeout deliberately: it is how long you are willing to let a caller queue before you would rather refuse them.
+Put a bound on every wait (acquire, statement and request), so an invisible hang becomes a fast error that your alerts, your breakers and your callers can act on. Choose the acquire timeout deliberately: it is how long you are willing to let a caller queue before you would rather refuse them. Set it from the request deadline so it fires before the caller's own timeout.
 
 Then hold each slot for as little time as possible. Take the connection inside the unit of work and give it back immediately after, never across an external call, a file write or anything waiting on a person. Split the pool by workload so a slow analytical query cannot consume the slots the login path needs, and fix the double-borrow: a request that holds one connection while asking for another will [deadlock](./deadlock.md) the pool under enough concurrency.
 
-Size it from the downstream's real concurrency limit, not from your request rate, and confirm it with a load test that pushes latency up rather than traffic. Alert on the two numbers that move first — waiters on the pool and time spent waiting for a slot — because both rise well before any request-level metric does. When a dependency is slow rather than broken, a breaker in front of it releases the slots your service is spending on calls that will not finish in time. And if pool utilization does not fall back after traffic stops, stop tuning the size: what you have is a leak, not exhaustion.
+Size it from the downstream's real concurrency limit, not from your request rate, and confirm it with a load test that pushes latency up rather than traffic. Find that limit by load-testing the database while raising concurrency until throughput stops rising, then divide it across all instances. Alert on the two numbers that move first — waiters on the pool and time spent waiting for a slot — because both usually rise before request latency or error rate does. When a dependency is slow rather than broken, a breaker in front of it releases the slots your service is spending on calls that will not finish in time. And if pool utilization does not fall back after traffic stops, stop tuning the size: what you have is a leak, not exhaustion: wait for the pool to drain, then follow [resource leak](./resource-leak.md).
 
 ## How it relates
 <!--meta block=relationships-->
@@ -77,6 +79,17 @@ Size it from the downstream's real concurrency limit, not from your request rate
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Chatty I/O](./chatty-io.md) — A chatty caller holds slots far longer than its work needs, so call count alone can exhaust the pool.
+- [Cascading Failure](./cascading-failure.md) — A pool starved on one path can spread to every service sharing it, turning one stalled caller into a cascade.
+- [Noisy Neighbour](./noisy-neighbour.md) — Connection pool exhaustion is what a noisy neighbour looks like when the shared resource is a connection pool.
+
+**Often confused with**
+
+- [Deadlock](./deadlock.md) — Nested checkouts can deadlock a pool; plain exhaustion needs no cycle, only holders slower than demand
+- [Resource Leak](./resource-leak.md) — A leak stays full after traffic stops; exhaustion recovers once slow holders return their slots.
 
 **Mitigated by**
 

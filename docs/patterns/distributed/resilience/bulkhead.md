@@ -245,6 +245,7 @@ for (const [type, pool] of Object.entries(pools)) {
 - [Connection-Pool Exhaustion](../../../hazards/connection-pool-exhaustion.md) — Partitioned pools contain exhaustion to one compartment
 - [Busy Front End](../../../hazards/busy-front-end.md) — Confines a heavy background workload to its own pool, so cheap requests keep their latency
 - [Starvation](../../../hazards/starvation.md) — Compartments stop one class consuming the whole pool
+- [Synchronous I/O](../../../hazards/synchronous-io.md) — Gives blocking work its own bounded pool so it cannot starve request workers
 
 **Demonstrated by**
 
