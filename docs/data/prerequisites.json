@@ -825,7 +825,7 @@
       "definition": "Keeps no per-client state in memory, so any instance can serve any request",
       "route": "/patterns/distributed/routing/stateless-service.html",
       "requires": [],
-      "related": ["load-balancer", "sticky-session", "redundancy", "managed-services", "container-orchestration", "web-queue-worker", "containerization", "websocket"]
+      "related": ["load-balancer", "sticky-session", "redundancy", "managed-services", "container-orchestration", "web-queue-worker", "containerization", "websocket", "secure-session-manager"]
     },
     {
       "id": "compute-resource-consolidation",
@@ -1889,7 +1889,7 @@
       "definition": "Issues, tracks, and expires session state safely",
       "route": "/patterns/security/secure-session-manager.html",
       "requires": [],
-      "related": ["authentication-enforcer", "federated-identity", "authorization-enforcer", "identity-as-perimeter", "external-configuration-store"]
+      "related": ["authentication-enforcer", "federated-identity", "authorization-enforcer", "identity-as-perimeter", "external-configuration-store", "stateless-service"]
     },
     {
       "id": "intercepting-validator",

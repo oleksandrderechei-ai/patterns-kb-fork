@@ -71,7 +71,7 @@ stateDiagram-v2
 - **Stateless signed session (JSON Web Token, JWT)** — Claims are encoded and signed directly into the token, so validation needs no store lookup — at the cost of being unable to revoke a single token before it expires without a separate denylist.
 - **Sliding vs. fixed expiration** — Sliding renews the timeout on every request, keeping active users signed in indefinitely; a fixed absolute expiry caps how long a hijacked session stays usable regardless of activity.
 - **Session ID rotation on privilege change** — Issue a fresh ID at login and again at any escalation, invalidating the old one immediately — the standard defense against session fixation.
-- **Refresh token / access token pair** — A short-lived access token authorizes each call; a longer-lived refresh token, stored more carefully, is exchanged for new ones — narrowing the blast radius of a leaked access token.
+- **Refresh token / access token pair** — A short-lived access token authorizes each call; a longer-lived refresh token, stored more carefully, is exchanged for new ones — narrowing the blast radius of a leaked access token. Rotate the refresh token on each use, treat a replayed one as theft, and keep it server-side so it can be revoked.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -80,9 +80,9 @@ stateDiagram-v2
 <!--meta polarity=pro-->
 
 - **Confines identity state** to one component instead of scattering ad hoc cookies across the app.
-- **Expiration and revocation are enforced in one place**, closing the window a stolen token stays useful.
-- **Rotating the session ID** at login defeats session fixation outright.
-- **Server-side sessions can be revoked instantly**; a compromised account can be locked out mid-session.
+- **Expiration and revocation are enforced in one place**, narrowing the window a stolen token stays useful to the idle and absolute limits, or to revocation.
+- **Regenerating the id** at login and on privilege change defeats session fixation, provided no route accepts an id from the URL.
+- **Server-side sessions are revoked** on the next request, provided every node reads the same authoritative store with no local cache; a compromised account can be locked out mid-session.
 
 ### Cons
 <!--meta polarity=con-->
@@ -92,6 +92,7 @@ stateDiagram-v2
 - **Sliding expiration keeps hijacked sessions alive** — a hijacked-but-active session lives indefinitely unless capped by an absolute max age.
 - **Session data is a high-value target** — a leaked store or signing key compromises every active session at once, so key rotation has to be an operation somebody has rehearsed rather than a paragraph in a design doc.
 - **The identifier must never travel in a URL**: a session ID in a query string leaks through server logs, browser history and bookmarks, the Referer header, and any shared link — and hands an attacker a fixation vector the cookie-or-header transport doesn't expose.
+- **Cookie transport makes the session ambient**, so state-changing routes need CSRF defence (SameSite plus a token).
 
 ## When to use it
 <!--meta block=usage-->
@@ -115,16 +116,24 @@ stateDiagram-v2
 ```typescript summary="TypeScript — issue, validate, destroy"
 import { randomBytes } from "node:crypto";
 
+const sessions = new Map<string, { userId: string; expiresAt: number; absoluteExpiresAt: number }>();
+
 // The id is a secret: unguessable random bytes, and nothing about the user in it.
-function login(res: Response, userId: string) {
+function login(req: Request, res: Response, userId: string) {
+  sessions.delete(req.cookies.sid); // drop any prior id, so a planted one dies at login
   const id = randomBytes(32).toString("base64url");
-  sessions.set(id, { userId, expiresAt: Date.now() + 30 * 60_000 });
+  sessions.set(id, {
+    userId,
+    expiresAt: Date.now() + 30 * 60_000,
+    absoluteExpiresAt: Date.now() + 8 * 60 * 60_000,
+  });
   res.cookie("sid", id, { httpOnly: true, secure: true, sameSite: "lax" });
 }
 
 function currentUser(req: Request): string | null {
   const s = sessions.get(req.cookies.sid);
-  if (!s || s.expiresAt < Date.now()) return null;  // unknown or expired
+  if (!s || s.expiresAt < Date.now() || s.absoluteExpiresAt < Date.now()) return null;  // unknown or expired
+  s.expiresAt = Date.now() + 30 * 60_000; // slide the idle timeout; the absolute cap never slides
   return s.userId;
 }
 
@@ -141,7 +150,7 @@ interface Session { flowId: string; personaId: string; expiresAt: number; usedAt
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 // The onboardee has no account: the link IS the session. Storing only its hash
-// is what lets the server expire, spend and revoke it — a self-validating token could not.
+// is what lets the server expire, spend and revoke it — a self-validating token could expire but not be spent or revoked early without a store.
 class SessionStore {
   private byHash = new Map<string, Session>();
   constructor(private readonly ttlMs = 48 * 60 * 60_000) {}
@@ -179,10 +188,10 @@ class SessionStore {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Idle (sliding) timeout** — How long a session survives without activity before it expires. It sets the window an abandoned session on a shared machine stays usable.
-- **Absolute maximum session lifetime** — A hard cap on total session age regardless of activity. It bounds the worst case for a stolen identifier, because nothing else does.
+- **Idle (sliding) timeout** — How long a session survives without activity before it expires. It sets the window an abandoned session on a shared machine stays usable. The example uses 30 minutes; shorten it for high-risk apps.
+- **Absolute maximum session lifetime** — A hard cap on total session age regardless of activity. It bounds the worst case for a stolen identifier, because sliding renewal alone never ends an active session. The example uses 8 hours.
 - **Cookie security flags (HttpOnly, Secure, SameSite)** — HttpOnly keeps script from reading the identifier, Secure keeps it off plaintext HTTP, SameSite limits cross-site sending. These decide which channels the handle can reach at all.
-- **Session ID entropy** — Bytes of cryptographically strong randomness in the identifier — it is a secret, so size it like one rather than like a database key.
+- **Session ID entropy** — Bytes of cryptographically strong randomness in the identifier — it is a secret, so size it like one rather than like a database key. The example uses 32 bytes (256 bits).
 - **Store model (server-side vs stateless signed token)** — A server-side store allows deletion mid-session; a signed token validates without a lookup. This is the revocability-versus-dependency choice, and it is the one that shapes everything else.
 
 ### Signals to watch
@@ -238,6 +247,7 @@ class SessionStore {
 - [Authorization Enforcer (RBAC)](./authorization-enforcer.md) — Carries the subject and roles each check reads
 - [Identity Is the Perimeter](../../principles/identity-as-perimeter.md) — Session handling is the part most often written badly in-house
 - [External Configuration Store](../distributed/coordination/external-configuration-store.md) — The deliberate split: routine settings centralised, secrets kept somewhere built for them
+- [Stateless Service](../distributed/routing/stateless-service.md) — A shared session store is what lets any instance serve a signed-in user.
 
 **Demonstrated by**
 

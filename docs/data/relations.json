@@ -13852,6 +13852,13 @@
       "b": "single-access-point",
       "note_a": "The single entry point guards the perimeter; this decides what an admitted caller may do.",
       "note_b": "Everything admitted through the one channel still needs a permission check, which this enforcer supplies."
+    },
+    {
+      "a": "stateless-service",
+      "verb": "combines-with",
+      "b": "secure-session-manager",
+      "note_a": "Where the session record lives when the tier keeps no per-client state.",
+      "note_b": "A shared session store is what lets any instance serve a signed-in user."
     }
   ],
   "group_order": {
