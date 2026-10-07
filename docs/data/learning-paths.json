@@ -317,6 +317,7 @@
         "/patterns/concurrency/producer-consumer.html",
         "/patterns/concurrency/ring-buffer.html",
         "/patterns/concurrency/backpressure.html",
+        "/patterns/distributed/resilience/load-shedding.html",
         "/patterns/architecture/pipe-filter.html",
         "/patterns/distributed/coordination/sliding-window.html",
         "/patterns/concurrency/reactor.html",
@@ -1204,7 +1205,7 @@
     "/patterns/distributed/coordination/outbox.html": {
       "consistency-and-replication": {
         "role": "Make the event and the write atomic",
-        "tour": "Writing the state change and the event that announces it in the same local transaction, so a crash between the two can never leave replicas or downstream consumers with only half the picture.",
+        "tour": "Writing the state change and the event that announces it in the same local transaction, so a crash between the two cannot leave replicas or downstream consumers with only the change or only the event. Delivery is still at least once, so the receiver must deduplicate.",
         "fluency": "Make the event and the write atomic"
       },
       "multi-step-processes": {
@@ -1234,12 +1235,12 @@
     "/patterns/distributed/coordination/quorum-consensus.html": {
       "cap-theorem": {
         "role": "Tune the consistency/availability dial with read/write quorums",
-        "tour": "The dial itself. Requiring a majority to agree before a write counts is how a consistency-first (CP) store trades availability for a single, agreed truth. Tuning read/write quorum sizes moves you along the C/A spectrum.",
+        "tour": "The dial itself. Requiring a majority to agree before a write counts is how a consistency-first (CP) store trades availability for a single, agreed truth. Tuning read/write quorum sizes moves you along the C/A spectrum: with N copies, W + R > N makes every read overlap the latest write, while a sloppy quorum gives that up to stay available.",
         "fluency": "Tune the consistency/availability dial with read/write quorums"
       },
       "consistency-and-replication": {
         "role": "Agree on writes across a majority",
-        "tour": "A write, or a read, only counts once a majority of replicas agree — so no single lagging or partitioned node can silently answer with stale data. Tuning the quorum size trades latency against how strong the guarantee is.",
+        "tour": "A write counts once W replicas confirm it and a read once R replicas answer. When W plus R is more than N, every read meets the latest write, so a lagging or partitioned node cannot silently answer a quorum read with stale data. Tuning W and R trades latency against how strong the guarantee is.",
         "fluency": "Agree on writes across a majority"
       }
     },
@@ -1250,9 +1251,9 @@
         "fluency": "Redundancy behind fault tolerance and read scaling"
       },
       "cap-theorem": {
-        "role": "The copies whose agreement consistency, availability, partition tolerance (CAP) is about",
-        "tour": "The copies whose agreement consistency, availability, partition tolerance (CAP) is about. Synchronous replication leans consistency-first (CP); asynchronous replication leans availability-first (AP) and low latency but risks stale reads.",
-        "fluency": "The copies whose agreement consistency, availability, partition tolerance (CAP) is about"
+        "role": "The copies whose agreement CAP is about",
+        "tour": "The copies whose agreement CAP is about. Synchronous replication leans consistency-first (CP). Asynchronous replication leans availability-first (AP) with low latency, but followers can serve stale reads and a leader failover can lose the most recent writes.",
+        "fluency": "The copies whose agreement CAP is about"
       },
       "scalability": {
         "role": "Scale reads with copies",
@@ -1261,7 +1262,7 @@
       },
       "consistency-and-replication": {
         "role": "The copies to keep in agreement",
-        "tour": "The copies themselves, kept on separate nodes so a single failure never loses the data. Whether those copies update synchronously or asynchronously is the dial this whole theme turns on.",
+        "tour": "The copies themselves, kept on separate nodes so a single failure loses nothing already confirmed on another copy; with asynchronous copying, the lag window can still be lost. Whether those copies update synchronously or asynchronously is the dial this whole theme turns on.",
         "fluency": "The copies to keep in agreement"
       },
       "scaling-reads": {
@@ -1283,7 +1284,7 @@
     "/patterns/distributed/coordination/saga.html": {
       "cap-theorem": {
         "role": "Choose availability, then reconcile with eventual consistency",
-        "tour": "An availability-first (AP) answer for multi-service transactions: proceed optimistically, then reconcile with compensating steps — eventual consistency instead of a [distributed lock](../patterns/distributed/coordination/distributed-lock.md).",
+        "tour": "An availability-first (AP)-style fit for multi-service transactions: each step commits on its own and compensating steps reconcile later, so nothing waits on a [distributed lock](../patterns/distributed/coordination/distributed-lock.md). The price is eventual consistency and no isolation while the saga runs.",
         "fluency": "Choose availability, then reconcile with eventual consistency"
       },
       "consistency-and-replication": {
@@ -2089,7 +2090,7 @@
     "/patterns/messaging/competing-consumers.html": {
       "streaming": {
         "role": "Scale a stream across parallel workers",
-        "tour": "Multiple worker instances pull from the same queue or partition set, each message claimed and processed by exactly one worker. It's how a pipeline scales throughput horizontally without redesigning a single stage.",
+        "tour": "Multiple worker instances pull from the same queue or partition (one ordered slice of the stream), each message claimed by one worker at a time. This scales a pipeline's throughput horizontally without redesigning a single stage. A crash returns the message to the queue, so handling must be safe to repeat, and a partition key that keeps related messages together caps workers at the partition count.",
         "fluency": "Scale a stream across parallel workers"
       },
       "scalability": {
@@ -2229,7 +2230,7 @@
       },
       "streaming": {
         "role": "Buffer and decouple stream stages",
-        "tour": "The durable buffer between stages that absorbs bursts and lets producer and consumer run at different speeds without either blocking the other. It's the most common way backpressure gets implemented in practice.",
+        "tour": "The durable buffer between stages that absorbs bursts and lets producer and consumer run at different speeds without either blocking the other. A bounded queue gives backpressure by blocking or rejecting senders when full; an unbounded one only delays the overload. Delivery is at least once, so handlers must be safe to repeat.",
         "fluency": "Buffer and decouple stream stages"
       },
       "long-running-tasks": {
@@ -2479,6 +2480,11 @@
         "role": "Refuse work once saturated",
         "tour": "Backpressure asks the producer to slow down; load shedding refuses when it will not or cannot. Past a live saturation signal, such as queue depth or in-flight concurrency, the admission check returns a fast 503 so what you do accept still finishes inside its deadline.",
         "fluency": "Refuse some work early, cheaply, so the work you accept still finishes in time."
+      },
+      "streaming": {
+        "role": "Refuse excess work when a stage is overloaded",
+        "tour": "When a producer cannot be slowed and the queue is full, drop the least valuable events at once rather than let every event wait longer. Shed by priority, so payment events survive and debug logs go first.",
+        "fluency": "Drop the least valuable events when a stage is overloaded and the producer cannot be slowed."
       }
     },
     "/patterns/distributed/resilience/request-coalescing.html": {

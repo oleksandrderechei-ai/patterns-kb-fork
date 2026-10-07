@@ -24,17 +24,17 @@ Streaming is processing data that never ends, such as clicks or sensor readings,
 
 - **Slower producers.** Backpressure cuts throughput. Use it only where the producer can wait.
 - **Lost data.** Shedding drops events. Shed only data you can lose, such as debug logs, never payments.
-- **Memory and delay.** A queue holds events and adds wait. Cap its length and alert on depth.
-- **Delivery guarantees.** A crashed consumer loses an event or repeats one. Decide which, and make handling safe to repeat.
+- **Memory and delay.** A queue holds events and adds wait. Cap its length, say what happens when full, and alert on oldest-event age.
+- **Delivery guarantees.** A crashed consumer loses an event or repeats one. A queue repeats, so make handling safe to repeat.
 
-**Example.** Sensors send 10,000 events a second, and one consumer handles 6,000. The queue gains 4,000 a second, so a 30-second burst leaves 120,000 events and the newest waits 120,000 / 6,000 = 20 s. A second consumer lifts capacity to 12,000 a second, above the 10,000 incoming, so the backlog stops growing and drains. Without it, a 1,000,000-event queue fills in 250 s, and backpressure must then slow the senders. Debug logs are shed first so that payment events are never dropped.
+**Example.** Sensors send 10,000 events a second, and one consumer handles 6,000. The queue gains 4,000 a second, so a 30-second burst leaves 120,000 events and the newest waits 120,000 / 6,000 = 20 s. If the overload lasts, a 1,000,000-event queue fills in 250 s, and backpressure must then slow the senders. Shedding 1,000 low-value events a second cuts the gain to 3,000 a second. A second consumer, if the work splits cleanly, lifts capacity to 12,000 a second, above the 10,000 incoming, so the backlog stops growing and the 120,000 drains at 2,000 a second in 60 s.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-The central tension in any stream is a speed mismatch: sooner or later, a producer will generate data faster than its consumer can absorb it. Something has to give, and there are only four honest responses. Slow the producer down (backpressure). Absorb the burst somewhere (a buffer or queue). Throw away what you can't handle ([load shedding](../patterns/distributed/resilience/load-shedding.md)). Or add more consumers and split the work (scale out).
+The central tension in any stream is a speed mismatch: a producer can generate data faster than its consumer can absorb it. Four main responses exist: Slow the producer down (backpressure). Absorb the burst somewhere (a buffer or queue). Throw away what you can't handle ([load shedding](../patterns/distributed/resilience/load-shedding.md)). Or add more consumers and split the work (scale out).
 
-Each response trades something different: backpressure trades producer throughput for consumer safety; a buffer trades memory and latency for a smoother rate; shedding trades completeness for survival; scaling out trades operational complexity for headroom. Most production pipelines use more than one, layered — a queue absorbs short bursts, backpressure kicks in if the queue fills, and competing consumers raise the ceiling before either is needed.
+Each response trades something different: backpressure trades producer throughput for consumer safety; a buffer trades memory and latency for a smoother rate; shedding trades completeness for survival; scaling out trades operational complexity and ordering for headroom, since related events must stay on one consumer. Most production pipelines use more than one, layered: a queue absorbs short bursts, backpressure starts if the queue fills, and competing consumers raise the ceiling.
 
 ```mermaid caption="Streaming rarely picks one response and stops — it layers buffering, backpressure, and scale-out to cover different burst sizes."
 flowchart TD
@@ -65,6 +65,10 @@ A fixed circular array sits between producer and consumer, with a policy for whe
 
 The signal that lets a consumer tell its producer to slow down before its buffers overflow. Without it, a burst becomes an out-of-memory crash instead of a controlled slowdown.
 
+### [Load Shedding](../patterns/distributed/resilience/load-shedding.md) {#tour-load-shedding}
+
+When a producer cannot be slowed and the queue is full, drop the least valuable events at once rather than let every event wait longer. Shed by priority, so payment events survive and debug logs go first.
+
 ### [Pipe-and-Filter](../patterns/architecture/pipe-filter.md) {#tour-pipe-filter}
 
 Chains independent producer-consumer stages into a pipeline, each filter doing one transformation and handing its output down the pipe. It's how a multi-step stream — parse, validate, enrich, sink — gets built without one monolithic processor.
@@ -83,7 +87,7 @@ Decouples a stream's producer from an unknown, changing set of consumers — eac
 
 ### [Message Queue](../patterns/messaging/message-queue.md) {#tour-message-queue}
 
-The durable buffer between stages that absorbs bursts and lets producer and consumer run at different speeds without either blocking the other. It's the most common way backpressure gets implemented in practice.
+The durable buffer between stages that absorbs bursts and lets producer and consumer run at different speeds without either blocking the other. A bounded queue gives backpressure by blocking or rejecting senders when full; an unbounded one only delays the overload. Delivery is at least once, so handlers must be safe to repeat.
 
 ### [Event Sourcing](../patterns/architecture/event-sourcing.md) {#tour-event-sourcing}
 
@@ -91,7 +95,7 @@ Treats the event stream itself as the system of record — state is rebuilt by r
 
 ### [Competing Consumers](../patterns/messaging/competing-consumers.md) {#tour-competing-consumers}
 
-Multiple worker instances pull from the same queue or partition set, each message claimed and processed by exactly one worker. It's how a pipeline scales throughput horizontally without redesigning a single stage.
+Multiple worker instances pull from the same queue or partition (one ordered slice of the stream), each message claimed by one worker at a time. This scales a pipeline's throughput horizontally without redesigning a single stage. A crash returns the message to the queue, so handling must be safe to repeat, and a partition key that keeps related messages together caps workers at the partition count.
 
 ### [Message Encoding](../patterns/messaging/message-encoding.md) {#tour-message-encoding}
 
@@ -104,18 +108,22 @@ A stream outlives the code that wrote it, so a consumer will read messages produ
 
 | If you need… | Shape | Reach for |
 | --- | --- | --- |
-| Absorb bursts without losing data | Buffer | [Message Queue](../patterns/messaging/message-queue.md) |
+| Absorb bursts from a producer you cannot slow, such as sensors | Buffer | [Message Queue](../patterns/messaging/message-queue.md) |
 | Slow a producer before it overwhelms downstream | Signal | [Backpressure](../patterns/concurrency/backpressure.md) |
 | An aggregate over the last hour, not since the stream began | Moving interval | [Sliding Window](../patterns/distributed/coordination/sliding-window.md) |
 | One event, many independent readers | [Fan-out](../patterns/messaging/fan-out.md) | [Publish-Subscribe](../patterns/messaging/pubsub.md) |
 | More throughput without redesigning the pipeline | Scale out | [Competing Consumers](../patterns/messaging/competing-consumers.md) |
 | Rebuild state or audit history from scratch | Replay | [Event Sourcing](../patterns/architecture/event-sourcing.md) |
 | Thousands of concurrent streams on one process | Non-blocking dispatch | [Reactor](../patterns/concurrency/reactor.md) |
+| Overload makes every request slow, so refuse some at once | Shed | [Load Shedding](../patterns/distributed/resilience/load-shedding.md) |
+| Consumers must survive producer deploys that change the message format | Schema contract | [Message Encoding](../patterns/messaging/message-encoding.md) |
+| Fixed memory, nothing allocated per item | Bounded buffer | [Ring Buffer](../patterns/concurrency/ring-buffer.md) |
 
 ## Related areas
 <!--meta block=siblings-->
 
-- [Handling Spikes](./spike-handling.md) — Backpressure and buffering are exactly how a stream survives a burst.
+- [Handling Spikes](./spike-handling.md) — That theme picks among absorbing, shedding and scaling for an overloaded service; this one covers the pipeline stages that slow, buffer and share a stream.
 - [Scalability](./scalability.md) — Competing consumers and partitioned queues are how a stream scales horizontally.
 - [Resilience](./resilience.md) — Durable queues and replayable event logs are what let a stream recover from a crashed consumer.
 - [Real-Time Updates](./realtime-updates.md) — The mirror image: this processes streams server-side, that delivers the results to clients.
+- [Message Flow](./message-flow.md) — Steers individual messages by routing, translating and bridging; this theme moves unbounded data continuously.
