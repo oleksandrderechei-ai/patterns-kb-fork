@@ -633,7 +633,7 @@
       "definition": "A dedicated broker validates requests before they reach the service",
       "route": "/patterns/distributed/routing/gatekeeper.html",
       "requires": [],
-      "related": ["api-gateway", "valet-key", "intercepting-validator", "quarantine", "identity-as-perimeter"]
+      "related": ["api-gateway", "valet-key", "intercepting-validator", "quarantine", "identity-as-perimeter", "authorization-enforcer"]
     },
     {
       "id": "valet-key",
@@ -1881,7 +1881,7 @@
       "definition": "Centralizes checking what a role is allowed to do",
       "route": "/patterns/security/authorization-enforcer.html",
       "requires": ["authentication-enforcer"],
-      "related": ["least-privilege", "secure-session-manager", "identity-as-perimeter"]
+      "related": ["least-privilege", "secure-session-manager", "identity-as-perimeter", "intercepting-validator", "gatekeeper", "single-access-point"]
     },
     {
       "id": "secure-session-manager",
@@ -1897,7 +1897,7 @@
       "definition": "Validates and sanitizes input before it reaches logic",
       "route": "/patterns/security/intercepting-validator.html",
       "requires": [],
-      "related": ["gatekeeper", "api-gateway", "secure-logger", "chain-of-responsibility", "fail-fast", "postels-law", "quarantine", "defense-in-depth"]
+      "related": ["gatekeeper", "api-gateway", "secure-logger", "chain-of-responsibility", "fail-fast", "postels-law", "quarantine", "defense-in-depth", "authorization-enforcer"]
     },
     {
       "id": "secure-logger",
@@ -1913,7 +1913,7 @@
       "definition": "One well-guarded entry, instead of many small ones",
       "route": "/patterns/security/single-access-point.html",
       "requires": [],
-      "related": ["federated-identity", "authentication-enforcer", "secure-logger", "defense-in-depth"]
+      "related": ["federated-identity", "authentication-enforcer", "secure-logger", "defense-in-depth", "authorization-enforcer"]
     },
     {
       "id": "least-privilege",

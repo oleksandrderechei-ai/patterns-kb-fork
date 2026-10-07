@@ -13831,6 +13831,27 @@
       "b": "micro-frontends",
       "note_a": "A team that owns a service can own the matching UI slice, so the split runs the same way end to end.",
       "note_b": "The UI side of per-team services: each slice talks to the services its team owns."
+    },
+    {
+      "a": "authorization-enforcer",
+      "verb": "combines-with",
+      "b": "intercepting-validator",
+      "note_a": "Validation rejects malformed input at the edge; this decides what the valid caller may do, per service.",
+      "note_b": "Once input is valid, the authorization enforcer decides what that caller may do with it."
+    },
+    {
+      "a": "gatekeeper",
+      "verb": "combines-with",
+      "b": "authorization-enforcer",
+      "note_a": "Screening at the broker is one decision point; the enforcer holds the role-to-permission rules each service applies.",
+      "note_b": "The gatekeeper screens requests at the perimeter; this enforces the role's permissions at each service behind it."
+    },
+    {
+      "a": "authorization-enforcer",
+      "verb": "combines-with",
+      "b": "single-access-point",
+      "note_a": "The single entry point guards the perimeter; this decides what an admitted caller may do.",
+      "note_b": "Everything admitted through the one channel still needs a permission check, which this enforcer supplies."
     }
   ],
   "group_order": {

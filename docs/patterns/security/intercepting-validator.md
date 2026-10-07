@@ -200,6 +200,7 @@ function handleSignup(raw: unknown) {
 - [Postel's Law](../../principles/postels-law.md) — Enforces the strict half at the point of entry
 - [Quarantine](./quarantine.md) — Validates data crossing the wire; quarantine validates code crossing into the build
 - [Defense in Depth](../../principles/defense-in-depth.md) — Edge validation is one layer, and does not excuse the service behind it.
+- [Authorization Enforcer (RBAC)](./authorization-enforcer.md) — Once input is valid, the authorization enforcer decides what that caller may do with it.
 
 **Implemented by**
 

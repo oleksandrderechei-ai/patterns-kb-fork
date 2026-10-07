@@ -208,6 +208,7 @@ async function handle(req: Request): Promise<Response> {
 - [Valet Key](./valet-key.md) — Screen at the gate, then hand out scoped keys
 - [Intercepting Validator](../../security/intercepting-validator.md) — The gatekeeper validates before forwarding
 - [Identity Is the Perimeter](../../../principles/identity-as-perimeter.md) — The gate is one checkpoint, not the whole boundary
+- [Authorization Enforcer (RBAC)](../../security/authorization-enforcer.md) — Screening at the broker is one decision point; the enforcer holds the role-to-permission rules each service applies.
 
 **Specializes**
 

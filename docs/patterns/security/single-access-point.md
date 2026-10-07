@@ -193,6 +193,7 @@ app.listen(443);
 - [Authentication Enforcer](./authentication-enforcer.md) — Authenticate at the one entry
 - [Secure Logger](./secure-logger.md) — The choke point is where the full audit trail is taken
 - [Defense in Depth](../../principles/defense-in-depth.md) — One guarded entry still needs layers behind it.
+- [Authorization Enforcer (RBAC)](./authorization-enforcer.md) — Everything admitted through the one channel still needs a permission check, which this enforcer supplies.
 
 **Generalizes**
 
