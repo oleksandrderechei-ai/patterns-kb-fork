@@ -759,7 +759,7 @@
       },
       "scaling-writes": {
         "role": "Give writes their own model and store",
-        "tour": "When the write path and the read path pull in genuinely different directions, give them separate models. Command query responsibility segregation (CQRS) splits the command side from the query side, so writes land in a store and schema tuned for ingest — normalized, write-optimized, lightly indexed — while a separate read model is projected for queries, each scaled on its own. It is the heavier option, buying independent write scaling at the price of two models to keep in sync and the eventual consistency between them, so it earns its place when the load shapes are truly divergent rather than merely large.",
+        "tour": "When the write path and the read path pull in different directions, give them separate models. Command query responsibility segregation (CQRS) splits the command side from the query side, so writes land in a store and schema tuned for ingest — normalized, write-optimized, lightly indexed — while a separate read model is projected for queries, each scaled on its own. It is the heavier option, buying independent write scaling at the price of two models to keep in sync and the eventual consistency between them, so it pays off when the load shapes diverge rather than merely large.",
         "fluency": "Give writes their own model and store"
       },
       "event-storming": {
@@ -1150,7 +1150,7 @@
     "/patterns/distributed/coordination/lsm-tree.html": {
       "scaling-writes": {
         "role": "Trade read cost for sequential write throughput",
-        "tour": "Before adding nodes, consider a storage engine built for writes. An log-structured merge (LSM)-tree turns random in-place updates into sequential appends to an in-memory table that is flushed and later compacted, so a disk that struggles with scattered B-tree updates streams writes fast — the reason a log-structured store can sustain an order of magnitude more writes than a comparable relational one on the same hardware. The trade is on the read side: a lookup may have to check and merge several on-disk files, so you spend read latency to buy write throughput — worth it exactly when the workload is write-dominated.",
+        "tour": "Before adding nodes, consider a storage engine built for writes. A log-structured merge (LSM) tree turns random in-place updates into sequential appends to an in-memory table that is flushed and later compacted, so a disk that struggles with scattered B-tree updates streams writes fast — the reason a log-structured store sustains write throughput far above a comparable B-tree store. The trade is on the read side: a lookup may have to check and merge several on-disk files, so you spend read latency to buy write throughput — worth it exactly when the workload is write-dominated.",
         "fluency": "Trade read cost for sequential write throughput",
         "heading": "log-structured merge tree (LSM tree)"
       }
@@ -1486,7 +1486,7 @@
       },
       "scaling-writes": {
         "role": "Buffer write bursts in a queue to smooth load",
-        "tour": "Real write traffic is bursty — a holiday order spike, a flood of drivers on New Year's — and provisioning for the peak wastes capacity the rest of the year. Load leveling puts a queue between accepting a write and applying it, so the database drains at its steady rate while the queue absorbs the burst. The cost is that the client learns only that the write was accepted, not durably stored, so it often needs a callback or poll to confirm; and a queue is for short bursts, not a database that simply can't keep up — feed it faster than it drains and the backlog grows without bound. Its sibling is [load shedding](../patterns/distributed/resilience/load-shedding.md): when even the queue can't cope, deliberately drop the least valuable writes — one of many location pings — to keep the important ones flowing.",
+        "tour": "Real write traffic is bursty — a holiday order spike, a flood of drivers on New Year's — and provisioning for the peak wastes capacity the rest of the year. Load leveling puts a queue between accepting a write and applying it, so the database drains at its steady rate while the queue absorbs the burst. The cost is that the client learns only that the write was accepted, not yet applied to the store, so it often needs a callback or poll to confirm; and a queue is for short bursts, not a database that simply can't keep up — feed it faster than it drains and the backlog grows without bound. Its sibling is [load shedding](../patterns/distributed/resilience/load-shedding.md): when even the queue can't cope, deliberately drop the least valuable writes — one of many location pings — to keep the important ones flowing.",
         "fluency": "Buffer write bursts in a queue to smooth load, so the store sees a steady rate rather than a spike."
       },
       "long-running-tasks": {
@@ -1874,7 +1874,7 @@
       },
       "scaling-writes": {
         "role": "Partition writes across nodes by key",
-        "tour": "The default move when writes outgrow a single primary. Sharding partitions the data across nodes by key, so if one server sustains 1,000 writes/sec, ten shards approach 10,000 — the multi-node fleet hidden behind one logical database. Everything rides on the partition key: hash a primary identifier and load spreads evenly; pick something skewed like raw country and one shard melts while another idles. Weigh reads too — the write path is cheap to shard, but if reads must fan out across every shard the per-request overhead can eat the win.",
+        "tour": "The default move once one primary, even on a write-optimized engine, cannot keep up. Sharding partitions the data across nodes by key, so if one server sustains 1,000 writes/sec, ten shards approach 10,000 — the multi-node fleet hidden behind one logical database. Everything rides on the partition key: hash a primary identifier and load spreads evenly; pick something skewed like raw country and one shard melts while another idles. Weigh reads too — the write path is cheap to shard, but if reads must fan out across every shard the per-request overhead can eat the win.",
         "fluency": "Partition writes across nodes by key"
       },
       "genai-scale": {
