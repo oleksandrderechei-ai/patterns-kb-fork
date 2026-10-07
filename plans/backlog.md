@@ -24,6 +24,21 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   - edges drafted but over the cap: `dummy-object` often-confused-with `fake-object` and
     `test-spy`, `page-object` combines-with `lazy-initialization`, `test-stub` combines-with
     `dependency-injection`.
+- From the kb-improve run on the Security area (its pull request lists every dropped finding):
+  - production numbers readers asked for that need a named source before they land:
+    starting rate limits and gateway timeouts (`single-access-point`), refresh-token and
+    access-token lifetimes and a session-id entropy floor (`secure-session-manager`),
+    dormant-grant windows and review cadence (`least-privilege`), alert baselines on
+    `agent-sandboxing`, `quarantine` and `intercepting-validator`;
+  - variations drafted but over the cap: canonicalize-then-validate
+    (`intercepting-validator`), identity-aware proxy (`single-access-point`), digest-pinned
+    publish (`quarantine`), usage-driven right-sizing (`least-privilege`);
+  - wild items a reader could not vouch for: product claims on Cloudflare Access, Teleport,
+    JFrog and Docker agent sandboxes, the macOS sandbox profile, and STS role-chaining caps;
+  - `intercepting-validator` production-failure-2 still says "blacklist";
+  - edges drafted but over the cap: `secure-session-manager` alternative-to `sticky-session`,
+    `single-access-point` with `front-controller`, retyping `intercepting-validator` to
+    `gatekeeper` and `quarantine` as often-confused-with.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 
