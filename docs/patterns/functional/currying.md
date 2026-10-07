@@ -50,7 +50,7 @@ flowchart LR
 - **Curry with placeholders** — Accept a placeholder token (Ramda's `R.__`) so a caller can fix a later argument first and leave an earlier one open, instead of currying strictly left to right.
 - **Data-last argument order** — Functional libraries put the data being transformed last, so `map(fn)` curries the transformer and leaves a unary function ready to receive the collection inside a pipeline.
 - **Uncurrying** — The inverse transform: collapse a chain of unary functions back into one call taking all the arguments at once, useful when interoperating with ordinary n-ary APIs.
-- **Explicit-arity currying** — Pass the argument count, as in _.curry(fn, arity), for functions with default or rest parameters where fn.length miscounts.
+- **Explicit-arity currying** — Pass the argument count, as in `_.curry(fn, arity)`, for functions with default or rest parameters where fn.length miscounts.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -131,7 +131,7 @@ greet.length;                        // 1, so an fn.length curry calls greet aft
 <!--meta polarity=knob-->
 
 - **Argument order** — Put the configuration first and the data last, so partial application yields a reusable function. A wrong order makes every partial application awkward.
-- **Fixed arity** — Declare the argument count curry relies on. For functions with default or rest parameters, pass the count explicitly, as in _.curry(fn, arity), and test it against the call; a wrong count makes the helper call the function too early or wait forever.
+- **Fixed arity** — Declare the argument count curry relies on. For functions with default or rest parameters, pass the count explicitly, as in `_.curry(fn, arity)`, and test it against the call; a wrong count makes the helper call the function too early or wait forever.
 - **Auto-curry or explicit** — Libraries that curry every function, or functions curried by hand at the definitions that need it.
 
 ### Signals to watch
