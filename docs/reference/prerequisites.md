@@ -13,8 +13,8 @@ source: docs/data/relations.json
 # Prerequisites
 
 A **prerequisite record** is one page with the pages to read before it and the pages to
-read beside it. There are 341 records: 44 of them name something to read first, through 51
-requires edges, and 925 pairs of pages are related both ways.
+read beside it. There are 343 records: 44 of them name something to read first, through 51
+requires edges, and 927 pairs of pages are related both ways.
 
 Everything here is built from [`relations.json`](../data/relations.json), through its
 second form [`prerequisites.json`](../data/prerequisites.json). **Read first** lists a
@@ -305,15 +305,17 @@ record reached.
 | [Starvation](../hazards/starvation.md) | Some work waits without bound while everything else keeps being served | — | [Deadlock](../hazards/deadlock.md), [Priority Inversion](../hazards/priority-inversion.md), [Head-of-Line Blocking](../hazards/head-of-line-blocking.md) |
 | [Unbounded Queue](../hazards/unbounded-queue.md) | A queue with no capacity cap grows until the process runs out of memory | — | [Poison Message](../hazards/poison-message.md), [Busy Front End](../hazards/busy-front-end.md) |
 | [Poison Message](../hazards/poison-message.md) | One message that always fails its consumer is redelivered forever, blocking the queue or burning capacity | — | [Head-of-Line Blocking](../hazards/head-of-line-blocking.md), [Unbounded Queue](../hazards/unbounded-queue.md), [Retry Storm](../hazards/retry-storm.md) |
+| [Resource Leak](../hazards/resource-leak.md) | A resource acquired but never released, shrinking capacity until everything blocks | — | [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) |
 | [Chatty I/O](../hazards/chatty-io.md) | Many small I/O calls where a few larger ones would do | — | [Extraneous Fetching](../hazards/extraneous-fetching.md), [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) |
 | [Extraneous Fetching](../hazards/extraneous-fetching.md) | Reading far more data than the operation actually uses | — | [Chatty I/O](../hazards/chatty-io.md), [Busy Database](../hazards/busy-database.md) |
 | [Busy Database](../hazards/busy-database.md) | The database spends its shared capacity running application logic | — | [Extraneous Fetching](../hazards/extraneous-fetching.md) |
 | [Monolithic Persistence](../hazards/monolithic-persistence.md) | Every kind of data in one store, whatever its access shape | — | [Noisy Neighbour](../hazards/noisy-neighbour.md), [Dual-Write Inconsistency](../hazards/dual-write-inconsistency.md) |
+| [Synchronous I/O](../hazards/synchronous-io.md) | A thread sits blocked while I/O completes, doing no work | — | [Cascading Failure](../hazards/cascading-failure.md) |
 | [Busy Front End](../hazards/busy-front-end.md) | Background work on the threads meant to answer requests | — | [Unbounded Queue](../hazards/unbounded-queue.md) |
-| [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) | Every pool slot is held by a slow call, so requests hang instead of failing | — | [Deadlock](../hazards/deadlock.md), [Chatty I/O](../hazards/chatty-io.md) |
+| [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) | Every pool slot is held by a slow call, so requests hang instead of failing | — | [Deadlock](../hazards/deadlock.md), [Chatty I/O](../hazards/chatty-io.md), [Resource Leak](../hazards/resource-leak.md) |
 | [Retry Storm](../hazards/retry-storm.md) | Clients retry in unison, multiplying load on a service already failing | — | [Poison Message](../hazards/poison-message.md), [Metastable Failure](../hazards/metastable-failure.md) |
 | [Thundering Herd](../hazards/thundering-herd.md) | One event releases every waiter at once and they all rush the same resource | — | [Cache Stampede](../hazards/cache-stampede.md) |
-| [Cascading Failure](../hazards/cascading-failure.md) | One failure's load lands on its peers and takes them down in turn | — | [Metastable Failure](../hazards/metastable-failure.md) |
+| [Cascading Failure](../hazards/cascading-failure.md) | One failure's load lands on its peers and takes them down in turn | — | [Metastable Failure](../hazards/metastable-failure.md), [Synchronous I/O](../hazards/synchronous-io.md) |
 | [Noisy Neighbour](../hazards/noisy-neighbour.md) | One tenant's load degrades everyone sharing the same pool | — | [Monolithic Persistence](../hazards/monolithic-persistence.md) |
 | [Clock Skew](../hazards/clock-skew.md) | Machines disagree about the time, so ordering by wall clock, lease expiry and last-write-wins give wrong answers | — | [Split-Brain](../hazards/split-brain.md) |
 | [Metastable Failure](../hazards/metastable-failure.md) | An outage that outlasts its trigger because the system's own retries, cold caches and late answers keep the overload going | — | [Cascading Failure](../hazards/cascading-failure.md), [Retry Storm](../hazards/retry-storm.md), [Cache Stampede](../hazards/cache-stampede.md) |

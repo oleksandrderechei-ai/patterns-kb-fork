@@ -2180,6 +2180,14 @@
       "related": ["head-of-line-blocking", "unbounded-queue", "retry-storm"]
     },
     {
+      "id": "resource-leak",
+      "label": "Resource Leak",
+      "definition": "A resource acquired but never released, shrinking capacity until everything blocks",
+      "route": "/hazards/resource-leak.html",
+      "requires": [],
+      "related": ["connection-pool-exhaustion"]
+    },
+    {
       "id": "chatty-io",
       "label": "Chatty I/O",
       "definition": "Many small I/O calls where a few larger ones would do",
@@ -2212,6 +2220,14 @@
       "related": ["noisy-neighbour", "dual-write-inconsistency"]
     },
     {
+      "id": "synchronous-io",
+      "label": "Synchronous I/O",
+      "definition": "A thread sits blocked while I/O completes, doing no work",
+      "route": "/hazards/synchronous-io.html",
+      "requires": [],
+      "related": ["cascading-failure"]
+    },
+    {
       "id": "busy-front-end",
       "label": "Busy Front End",
       "definition": "Background work on the threads meant to answer requests",
@@ -2225,7 +2241,7 @@
       "definition": "Every pool slot is held by a slow call, so requests hang instead of failing",
       "route": "/hazards/connection-pool-exhaustion.html",
       "requires": [],
-      "related": ["deadlock", "chatty-io"]
+      "related": ["deadlock", "chatty-io", "resource-leak"]
     },
     {
       "id": "retry-storm",
@@ -2249,7 +2265,7 @@
       "definition": "One failure's load lands on its peers and takes them down in turn",
       "route": "/hazards/cascading-failure.html",
       "requires": [],
-      "related": ["metastable-failure"]
+      "related": ["metastable-failure", "synchronous-io"]
     },
     {
       "id": "noisy-neighbour",

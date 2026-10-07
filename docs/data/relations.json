@@ -14111,6 +14111,34 @@
       "b": "unbounded-queue",
       "note_a": "A queue added to relieve the front end grows without limit unless it is capped and rejects at the front door",
       "note_b": "Adding a queue to relieve a busy front end recreates this hazard unless the depth is capped"
+    },
+    {
+      "a": "bulkhead",
+      "verb": "prevents-hazard",
+      "b": "synchronous-io",
+      "note_a": "Gives blocking work its own bounded pool so it cannot starve request workers",
+      "note_b": "Blocking calls that exhaust a pool are what the compartment contains"
+    },
+    {
+      "a": "cascading-failure",
+      "verb": "combines-with",
+      "b": "synchronous-io",
+      "note_a": "A blocking caller is one way a cascade crosses a hop: parked threads pass the slowness on",
+      "note_b": "Exhausted workers turn a slow dependency's latency into the caller's outage, which then spreads upstream"
+    },
+    {
+      "a": "connection-pool-exhaustion",
+      "verb": "often-confused-with",
+      "b": "resource-leak",
+      "note_a": "A leak stays full after traffic stops; exhaustion recovers once slow holders return their slots.",
+      "note_b": "A leak never recovers when traffic stops; exhaustion drains once load drops, so check pool use after the spike."
+    },
+    {
+      "a": "sticky-session",
+      "verb": "exposed-to",
+      "b": "host-header-rewriting",
+      "note_a": "Cookie affinity breaks when the proxy rewrites the host, so the balancer sees a first-time visitor",
+      "note_b": "Sticky-session affinity stops working once the host is rewritten"
     }
   ],
   "group_order": {
