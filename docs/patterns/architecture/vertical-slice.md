@@ -232,6 +232,7 @@ app.post("/orders", async (httpReq: any, httpRes: any) => {
 - [REPR](./repr.md) — Request-endpoint-response (REPR) is what the slice's transport edge looks like when the endpoint is its own class
 - [Rule of Three](../../principles/rule-of-three.md) — A slice layout accepts duplication between slices, and the rule says when to pull it out
 - [Microservices](./microservices.md) — A coarse slice is a module boundary; giving it its own deployment is the next step.
+- [Micro-Frontends](../frontend/micro-frontends.md) — Giving a UI slice its own build and deploy makes it a micro-frontend.
 
 **Alternative to**
 

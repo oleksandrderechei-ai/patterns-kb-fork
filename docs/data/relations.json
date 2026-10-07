@@ -13810,6 +13810,27 @@
       "b": "mock-object",
       "note_a": "The other double this exists to validate: a mock's expected calls can drift from what the real provider accepts",
       "note_b": "Contract testing keeps a mock's expected calls matching what the real provider accepts"
+    },
+    {
+      "a": "micro-frontends",
+      "verb": "combines-with",
+      "b": "conways-law",
+      "note_a": "Slices follow team ownership, so the team boundary and the deploy boundary stay the same line.",
+      "note_b": "A team that owns a whole slice, built and shipped alone, is the same line drawn in the UI."
+    },
+    {
+      "a": "vertical-slice",
+      "verb": "combines-with",
+      "b": "micro-frontends",
+      "note_a": "Giving a UI slice its own build and deploy makes it a micro-frontend.",
+      "note_b": "A micro-frontend is a vertical slice given its own build and deploy."
+    },
+    {
+      "a": "microservices",
+      "verb": "combines-with",
+      "b": "micro-frontends",
+      "note_a": "A team that owns a service can own the matching UI slice, so the split runs the same way end to end.",
+      "note_b": "The UI side of per-team services: each slice talks to the services its team owns."
     }
   ],
   "group_order": {

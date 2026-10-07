@@ -345,7 +345,7 @@
       "definition": "Organize code by feature end to end, not by technical layer",
       "route": "/patterns/architecture/vertical-slice.html",
       "requires": [],
-      "related": ["layered", "cqrs", "dry", "repr", "conways-law", "rule-of-three", "microservices"]
+      "related": ["layered", "cqrs", "dry", "repr", "conways-law", "rule-of-three", "microservices", "micro-frontends"]
     },
     {
       "id": "mvc",
@@ -433,7 +433,7 @@
       "definition": "One business capability per service, each owning its own data",
       "route": "/patterns/architecture/microservices.html",
       "requires": ["bounded-context"],
-      "related": ["layered", "web-queue-worker", "api-gateway", "container-orchestration", "saga", "external-configuration-store", "vertical-slice", "strangler-fig"]
+      "related": ["layered", "web-queue-worker", "api-gateway", "container-orchestration", "saga", "external-configuration-store", "vertical-slice", "strangler-fig", "micro-frontends"]
     },
     {
       "id": "ai-agent",
@@ -1985,7 +1985,7 @@
       "definition": "Split the UI into independently deployed slices",
       "route": "/patterns/frontend/micro-frontends.html",
       "requires": [],
-      "related": ["strangler-fig", "bff", "api-gateway", "atomic-design"]
+      "related": ["strangler-fig", "bff", "api-gateway", "atomic-design", "conways-law", "vertical-slice", "microservices"]
     },
     {
       "id": "feature-engineering",
@@ -2585,7 +2585,7 @@
       "definition": "A system copies the communication structure of the organisation that builds it",
       "route": "/principles/conways-law.html",
       "requires": [],
-      "related": ["bounded-context", "design-for-evolution", "vertical-slice", "context-map"]
+      "related": ["bounded-context", "design-for-evolution", "vertical-slice", "context-map", "micro-frontends"]
     },
     {
       "id": "compute",
