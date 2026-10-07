@@ -816,7 +816,7 @@
     "/patterns/architecture/mvvm.html": {
       "frontend-architecture": {
         "role": "Bind the view declaratively to a view-model",
-        "tour": "The foundation the rest sits on. A view-model exposes state and commands, and the view binds to it declaratively, so you describe what the user interface (UI) should show rather than imperatively poking the document object model (DOM). Every modern reactive framework is a model-view-view-model (MVVM) engine with the binding automated — which is why the finer patterns below are all moves made inside this separation.",
+        "tour": "The foundation the rest sits on. A view-model exposes state and commands, and the view binds to it declaratively, so you describe what the user interface (UI) should show rather than imperatively poking the document object model (DOM). Many reactive frameworks are model-view-view-model (MVVM) engines with the binding automated, so most of the finer patterns below are moves made inside this separation.",
         "fluency": "Bind the view declaratively to a view-model"
       }
     },
@@ -2004,7 +2004,7 @@
     "/patterns/frontend/flux.html": {
       "frontend-architecture": {
         "role": "Route all state changes through one unidirectional loop",
-        "tour": "The state half of the flow axis. When mutations come from everywhere and no one can trace a re-render, funnel every change through one store: a view dispatches an action, a pure reducer produces new state, the store pushes it back. One direction, fully traceable, replayable — [event-sourcing](../patterns/architecture/event-sourcing.md) in the browser, with devtools that let you scrub history.",
+        "tour": "The state half of the flow axis. When mutations come from everywhere and no one can trace a re-render, funnel every change through one store: a view dispatches an action, a pure reducer produces new state, the store pushes it back. One direction, so every change is traceable, and replayable when reducers are pure and actions are recorded, like [event-sourcing](../patterns/architecture/event-sourcing.md) in the browser, with devtools that let you scrub history.",
         "fluency": "Route all state changes through one unidirectional loop"
       }
     },
@@ -2018,7 +2018,7 @@
     "/patterns/frontend/provider.html": {
       "frontend-architecture": {
         "role": "Push shared dependencies down the tree without prop-drilling",
-        "tour": "The dependency half of the flow axis. Instead of threading a value — theme, auth, a service — through every intermediate component as props, a provider publishes it at a subtree root and any descendant consumes it directly. It is dependency injection expressed in a component tree, and the right tool for genuinely cross-cutting values.",
+        "tour": "The dependency half of the flow axis. Instead of threading a value — theme, auth, a service — through every intermediate component as props, a provider publishes it at a subtree root and any descendant consumes it directly. It is dependency injection expressed in a component tree, and the right tool for cross-cutting values that change rarely. A changed value re-renders every consumer, so fast-changing state belongs in a store.",
         "fluency": "Push shared dependencies down the tree without prop-drilling"
       }
     },
