@@ -852,7 +852,7 @@
       },
       "performance": {
         "role": "The default read-cache strategy",
-        "tour": "The application checks the cache first, falls back to the source of truth on a miss, and populates the cache with the result. It's the default read-cache strategy precisely because the cache can be empty, wrong, or evicted at any moment without breaking correctness — the source of truth is still there.",
+        "tour": "The application checks the cache first, falls back to the source of truth on a miss, and populates the cache with the result. It's the default read-cache strategy because the cache can be empty or evicted at any moment without losing data: the source of truth is still there. A stale entry is still a wrong answer, so give each entry a time limit.",
         "fluency": "The default read-cache strategy"
       },
       "scaling-reads": {
@@ -1687,7 +1687,7 @@
       },
       "performance": {
         "role": "Cut latency by serving from the edge",
-        "tour": "Moves static and semi-static content to points of presence near the requester, so the round trip is single-digit milliseconds instead of crossing a continent. It's caching applied at the network layer rather than the application layer.",
+        "tour": "Moves static and semi-static content to points of presence near the requester, so the round trip is tens of milliseconds or less instead of crossing a continent. It's caching applied at the network layer rather than the application layer.",
         "fluency": "Cut latency by serving from the edge"
       },
       "scaling-reads": {
@@ -1969,7 +1969,7 @@
     "/patterns/distributed/routing/vertical-partitioning.html": {
       "performance": {
         "role": "Stop the hot query paying for columns it never reads",
-        "tour": "A store reads pages, not columns, so a wide row makes every query pay for the bulk it ignores. Splitting an entity by pattern of use packs more rows into each page and each cached block — the same working set, a higher hit rate, and no change to the query itself.",
+        "tour": "A store reads pages, not columns, so a wide row makes every query pay for the bulk it ignores. Splitting an entity by pattern of use packs more rows into each page and each cached block — the same working set, a higher hit rate, and no change to the query itself when queries mostly touch one group of columns. Queries that need both halves pay a join, so split along the access pattern.",
         "fluency": "Stop the hot query paying for columns it never reads"
       }
     },
