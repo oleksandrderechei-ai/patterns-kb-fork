@@ -988,7 +988,7 @@
     "/patterns/ddd/acl.html": {
       "service-boundaries": {
         "role": "Translate at the seam so a foreign model stays foreign",
-        "tour": "When the context across the boundary is a legacy system or a vendor, integrating directly lets its schema and vocabulary in one call at a time, until your model is a copy of theirs and you can no longer model your own domain. A translation layer on your side keeps your domain code seeing only its own types. It also answers a subtler boundary question: when your context needs something another context owns, you can call across directly, or stand up a mediating service inside your boundary that exposes a shape better suited to you. Weigh the network cost of the direct call, how well their schema fits yours, and how expensive cross-team coordination has become.",
+        "tour": "When the context across the boundary is a legacy system or a vendor, integrating directly lets its schema and vocabulary in one call at a time, until your model is a copy of theirs and you can no longer model your own domain. A translation layer on your side keeps your domain code seeing only its own types. It also answers a subtler boundary question: when your context needs something another context owns, you can call across directly, or stand up a mediating service inside your boundary that exposes a shape better suited to you. Weigh the network cost of the direct call, how well their schema fits yours, and how expensive cross-team coordination has become. You pay in translation code to maintain and one more hop.",
         "fluency": "Translate at the seam so a foreign model stays foreign"
       },
       "event-storming": {
@@ -1000,7 +1000,7 @@
     "/patterns/ddd/aggregate.html": {
       "service-boundaries": {
         "role": "The strongest service candidate already on the board",
-        "tour": "An aggregate clusters entities and value objects behind one root that owns an invariant spanning them, which makes it the strongest service candidate you have — a well-drawn aggregate already carries the four properties a well-drawn service needs. It comes from business requirements rather than technical ones. It is functionally cohesive. It is a boundary of persistence. And it is loosely coupled to the other aggregates. Domain services are candidates too: stateless operations spanning several aggregates, which usually become a workflow across services.",
+        "tour": "An aggregate clusters entities and value objects behind one root that owns an invariant spanning them, It is the smallest unit a boundary may not cut through, so it is a strong candidate to sit inside a service, not a service by default: one service per aggregate gives the chatty cut the tradespace warns about. Group aggregates that share an invariant or one team. A well-drawn aggregate comes from business requirements, is functionally cohesive, bounds persistence and is loosely coupled to the other aggregates, the four properties a well-drawn service needs. Domain services are candidates too: stateless operations spanning several aggregates, which usually become a workflow across services.",
         "fluency": "The strongest service candidate already on the board"
       },
       "event-storming": {
@@ -1012,7 +1012,7 @@
     "/patterns/ddd/bounded-context.html": {
       "service-boundaries": {
         "role": "The first cut — a service never spans two of these",
-        "tour": "This is the first cut, and the rule that follows from it is strict: a service should never span more than one bounded context. A candidate that mixes two domain models is telling you the analysis is unfinished — go back to the map, not forward to the code. Contexts are never isolated, so record how they meet: an upstream context supplying a downstream one under a negotiated contract, a published application programming interface (API) in a shared format that several downstream contexts consume, a translation layer where an upstream model would otherwise leak, or no integration at all.",
+        "tour": "This is the first cut: a service should end up spanning no more than one bounded context. A candidate that mixes two domain models is telling you the analysis is unfinished, so go back to the map, not forward to the code. If the map cannot be finished yet, accept the coarse cut and split later. Contexts are rarely isolated, so record how they meet: an upstream context supplying a downstream one under a negotiated contract, a published application programming interface (API) in a shared format that several downstream contexts consume, a translation layer where an upstream model would otherwise leak, or no integration at all.",
         "fluency": "The first cut — a service never spans two of these"
       },
       "event-storming": {
@@ -1043,7 +1043,7 @@
     "/patterns/ddd/value-object.html": {
       "service-boundaries": {
         "role": "No identity, so it crosses a boundary as a copy",
-        "tour": "The complement: a concept with no identity, equal to another whenever its attributes are equal — a money amount, a date range, a delivery address. Value objects settle a boundary question cheaply, because carrying no identity means they cross a service boundary as a copy rather than a reference. That is exactly what you want when a shipping context needs to know where to deliver but has no business owning the customer record.",
+        "tour": "The complement: a concept with no identity, equal to another whenever its attributes are equal — a money amount, a date range, a delivery address. Value objects settle a boundary question cheaply, because carrying no identity means they cross a service boundary as a copy rather than a reference. That is exactly what you want when a shipping context needs to know where to deliver but has no business owning the customer record. The cost is that the copy can go stale, so decide who refreshes it.",
         "fluency": "No identity, so it crosses a boundary as a copy"
       }
     },
