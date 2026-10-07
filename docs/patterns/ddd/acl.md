@@ -23,11 +23,11 @@ A new system that talks straight to a legacy system or vendor API slowly takes o
 
 An anti-corruption layer is a translator that sits between your code and a model you do not control, such as a legacy system or a vendor API, so your own types and names never carry theirs. Without it, their quirks arrive one call at a time: a status enum built from their error codes, a workflow bent to fit their state machine, until your model is a copy of theirs. Choose it over calling the other system directly when its concepts would otherwise set the shape of yours, and size it to the exposure: one call site needs only a small adapter, a multi-year migration needs a full layer.
 
-- **Extra hop** The translation hop adds the far side slow responses to your own; put a timeout and a circuit breaker on the gateway.
+- **Extra hop** The translation hop adds the far side's slow responses to your own; put a timeout and a circuit breaker on the gateway.
 - **Two models** Holding two models in your head is a standing cost; keep the mapping a plain table rather than branching code.
 - **Shared bottleneck** One layer shared by several contexts becomes a bottleneck; give each context its own translator.
 
-**Example.** A legacy customer relationship management (CRM) returns 12 account status codes, and your billing code needs three states: active, inactive, suspended. The layer holds one 12-row table mapping codes to states, so no other file in billing mentions a CRM code. When the CRM adds a 13th code, the translator rejects it, raises one alert, and billing keeps running. Without the layer, the 12 codes would be tested at each of the 40 places billing reads a customer. The cost is one extra call on every lookup, which adds about 80 ms, so the gateway times out at 300 ms and falls back to the last cached customer instead of waiting.
+**Example.** A legacy customer relationship management (CRM) system returns 12 account status codes, and billing needs three states: active, inactive, suspended. The layer holds one 12-row table mapping codes to states, so no other file in billing mentions a CRM code. When the CRM adds a 13th code, the translator rejects that record, raises one alert, and billing keeps running on the rest. Without the layer, the 12 codes would be tested at each of the 40 places billing reads a customer. The wrapped CRM call takes about 80 ms, so the gateway times out at 300 ms and serves the last cached customer for reads; writes fail rather than use stale data.
 
 ## How it works
 <!--meta block=structure-->
@@ -44,7 +44,7 @@ flowchart LR
 <!--meta block=variations-->
 
 - **[Gateway](../enterprise/gateway.md)** — The wire-level concerns — auth, retries, serialization — stay in the gateway, so the translator behind it is a pure function over data you can test without the network.
-- **[Strangler Fig](../distributed/coordination/strangler-fig.md)** — A temporary ACL raised in front of a legacy system during a strangler migration, torn down once the new implementation fully replaces it. Eric Evans coined the term for this case, a new, carefully modeled context talking to an older system built under different concerns; the same shape fits any boundary between contexts whose models diverge.
+- **[Strangler Fig](../distributed/coordination/strangler-fig.md)** — A temporary ACL raised in front of a legacy system during a strangler migration, torn down once the new implementation fully replaces it. Eric Evans defined the anti-corruption layer for this case: a new, carefully modeled context talking to an older system built under different concerns.
 - **One-way vs. two-way translation** — Translate only inbound reads from the foreign system, or convert both directions — outbound calls into its terms and responses back into yours.
 - **Per-context vs. shared integration layer** — One ACL per external system it talks to, or a single shared translation layer serving several contexts — sharing risks becoming its own leaky, overloaded abstraction.
 
@@ -54,19 +54,20 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Keeps your domain model pure** — the ubiquitous language never absorbs a legacy or third-party vocabulary.
-- **Confines the blast radius of change**: an upstream schema or API shift touches the ACL, not domain code.
+- **Keeps your domain model pure** — while the mapping is complete and contract-tested, the ubiquitous language never absorbs a legacy or third-party vocabulary.
+- **Confines the blast radius of change**: an upstream schema or API shift touches the ACL, not domain code, once contract tests catch the break.
 - **Makes the integration an explicit**, testable seam you can mock or contract-test in isolation.
 - **Lets a legacy system be migrated off**, or a new one migrated onto, gradually — without every consumer feeling the seam.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Extra code and a translation step** on every call across the boundary — real latency and maintenance cost.
+- **Extra code to maintain**, plus one in-process mapping on every call and a network hop when the gateway wraps a remote system.
 - **Easy to under-build**: a thin or partial ACL still lets foreign concepts leak through in edge cases.
 - **Two models to hold in your head** at once — yours, and the one you're being protected from.
 - **A shared ACL serving many contexts** can calcify into its own bottleneck and leaky abstraction.
 - **Just as easy to over-build**: the layer is the one place both models are visible, so decisions and call ordering drift into it until the translator owns behaviour that belongs in the domain.
+- **Lossy, stale mapping**: Mappings lose detail (12 codes become 3 states) and need an owner; a cached fallback also serves stale reads.
 
 ## When to use it
 <!--meta block=usage-->
@@ -113,7 +114,9 @@ class CustomerAcl {
   constructor(private readonly legacy: LegacyClient) {}
   async getCustomer(id: string): Promise<Customer> {
     const r = await this.legacy.fetchRecord(id);
-    return { id: r.cust_id, name: r.full_nm, status: STATUS[r.acct_status] };
+    const status = STATUS[r.acct_status];
+    if (!status) throw new Error(`unmapped acct_status: ${r.acct_status}`);
+    return { id: r.cust_id, name: r.full_nm, status };
   }
 }
 ```
@@ -138,7 +141,7 @@ class CustomerAcl {
 <!--meta polarity=signal-->
 
 - **Translation miss rate** — Fraction of crossings the translator cannot map because of unknown codes or missing fields. A rising rate is the earliest sign the upstream model has drifted.
-- **Upstream call latency (p99)** — Tail latency of the wrapped external call, which sets the floor the ACL adds to every request across the boundary.
+- **Upstream call latency (p99)** — Tail latency of the wrapped external call, which is the cost the ACL wraps on every request across the boundary.
 - **Upstream error and timeout rate** — Share of crossings that fail or time out at the gateway, distinct from translation misses, showing the health of the far side.
 
 ### Failure modes under load
