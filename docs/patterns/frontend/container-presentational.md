@@ -21,7 +21,7 @@ A component that both fetches its data and draws it is hard to test and reuse: e
 ## Explained
 <!--meta block=explain-->
 
-Split the component that fetches from the one that draws, so the view takes plain props. The container gets the data and holds loading and error state and side effects, and the presentational component only receives values as props and draws them, as a pure function of those props apart from small UI state such as open or closed. Because the drawing part knows nothing about where data comes from, you can show it with fake data, test every state without a server, and reuse it over a different source. Choose it over one component that fetches and draws when the same view serves several data sources, or when you want to preview and test its states in isolation. In React, a custom hook that holds the data logic often replaces the container.
+Split the component that fetches from the one that draws, so the view takes plain props. The container gets the data and holds loading and error state and side effects. The presentational component only receives values as props and draws them, as a pure function of those props apart from small UI state such as open or closed. Because the drawing part knows nothing about where data comes from, you can show it with fake data, test every state without a server, and reuse it over a different source. Choose it over one component that fetches and draws when the same view serves several data sources, or when you want to preview and test its states in isolation. In React, a custom hook that holds the data logic often replaces the container.
 
 - **More files.** One more layer to trace, so split only a view that is reused or hard to test.
 - **Nothing gained when trivial.** A component that neither fetches nor holds state stays whole.
@@ -42,9 +42,9 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Hooks-era split** — Instead of a wrapping component, a custom hook holds the "container" logic (the fetch, the state, the effects) and returns plain data. Same boundary, less nesting. The view stays pure only if a thin wrapper calls the hook and passes props; a view that calls the hook itself needs the hook mocked in tests. Prefer the hook form when no other consumer needs the view as a separate component.
+- **Hooks-era split** — Instead of a wrapping component, a custom hook holds the "container" logic (the fetch, the state, the effects) and returns plain data. Same boundary, less nesting. The view stays pure only if a thin wrapper calls the hook and passes props; a view that calls the hook itself needs the hook mocked in tests.
 - **Route / page-level container** — The container sits at a route or page boundary, loading everything the page needs and distributing props to several presentational children below it. Keeps data-loading at the edges of a feature.
-- **Higher-Order-Component container** — A HOC wraps a presentational component and injects the fetched data as props (the classic `connect()` shape). Older style, but still the mechanism behind many data-binding wrappers.
+- **Higher-Order-Component container** — A HOC wraps a presentational component and injects the fetched data as props (the classic `connect()` shape). Older style; react-redux is the best-known example (see In the wild).
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -52,7 +52,7 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Views test with props only** — pass props, assert on output, with no network stubs and no fake timers.
+- **Views test with props only** — pass props, assert on output, with no network stubs and no fake timers, as long as the view imports no data client (see Convention, not enforcement).
 - **Views reuse with any source** — one presentational component renders live data in the app, fixtures in a catalog and mocks in tests.
 - **A clear boundary** — fetching, loading and error state live above, markup lives below, so a reviewer knows where each change goes.
 - **Designers can work on views alone** — a component that takes plain props runs in a component catalog without a backend.
@@ -63,7 +63,7 @@ flowchart LR
 - **More files and a layer to trace** — a change to one screen touches two components. Colocate the pair in one folder and name them the same way.
 - **Overkill for trivial components** — a label that neither fetches nor holds state gains nothing from a wrapper. Split only when one component mixes both jobs.
 - **Convention, not enforcement** — the framework does not stop a presentational component from fetching. Back it with a lint rule or a review checklist item.
-- **Prop plumbing grows** — the container passes down everything the view needs, and long prop lists appear. Group related props into one object, or let a hook feed the view directly. Memoize a grouped object, or a memoized view re-renders on every container render.
+- **Prop plumbing grows** — the container passes down everything the view needs, and long prop lists appear. Group related props into one object, or let a hook feed the view directly; a view that calls the hook itself loses props-only testing (see Hooks-era split), so keep a thin wrapper. A memoized view skips a re-render when its props are unchanged, so memoize a grouped object, or the view re-renders on every container render.
 
 ## When to use it
 <!--meta block=usage-->
@@ -98,14 +98,22 @@ function UserView({ user }: { user: User }) {
   );
 }
 
-// Container: owns the data source and the loading state.
+// Container: owns the data source, the loading state and the error state.
 function UserContainer({ id }: { id: string }) {
   const [user, setUser] = useState<User | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    fetchUser(id).then(setUser);
+    let ignore = false;   // a slow reply for an old id must not overwrite a newer one
+    setUser(null);
+    setError(null);
+    fetchUser(id)
+      .then(u => { if (!ignore) setUser(u); })
+      .catch(e => { if (!ignore) setError(e); });
+    return () => { ignore = true; };
   }, [id]);
 
+  if (error) return <ErrorView error={error} />;
   if (!user) return <Spinner />;
   return <UserView user={user} />;   // hand plain props to the pure view
 }
@@ -143,13 +151,13 @@ function UserContainer({ id }: { id: string }) {
 - **Prop drilling through containers** — A container hands props through several layers that never use them. Move the container down to the subtree that needs the data, or use a provider when distant views share it.
 - **Container that renders** — Markup creeps into the container and the view loses its reuse. Review for tags in container files.
 - **View that fetches** — Someone adds a quick fetch to a view and the next test needs a network stub. A lint rule on imports catches it.
-- **Re-render storms** — A container rebuilds a new object or function prop each render, so memoized views re-render every time. A memoized view skips a re-render when its props are the same, and a new object each time counts as changed. Keep prop identity stable by memoizing values and callbacks in the container.
+- **Re-render storms** — A container rebuilds a new object or function prop each render, so memoized views re-render every time. Keep prop identity stable by memoizing values and callbacks in the container.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - No presentational file imports a data client, store or router
-- Every presentational component renders from fixed props in the catalog
+- Catalog count of presentational components without fixed props is zero
 - Container and view sit in one folder and share a naming rule
 - Loading and error states are decided in one place and tested
 

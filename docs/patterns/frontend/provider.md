@@ -43,9 +43,9 @@ flowchart TB
 ## Variations
 <!--meta block=variations-->
 
-- **React Context** — A `Provider` supplies a value and `useContext` reads it from any descendant. The canonical implementation of the pattern in React.
+- **React Context** — A `Provider` supplies a value and `useContext` reads it from any descendant. With no provider above, `useContext` returns the default passed to `createContext`; a sentinel default lets a named hook throw.
 - **Angular hierarchical dependency injection (DI)** — [Dependency injection](../gof/extra/dependency-injection.md) resolves a token from the nearest provider up the component tree. Providers declared at a component scope override those higher up, so the same token can mean different things in different subtrees.
-- **Vue provide / inject** — An ancestor calls `provide` to expose a value and any descendant calls `inject` to consume it, bypassing the intermediate components.
+- **Vue provide / inject** — An ancestor calls `provide` to expose a value and any descendant calls `inject` to consume it, bypassing the intermediate components. Provide a `ref` or reactive object if consumers must see changes; a plain value does not update consumers when it changes.
 - **Svelte setContext / getContext** — A component calls `setContext` with a key during initialisation and any descendant calls `getContext` with the same key. The lookup is by key, not by type, so a shared constant or symbol for the key keeps two providers from colliding.
 - **Stacked providers** — Several providers nest at the root, one per concern: theme, auth, locale. Each carries one value, so a change to one re-renders only its own consumers, provided each value keeps a stable reference between renders. The cost is a deep tree at the app entry. A small composing helper can flatten it.
 
@@ -67,7 +67,7 @@ flowchart TB
 - **Re-render fan-out** — a changed provider value can re-render every consumer below it. Split frequently changing values from stable ones into separate providers, and keep the value reference stable between renders.
 - **Test setup cost** — a consumer needs its provider to render, so every test wraps it. Ship a shared test wrapper with sensible defaults.
 - **Hidden global in disguise** — a provider at the root used for everything becomes a global store with worse tooling. Keep each provider small and named for one concern.
-- **Tree-bound reach** — code outside the subtree cannot read the value, and stacked providers that depend on each other must nest with the dependent below what it needs.
+- **Tree-bound reach** — code outside the subtree cannot read the value. If provider B reads provider A, B must sit inside A.
 
 ## When to use it
 <!--meta block=usage-->
@@ -83,7 +83,7 @@ flowchart TB
 <!--meta polarity=avoid-->
 
 - **One nearby child uses the value** — pass a prop; the call site stays honest about what it needs.
-- **The value changes on every keystroke or frame** — it would re-render a large subtree on every change. Use a store with selector subscriptions instead.
+- **The value changes on every keystroke or frame** — it would re-render a large subtree on every change. Use a store with selector subscriptions (each component subscribes to only the slice it reads) instead.
 - **The reader cannot tell where the value comes from** — unnamed providers make the code hard to trace. Name each provider for its concern.
 
 ## Code sketch
@@ -91,15 +91,19 @@ flowchart TB
 
 ```typescript summary="TypeScript — a ThemeProvider and a deep useTheme() consumer"
 type Theme = "light" | "dark";
+type ThemeValue = { theme: Theme; setTheme: (t: Theme) => void };
 
 // The provider publishes a value at a subtree root.
 // No default: a consumer outside a provider must fail, not guess.
-const ThemeContext = createContext<Theme | undefined>(undefined);
+const ThemeContext = createContext<ThemeValue | undefined>(undefined);
 
-function ThemeProvider({ value, children }: {
-  value: Theme;
+function ThemeProvider({ initial, children }: {
+  initial: Theme;
   children: ReactNode;
 }) {
+  const [theme, setTheme] = useState<Theme>(initial);
+  // A fresh object each render would re-render every consumer.
+  const value = useMemo(() => ({ theme, setTheme }), [theme]);
   // React 19 renders the context object itself
   // (before 19: <ThemeContext.Provider value={value}>).
   return (
@@ -110,15 +114,15 @@ function ThemeProvider({ value, children }: {
 }
 
 // Any descendant consumes it directly — no props threaded through.
-function useTheme(): Theme {
-  const theme = useContext(ThemeContext);
-  if (theme === undefined) throw new Error("useTheme outside ThemeProvider");
-  return theme;
+function useTheme(): ThemeValue {
+  const ctx = useContext(ThemeContext);
+  if (ctx === undefined) throw new Error("useTheme outside ThemeProvider");
+  return ctx;
 }
 
 // Deep in the tree, and none of the layers above passed a prop:
 function ThemedButton() {
-  const theme = useTheme();
+  const { theme } = useTheme();
   return <button className={theme}>Save</button>;
 }
 
@@ -137,7 +141,7 @@ function ThemedButton() {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Provider granularity** — One provider for a whole concern or one per value. Smaller providers re-render fewer consumers.
+- **Provider granularity** — One provider for a whole concern or one per value. Splitting values that change at different rates re-renders fewer consumers; splitting values that change together gains nothing.
 - **Placement in the tree** — At the root for the whole app or around one subtree. A lower provider scopes the value and lets a subtree override it.
 - **Default value** — What a consumer gets with no provider above: a safe default, or an error. An error finds missing wiring early.
 - **Value stability** — Whether the provided object is created once or on every render of the provider's parent. Memoize it or create it outside the render path, and check the effect with a render profiler.
@@ -147,7 +151,7 @@ function ThemedButton() {
 
 - **Consumer re-renders per change** — How many components re-render when a provided value changes, shown by a render profiler.
 - **Provider count at the root** — A long stack of nested providers at app entry. Check that each carries a distinct concern and rate of change; merge only values that always change together.
-- **Tests needing wrappers** — Share of component tests that must wrap their subject in providers. A high share can point to a heavy hidden dependency, unless one shared wrapper makes each test cheap.
+- **Tests needing wrappers** — Share of component tests that must wrap their subject in providers. A high share means many components depend on providers; a shared wrapper keeps each test short.
 - **Missing-provider errors** — Runtime errors where a consumer rendered outside its provider.
 
 ### Failure modes under load

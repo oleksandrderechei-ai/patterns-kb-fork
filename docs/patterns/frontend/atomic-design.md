@@ -20,11 +20,11 @@ Left unmanaged, a UI drifts: buttons and inputs get rebuilt a little differently
 ## Explained
 <!--meta block=explain-->
 
-Atomic design builds an interface in five tiers, where each tier draws on the ones below it, not only the one directly beneath. Atoms are single elements such as a button or an input. Molecules combine a few atoms for one job, such as a search field. Organisms are larger sections such as a header. Templates lay out organisms with placeholders, and pages fill a template with real content. The tiers are a way to read the UI, not a build order. A change to an atom then reaches every screen that uses it, and the whole team shares one set of names. Choose it over building each screen on its own when many screens share parts and more than one person builds them, which is how a design system starts.
+Atomic design builds an interface in five tiers, where each tier draws on the ones below it, not only the one directly beneath. Atoms are single elements such as a button or an input. Molecules combine a few atoms for one job, such as a search field. Organisms are larger sections such as a header. Templates lay out organisms with placeholders, and pages fill a template with real content. The tiers are a way to read the UI, not a build order. A change to an atom reaches every screen that uses it, and the whole team shares one set of names. Choose it over building each screen on its own when many screens share parts and more than one person builds them, which is how a design system starts.
 
 - **Tier arguments.** People debate molecule versus organism, so write a one-line rule, such as: anything fetching its own data is an organism.
 - **Overhead for small apps.** Start with atoms and plain components and add tiers when the same part is copied across screens.
-- **Sorting over shipping.** When unsure, pick the lower tier if it imports nothing from above, and move the component later, updating its imports.
+- **Sorting over shipping.** When unsure, pick the lower tier, promote it later if it needs data or composes molecules, and update its imports.
 
 **Example.** An app has 12 screens, and each has its own button with 12 px of padding and square corners. A rebrand wants rounded corners, which means 12 edits in 12 files, and you will miss one. With one Button atom, it is one edit. A search field built from a label, an input and a Button is a molecule, used in the header and on 3 pages, so a fix there reaches 4 places. The cost is a short debate: the team spends 30 minutes deciding whether a price tag with a currency picker is a molecule or an organism. The rule settles it: the picker fetches no data, so it is a molecule.
 
@@ -44,7 +44,8 @@ flowchart LR
 
 - **Strict five-tier** — The full atoms / molecules / organisms / templates / pages hierarchy, applied literally. Most explicit, but invites debate about which tier a given component belongs to.
 - **Pragmatic component-library tiering** — A looser grouping, primitives / components / patterns. It keeps the compose-from-below rule and drops the five-label debate.
-- **Design-token layer underneath the atoms** — Adds a tier below atoms: named values for color, spacing, and type. Atoms consume tokens, so a [single source of truth](../../principles/dry.md) drives styling all the way up the hierarchy.
+- **Design-token layer underneath the atoms** — Adds a tier below atoms: named values for color, spacing and type. Atoms read tokens, a [single source of truth](../../principles/dry.md), so one change to a token restyles every tier above.
+- **Library to organisms, app owns the rest** — The library holds atoms to organisms; templates and pages stay in the app as routes and layouts.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -62,8 +63,8 @@ flowchart LR
 
 - **Taxonomy debates** — is this a molecule or an organism? — consume time without shipping anything. Settle the call in a written rule of thumb, such as "anything fetching its own data is an organism", and stop arguing case by case.
 - **Fixed cost for small apps** — a product with a few screens never recoups the structure. Start with a flat component folder and add tiers when duplication appears.
-- **Rigid tiers invite bad fits** — a component that does not sit cleanly in one tier gets forced into one anyway. Treat the tiers as a way to look at the UI, not a build order, and let a tier draw on any tier below it.
-- **A catalog that rots** — an atom changed without its consumers visible ripples into screens nobody checked. Pair the library with visual regression tests or a component catalog so every change shows its blast radius.
+- **Rigid tiers invite bad fits** — a component that fits no tier is forced into one anyway. Let a tier draw on any tier below it.
+- **A catalog that rots** — an atom changed without its consumers visible ripples into screens nobody checked, and a catalog that drifts from the code stops being trusted. Pair the library with visual regression tests or a component catalog so a change shows the captured screens it moves; uncaptured screens stay a risk.
 
 ## When to use it
 <!--meta block=usage-->
@@ -78,7 +79,7 @@ flowchart LR
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **Small app, few screens** — the structure will not be amortized by the reuse it buys.
+- **Small app, few screens** — the shared structure costs more than the reuse saves. Keep a flat shared-components folder and add tiers when duplicates appear.
 - **Tier debate costs more than consistency** — the team already argues about categories more than it ships. Use looser primitives and components groupings.
 - **One-off marketing pages** — screens built once and thrown away gain nothing from a shared hierarchy.
 
@@ -106,9 +107,13 @@ const Header = () => (
   <header><h1>Acme</h1><SearchBar /></header>
 );
 
+// Not allowed: an atom importing Header, an upward import that lint rejects.
 // Template: lays out organisms passed in as props; a page fills it with real content.
-const PageTemplate = ({ header, body }: { header: JSX.Element; body: JSX.Element }) =>
+const PageTemplate = ({ header, body }: { header: React.ReactNode; body: React.ReactNode }) =>
   <main>{header}{body}</main>;
+
+// Page: fills the template with real content.
+const HomePage = () => <PageTemplate header={<Header />} body={<p>Hello</p>} />;
 ```
 
 ## In the wild
@@ -134,12 +139,12 @@ const PageTemplate = ({ header, body }: { header: JSX.Element; body: JSX.Element
 - **Duplicate components** — Two components that render nearly the same thing, found in code search or review, mean the library is not being used or not found.
 - **Tier-placement threads** — Review comments arguing over where a component belongs. A steady flow says the admission rule is vague.
 - **Atom change blast radius** — How many screens a one-atom change touches, shown by visual regression runs. A wide spread is expected; a screen nobody listed is the defect.
-- **Components outside the library** — Share of screens that use local one-off parts instead of the shared tiers.
+- **Components outside the library** — Share of screens that use local one-off parts instead of the shared tiers. Count local components per screen with a code search or import scan, record a baseline when the library starts and act on the trend.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Taxonomy stall** — Pull requests wait on a molecule-versus-organism decision while no behavior changes. Fix by a default rule and a named owner who decides in one comment.
+- **Taxonomy stall** — Pull requests wait on a molecule-versus-organism decision while no behavior changes. Fix by a default rule (when unsure, pick the lower tier and move it later) and a named owner who decides in one comment.
 - **Atom bloat** — An atom grows props for every use case until it is a small framework. Split it into variants or a new atom.
 - **Upward dependency** — An atom imports from an organism, so the ladder tangles into cycles. A lint rule on import direction catches it.
 - **Library nobody opens** — Teams rebuild parts because the catalog is hard to search. The structure exists and the reuse does not.
@@ -149,7 +154,7 @@ const PageTemplate = ({ header, body }: { header: JSX.Element; body: JSX.Element
 
 - Each tier has a one-sentence admission rule in the contributing guide
 - Imports run only from a tier to the tiers below it, and a lint rule enforces it
-- Every atom and molecule has a catalog entry with its states shown
+- Every atom and molecule has a catalog entry with its states shown (or the tiers chosen in the catalog-scope knob)
 - A visual regression run covers the atoms, so a change shows which screens move
 
 ## Where it shows up

@@ -43,7 +43,7 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Render prop / function-as-child** — A prop whose value is a function that receives the state and returns markup. When that prop is `children`, the call site reads as nested JSX — the "function as a child" idiom — but it is the same mechanism.
-- **Higher-Order Component (HOC)** — Instead of calling a function you pass in, a function wraps your component and injects the behavior as extra props. The logic reuse is the same; the wiring happens at composition time rather than at render time.
+- **Higher-Order Component (HOC)** — Instead of calling a function you pass in, a function wraps your component and injects the behavior as extra props. The logic reuse is the same; the wiring is fixed where the component is defined, and injected prop names can collide.
 - **Hooks** — A custom hook extracts the same stateful logic into a plain function call inside the component, with no wrapper component and no nesting.
 
 ## Trade-offs
@@ -54,7 +54,7 @@ flowchart LR
 
 - **Reuses stateful logic across unrelated views** — without a class-inheritance hierarchy joining them.
 - **Flexible composition** — the same behavior component drives any markup the caller supplies, a list in one screen and a chart in another.
-- **Behavior and view stay decoupled** — each can change without disturbing the other.
+- **Behavior and view stay decoupled** — either can change freely while the state object's shape stays the same; changing that shape breaks callers, so type it.
 - **Works on any component model that passes functions** — it needs no compiler support or special syntax, only a function-valued prop.
 
 ### Cons
@@ -62,8 +62,9 @@ flowchart LR
 
 - **Wrapper hell** — combining several render props nests callbacks until the JSX is hard to read. As a rule of thumb, move the logic into hooks past two levels; each team sets its own limit.
 - **Obscured value origins** — a value named in a callback parameter is hard to trace back to the component that produced it. Name the parameters after what they carry.
-- **Hooks now supersede it** — they express the same reuse without nesting, so new code rarely needs the pattern. Keep it where a hook cannot reach, such as a class component.
-- **Inline function is a new value on every render** — a shallow prop comparison never matches and memoization on the behavior component stops paying. Hoist the function to a stable reference if it reads nothing from the parent; otherwise wrap it in useCallback.
+- **Hooks now supersede it** — they express the same reuse without nesting, so new code rarely needs the pattern. Keep it for class components, or where the behavior must wrap part of the tree.
+- **Inline function is a new value on every render** — a shallow prop comparison never matches and memoization on the behavior component stops paying. Hoist the function to a stable reference if it reads nothing from the parent; otherwise wrap it in useCallback. React Compiler, where enabled, memoizes inline callbacks automatically, so the cost applies to code built without it.
+- **Client components only** — a plain function cannot be passed as a prop from a Server Component to a Client Component, so the render function and the component that calls it must both run on the client.
 
 ## When to use it
 <!--meta block=usage-->
@@ -79,7 +80,7 @@ flowchart LR
 <!--meta polarity=avoid-->
 
 - **A hook expresses the same reuse more simply** — the case for most new code.
-- **Several render props would nest deeply** — into unreadable wrapper hell.
+- **Several render props would nest more than two levels** — move the shared logic into a custom hook and call it in the component.
 - **The render function needs a performance budget** — a memoized behavior component receives an inline function, a new prop on every render, so the memo never skips work.
 
 ## Code sketch
@@ -119,7 +120,7 @@ function Settings() {
 
 - **React** — Render props, function-as-child, and later Hooks all share stateful logic without inheritance. {#wild-react}
 - **React Context.Consumer** — The Consumer component takes a function as its child and calls it with the current context value, so the consumer decides what to render while Context owns the value. It is the render-prop form that predates the useContext hook. {#wild-context-consumer}
-- **Downshift** — Kent C. Dodds' library for autocomplete, combobox and select inputs. It owns the input, selection and keyboard state and hands them to a render function, so the caller supplies all the markup and styling. {#wild-downshift}
+- **Downshift** — Kent C. Dodds' library for autocomplete, combobox and select inputs. It owns the input, selection and keyboard state and hands them to a render function, so the caller supplies all the markup and styling. Its README now recommends the useSelect and useCombobox hooks over the render-prop component, which does not follow the latest ARIA combobox pattern. {#wild-downshift}
 
 ## In production
 <!--meta block=production-->
@@ -136,9 +137,9 @@ function Settings() {
 <!--meta polarity=signal-->
 
 - **Re-renders of the behavior component** — Count of renders per parent update in a render profiler. A memoized component that renders with unchanged props points to a changing function reference.
-- **Nesting depth in JSX** — Levels of function children in one tree. Past two, readability falls.
+- **Nesting depth in JSX** — Levels of function children in one tree. Past your team's limit (two is a common start), move logic into hooks.
 - **Hook-replaceable uses** — Render-prop uses in function components that a hook could replace with no nesting.
-- **Wrapper components in the tree** — Number of render-prop wrapper components in the React tree, visible in dev tools.
+- **Wrapper components in the tree** — Number of render-prop wrapper components in the React tree, visible in dev tools. Each is a nesting level counted by signal 2; past your limit on one screen path, move that logic into a hook.
 
 ### Failure modes under load
 <!--meta polarity=failure-->

@@ -261,6 +261,7 @@ await broker.publish("ShipmentReady", { orderId, weight: local.weight });
 - [External Configuration Store](../distributed/coordination/external-configuration-store.md) — Configuration from outside the service is what lets one build run in every environment
 - [Vertical Slice](./vertical-slice.md) — Slices at feature-area grain are the seam to cut along when a service is split out.
 - [Strangler Fig](../distributed/coordination/strangler-fig.md) — Replacing a legacy system one capability at a time is how most services are first cut out.
+- [Micro-Frontends](../frontend/micro-frontends.md) — A team that owns a service can own the matching UI slice, so the split runs the same way end to end.
 
 **Alternative to**
 

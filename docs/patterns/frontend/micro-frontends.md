@@ -44,11 +44,11 @@ flowchart TB
 ## Variations
 <!--meta block=variations-->
 
-- **Build-time integration** — Each slice is published as a versioned package and the shell pulls them in at build time. A slice update rebuilds and redeploys the host, so you trade independence for fewer moving parts at run time. By the test in the explain block, it counts as a micro-frontend only if the host redeploys automatically on each slice release; otherwise it is a module, so treat it as a first step.
+- **Build-time integration** — Each slice is published as a versioned package and the shell pulls them in at build time. A slice update rebuilds and redeploys the host, so you trade independence for fewer moving parts at run time. One host build releases every slice together, so it fails the explain test (a slice ships on a day nobody else releases); treat it as a module, a reasonable first step.
 - **Run-time composition** — The shell loads slices at run time — most commonly via Module Federation, where one build imports code from another separately deployed build on demand. This preserves true independent deploys: a team ships its slice and the host picks it up without rebuilding.
 - **Isolation via iframes or web components** — Wrap each slice so its styles cannot leak into its neighbours. Iframes give the hardest boundary, a separate document with separate globals, so scripts are isolated too, at the cost of slices talking only through messages. Web components (custom elements with shadow DOM (Document Object Model)) isolate styles and DOM only, so globals and script conflicts remain, but the slice stays in one page.
 - **Server-side / edge-side composition** — Assemble the fragments into one HTML response on the server or at the CDN (content delivery network) edge before it reaches the browser. Favours first-paint performance and search engine optimization (SEO), and keeps composition logic off the client.
-- **View-model composition** — Compose the data rather than the markup: each service contributes the part of a screen's view model it owns, and a composer merges the contributions at request time. This is the older, backend-driven form, and it fits when the screen is one page rather than a set of independently rendered regions. It keeps a single rendered document, so there is no style or bundle isolation problem. The cost moves to the composer, which needs a fan-out with a deadline and a decision about what to render when one contributor is slow.
+- **View-model composition** — Compose the data rather than the markup: each service contributes the part of a screen's view model it owns, and a composer merges the contributions at request time. It fits when the screen is one page rather than a set of independently rendered regions. The cost moves to the composer, which needs a fan-out with a deadline and a decision about what to render when one contributor is slow.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -68,7 +68,7 @@ flowchart TB
 - **Integration and version-skew complexity**: slices built at different times must still interoperate.
 - **Harder to keep user experience (UX) consistent** and shared state coherent across independently built pieces.
 - **More operational overhead** — more builds, pipelines, and deploys to run and observe.
-- **The autonomy that frees each slice's stack** also scatters tooling, linting and practice decisions across teams, so a shared standard is something you have to organise and agree to rather than something one build enforces.
+- **The autonomy that frees each slice's stack** also scatters tooling, linting and practice across teams, and no single build enforces a shared standard.
 
 ## When to use it
 <!--meta block=usage-->
@@ -118,8 +118,11 @@ export const cartConfig = {
     }),
   ],
 };
-// In the shell, the remote is imported like any module; if it fails to load, render a fallback.
-const Cart = await import("cart/Cart").then((m) => m.default).catch(() => () => "Cart unavailable");
+// In the shell, race the import against a timer so a hung remoteEntry.js cannot hang the page;
+// the budget comes from the slice's measured load time. On failure or timeout, render a fallback.
+declare const cartLoadBudgetMs: number;
+const timeout = (ms: number) => new Promise<never>((_, fail) => setTimeout(() => fail(new Error("remote timeout")), ms));
+const Cart = await Promise.race([import("cart/Cart"), timeout(cartLoadBudgetMs)]).then((m) => m.default).catch(() => () => "Cart unavailable");
 ```
 
 ## In the wild
@@ -142,7 +145,7 @@ const Cart = await import("cart/Cart").then((m) => m.default).catch(() => () => 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Page weight and load time** — Total JavaScript sent per page and time to interactive, compared against the same screens before the split. Record both per screen before the split, set a regression budget from that baseline and alert when a page passes it.
+- **Page weight and load time** — Total JavaScript sent per page and time to interactive. Record both per screen before the split, set a regression budget from that baseline and alert when a page passes it.
 - **Duplicate library copies** — How many copies of the framework a page loads. More than one means either the sharing is misconfigured or a slice deliberately pins a different version; check which.
 - **Independent deploy rate** — How often each team ships without asking another team. If teams still release together, the boundary is wrong.
 - **Fragment failure rate** — How often a remote fails to load, counted per fragment in the shell.
@@ -187,5 +190,8 @@ const Cart = await import("cart/Cart").then((m) => m.default).catch(() => () => 
 - [Backend-for-Frontend](../distributed/routing/bff.md) — Each slice ships with its own backend-for-frontend tailored to what it renders
 - [API Gateway](../distributed/routing/api-gateway.md) — A gateway or shell routes requests to the right slice and its services
 - [Atomic Design](./atomic-design.md) — Shared atoms and molecules hold user experience (UX) consistent across slices
+- [Conway's Law](../../principles/conways-law.md) — Slices follow team ownership, so the team boundary and the deploy boundary stay the same line.
+- [Vertical Slice](../architecture/vertical-slice.md) — A micro-frontend is a vertical slice given its own build and deploy.
+- [Microservices](../architecture/microservices.md) — The UI side of per-team services: each slice talks to the services its team owns.
 
 <!-- relationships:end -->
