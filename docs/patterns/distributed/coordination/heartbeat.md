@@ -220,6 +220,6 @@ class FailureDetector {
 
 **Prevents**
 
-- [Split-Brain](../../../hazards/split-brain.md) — Only a tuned detector, with a long timeout and confirmers, avoids declaring a live node dead and promoting a second leader; a naive one causes the split, and fencing is still needed.
+- [Split-Brain](../../../hazards/split-brain.md) — Only a tuned detector, with a long timeout and confirmers, avoids declaring a live node dead and promoting a second leader; fencing is still needed.
 
 <!-- relationships:end -->

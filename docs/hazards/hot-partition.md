@@ -26,18 +26,16 @@ A hot partition is a shard that gets far more traffic than its share of the data
 - **Read fan-out.** Salting multiplies every read of that value by the sub-key count; use the smallest number that works.
 - **Special cases.** A tenant on its own shard needs its own routing and monitoring.
 
-**Example.** A store has 10 shards, each limited to 1,000 writes a second. Events are keyed by date, so today's 6,000 writes a second all hit one shard. It accepts 1,000, and 5,000 a second are throttled, while the other 9 shards idle. Adding 10 more shards changes nothing. You salt the key into 8 sub-keys, so each shard takes 750 writes a second. A report on one day now queries 8 sub-keys and merges the results, which is the permanent read cost.
+**Example.** A store has 10 shards, each limited to 1,000 writes a second. Events are keyed by date, so today's 6,000 writes a second all hit one shard. It accepts 1,000, and 5,000 a second are throttled, while the other 9 shards idle. Adding 10 more shards changes nothing. You salt the key into 8 sub-keys, so each shard takes 750 writes a second. Six sub-keys would sit exactly at the limit, so eight leave headroom; this assumes the sub-keys hash to different shards. A report on one day now queries 8 sub-keys and merges the results, which is the permanent read cost.
 
 ## How it happens
 <!--meta block=causes-->
 
-It comes from one decision made early: which field the data gets split by. Choose a field with only a handful of values, or one that counts upward like a date or an id, and new traffic has nowhere to go but the same machine. Nothing about it looks wrong at review time — the query works, the write succeeds — and the skew only surfaces once the volume arrives.
+It comes from one decision made early: which field the data gets split by. Choose a field with only a handful of values, or one that counts upward like a date or an id, and new traffic has nowhere to go but the same machine. Nothing about it looks wrong at review time, since the query works and the write succeeds, and none of the causes below is caught by a schema review. The skew only surfaces once the volume arrives.
 
 Placement is a function of the key; load is not. A hash-partitioned store spreads distinct key values evenly, so skew survives only where one value is genuinely popular. A range-partitioned store keeps neighbouring keys together, so any monotonic component parks every new write on the tail partition. The four causes below are the usual ways a key acquires one of those properties.
 
-Read it as a modelling decision with a capacity consequence, taken before the workload existed. Partition keys get chosen for query convenience — the attribute you filter by — and the access distribution that would have vetoed the choice is not measurable until traffic arrives. Each cause below is a key that is correct for reads and wrong for load, which is why none of them is caught by a schema review.
-
-```mermaid caption="Why adding capacity does not help: the key decides placement, so new shards never see the traffic that is causing the problem."
+```mermaid caption="Why adding capacity does not help: the key decides placement, so new shards never see the hot key."
 flowchart LR
     K["Partition key carries today's date"] -->|"placement follows the key"| P["Every new write lands on one shard"]
     P -->|"per-shard throughput limit"| T["That shard throttles and queues"]
@@ -55,19 +53,19 @@ flowchart LR
 <!--meta block=cost-->
 
 - **The cluster's ceiling becomes one shard's ceiling.** You provisioned aggregate throughput and can only use the fraction the busiest shard allows; the idle peers are capacity you pay for and cannot reach.
-- **Requests to that partition degrade or fail.** Queues build and tail latency climbs, and a store with per-partition limits starts throttling or rejecting writes — errors the client cannot retry its way out of, because the retry lands on the same shard.
+- **Requests to that partition degrade or fail.** Queues build and tail latency climbs, and per-partition limits throttle writes; retries land on the same shard, so they cannot clear a sustained overload.
 - **The blast radius is the whole partition.** Every unrelated key that happens to live there slows down alongside the hot one, so the incident looks broader than its cause and sends you hunting in the wrong place.
 - **Averages conceal it.** Cluster utilisation and mean latency read healthy, because one saturated shard in twenty barely moves the aggregate; the signal exists only in the per-partition breakdown.
-- **The usual scaling lever is dead.** Adding nodes rebalances key ranges rather than dividing one key's traffic, so the reflex that resolves most capacity problems produces no measurable improvement here.
+- **The usual scaling lever is dead.** Adding nodes moves key ranges but does not split one key's traffic, so against a single hot key the usual fix changes little.
 
-The bill that lands on a budget is the migration. The durable fix changes the partition key, and the key is embedded in every query, every secondary index and every row already written — so paying it means a backfill, a window of dual reads and a cutover, all scheduled against a system that is already degraded. That is why hot partitions get absorbed with extra capacity and retries for months, and why each quarter of deferral adds rows to the backfill and lengthens the eventual window.
+The real cost is the migration. The durable fix changes the partition key, which is embedded in every query, every secondary index and every row already written, so it means a backfill, a window of dual reads and a cutover, all against a system already degraded. Hot partitions get absorbed with extra capacity and retries for as long as capacity covers the gap, and deferral adds rows to the backfill.
 
 ## Getting out
 <!--meta block=mitigation-->
 
 Fix the key, not the cluster. Pick a partition key with enough distinct values to cover every partition and enough evenness to keep them all busy, and keep monotonic components — timestamps, sequences — out of the leading position, so consecutive writes stop landing together. Where one logical value has to stay hot, salt it: write it under a bounded set of sub-keys and read all of them back, which trades a fan-out on reads for a division of writes.
 
-Choose the salt factor deliberately, because it is a permanent tax on every read of that value: a factor of ten divides the write load by ten and multiplies each read by ten, so the right number is the smallest one that brings the busiest partition under its limit. If the skew is one tenant rather than one key shape, isolate instead — give that tenant its own partition or its own cluster, and let the shared pool serve the long tail it was sized for. Where the store supports it, a manual split plus a placement change moves the hot range onto a node of its own, which buys time without touching the schema.
+Choose the salt factor deliberately, because it is a permanent tax on every read of that value: a factor of ten divides the write load by ten and multiplies each read by ten. Compute it as the hot key's write rate divided by the per-partition limit, rounded up, plus headroom: 6,000 / 1,000 gives 6, and the example uses 8. A factor of ten divides write load by ten only when the sub-keys land on different partitions and writes spread evenly. So the right number is the smallest one that brings the busiest partition under its limit. If the skew is one tenant rather than one key shape, isolate instead — give that tenant its own partition or its own cluster, and let the shared pool serve the long tail it was sized for. Where the store supports it, a manual split plus a placement change moves the hot range onto a node of its own, which buys time without touching the schema; it helps only when the hot range holds several keys, since a split leaves one [hot key](./hot-key.md) on one half. For read-heavy skew on one popular value, put a cache or read replicas in front of it; see [hot key](./hot-key.md).
 
 Make per-partition utilisation a first-class signal before you need it, and alarm on the busiest partition rather than the mean, because an aggregate dashboard cannot show this failure at all. Buffering in front of the store — coalescing or batching writes that share a key — also buys time without a migration, at the cost of a window in which the buffer holds data the store does not, and a recovery path for what is in it when the process dies. When a re-key is unavoidable, run the new key alongside the old and cut reads over once the backfill has caught up; a flag day on a store already at its limit is how a capacity problem turns into an outage.
 
@@ -91,5 +89,6 @@ Make per-partition utilisation a first-class signal before you need it, and alar
 **Threatens**
 
 - [MapReduce](../patterns/distributed/coordination/mapreduce.md) — A reducer owning a skewed key is the batch form of one overloaded shard.
+- [Ad Click Aggregator](../designs/ad-click-aggregator.md) — Click aggregation keyed by ad_id hits it when one ad is hot.
 
 <!-- relationships:end -->

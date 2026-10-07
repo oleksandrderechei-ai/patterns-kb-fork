@@ -12979,13 +12979,6 @@
     },
     {
       "a": "heartbeat",
-      "verb": "prevents-hazard",
-      "b": "split-brain",
-      "note_a": "Only a tuned detector, with a long timeout and confirmers, avoids declaring a live node dead and promoting a second leader; a naive one causes the split, and fencing is still needed.",
-      "note_b": "Careful failure detection keeps a pause from being read as a death that splits the cluster."
-    },
-    {
-      "a": "heartbeat",
       "verb": "alternative-to",
       "b": "timeout-deadline",
       "note_a": "A call deadline reveals a failure only while a request waits; a heartbeat covers the idle node.",
@@ -14006,6 +13999,27 @@
       "b": "no-caching",
       "note_a": "Keeps the repeated read in the app's own memory, the fastest hit",
       "note_b": "The fastest placement, with a separate copy in every instance"
+    },
+    {
+      "a": "ad-click-aggregator",
+      "verb": "exposed-to",
+      "b": "hot-partition",
+      "note_a": "Falls into it when one ad_id takes most clicks; key-salting spreads it.",
+      "note_b": "Click aggregation keyed by ad_id hits it when one ad is hot."
+    },
+    {
+      "a": "heartbeat",
+      "verb": "prevents-hazard",
+      "b": "split-brain",
+      "note_a": "Only a tuned detector, with a long timeout and confirmers, avoids declaring a live node dead and promoting a second leader; fencing is still needed.",
+      "note_b": "Tuned timeouts reduce needless failovers but cannot tell a pause from a death; fencing covers the rest."
+    },
+    {
+      "a": "replication",
+      "verb": "exposed-to",
+      "b": "split-brain",
+      "note_a": "Replicas that each accept writes after a cut link can diverge into two histories.",
+      "note_b": "Replicas that each accept writes after a cut link diverge into two histories."
     }
   ],
   "group_order": {
