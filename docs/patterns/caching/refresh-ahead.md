@@ -21,7 +21,7 @@ Under a plain expiry time, the busiest keys expire under load, and every reader 
 ## Explained
 <!--meta block=explain-->
 
-Refresh-ahead watches the remaining lifetime of an entry and, once it drops below a threshold, reloads the value from the source in the background, then swaps it in with a new lifetime. Without it, a busy key expires under load and the next reader waits for the database while every reader arriving meanwhile misses too (a stampede). Choose it over plain expiry (a TTL, a fixed lifetime per entry) with load-on-miss when a few keys are read constantly and expiry itself is what hurts. It is an add-on to a [read-through](read-through.md) or [cache-aside](cache-aside.md) layer, using the same load path, started by a timer instead of a miss. Skip it when traffic per key is thin, because each early reload then fetches data nobody reads.
+Refresh-ahead watches the remaining lifetime of an entry and, once it drops below a threshold, reloads the value from the source in the background, then swaps it in with a new lifetime. Without it, a busy key expires under load and the next reader waits for the database while every reader arriving meanwhile misses too (a stampede). Choose it over plain expiry (a TTL, a fixed lifetime per entry) with load-on-miss when a few keys are read constantly and expiry itself is what hurts. It is an add-on to a [read-through](read-through.md) or [cache-aside](cache-aside.md) layer, using the same load path, started by a read that finds the entry near expiry (or by a timer) instead of a miss. Skip it when traffic per key is thin, because each early reload then fetches data nobody reads.
 
 - **Reloads burst together.** Keys loaded at the same moment expire together, so give each key a random reload point.
 - **Needs a notion of hot keys.** Count reads and refresh only keys above a limit, or you reload data nobody asks for.
@@ -74,7 +74,7 @@ sequenceDiagram
 
 - **Layered on [Read-Through](./read-through.md)** — The common form: reuse a read-through cache's existing load path, but trigger it from a background check instead of waiting for a miss to happen.
 - **Threshold-triggered refresh** — A read that lands once remaining TTL falls below a percentage of the original — say 10-20% — kicks off an async reload; the read itself is never blocked by it.
-- **Scheduled background refresh** — A per-key or per-shard timer reloads on a fixed cadence independent of traffic, so a key never goes stale even if it briefly stops being read.
+- **Scheduled background refresh** — A per-key or per-shard timer reloads on a fixed cadence, independent of traffic, so a quiet key stays fresh; it needs an idle cutoff, or cold keys reload forever.
 - **Hot-key gating** — Refresh only keys whose access frequency crosses a threshold; refreshing every entry blanket-style wastes load on data nobody's reading anymore.
 
 ## Trade-offs
@@ -83,18 +83,19 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Busy keys effectively never expire under load** — readers get a fresh value without ever paying for the reload.
-- **Eliminates the cache stampede** a [hot key](../../hazards/hot-key.md)'s expiry would otherwise cause at the worst possible moment.
+- **Busy keys stay warm under load** — as long as each reload finishes before the old value expires; readers never wait on it.
+- **Prevents the [hot-key](../../hazards/hot-key.md) stampede** — provided the key is read inside the refresh window and reloads succeed; cold-start misses still stampede.
 - **Reload latency happens off the request path**, so a slow source never shows up as user-facing latency.
 - **Falls back to a plain TTL for free** — a key that cools off just expires normally, no extra teardown needed.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Proactive reloads do real work, sometimes wasted** — a key refreshed once then never read again cost a load for nothing.
+- **Proactive reloads do real work, sometimes wasted** — a key refreshed once and never read again costs a load for nothing.
 - **Needs bookkeeping a plain cache doesn't have:** which keys are hot, and how much TTL each has left.
 - **A reload that keeps failing** can leave the cache serving old data that looks perfectly fresh, unless failures are surfaced.
 - **Threshold and hotness cutoffs are tuning knobs**, not defaults that suit every workload.
+- **Single-flight is per process** — with N app instances, each reloads the same hot key once, so source load grows N times unless one shared refresher or a lock holds it to one.
 
 ## When to use it
 <!--meta block=usage-->
@@ -125,12 +126,13 @@ class RefreshAheadCache<K, V> {
   constructor(
     private readonly load: (key: K) => Promise<V>,
     private readonly ttlMs = 60_000,
-    private readonly refreshBelow = 0.2, // reload once 20% of TTL remains
+    private readonly refreshBelow = 0.2, // reload once at most 20% of TTL remains
   ) {}
   async get(key: K): Promise<V> {
     const entry = this.store.get(key);
-    if (!entry) return this.populate(key);        // cold miss, must block
-    if (entry.expiresAt - Date.now() < entry.ttlMs * this.refreshBelow) this.refresh(key); // fire-and-forget
+    if (!entry || entry.expiresAt <= Date.now()) return this.populate(key); // cold or expired: block, never serve past TTL
+    const left = entry.expiresAt - Date.now();
+    if (left < entry.ttlMs * this.refreshBelow * (0.5 + Math.random() / 2)) this.refresh(key); // jitter: reload at 10-20% remaining, fire-and-forget
     return entry.value;                           // always served from cache
   }
   private async populate(key: K): Promise<V> {
@@ -141,7 +143,7 @@ class RefreshAheadCache<K, V> {
   private refresh(key: K): void {
     if (this.inFlight.has(key)) return;            // single-flight, no dupes
     this.inFlight.add(key);
-    this.populate(key).finally(() => this.inFlight.delete(key));
+    this.populate(key).catch(err => console.error("refresh failed", key, err)).finally(() => this.inFlight.delete(key)); // surface failures; the old entry keeps serving until expiresAt
   }
 }
 ```
@@ -175,7 +177,7 @@ class RefreshAheadCache<K, V> {
 <!--meta polarity=failure-->
 
 - **Silent staleness on repeated refresh failure** — A reload that keeps failing leaves the old value serving with the look of freshness; unless refresh errors are surfaced it goes unnoticed.
-- **Wasted reloads on cooling keys** — A key refreshed once then never read again cost a load for nothing; a loose hot-key gate multiplies this across the keyspace.
+- **Wasted reloads on cooling keys** — A key refreshed once and never read again costs a load; a loose hot-key gate multiplies this across the keyspace.
 - **Refresh storm on the source** — If many hot keys cross the threshold together — say all written at the same instant — their background reloads can burst the source, the very stampede refresh-ahead was meant to avoid.
 - **Overlapping reloads for one key** — Without single-flight, a hot key read repeatedly inside the threshold window can launch several concurrent reloads, multiplying source load.
 
