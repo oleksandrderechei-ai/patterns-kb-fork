@@ -53,7 +53,7 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **[Authorization Enforcer (role-based access control, RBAC)](./authorization-enforcer.md)** — Collapse individual permissions into roles, then grant each role only what its job needs — the most common way least privilege is enforced in application code.
+- **[Authorization Enforcer (role-based access control, RBAC)](./authorization-enforcer.md)** — Collapse individual permissions into roles, then grant each role only what its job needs; a common way to enforce least privilege.
 - **[Valet Key](../distributed/routing/valet-key.md)** — Issue a scoped, time-boxed credential for one operation instead of a long-lived, broad one — least privilege applied directly to the credential.
 - **Just-in-time elevation** — Grant a higher privilege only for the duration of a specific task, then revoke it automatically — no standing admin access sitting around to be stolen.
 - **Attribute-based access control (ABAC)** — Evaluate fine-grained conditions — resource owner, time of day, request origin — at the moment of the request, narrowing the grant to the exact context instead of a fixed role.
@@ -74,7 +74,7 @@ flowchart LR
 
 - **Requires ongoing upkeep** — needs shift as systems evolve, and privilege creep returns the moment reviews lapse.
 - **Finding the true minimum access** for a task is hard and is often discovered by trial, error, and a broken deploy.
-- **Overly granular scoping adds friction** that quietly pushes engineers back toward broad, convenient grants.
+- **Very fine scoping adds friction**, and engineers start asking for broad, convenient grants.
 - **Multiplies the number** of roles and policies that must be defined, tested, and kept in sync.
 
 ## When to use it
@@ -90,7 +90,7 @@ flowchart LR
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **A single trusted operator needs fully audited**, time-boxed emergency access — a broad but logged break-glass account beats being locked out mid-incident.
+- **One trusted operator needs audited**, time-boxed emergency access: keep a logged break-glass path outside normal scoping, since a broad but logged account beats a lockout mid-incident.
 - **The system holds nothing sensitive** and scoping access would slow delivery without reducing any real risk.
 
 ## Code sketch
@@ -118,11 +118,11 @@ class ScopedCredential {
   }
 }
 
-// A job that only needs to read one bucket gets exactly that, nothing else.
-const token = ScopedCredential.issue(["read"], "reports-bucket");
-token.can("read", "reports-bucket");   // true
-token.can("delete", "reports-bucket"); // false — never granted
-token.can("read", "users-table");      // false — different resource
+// A build job that only writes reports gets exactly that, nothing else.
+const token = ScopedCredential.issue(["write"], "reports-bucket");
+token.can("write", "reports-bucket");  // true
+token.can("delete", "reports-bucket"); // false: never granted
+token.can("write", "users-table");     // false: different resource
 ```
 
 ## In the wild
@@ -130,7 +130,7 @@ token.can("read", "users-table");      // false — different resource
 
 - **OpenBSD pledge** — A process calls pledge(2) to voluntarily restrict itself to a named set of promises (stdio, rpath, inet, ...); once pledged it cannot widen the set, and a call outside the set usually aborts the process with SIGABRT. Pledging the error promise instead makes most violating calls fail with ENOSYS, so the process can handle the refusal rather than die. Its companion unveil(2) does the same for filesystem paths. {#wild-openbsd-pledge}
 - **Linux capabilities** — The monolithic power of root is split into discrete units (capabilities(7)); a process granted only CAP_NET_BIND_SERVICE can bind a port below 1024 without holding any other superuser power, so a daemon runs with a fraction of full privilege. {#wild-linux-capabilities}
-- **AWS STS temporary credentials** — AssumeRole issues short-lived credentials with an explicit session duration (DurationSeconds, from 15 minutes up to 12 hours) in place of long-lived access keys, and an inline session policy can further narrow the assumed role to only what the current task needs. {#wild-aws-sts}
+- **AWS STS temporary credentials** — AssumeRole issues short-lived credentials with an explicit session duration (DurationSeconds, from 15 minutes up to 12 hours, so a shorter TTL such as the 5-minute token in the example needs another issuer) in place of long-lived access keys, and an inline session policy can further narrow the assumed role to only what the current task needs. {#wild-aws-sts}
 
 ## In production
 <!--meta block=production-->
@@ -146,7 +146,7 @@ token.can("read", "users-table");      // false — different resource
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Dormant / unused permissions** — Permissions granted but not exercised within a window (surfaced by last-accessed or access-advisor data). Every unused grant is blast radius with no offsetting benefit — a candidate for removal.
+- **Dormant / unused permissions** — Permissions granted but not exercised within a window (surfaced by last-accessed or access-advisor data). An unused grant adds blast radius with no benefit, so it is a removal candidate unless it is a deliberate break-glass or recovery path.
 - **Count of long-lived standing credentials** — Inventory of non-expiring keys and broad roles still in circulation. A rising count is the measurable form of privilege sprawl.
 - **Credential age / time since last rotation** — How old the oldest active credentials are. Long-lived secrets that never rotate are the ones whose compromise is both likely and maximally damaging.
 - **Elevation / break-glass request rate** — How often identities need to step up to a higher privilege. A high rate signals baseline grants are too tight; a rate of zero on a sensitive system may mean elevation is being avoided via standing broad access.
@@ -155,9 +155,10 @@ token.can("read", "users-table");      // false — different resource
 <!--meta polarity=failure-->
 
 - **Privilege creep** — Grants accumulate as tasks change and are never trimmed back. The blast radius of any one compromised identity grows silently until an audit or an incident reveals how much it could actually do.
-- **Over-scoping breaks a task at runtime** — The true minimum access was guessed too narrowly; a job hits a missing permission mid-operation and fails — often discovered only by a broken deploy. This is the friction that tempts engineers back toward broad grants.
+- **Over-scoping breaks a task at runtime** — The minimum was guessed too narrow, so a job hits a missing permission mid-run and fails. The denied action in the logs names the one permission to add; add that one, never a wildcard.
 - **Leaked long-lived broad credential** — A single non-expiring key carrying an inherited org-wide role is compromised; because it was never scoped or time-boxed, a contained incident becomes a full breach with lateral movement.
 - **Scoping friction defeats the control** — Granular policies are so tedious to author that teams copy an existing broad admin policy instead. The pattern is nominally in place but the actual grants are wide open.
+- **Expiry mid-task or issuer outage** — Short TTLs make long jobs and the renewal path a dependency. A job that outlives its token fails, and an issuer outage looks like an auth outage. Set the TTL above the job's runtime.
 
 ### Readiness checklist
 <!--meta polarity=check-->
