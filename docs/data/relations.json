@@ -13866,6 +13866,13 @@
       "b": "secure-logger",
       "note_a": "A secure logger's audit events must not be the records dropped when the sink is saturated.",
       "note_b": "When the sink overflows, backpressure drops records; security events need a durable path beneath it."
+    },
+    {
+      "a": "single-access-point",
+      "verb": "exposed-to",
+      "b": "god-object",
+      "note_a": "A gate that collects business logic drifts into one component everything leans on.",
+      "note_b": "A single access point that takes every route's special case becomes the same class."
     }
   ],
   "group_order": {

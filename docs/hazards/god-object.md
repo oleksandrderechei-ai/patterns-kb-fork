@@ -86,5 +86,6 @@ Expect the old class to survive as a facade that forwards to the new ones. That 
 - [Front Controller](../patterns/enterprise/front-controller.md) — A front controller that takes every route's special case becomes the same class
 - [Facade](../patterns/gof/structural/facade.md) — A facade that starts holding state or logic grows into one class that everything leans on
 - [Service Locator](../patterns/gof/extra/service-locator.md) — A shared registry that answers every request is one way the object everything reaches into forms
+- [Single Access Point](../patterns/security/single-access-point.md) — A single access point that takes every route's special case becomes the same class.
 
 <!-- relationships:end -->
