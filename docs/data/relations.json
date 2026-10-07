@@ -8440,13 +8440,6 @@
     {
       "a": "async-request-reply",
       "verb": "combines-with",
-      "b": "claim-check",
-      "note_a": "A large result leaves the status body and becomes a short-lived link the caller fetches",
-      "note_b": "The terminal state of a long-running operation is a natural place to hand back a reference instead of a payload"
-    },
-    {
-      "a": "async-request-reply",
-      "verb": "combines-with",
       "b": "correlation-identifier",
       "note_a": "Over a broker the reply is matched by an echoed id, because there is no open connection to answer on",
       "note_b": "A request queue and a reply queue need the id to route the answer back to the caller that is waiting"
@@ -13663,6 +13656,20 @@
       "b": "scatter-gather",
       "note_a": "A fan-out call needs one deadline for the whole gather, not one per recipient.",
       "note_b": "The gather step needs a deadline, or one slow recipient holds the caller open."
+    },
+    {
+      "a": "valet-key",
+      "verb": "combines-with",
+      "b": "claim-check",
+      "note_a": "A pre-signed URL is a claim check that carries its own access grant.",
+      "note_b": "The reference can be a valet key: a pre-signed URL that carries its own access grant."
+    },
+    {
+      "a": "async-request-reply",
+      "verb": "combines-with",
+      "b": "claim-check",
+      "note_a": "A large result leaves the status body and becomes a short-lived link the caller fetches",
+      "note_b": "The finished state of a long-running operation is a natural place to hand back a reference instead of a payload"
     }
   ],
   "group_order": {

@@ -641,7 +641,7 @@
       "definition": "A token grants temporary, limited access to a resource directly",
       "route": "/patterns/distributed/routing/valet-key.html",
       "requires": [],
-      "related": ["gatekeeper", "object-storage", "least-privilege"]
+      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check"]
     },
     {
       "id": "api-routing",
@@ -721,7 +721,7 @@
       "definition": "Accept the work, hand back a handle, and let the caller collect the result later",
       "route": "/patterns/distributed/routing/async-request-reply.html",
       "requires": [],
-      "related": ["workflow-orchestration", "idempotency", "load-leveling", "claim-check", "correlation-identifier", "a2a", "web-queue-worker", "future-promise"]
+      "related": ["workflow-orchestration", "idempotency", "load-leveling", "correlation-identifier", "a2a", "web-queue-worker", "future-promise", "claim-check"]
     },
     {
       "id": "service-discovery",
@@ -1537,7 +1537,7 @@
       "definition": "Sends a reference to large data, not the data itself",
       "route": "/patterns/messaging/claim-check.html",
       "requires": [],
-      "related": ["splitter", "message-queue", "object-storage", "outbox", "async-request-reply", "message-encoding", "context-engineering", "content-enricher"]
+      "related": ["splitter", "message-queue", "object-storage", "outbox", "message-encoding", "context-engineering", "content-enricher", "valet-key", "async-request-reply"]
     },
     {
       "id": "idempotency",

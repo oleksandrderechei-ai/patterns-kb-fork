@@ -228,10 +228,10 @@ app.get("/operations/:id", async (req, res) => {
 
 - [Idempotency](../../messaging/idempotency.md) — A client that never saw the 202 retries the submit, so the accept has to be safe to repeat
 - [Queue-Based Load Leveling](../resilience/load-leveling.md) — The queue between accept and work is what lets a burst of submissions become depth instead of refusals
-- [Claim Check](../../messaging/claim-check.md) — A large result leaves the status body and becomes a short-lived link the caller fetches
 - [Correlation Identifier](../../messaging/correlation-identifier.md) — Over a broker the reply is matched by an echoed id, because there is no open connection to answer on
 - [Agent2Agent](../coordination/a2a.md) — A delegated agent task is this pattern with a published state machine
 - [Web-Queue-Worker](../../architecture/web-queue-worker.md) — A queued job needs a way to report back; the 202 and status link is that way.
+- [Claim Check](../../messaging/claim-check.md) — A large result leaves the status body and becomes a short-lived link the caller fetches
 
 **Alternative to**
 
