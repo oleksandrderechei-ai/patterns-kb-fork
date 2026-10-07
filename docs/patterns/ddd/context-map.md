@@ -26,12 +26,12 @@ A context map is one diagram that lists every [bounded context](./bounded-contex
 - **It records what is, not what you want.** Draw the relationships that exist, including conformist ones you dislike, then plan to change them.
 - **Labels hide mismatches.** Both teams may say partnership while one behaves as supplier; ask each side to name its own role.
 
-**Example.** A shop has Sales, Billing and a 15-year-old ERP. The first map shows Billing conforming to the ERP's customer record, which has 42 fields and three meanings of status. Every ERP release in the last year broke Billing, four times in all. The team marks that line conformist, then buys a two-week anticorruption layer that maps the ERP record to a 9-field Billing customer. The next ERP release changes 6 fields and touches one mapper. The map also shows Sales and Billing as customer-supplier, so Sales now reviews Billing's invoice requests in planning. The cost is one more diagram to keep right, reviewed each quarter.
+**Example.** A shop has Sales, Billing and a 15-year-old ERP. The first map shows Billing conforming to the ERP's customer record, which has 42 fields and three meanings of status. Every ERP release in the last year broke Billing, four times in all. The team marks that line conformist, then buys a two-week anticorruption layer that maps the ERP record to a 9-field Billing customer. The next ERP release changes 6 fields and touches one mapper. The map also shows Sales and Billing as customer-supplier, so Sales now reviews Billing's invoice requests in planning. The cost: a mapper to maintain, Sales' planning time, and one more diagram to review each quarter.
 
 ## How it works
 <!--meta block=structure-->
 
-You draw one box per [bounded context](./bounded-context.md) and one line per pair that has to exchange anything, then label each line with the relationship and mark which end is upstream. Upstream decides the model; downstream consumes it. The labels come from Evans' catalogue as Vernon extended it, and each one states who pays for the integration.
+You draw one box per [bounded context](./bounded-context.md) and one line per pair that has to exchange anything, then label each line with the relationship. Mark which end is upstream; partnership and shared kernel have none, because both sides change together. Upstream's model drives the interface; how far downstream can steer it depends on the label. The labels come from the domain-driven design catalogue, and each says who adapts and who bears the cost of change. The anticorruption layer sits on the downstream side, open host service and published language on the upstream side.
 
 ```mermaid caption="How does a team find out who has to adapt when a model changes? Each line carries a relationship, and the arrow runs from upstream to downstream."
 flowchart LR
@@ -48,7 +48,7 @@ flowchart LR
     classDef ext stroke-dasharray:4 4
 ```
 
-Read each line as a sentence: "Billing is downstream of Sales, and Sales plans for Billing's needs." The map does not describe code. It describes teams and the power between them, which is why it changes when an organisation changes, not when a class does.
+Read each line as a sentence: "Billing is downstream of Sales, and Sales plans for Billing's needs." The map does not describe code. It describes teams and the power between them. It changes when the organisation does, not when a class does.
 
 ## Variations
 <!--meta block=variations-->
@@ -56,8 +56,8 @@ Read each line as a sentence: "Billing is downstream of Sales, and Sales plans f
 - **Partnership** — Two contexts succeed or fail together, so their teams plan and release in step and share the cost of any interface change. Use it when neither side can ship without the other.
 - **Shared kernel** — Two contexts own a small slice of model and code in common, changed only by agreement and tested by both. It saves duplication and couples the two teams' release schedules.
 - **Customer-supplier** — Upstream treats downstream as a customer: it takes the downstream team's needs into its plan and negotiates the contract. Downstream has a voice, and upstream accepts the duty.
-- **Conformist** — Downstream adopts the upstream model as it is, because upstream will not change for it. It costs nothing to build and gives your model no protection.
-- **[Anticorruption layer](./acl.md)** — Downstream translates the upstream model into its own at the border, so a poor or shifting upstream model never leaks in.
+- **Conformist** — Downstream adopts the upstream model as it is, because upstream will not change for it. It is the cheapest to build, gives your model no protection, and every upstream change lands in it.
+- **[Anticorruption layer](./acl.md)** — Downstream translates the upstream model into its own at the border, which keeps a poor or shifting upstream model out of your own, at the price of a mapper you maintain.
 - **Open host service** — Upstream publishes one well-defined protocol for everyone who integrates, instead of a custom bridge for each consumer.
 - **Published language** — A documented, shared exchange format, such as a schema or a standard, that both sides translate to and from. It usually travels with an open host service.
 - **Separate ways** — The two contexts do not integrate at all. Where the link would cost more than duplicating a little functionality, you cut it.
@@ -76,7 +76,7 @@ Read each line as a sentence: "Billing is downstream of Sales, and Sales plans f
 ### Cons
 <!--meta polarity=con-->
 
-- **Goes stale.** A map nobody updates misleads worse than none; give one team the job of reviewing it each quarter.
+- **Goes stale.** A map nobody updates can mislead, because readers trust it.
 - **Describes politics as well as code.** A relationship you wish you had is not the one you have, so draw the real one first.
 - **Needs bounded contexts to exist.** In a single shared model there is nothing to map, and drawing one only records the mud.
 - **Labels can hide a mismatch.** Two teams may both call the line a partnership while one acts as the supplier.
@@ -97,7 +97,7 @@ Read each line as a sentence: "Billing is downstream of Sales, and Sales plans f
 
 - **One team owns one model.** There are no boundaries to map, and the diagram is decoration.
 - **You have not named the bounded contexts yet.** Draw those first, because a map of unclear boxes encodes the confusion.
-- **Nobody will keep it current.** An out-of-date map costs trust, so skip it rather than let it rot.
+- **Nobody will own the review.** Skip the map rather than let it rot.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -117,7 +117,7 @@ const map: Edge[] = [
   { upstream: "Shipping", downstream: "Reporting", kind: "separate-ways" },
 ];
 
-// Who must react when `context` changes its model? Separate ways cost nothing.
+// Who must react when `context` changes its model? Separate ways is recorded only to show a decided non-link, so it is filtered out.
 function mustReact(context: string): { who: string; unprotected: boolean }[] {
   return map
     .filter(e => e.upstream === context && e.kind !== "separate-ways")
@@ -154,9 +154,7 @@ mustReact("Legacy");
 - [Anti-Corruption Layer](./acl.md) — An anticorruption layer (ACL) is the relationship drawn on a line where the downstream context translates the upstream model
 - [API Gateway](../distributed/routing/api-gateway.md) — An open host service on the map is often realised as an application programming interface (API) gateway
 - [Aggregate](./aggregate.md) — Each context on the map holds its own aggregates and exposes only some of them
-
-**Specializes**
-
-- [Bounded Context](./bounded-context.md) — A context map joins the bounded contexts and names the relationship between each pair
+- [Bounded Context](./bounded-context.md) — Each box on the map is one of these.
+- [Conway's Law](../../principles/conways-law.md) — The map records which team boundaries the system's structure follows, and where they cut across tight coupling.
 
 <!-- relationships:end -->

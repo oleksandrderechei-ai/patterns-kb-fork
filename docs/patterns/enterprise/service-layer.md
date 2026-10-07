@@ -209,11 +209,11 @@ const dto = await orderService.placeOrder({ customerId: "c1", lines });
 - [Front Controller](./front-controller.md) — A service layer is called by handlers that a front controller chose
 - [Unit of Work](./unit-of-work.md) — The service defines the use-case transaction boundary the unit of work opens and commits
 - [Layered / N-Tier](../architecture/layered.md) — Layered is the tier stack whose business tier a service layer fronts.
+- [Domain Service](../ddd/domain-service.md) — A service layer runs use cases and calls the domain service for the rule.
 
 **Alternative to**
 
 - [Transaction Script](./transaction-script.md) — A rich operations boundary vs. one procedure per transaction
-- [Domain Service](../ddd/domain-service.md) — A service layer runs use cases and calls the domain service for the rule
 
 **Prevents**
 

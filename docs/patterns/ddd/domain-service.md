@@ -20,13 +20,13 @@ Some business rules do not belong to one object: moving money touches two accoun
 ## Explained
 <!--meta block=explain-->
 
-A domain service holds a business rule that spans several objects and belongs to none of them, as a stateless object named for the activity, such as a funds transfer. It takes the [entities](./entity.md) as arguments, lets each guard its own state, and coordinates the rule between them. Without it you pick an arbitrary owner, so Account learns about every other account, or you copy the rule into each controller and the copies drift apart. Choose it over a method on an entity when the rule has no natural owner, and over an [application service](../enterprise/service-layer.md) when the rule is business logic that another entry point must reuse: an application service orchestrates use cases and carries no rule.
+A domain service holds a business rule that spans several objects and belongs to none of them, as a stateless object named for the activity, such as a funds transfer. It takes the [entities](./entity.md) as arguments, lets each guard its own state, and coordinates the rule between them. Without it the rule tends to land on an arbitrary owner, or get copied into each controller, where the copies can drift. Choose it over an entity method when the rule has no natural owner. Choose it over an [application service](../enterprise/service-layer.md) when another entry point must reuse the rule: an application service orchestrates use cases and carries no rule.
 
 - **Anemic drift.** Move a rule into a service only after asking whether an entity owns it, or your entities shrink to data bags.
 - **Dumping ground.** A service named Manager grows without limit; name each one for one domain verb and keep it small.
 - **No memory.** It keeps no state between calls, so an operation that needs history belongs on an entity or aggregate.
 
-**Example.** A bank transfers 5,000 cents between two accounts. Put the rule on Account and it must know every other account and the daily-limit policy; copy it into the web controller and the batch importer, and the importer skips the same-account check. A FundsTransfer service takes both accounts, rejects a transfer to the same id, and calls withdraw then deposit; each Account still refuses to overdraw. Both entry points call it, so the check exists once. A unit test needs two Account objects and no database, about 5 lines. The cost is one more class to find, so name it for the business verb.
+**Example.** A bank transfers 5,000 cents between two accounts. Put the rule on Account and it must know every other account and the daily-limit policy; copy it into the web controller and the batch importer, and the importer skips the same-account check. A FundsTransfer service takes both accounts, rejects a transfer to the same id, and calls withdraw then deposit; each Account still refuses to overdraw. Both entry points call it, so the check exists once. The application service's transaction makes withdraw and deposit succeed or fail together. A unit test needs two Account objects and no database. The cost is one more class to find, so name it for the business verb.
 
 ## How it works
 <!--meta block=structure-->
@@ -58,8 +58,8 @@ The caller above it is an application service (see [Service Layer](../enterprise
 <!--meta block=variations-->
 
 - **Pure calculation service** — Takes values in and returns a value, with no object mutated, for example a tax or shipping-cost calculation over an order and a rate table. It is the easiest kind to test.
-- **Coordinating service** — Changes several [aggregates](./aggregate.md) in step, such as a transfer between two accounts. Keep the changes inside one transaction only when the aggregates sit in one consistency boundary; otherwise raise events.
-- **Policy service behind an interface** — The domain declares the interface, such as a `ExchangeRates` lookup, and infrastructure implements it. The rule stays in the domain while the data comes from outside.
+- **Coordinating service** — Changes several [aggregates](./aggregate.md) in step, such as a transfer between two accounts. Keep the changes inside one transaction only when the aggregates sit in one consistency boundary; otherwise raise events. The sketch assumes both accounts sit in one boundary. Across boundaries, the service changes one aggregate and records a domain event; a handler changes the other, so the two are eventually consistent.
+- **Policy service behind an interface** — The domain declares the interface, such as an `ExchangeRates` lookup, and infrastructure implements it; the application service passes the implementation into the service's constructor. The rule stays in the domain while the data comes from outside. A call to it can fail or lag, so pass the value in as an argument when you can.
 - **Application service (not the same thing)** — A thin use-case coordinator that owns transactions and security, with no business rule inside. Mixing the two is the usual way a domain service goes wrong.
 
 ## Trade-offs
@@ -70,14 +70,14 @@ The caller above it is an application service (see [Service Layer](../enterprise
 
 - **Gives a cross-object rule one named home** in the ubiquitous language, instead of two copies in two controllers.
 - **Keeps entities and value objects focused** on their own state and invariants.
-- **Tests with plain objects.** It is stateless and free of I/O, so no database or framework is needed.
+- **Tests with plain objects.** It is stateless and free of I/O, so a pure or coordinating service needs no database or framework; a policy service needs a stub of its interface.
 - **Keeps the rule in the domain layer,** not in the web or persistence code that calls it.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **Invites an [anemic domain model](../../hazards/anemic-domain-model.md).** If every rule moves into services, entities shrink to data bags; ask first whether an entity owns the rule.
-- **Becomes a dumping ground.** A `OrderManager` with forty methods is a procedural script in a service's clothes.
+- **Becomes a dumping ground.** An `OrderManager` that keeps adding unrelated methods is a procedural script inside a service class.
 - **Blurs with application services.** A rule hidden in a use-case coordinator cannot be reused by another entry point.
 - **Statelessness limits it.** An operation that needs memory between calls belongs in an entity or an aggregate.
 
@@ -106,10 +106,14 @@ class Account {
   constructor(readonly id: string, private balanceCents: number) {}
   get balance() { return this.balanceCents; }
   withdraw(cents: number) {
+    if (cents <= 0) throw new Error("amount must be positive");
     if (cents > this.balanceCents) throw new InsufficientFunds(this.id);
     this.balanceCents -= cents;
   }
-  deposit(cents: number) { this.balanceCents += cents; }
+  deposit(cents: number) {
+    if (cents <= 0) throw new Error("amount must be positive");
+    this.balanceCents += cents;
+  }
 }
 
 // The domain service: one rule, two accounts, no state, no database.
@@ -123,6 +127,7 @@ class FundsTransfer {
 
 // The application service owns the transaction and the loading.
 async function handleTransfer(cmd: TransferCommand, repo: AccountRepository) {
+  // If deposit throws, the transaction discards both loaded accounts.
   await repo.inTransaction(async () => {
     const [from, to] = await repo.getMany([cmd.from, cmd.to]);
     new FundsTransfer().execute(from, to, cmd.cents);
@@ -153,10 +158,7 @@ async function handleTransfer(cmd: TransferCommand, repo: AccountRepository) {
 
 - [Aggregate](./aggregate.md) — A domain service coordinates a rule across several aggregates
 - [Entity](./entity.md) — It takes entities as arguments and lets each guard its own state
-
-**Alternative to**
-
-- [Service Layer](../enterprise/service-layer.md) — A domain service holds the business rule that an application service only orchestrates
+- [Service Layer](../enterprise/service-layer.md) — An application service orchestrates the use case and calls this for the rule.
 
 **Exposed to**
 

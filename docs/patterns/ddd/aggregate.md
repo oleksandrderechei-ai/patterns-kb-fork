@@ -44,7 +44,7 @@ flowchart TB
 <!--meta block=variations-->
 
 - **Reference by identity** — An aggregate holds other aggregates by ID, never by object reference, so each cluster stays small and independently transactional.
-- **[Domain events on commit](./domain-event.md)** — The root records events internally as it mutates; they're published only after the transaction that saved it has actually succeeded.
+- **[Domain events on commit](./domain-event.md)** — The root records events internally as it mutates; they are published only after the transaction that saved it has succeeded. Save an outbox row in the same transaction and publish from it, so a crash after commit loses nothing.
 - **[Event-sourced](../architecture/event-sourcing.md) aggregate** — State is rebuilt by folding a stored stream of past events rather than loaded as a snapshot; a command only ever produces new events, never a direct field write.
 - **Aggregate factory** — Multi-step construction — assembling an Order from a cart, say — is delegated to a dedicated factory, so the root's constructor stays a simple, valid-by-construction call.
 
@@ -55,7 +55,7 @@ flowchart TB
 <!--meta polarity=pro-->
 
 - **Invariants spanning multiple objects** are enforced in one place, not scattered across services.
-- **A clear transaction boundary** — one aggregate is one atomic load and save, no partial updates.
+- **A clear transaction boundary** — one aggregate is one atomic load and save, so no partial updates within it; effects on other aggregates arrive later.
 - **[Encapsulation](../../principles/encapsulation.md)**: internal entities are hidden, so their rules can't be bypassed from outside.
 - **Concurrency control stays tractable** — version or lock the root, not a web of related tables.
 
@@ -63,8 +63,8 @@ flowchart TB
 <!--meta polarity=con-->
 
 - **An aggregate that grows too large** drags unrelated data into every transaction and lock.
-- **Cross-aggregate consistency becomes eventual**, which needs real machinery — events, sagas — to close.
-- **Choosing the right boundary is genuinely hard**, and a wrong one is expensive to redraw later.
+- **Cross-aggregate consistency is eventual**, since each transaction covers one root; closing it takes events, an outbox or a saga with compensation.
+- **Choosing the boundary is hard**, and a wrong one is expensive to redraw; ids keep a redraw to one root.
 - **Loading a large aggregate** can pull in far more data than a single command actually needs.
 
 ## When to use it
@@ -73,7 +73,7 @@ flowchart TB
 ### Reach for it when
 <!--meta polarity=when-->
 
-- **Several objects share an invariant** that must never be violated, like a total matching its parts.
+- **Several objects share an invariant** that must hold on every write within one cluster, like a total matching its parts.
 - **You need a clear transaction boundary** for saving and loading a related cluster of data.
 - **The domain has a natural grouping** that only makes sense together, like an order and its line items.
 
@@ -90,12 +90,21 @@ Prevents the smell of an [Anemic Domain Model](../../hazards/anemic-domain-model
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — an Order aggregate root"
+const LIMIT = Money.of(5000);
+class CustomerId { constructor(readonly value: string) {} }
+
 class Order { // aggregate root
   private readonly items: LineItem[] = [];
+  private version = 0; // repository.save(order) writes only if the stored version equals this.version
+  private readonly customerId: CustomerId; // another aggregate, held by id
+
+  constructor(customerId: CustomerId) { this.customerId = customerId; }
 
   addItem(sku: string, quantity: number, unitPrice: Money): void {
     if (quantity <= 0) throw new Error("quantity must be positive");
-    this.items.push(new LineItem(sku, quantity, unitPrice));
+    const item = new LineItem(sku, quantity, unitPrice);
+    if (this.total.add(item.subtotal).greaterThan(LIMIT)) throw new Error("order total would exceed the limit");
+    this.items.push(item);
   }
 
   get total(): Money {
@@ -123,9 +132,9 @@ class LineItem {
 <!--meta polarity=knob-->
 
 - **Aggregate boundary size** — How much sits inside one root. Wider locks more on every command; narrower pushes invariants out into service code.
-- **Optimistic concurrency version** — A version field or timestamp on the root that each write checks against the loaded value, rejecting the save on mismatch. The alternative, pessimistic locks held across the transaction, trades throughput for fewer conflicts.
-- **Conflict retry policy** — How many times a command is replayed when an optimistic version check fails before the failure surfaces to the caller.
-- **Snapshot frequency** — For an event-sourced root, how many events accumulate before a state snapshot is written, so a load does not re-fold the entire history every time.
+- **Optimistic concurrency version** — A version field or timestamp on the root that each write checks against the loaded value, rejecting the save on mismatch. The alternative, pessimistic locks held across the transaction, avoids retries but makes writers wait, cutting throughput and risking deadlock when roots are locked in different orders.
+- **Conflict retry policy** — How many times a command is replayed when an optimistic version check fails before the failure surfaces to the caller. Set it by watching the command retry count: raise it only while retries still clear the conflict.
+- **Snapshot frequency** — For an event-sourced root, how many events accumulate before a state snapshot is written, so a load does not re-fold the entire history every time. Pick the count from measured hydration time against your latency budget; no universal figure exists.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -138,8 +147,8 @@ class LineItem {
 <!--meta polarity=failure-->
 
 - **Hot aggregate contention** — Commands crowd onto one root — a shared counter, say — and retries pile up until throughput collapses there.
-- **Oversized aggregate** — A boundary drawn too wide loads and locks unrelated data on every command, so each write competes with everything else touching the root and transactions slow.
-- **Unbounded event replay** — An event-sourced aggregate with a long history and no snapshotting re-folds thousands of events on each load, and hydration time creeps upward.
+- **Oversized aggregate** — A boundary drawn too wide loads and locks unrelated data on every command, so writes queue behind each other.
+- **Unbounded event replay** — An event-sourced aggregate with a long history and no snapshotting re-folds the full history on each load, so load time grows with event count until snapshots cap it.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -147,7 +156,7 @@ class LineItem {
 - Reference other aggregates by identity, never by object reference.
 - Guard the root with an optimistic version and settle the conflict-retry policy before load appears.
 - Publish domain events only after the aggregate transaction has committed, never inside it.
-- Confirm each invariant genuinely spans the cluster; if it does not, the boundary is too wide.
+- Confirm each invariant spans the cluster; if it does not, the boundary is too wide.
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -178,6 +187,7 @@ class LineItem {
 - [Context Map](./context-map.md) — An aggregate's visibility to other contexts is a decision made on the context map
 - [Domain Service](./domain-service.md) — Cross-aggregate rules that no root owns live in a domain service
 - [Event Sourcing](../architecture/event-sourcing.md) — An aggregate can persist as the events it emitted, not a row
+- [Saga](../distributed/coordination/saga.md) — A saga sequences changes across several aggregates, each kept consistent on its own.
 
 **Alternative to**
 

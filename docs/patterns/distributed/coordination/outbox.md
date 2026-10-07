@@ -272,6 +272,7 @@ async function relayOnce(db: Db, webhooks: WebhookSender) {
 - [Publish-Subscribe](../../messaging/pubsub.md) — The outbox makes publishing atomic with the write
 - [CQRS](../../architecture/cqrs.md) — The relay that drains an outbox is how a command query responsibility segregation (CQRS) read model stays fed without a lost event
 - [Event-Carried State Transfer](../../messaging/event-carried-state-transfer.md) — An outbox is the safe way to emit state-carrying events.
+- [Domain Event](../../ddd/domain-event.md) — The outbox row is usually a domain event raised by the change.
 
 **Alternative to**
 

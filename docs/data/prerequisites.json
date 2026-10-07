@@ -289,7 +289,7 @@
       "definition": "Defines an application's operations as one boundary",
       "route": "/patterns/enterprise/service-layer.html",
       "requires": [],
-      "related": ["repository", "dto", "transaction-script", "domain-service", "front-controller", "unit-of-work", "layered"]
+      "related": ["repository", "dto", "transaction-script", "front-controller", "unit-of-work", "layered", "domain-service"]
     },
     {
       "id": "dto",
@@ -881,7 +881,7 @@
       "definition": "Coordinates a multi-step transaction across services",
       "route": "/patterns/distributed/coordination/saga.html",
       "requires": ["idempotency"],
-      "related": ["outbox", "inbox", "domain-event", "cqrs", "correlation-identifier", "workflow-orchestration", "sweeper", "minimize-coordination", "functional-partitioning", "microservices", "two-phase-commit"]
+      "related": ["outbox", "inbox", "domain-event", "cqrs", "correlation-identifier", "workflow-orchestration", "sweeper", "minimize-coordination", "functional-partitioning", "microservices", "two-phase-commit", "aggregate"]
     },
     {
       "id": "two-phase-commit",
@@ -1057,7 +1057,7 @@
       "definition": "Writes the event and the state change in one local transaction",
       "route": "/patterns/distributed/coordination/outbox.html",
       "requires": ["idempotency"],
-      "related": ["event-sourcing", "change-data-capture", "inbox", "saga", "message-queue", "claim-check", "minimize-coordination", "functional-partitioning", "web-queue-worker", "pubsub", "cqrs", "event-carried-state-transfer"]
+      "related": ["event-sourcing", "change-data-capture", "inbox", "saga", "message-queue", "claim-check", "minimize-coordination", "functional-partitioning", "web-queue-worker", "pubsub", "cqrs", "event-carried-state-transfer", "domain-event"]
     },
     {
       "id": "inbox",
@@ -1697,7 +1697,7 @@
       "definition": "A cluster of objects treated as one consistency unit",
       "route": "/patterns/ddd/aggregate.html",
       "requires": [],
-      "related": ["iterator", "repository", "domain-event", "encapsulation", "transaction-script", "law-of-demeter", "specification", "context-map", "domain-service", "event-sourcing"]
+      "related": ["iterator", "repository", "domain-event", "encapsulation", "transaction-script", "law-of-demeter", "specification", "context-map", "domain-service", "event-sourcing", "saga"]
     },
     {
       "id": "domain-event",
@@ -1705,7 +1705,7 @@
       "definition": "Something meaningful that happened in the domain",
       "route": "/patterns/ddd/domain-event.html",
       "requires": [],
-      "related": ["eda", "saga", "aggregate", "event-sourcing", "pubsub", "bounded-context", "event-carried-state-transfer"]
+      "related": ["eda", "saga", "aggregate", "event-sourcing", "pubsub", "bounded-context", "event-carried-state-transfer", "outbox"]
     },
     {
       "id": "bounded-context",
@@ -1713,7 +1713,7 @@
       "definition": "A model's boundary of validity and meaning",
       "route": "/patterns/ddd/bounded-context.html",
       "requires": [],
-      "related": ["acl", "domain-event", "partition-around-limits", "design-for-evolution", "functional-partitioning", "conways-law", "canonical-data-model", "high-cohesion-low-coupling"]
+      "related": ["acl", "domain-event", "partition-around-limits", "design-for-evolution", "functional-partitioning", "conways-law", "canonical-data-model", "high-cohesion-low-coupling", "context-map"]
     },
     {
       "id": "acl",
@@ -1729,7 +1729,7 @@
       "definition": "A stateless domain operation that fits no single entity or value object",
       "route": "/patterns/ddd/domain-service.html",
       "requires": [],
-      "related": ["aggregate", "service-layer", "entity"]
+      "related": ["aggregate", "entity", "service-layer"]
     },
     {
       "id": "context-map",
@@ -1737,7 +1737,7 @@
       "definition": "One diagram of every bounded context and the relationship between each pair",
       "route": "/patterns/ddd/context-map.html",
       "requires": [],
-      "related": ["acl", "api-gateway", "aggregate"]
+      "related": ["acl", "api-gateway", "aggregate", "bounded-context", "conways-law"]
     },
     {
       "id": "functor",
@@ -2585,7 +2585,7 @@
       "definition": "A system copies the communication structure of the organisation that builds it",
       "route": "/principles/conways-law.html",
       "requires": [],
-      "related": ["bounded-context", "design-for-evolution", "vertical-slice"]
+      "related": ["bounded-context", "design-for-evolution", "vertical-slice", "context-map"]
     },
     {
       "id": "compute",
