@@ -4665,13 +4665,6 @@
       "note_b": "A thin instance-level wrapper is the whole fix for a third-party static application programming interface (API)"
     },
     {
-      "a": "test-stub",
-      "verb": "prevents-hazard",
-      "b": "static-cling",
-      "note_a": "Needs a seam to substitute at, which a static call to stateful code does not provide",
-      "note_b": "Substituting a canned collaborator is exactly what a static call makes impossible"
-    },
-    {
       "a": "dependency-inversion",
       "verb": "prevents-hazard",
       "b": "static-cling",
@@ -13803,6 +13796,20 @@
       "b": "lens-optics",
       "note_a": "Optics generalize map to nested, many-focus targets",
       "note_b": "Traversals and the van Laarhoven encoding are built on map over a context"
+    },
+    {
+      "a": "test-stub",
+      "verb": "prevents-hazard",
+      "b": "static-cling",
+      "note_a": "Wanting to stub a collaborator forces it behind an injected seam, which leaves no static call to cling to",
+      "note_b": "Code that takes its collaborator at a seam, so a stub can stand in, has no static call to cling to"
+    },
+    {
+      "a": "contract-testing",
+      "verb": "prerequisite",
+      "b": "mock-object",
+      "note_a": "The other double this exists to validate: a mock's expected calls can drift from what the real provider accepts",
+      "note_b": "Contract testing keeps a mock's expected calls matching what the real provider accepts"
     }
   ],
   "group_order": {

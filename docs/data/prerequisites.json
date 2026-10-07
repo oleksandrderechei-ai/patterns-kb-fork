@@ -1864,7 +1864,7 @@
       "label": "Contract Testing",
       "definition": "Prove the test double still matches what the provider actually returns",
       "route": "/patterns/testing/contract-testing.html",
-      "requires": ["test-stub"],
+      "requires": ["test-stub", "mock-object"],
       "related": ["fake-object", "hyrums-law", "api-versioning"]
     },
     {

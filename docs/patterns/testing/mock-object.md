@@ -28,7 +28,7 @@ A mock object is a test double loaded before the test runs with the calls it sho
 - **Needless mocks.** Mocking simple value objects adds nothing; use real ones.
 - **Call, not effect.** It proves a call happened, not that the real effect was right; keep one test against the real service.
 
-**Example.** A refund service must call gateway.refund with payment pay_7 and 2,500 cents exactly once. A retry bug makes it call twice, so the customer gets 5,000 cents back instead of 2,500. State shows nothing, because the gateway returns success both times. A mock expecting one call fails on the second, naming the extra call. The cost arrives when the team batches refunds into one call per hour: customers are still refunded correctly, but 14 tests that expected one call per refund now fail and must be rewritten to expect the batch.
+**Example.** A refund service must call gateway.refund with payment pay_7 and 2,500 cents exactly once. A retry bug makes it call twice, so the customer gets 5,000 cents back instead of 2,500. State shows nothing, because the gateway returns success both times. A mock expecting one call fails on the second, naming the extra call. The cost arrives when the team batches refunds into one call per hour: customers are still refunded correctly, but, say, 14 tests that expected one call per refund now fail and must be rewritten to expect the batch.
 
 ## How it works
 <!--meta block=structure-->
@@ -53,7 +53,7 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Hand-rolled mock** — A small class written by hand that implements the collaborator's interface, records expected calls, and exposes its own `verify()` — no framework, full control, more boilerplate.
+- **Hand-rolled mock** — A small class written by hand that implements the collaborator's interface, records expected calls and has its own `verify()`. It needs no framework and gives full control, but takes more boilerplate.
 - **Framework-generated mock** — Libraries like Mockito, jMock, Moq, or Sinon generate the double at runtime via reflection or proxies; expectations are set with a fluent DSL (domain-specific language) instead of hand-written code.
 - **Strict vs. nice mocks** — A strict mock fails the test on any call it wasn't told to expect; a nice (lenient) mock quietly returns a default for unexpected calls, trading precision for less brittle setup.
 - **Ordered expectations** — Some frameworks let a mock fail not just on the wrong call but on the right call in the wrong order — useful when the sequence of calls is itself part of the contract.
@@ -66,7 +66,7 @@ sequenceDiagram
 
 - **Tests behavior that has no observable return value** or state to assert on directly.
 - **Fails fast and precisely** — pinpoints exactly which expected call was missed or malformed.
-- **Removes the real collaborator entirely**, so the test is fast, deterministic, and side-effect free.
+- **Replaces the real collaborator**, so the test avoids its latency, flakiness and side effects and gives the same result each time.
 - **Forces a narrow**, explicit collaborator interface, which tends to improve its design.
 
 ### Cons
@@ -76,6 +76,7 @@ sequenceDiagram
 - **Over-specified expectations turn a harmless refactor** into a wave of broken tests.
 - **Easy to overuse**: mocking every collaborator, including simple value objects that don't need it.
 - **Verifies that calls happened**, not that the real-world effect behind them was correct end to end.
+- **Mock and real collaborator can drift apart**: keep a contract or integration test against the real one.
 
 ## When to use it
 <!--meta block=usage-->
@@ -90,7 +91,7 @@ sequenceDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **Collaborator result you can assert on** — it returns a value or updates state you can assert on directly; a [Test Stub](./test-stub.md) only needs to answer, not be verified.
+- **Collaborator result you can assert on directly**: it returns a value or updates state; a [Test Stub](./test-stub.md) only needs to answer, not be verified.
 - **You're testing business logic** that happens to call a collaborator incidentally — mocking there re-asserts the implementation, not the outcome.
 - **The interface under test is still unstable** — a mock's expectations lock in the exact call shape, and every refactor breaks tests that never touched behavior.
 
@@ -102,7 +103,7 @@ interface EmailSender { send(to: string, subject: string): void }
 
 class MockEmailSender implements EmailSender {
   private expected: { to: string; subject: string } | null = null;
-  private called = false;
+  private calls = 0;
 
   expectSend(to: string, subject: string): void {
     this.expected = { to, subject };
@@ -112,14 +113,15 @@ class MockEmailSender implements EmailSender {
     if (!this.expected || this.expected.to !== to || this.expected.subject !== subject) {
       throw new Error(`unexpected call: send(${to}, ${subject})`);
     }
-    this.called = true;
+    if (++this.calls > 1) throw new Error(`extra call: send(${to}, ${subject})`);
   }
 
   verify(): void {
-    if (this.expected && !this.called) throw new Error("expected send() was never called");
+    if (this.expected && this.calls === 0) throw new Error("expected send() was never called");
   }
 }
 
+// SignupService is the code under test; the mock expects exactly one send
 // Test
 const mock = new MockEmailSender();
 mock.expectSend("a@x.com", "Welcome");
@@ -140,21 +142,21 @@ mock.verify(); // throws if the expectation was never met
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Strictness** — A strict mock fails the test on any call it was not told to expect; a nice or lenient mock returns a default for the unexpected — trading precision for less brittle setup. Both are a named mode in the major frameworks.
-- **Argument matching** — Expectations pinned to exact argument values versus matchers — any value, a type, or a predicate — which loosen what counts as a satisfied call.
-- **Invocation count** — How many times a call is expected — exactly once, at least, never — verified as part of the expectation.
+- **Strictness** — A strict mock fails the test on any call it was not told to expect; a nice or lenient mock returns a default for the unexpected, trading precision for less brittle setup. Names and defaults differ between frameworks.
+- **Argument matching** — Expectations pinned to exact argument values versus matchers (any value, a type, or a predicate), which loosen what counts as a satisfied call. Pin the arguments the contract names; loosen incidental ones such as timestamps and ids.
+- **Invocation count** — How many times a call is expected (exactly once, at least, never), verified as part of the expectation. Default to exactly once for side effects like sending mail; use at least only when retries are legal.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Over-specified expectations** — Encoding every call the system under test makes turns a harmless refactor into a wave of broken tests that never touched behavior.
+- **Over-specified expectations** — Encoding every call the system under test makes turns a harmless refactor into a wave of broken tests that never touched behavior. Signal: one behaviour-neutral refactor breaks several tests; loosen matchers or drop expectations.
 - **Interaction over outcome** — The mock proves the calls happened, not that the real-world effect behind them was correct end to end.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - Mock only collaborators whose contract is the interaction itself — a side effect with no return value or state to read back.
-- Prefer a nice mock unless call order or count is genuinely part of the contract.
+- Use a strict mock where an extra call is the bug (refunds, charges); use a nice mock only for incidental calls, and pin order or count only where the contract requires it.
 - Pair an interaction test with at least one test that asserts on the observable outcome.
 
 ## Where it shows up
@@ -174,6 +176,10 @@ mock.verify(); // throws if the expectation was never met
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Enables**
+
+- [Contract Testing](./contract-testing.md) — Contract testing keeps a mock's expected calls matching what the real provider accepts
 
 **Often confused with**
 

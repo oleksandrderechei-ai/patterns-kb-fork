@@ -199,6 +199,7 @@ verifyProvider({
 **Requires**
 
 - [Test Stub](./test-stub.md) — The double this exists to validate: canned responses are exactly what drifts from reality
+- [Mock Object](./mock-object.md) — The other double this exists to validate: a mock's expected calls can drift from what the real provider accepts
 
 **Prevents**
 
