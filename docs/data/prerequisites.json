@@ -1041,7 +1041,7 @@
       "definition": "Ship the application and its dependencies as one immutable, layered image",
       "route": "/patterns/distributed/coordination/containerization.html",
       "requires": [],
-      "related": ["stateless-service", "blue-green-deployment"]
+      "related": ["stateless-service", "blue-green-deployment", "quarantine"]
     },
     {
       "id": "a2a",
@@ -1929,7 +1929,7 @@
       "definition": "Holds an external artifact in isolation until checks mark it trusted",
       "route": "/patterns/security/quarantine.html",
       "requires": [],
-      "related": ["gatekeeper", "intercepting-validator", "least-privilege", "canary-release"]
+      "related": ["gatekeeper", "intercepting-validator", "least-privilege", "canary-release", "containerization"]
     },
     {
       "id": "agent-sandboxing",

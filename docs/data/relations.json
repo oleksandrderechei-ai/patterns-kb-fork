@@ -13873,6 +13873,13 @@
       "b": "god-object",
       "note_a": "A gate that collects business logic drifts into one component everything leans on.",
       "note_b": "A single access point that takes every route's special case becomes the same class."
+    },
+    {
+      "a": "containerization",
+      "verb": "combines-with",
+      "b": "quarantine",
+      "note_a": "A built image from a public source enters through quarantine before anything pulls it.",
+      "note_b": "Images are the commonest artifact quarantine holds; the immutable image is the unit it scans and republishes."
     }
   ],
   "group_order": {
