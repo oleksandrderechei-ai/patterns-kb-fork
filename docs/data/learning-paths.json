@@ -2785,14 +2785,14 @@
     "/patterns/testing/dummy-object.html": {
       "testing": {
         "role": "Fill a slot nobody reads",
-        "tour": "The simplest stand-in: an object passed because a signature demands one, with no expectation that it is read or called. It is never used, where a stub returns canned values and a mock verifies calls.",
+        "tour": "The simplest stand-in: an object passed because a signature demands one, never read or called, where a stub returns canned values and a mock verifies calls.",
         "fluency": "Pass a placeholder where a signature needs an argument the test never uses."
       }
     },
     "/patterns/testing/test-stub.html": {
       "testing": {
         "role": "Hand back canned answers",
-        "tour": "A stand-in that returns pre-arranged answers whenever the code calls it, regardless of arguments or how often. It verifies state, not behaviour, and the canned answers are exactly what can drift from the real service.",
+        "tour": "A stand-in that returns pre-arranged answers whenever the code calls it, regardless of arguments or how often. The test then asserts on the result, not on the calls, and the canned answers are exactly what can drift from the real service.",
         "fluency": "Replace a collaborator with one that returns fixed answers."
       }
     },
@@ -2813,21 +2813,21 @@
     "/patterns/testing/mock-object.html": {
       "testing": {
         "role": "Fail on a call you did not expect",
-        "tour": "It is programmed before the run with the calls it expects, and verify confirms they all happened. An unexpected call, a wrong argument or a missing call fails the test, so it checks behaviour up front where a spy records and checks later.",
+        "tour": "It is programmed before the run with the calls it expects, and a verify call confirms they all happened. An unexpected call, a wrong argument or a missing call fails the test, so it checks behaviour up front where a spy records and checks later.",
         "fluency": "Script the calls a collaborator should receive and fail on any mismatch."
       }
     },
     "/patterns/testing/contract-testing.html": {
       "testing": {
         "role": "Keep the stand-ins honest",
-        "tour": "A separate small test set checks that calls against your double return the same shape as calls against the real service. It is what stops a stub or fake from passing while the provider has moved, and lets services deploy separately.",
+        "tour": "A separate small test set checks that calls against your double return the same shape as calls against the real service, replayed in the provider's build. It catches a stub or fake whose answers no longer match the provider's shape, though not changed behaviour behind the same shape, and lets services deploy separately.",
         "fluency": "Check that your test double answers in the same shape as the real service."
       }
     },
     "/patterns/testing/page-object.html": {
       "testing": {
         "role": "Keep screen tests readable",
-        "tour": "A class models one screen, owns its locators and exposes methods such as login and addToCart, so tests never touch a selector. Its methods keep the act step to one line.",
+        "tour": "A class models one screen, owns its selectors and exposes methods such as login and addToCart, so tests never touch a selector. Its methods keep the act step to one line.",
         "fluency": "Wrap a screen's selectors in intention-revealing methods the tests call."
       }
     },

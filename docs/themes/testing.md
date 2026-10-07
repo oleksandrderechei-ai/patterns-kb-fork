@@ -14,21 +14,21 @@ A good test checks one behaviour and runs fast. These patterns shape the test bo
 ## The question
 <!--meta block=description-->
 
-A test that calls real collaborators is slow, and one that touches a database or payment service is also unreliable. Replace the collaborator and the test gets fast, but it can pass while the real thing is broken. The **system under test** is the code the test is about. A **test double** is a stand-in for a collaborator. A **fixture** is the data a test needs first. A **selector** addresses a screen element. These patterns keep the answer trustworthy.
+A test that calls real collaborators is slow, and one that touches a database or payment service is unreliable. Replace the collaborator and the test gets fast, but it can pass while the real thing is broken. The **system under test** is the code the test is about. A **test double** is a stand-in for a collaborator. A **fixture** is the data a test needs first. A **selector** addresses a screen element. These patterns keep tests fast, focused and honest.
 
 ## Explained
 <!--meta block=explain-->
 
-A test is a claim about one behaviour, and it should run fast and fail for one reason. Shape the body as arrange, act, assert, in that order, and build the data with a builder that has valid defaults. Replace slow or unreliable collaborators with a stand-in, and choose the cheapest kind that answers the question. A dummy fills a slot, a stub returns canned answers, a fake really works in a lighter form, a spy records calls to check afterwards, and a mock fails on an unexpected call. The more a stand-in knows about how the code calls it, the more the test breaks when you refactor, so prefer stubs and fakes to mocks. Every stand-in drifts from the real thing, so add a small contract test that checks its answers have the real service's shape.
+A test is a claim about one behaviour, and it should run fast and fail for one reason. Shape the body as arrange, act, assert, in that order, build the data with a builder that has valid defaults, and drive screens through a page object so tests never touch a selector. Replace slow or unreliable collaborators with a stand-in, and choose the cheapest kind that answers the question. A dummy fills a slot, a stub returns canned answers, a fake really works in a lighter form, a spy records calls to check afterwards, and a mock fails on an unexpected call. The more a stand-in knows about how the code calls it, the more the test breaks when you refactor, so prefer stubs and fakes to mocks. Every stand-in drifts from the real thing, so add a small contract test that checks its answers have the real service's shape.
 
-**Example.** A checkout test needs a payment service and a customer. The customer comes from anOrder().withTotal(50).build(), one readable line instead of 12 lines of set-up. The payment service is a stub that answers approved, so the test runs in 3 ms instead of 400 ms over the network. Another test checks the receipt email was sent exactly once, so it uses a spy and reads its recorded calls afterwards. The stub's canned answer can go stale if the provider changes its reply, so one contract test per day checks that the stub and the real service return the same shape.
+**Example.** A checkout test needs a payment service and an order. The order comes from anOrder().withTotal(50).build(), one readable line instead of a long set-up. The payment service is a stub that answers approved, so the test makes no call over the network. Another test checks the receipt email was sent exactly once, so it uses a spy and reads its recorded calls afterwards. If the provider renames a field in its reply, the stub test still passes, so a contract test run on each provider release catches it by comparing the stub's answer with the real service's shape.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-There are two axes. The first is the shape of the test: one arrange, one act and one assert, with data built by a builder and screens driven through a page object, so each test reads as a single claim. The second is how much a stand-in does, and the price is how much you can trust it. A dummy does nothing and a stub returns canned answers, so both are cheap and neither can tell you a call was wrong. A fake works for real in a lighter form, such as an in-memory store, and costs you a second implementation to keep right. A spy records calls and a mock checks them against a script, and both tie the test to how the code works rather than what it returns.
+There are two axes. The first is the shape of the test: one arrange, one act and one logical assertion, with data built by a builder and screens driven through a page object, so each test reads as a single claim. The second is how much a stand-in does, and the price is trust, upkeep or coupling to the code's internals. A dummy does nothing and a stub returns canned answers, so both are cheap and neither checks a call by default. A fake works for real in a lighter form, such as an in-memory store, and costs you a second implementation to keep right. A spy records calls and a mock checks them against a script, and both tie the test to how the code works rather than what it returns. These labels name roles, not library types, so a library mock can play any of the five.
 
-Every double drifts from the real thing as that thing changes. A contract test is the counter-move: a small separate set that checks the double's answers have the same shape as the real service's. Pick the cheapest double that lets the test answer its question.
+Every double drifts from the real thing as that thing changes. A contract test is the check: a small separate set that tests the double's answers have the same shape as the real service's. Past a point, more doubles test the doubles, so keep a few tests that run the real collaborator. Pick the cheapest double that lets the test answer its question.
 
 ## The tour
 <!--meta block=tour-->
@@ -47,11 +47,11 @@ A small class builds one domain object from a complete valid default and overrid
 
 ### [Dummy Object](../patterns/testing/dummy-object.md) {#tour-dummy-object}
 
-The simplest stand-in: an object passed because a signature demands one, with no expectation that it is read or called. It is never used, where a stub returns canned values and a mock verifies calls.
+The simplest stand-in: an object passed because a signature demands one, never read or called, where a stub returns canned values and a mock verifies calls.
 
 ### [Test Stub](../patterns/testing/test-stub.md) {#tour-test-stub}
 
-A stand-in that returns pre-arranged answers whenever the code calls it, regardless of arguments or how often. It verifies state, not behaviour, and the canned answers are exactly what can drift from the real service.
+A stand-in that returns pre-arranged answers whenever the code calls it, regardless of arguments or how often. The test then asserts on the result, not on the calls, and the canned answers are exactly what can drift from the real service.
 
 ### [Fake Object](../patterns/testing/fake-object.md) {#tour-fake-object}
 
@@ -63,15 +63,15 @@ The stand-in quietly records which methods were called, with what arguments, how
 
 ### [Mock Object](../patterns/testing/mock-object.md) {#tour-mock-object}
 
-It is programmed before the run with the calls it expects, and verify confirms they all happened. An unexpected call, a wrong argument or a missing call fails the test, so it checks behaviour up front where a spy records and checks later.
+It is programmed before the run with the calls it expects, and a verify call confirms they all happened. An unexpected call, a wrong argument or a missing call fails the test, so it checks behaviour up front where a spy records and checks later.
 
 ### [Contract Testing](../patterns/testing/contract-testing.md) {#tour-contract-testing}
 
-A separate small test set checks that calls against your double return the same shape as calls against the real service. It is what stops a stub or fake from passing while the provider has moved, and lets services deploy separately.
+A separate small test set checks that calls against your double return the same shape as calls against the real service, replayed in the provider's build. It catches a stub or fake whose answers no longer match the provider's shape, though not changed behaviour behind the same shape, and lets services deploy separately.
 
 ### [Page Object](../patterns/testing/page-object.md) {#tour-page-object}
 
-A class models one screen, owns its locators and exposes methods such as login and addToCart, so tests never touch a selector. Its methods keep the act step to one line.
+A class models one screen, owns its selectors and exposes methods such as login and addToCart, so tests never touch a selector. Its methods keep the act step to one line.
 
 <!-- tour:end -->
 
@@ -89,10 +89,11 @@ A class models one screen, owns its locators and exposes methods such as login a
 | You need the test to fail on an unexpected call | Expect up front | [Mock Object](../patterns/testing/mock-object.md) |
 | A stand-in keeps passing while the real service changed | Check it against the provider | [Contract Testing](../patterns/testing/contract-testing.md) |
 | Screen tests break on every selector change | Model the screen | [Page Object](../patterns/testing/page-object.md) |
+| Tests fail on refactors that change no behaviour | Check results, not calls | [Test Stub](../patterns/testing/test-stub.md) or [Fake Object](../patterns/testing/fake-object.md) |
 
 ## Related areas
 <!--meta block=siblings-->
 
-- [Continuous Validation](./continuous-validation.md) — Proving a release safe in production-like conditions, rather than shaping the unit test.
+- [Continuous Validation](./continuous-validation.md) — Proving a release safe in production-like conditions, and Golden Master, which pins a whole-output snapshot where this theme asserts specifics.
 - [Microservices Design](./microservices-design.md) — Where contract tests keep separately deployed services from drifting apart.
 - [Enterprise Application Patterns](./enterprise-application-patterns.md) — The repository seam that lets a fake stand in for storage.
