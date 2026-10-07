@@ -252,6 +252,7 @@ setInterval(() => withLeaderLock('sweeper', () => sweepOnce(db, notify)), 30_000
 - [Saga](./saga.md) — A stalled saga step is the canonical non-event: the sweep enforces the deadline the flow cannot enforce for itself
 - [Object Storage](../routing/object-storage.md) — Orphan collection across a row and its blob is the two-sided sweep, with a grace period long enough for a slow upload
 - [Design for Self-Healing](../../../principles/self-healing.md) — Sweeping heals the failures that nothing reported
+- [Competing Consumers](../../messaging/competing-consumers.md) — Reclaims the stale claim a crashed pool member left.
 
 **Alternative to**
 

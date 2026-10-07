@@ -241,6 +241,7 @@ res.status(result.status).json(result.body);
 - [Publish-Subscribe](./pubsub.md) — Each topic subscription needs it, because the broker redelivers messages.
 - [Message Queue](./message-queue.md) — The queue redelivers, so repeats must be harmless.
 - [Aggregator](./aggregator.md) — An aggregator that tallies messages double counts a redelivery unless its input is deduplicated.
+- [Fan-Out](./fan-out.md) — Fan-out multiplies redelivery, one branch per consumer.
 
 **Enables**
 

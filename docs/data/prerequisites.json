@@ -1017,7 +1017,7 @@
       "definition": "Scans on a clock for work that failed by not happening",
       "route": "/patterns/distributed/coordination/sweeper.html",
       "requires": [],
-      "related": ["conditional-write", "workflow-orchestration", "scheduling", "distributed-lock", "dead-letter-channel", "timeout-deadline", "leader-election", "saga", "object-storage", "self-healing"]
+      "related": ["conditional-write", "workflow-orchestration", "scheduling", "distributed-lock", "dead-letter-channel", "timeout-deadline", "leader-election", "saga", "object-storage", "self-healing", "competing-consumers"]
     },
     {
       "id": "container-orchestration",
@@ -1257,7 +1257,7 @@
       "definition": "A slow consumer signals upstream to slow down",
       "route": "/patterns/concurrency/backpressure.html",
       "requires": [],
-      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer", "thread-pool", "websocket", "splitter"]
+      "related": ["pipe-filter", "load-leveling", "rate-limiter", "autoscaling", "producer-consumer", "actor-model", "batching", "reactor", "load-shedding", "leaky-bucket", "channels", "ring-buffer", "polling-consumer", "thread-pool", "websocket", "splitter", "competing-consumers"]
     },
     {
       "id": "semaphore",
@@ -1481,7 +1481,7 @@
       "definition": "Many consumers pull from one channel to share load",
       "route": "/patterns/messaging/competing-consumers.html",
       "requires": ["message-queue"],
-      "related": ["load-leveling", "pubsub", "idempotency", "fan-out", "dead-letter-channel", "scale-out", "priority-queue", "sequential-convoy", "resequencer", "polling-consumer", "web-queue-worker", "producer-consumer", "splitter"]
+      "related": ["load-leveling", "pubsub", "idempotency", "fan-out", "dead-letter-channel", "scale-out", "priority-queue", "sequential-convoy", "resequencer", "polling-consumer", "web-queue-worker", "producer-consumer", "splitter", "sweeper", "backpressure"]
     },
     {
       "id": "sequential-convoy",
@@ -1497,7 +1497,7 @@
       "definition": "One message in, an independent copy to every consumer",
       "route": "/patterns/messaging/fan-out.html",
       "requires": [],
-      "related": ["competing-consumers", "content-based-router", "fan-in", "pubsub", "message-router", "wire-tap", "recipient-list", "websocket"]
+      "related": ["competing-consumers", "content-based-router", "fan-in", "pubsub", "message-router", "wire-tap", "recipient-list", "websocket", "idempotency"]
     },
     {
       "id": "dead-letter-channel",
@@ -1545,7 +1545,7 @@
       "definition": "The same request applied twice has the same effect as once",
       "route": "/patterns/messaging/idempotency.html",
       "requires": [],
-      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer", "fencing-token", "pubsub", "message-queue", "aggregator"]
+      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer", "fencing-token", "pubsub", "message-queue", "aggregator", "fan-out"]
     },
     {
       "id": "fan-in",

@@ -26,9 +26,9 @@ A dead-letter channel is a side queue that receives a message the consumer canno
 
 - **Unwatched queue.** A side queue nobody watches only hides the loss, so name an owner and alert on depth and oldest-message age.
 - **Blind replay.** Replaying before finding the cause fails again, so fix it first and make consumers safe to run twice.
-- **Early dumping.** With no retry limit, messages that would have worked next time land there; cap attempts and add a delay.
+- **Early dumping.** With no retry stage or a limit of one, messages that would have worked land there; cap attempts above one, add a delay.
 
-**Example.** One consumer reads 200 orders a minute. One order has a date it cannot parse. Retried in place forever, it blocks the queue, and after 1 hour 12,000 orders are waiting behind it. With a cap of 5 attempts, the bad order moves to the dead-letter queue after the fifth failure, a few seconds in, and the other 200 a minute keep flowing. The cost is the follow-up: an alert fires when the side queue holds anything older than 15 minutes, someone fixes the date handling, and replays that one order.
+**Example.** One consumer reads 200 orders a minute. One order has a date it cannot parse. Retried in place forever, it blocks the queue, and after 1 hour 12,000 orders are waiting behind it. With a cap of 5 attempts, the bad order moves to the dead-letter queue after the fifth failure, within seconds if retries have no delay between them, and the other 200 a minute keep flowing. The cost is the follow-up: an alert fires when the side queue holds anything older than 15 minutes, someone fixes the date handling, and replays that one order.
 
 ## How it works
 <!--meta block=structure-->
@@ -57,7 +57,7 @@ flowchart LR
 
 - **[Retry with Backoff](../distributed/resilience/retry-backoff.md), then dead-letter** — Exhaust a bounded retry policy first, so only failures that survive every attempt get diverted — the two patterns are almost always paired, one absorbing transient errors, the other catching what's left.
 - **Per-reason quarantine** — Route to separate dead-letter channels by failure category — schema violation, business rule, timeout — so each category gets its own remediation path instead of one undifferentiated pile.
-- **Broker-native redrive** — SQS redrive policies, RabbitMQ's `x-dead-letter-exchange`, and Kafka's dead-letter topic convention move a message automatically after N delivery attempts or a TTL expiry, with no application code involved.
+- **Broker-native redrive** — SQS redrive policies (after a receive count) and RabbitMQ's `x-dead-letter-exchange` (on rejection, TTL expiry, a full queue or a delivery limit) move a message automatically, with no application code involved. Kafka has no broker feature: its dead-letter topic is a convention that the consumer or Kafka Connect writes to.
 - **[Idempotent](./idempotency.md) replay** — Tag messages with an idempotency key before requeueing a fixed dead letter, so resubmitting it into the main channel can't cause a duplicate side effect if it was partially processed the first time.
 
 ## Trade-offs
@@ -67,8 +67,8 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Undeliverable messages stay visible and inspectable instead** of being silently dropped.
-- **Keeps the main channel flowing** — one poison message can't block every message behind it.
-- **Gives operators a concrete replay point**: fix the cause, then requeue with confidence.
+- **Keeps the main channel flowing** — with a bounded retry in front, one poison message can't block every message behind it (ordered groups aside).
+- **Gives operators a concrete replay point**: once the cause is fixed and consumers are idempotent, requeue the message.
 - **Concentrates failure signal in one place**, which makes alerting and metrics straightforward.
 
 ### Cons
@@ -80,6 +80,7 @@ flowchart LR
 - **Adds moving parts**: routing rules, a retention policy, and a remediation process someone must own.
 - **Replaying a message that was half processed** the first time re-applies its side effects — the replay path needs [idempotent](./idempotency.md) consumers before it is safe to use.
 - **Without a bounded** [retry](../distributed/resilience/retry-backoff.md) in front of it, the channel fills with messages that would have succeeded on the next attempt, and the real permanent failures are lost in the noise.
+- **A cap on receives counts every receive** — not only failures, so a visibility timeout shorter than the processing time can send healthy messages to the dead-letter channel.
 
 ## When to use it
 <!--meta block=usage-->
@@ -119,6 +120,8 @@ async function runTask(task: Task): Promise<void> {
     if (task.attempts >= MAX_ATTEMPTS) {
       // 'dead' is a parking state, not a delete: the row keeps its flow_id,
       // attempts and last error, so it is re-runnable once the cause is fixed.
+      // run park, transition, alert and outbox in one transaction, or make each idempotent,
+      // so a crash between them cannot leave a parked task on a live flow
       await tasks.park(task.id, { reason: String(err), at: new Date() });
       await flows.transition(task.flowId, "dead");
       await alerts.operator(`task ${task.id} dead on flow ${task.flowId}`);
@@ -126,7 +129,7 @@ async function runTask(task: Task): Promise<void> {
         await outbox.append(task.flowId, { type: "verification.failed" });
       }
     } else {
-      await tasks.retryLater(task.id);           // back to pending with backoff
+      await tasks.retryLater(task.id);           // back to pending with backoff; this bumps task.attempts, which the cap above reads
     }
   }
 }
@@ -137,7 +140,7 @@ async function runTask(task: Task): Promise<void> {
 
 - **Amazon SQS redrive policy** — A source queue names a dead-letter queue and a maxReceiveCount in its redrive policy; once a message has been received that many times without being deleted, SQS moves it to the DLQ automatically. A redrive-to-source action moves messages back after the cause is fixed. {#wild-sqs-redrive}
 - **RabbitMQ dead-letter exchanges** — The x-dead-letter-exchange argument (with an optional x-dead-letter-routing-key) republishes a message to a separate exchange when any of the four dead-letter triggers fires: rejection with requeue=false, message TTL expiry, exceeding the queue length limit, or a quorum queue returning it more times than its delivery limit. {#wild-rabbitmq-dlx}
-- **Kafka Connect** — Setting errors.tolerance=all with errors.deadletterqueue.topic.name routes records a connector cannot convert or process to a dead-letter topic instead of failing the task; errors.deadletterqueue.context.headers.enable adds headers describing the failure to each dead-lettered record. {#wild-kafka-connect-dlq}
+- **Kafka Connect** — Setting `errors.tolerance=all` with `errors.deadletterqueue.topic.name` routes a sink connector's records that fail conversion or transformation to a dead-letter topic instead of failing the task; `errors.deadletterqueue.context.headers.enable` adds headers describing the failure to each dead-lettered record. Source connectors have no dead-letter topic. {#wild-kafka-connect-dlq}
 
 ## In production
 <!--meta block=production-->
@@ -145,23 +148,23 @@ async function runTask(task: Task): Promise<void> {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Max delivery attempts** — The receive or redelivery count after which a message is diverted to the dead-letter channel instead of being retried again (SQS maxReceiveCount, broker delivery-limit).
-- **Dead-letter retention** — How long a dead letter is kept before the broker deletes it (SQS MessageRetentionPeriod, RabbitMQ x-message-ttl). On brokers that keep the original enqueue time, SQS included, the clock counts from when the message first entered the source queue, not from when it arrived here.
-- **Redrive / replay policy** — The mechanism and batch size for moving messages back to the source once the cause is fixed (SQS redrive-to-source).
-- **Per-reason routing** — Whether all failures land in one channel or in separate channels by category — schema violation, business rule, timeout — each with its own remediation path.
+- **Max delivery attempts** — The receive or redelivery count after which a message is diverted to the dead-letter channel instead of being retried again (SQS maxReceiveCount, broker delivery-limit). There is no universal default: pick a count whose retries, with the delay between them, outlast the transient outages you expect, so only persistent failures reach the channel.
+- **Dead-letter retention** — How long a dead letter is kept before the broker deletes it (SQS MessageRetentionPeriod, RabbitMQ x-message-ttl). On brokers that keep the original enqueue time (SQS standard queues do; FIFO queues restart the clock), the clock counts from when the message first entered the source queue, not from when it arrived here.
+- **Redrive / replay policy** — The mechanism and batch size for moving messages back to the source once the cause is fixed (SQS redrive-to-source). Size the batch and rate to leave headroom over live traffic, and ramp up while watching replay success rate and consumer lag.
+- **Per-reason routing** — Whether all failures land in one channel or in separate channels by category — schema violation, business rule, timeout — each with its own remediation path. Each extra channel needs its own alert and owner, so split only where remediation differs.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Dead-letter depth** — Message count in the channel — the headline health signal; sustained growth means failures are accumulating faster than they are triaged.
 - **Age of oldest dead letter** — How long the oldest quarantined message has waited — a proxy for triage backlog and for retention running out.
-- **Dead-letter arrival rate** — Messages entering the channel per interval; a sharp spike usually names a systemic cause — a bad deploy, a schema change, a downstream outage.
+- **Dead-letter arrival rate** — Messages entering the channel per interval; a sharp spike points to a systemic cause — a bad deploy, a schema change, a downstream outage.
 - **Replay success rate** — How many redriven messages complete on the second pass; a low rate says the root cause was not actually fixed.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **Unwatched channel** — Dead letters nobody monitors accumulate silently and are deleted when retention expires — data loss that surfaces only when someone reports a missing record.
+- **Unwatched channel** — Dead letters nobody monitors accumulate silently and are deleted where a retention period or TTL expires — data loss that surfaces only when someone reports a missing record.
 - **Retention shorter than triage** — A retention window below the realistic time-to-fix deletes quarantined messages before the cause is diagnosed and they can be replayed.
 - **Blind replay reproduces failure** — Requeueing without root-cause analysis sends the same message straight back through the same failure and into the dead-letter channel again.
 - **Duplicate side effects on replay** — Replaying a message that was partially processed the first time re-applies its side effects unless the consumer is idempotent.

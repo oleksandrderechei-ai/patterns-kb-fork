@@ -96,5 +96,6 @@ Recovery deserves its own plan, because that is when the herd is largest and the
 - [Distributed Lock](../patterns/distributed/coordination/distributed-lock.md) — A popular lock freeing wakes every waiter at once and hammers the lock store
 - [Scheduling](../patterns/concurrency/scheduling.md) — Shared schedules such as midnight release the crowd at once
 - [WebSocket](../patterns/messaging/websocket.md) — A deploy or balancer reset makes every dropped socket reconnect in the same instant.
+- [Fan-Out](../patterns/messaging/fan-out.md) — One publish to many branches lands on every consumer at once.
 
 <!-- relationships:end -->

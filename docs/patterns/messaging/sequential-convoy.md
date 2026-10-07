@@ -86,9 +86,9 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - **Ordering stops being a scaling ceiling**. Throughput grows with the number of active groups, which for per-entity keys is effectively unbounded.
-- **Whole classes of defect never get written**. No two workers touch one entity at once, so the race conditions, out-of-order state mutations and reordering buffers that ordering bugs usually attract simply do not arise.
+- **Whole classes of defect never get written**. No two workers touch one entity at once while the lock holds, so races, out-of-order updates and reordering buffers do not occur. An expired lock redelivers mid-message, so handlers still need idempotence.
 - **Producers stay ignorant of consumers**. They stamp a key and enqueue; consumer count, placement and identity change underneath without them.
-- **The blast radius of a stuck message** is one group rather than the whole queue.
+- **The blast radius of a stuck message** is one group rather than the whole queue. With a partitioned log it is the partition, so every key sharing it stalls too.
 
 ### Cons
 <!--meta polarity=con-->
@@ -98,7 +98,7 @@ sequenceDiagram
 - **Lock duration is a two-sided mistake**. Too short redelivers work a slow handler was still doing; too long freezes a group behind a consumer that has already died.
 - **A wrong key silently corrupts a group**. Nothing rejects a misrouted message, so producer-side key assignment needs validating and, where the consequence is severe, checking again at the consumer.
 - **Operations gain a second dimension**. You now watch how many groups are active and how deep each one is, not just total queue depth — and dead-lettered groups need their own investigate-and-replay workflow.
-- **Cost tracks active groups**. Each locked group is a concurrent consumer, so a spike in distinct keys is a spike in compute even when total volume has not moved.
+- **Cost tracks active groups**. Each locked group occupies a handler slot, so a spike in distinct keys is a spike in compute even when total volume has not moved.
 - **Every group depends on one broker**, whose availability is the ceiling on the guarantee the pattern advertises.
 
 ## When to use it
@@ -116,14 +116,14 @@ sequenceDiagram
 <!--meta polarity=avoid-->
 
 - **Ordering does not matter**. Competing consumers gives the same throughput with none of the locking, monitoring or poison-message coupling.
-- **Volume is extreme** — millions of messages a minute — and the serial-per-group constraint caps you below the target.
+- **One key is hot** — One hot key exceeds the per-group ceiling, one message per handler latency. Volume alone is not the limit, because throughput grows with the number of active groups.
 - **The natural key yields very few groups**, because parallelism is then bounded by that count no matter how many consumers you run.
 - **The handlers can be made commutative** or idempotent instead. Making order irrelevant is a stronger result than enforcing it.
 
 ## Code sketch
 <!--meta block=sketch-->
 
-```typescript summary="TypeScript — accept a group, hold it, renew the lease while handling"
+```typescript summary="TypeScript — accept a group, hold it, renew the lease on a heartbeat while handling"
 type Message = { categoryKey: string; sequence: number; body: unknown }
 interface GroupLease {
   next(): Promise<Message | null>   // strictly in enqueue order
@@ -136,21 +136,26 @@ interface GroupLease {
 interface SessionBroker { acceptAnyGroup(): Promise<GroupLease | null> }
 const MAX_ATTEMPTS = 5
 
-async function runOneGroup(broker: SessionBroker, handle: (m: Message) => Promise<void>) {
+async function runOneGroup(broker: SessionBroker, handle: (m: Message) => Promise<void>, heartbeatMs: number) {
   const lease = await broker.acceptAnyGroup()
   if (!lease) return
   try {
     for (let message = await lease.next(); message; message = await lease.next()) {
-      // Renew before the slow part, not after: an expired lease hands this
+      // One renew cannot cover a handler slower than the lease: expiry hands this
       // group to another consumer and the message is delivered twice.
-      await lease.renew()
-      for (let attempt = 1; ; attempt++) {
-        try { await handle(message); await lease.complete(message); break }
-        catch (err) {
-          // Nothing behind this message can move until it leaves: bound the retries.
-          if (attempt >= MAX_ATTEMPTS) { await lease.deadLetter(message, String(err)); break }
+      // Renew on a heartbeat while handling.
+      const beat = setInterval(() => { void lease.renew() }, heartbeatMs)
+      try {
+        for (let attempt = 1; ; attempt++) {
+          try { await handle(message); await lease.complete(message); break }
+          catch (err) {
+            // Nothing behind this message can move until it leaves: bound the retries.
+            // Moving on skips this message and breaks the group's order: park the group
+            // and page someone (production-check-3), unless later messages tolerate the gap.
+            if (attempt >= MAX_ATTEMPTS) { await lease.deadLetter(message, String(err)); break }
+          }
         }
-      }
+      } finally { clearInterval(beat) }
     }
   } finally { await lease.close() }
 }
@@ -170,7 +175,7 @@ async function runOneGroup(broker: SessionBroker, handle: (m: Message) => Promis
 <!--meta polarity=knob-->
 
 - **Category key** — The unit of both ordering and parallelism. Too coarse caps concurrency at the number of keys; too fine orders what never needed it.
-- **Session lock duration** — Set it above the worst expected handler time, and renew mid-handler for long operations.
+- **Session lock duration** — Set it above p99 handler time, and renew mid-handler for long operations.
 - **Max concurrent sessions per consumer** — Caps how many groups one instance holds at once, which is what bounds its memory and its connection use.
 - **Max delivery attempts** — How long a failing message may block its group before it is dead-lettered.
 
@@ -185,9 +190,9 @@ async function runOneGroup(broker: SessionBroker, handle: (m: Message) => Promis
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **One group stalls, the rest look fine** — A poison message holds its lane while aggregate metrics stay green — this is why per-session depth is the signal that matters.
+- **One group stalls, the rest look fine** — A poison message holds its lane while aggregate metrics stay green.
 - **Lock expiry storms under load** — Handlers slow down, locks start expiring, redelivered messages add load, and handlers slow further.
-- **Session count spike becomes a cost spike** — Each active group is a concurrent consumer, so a burst of distinct keys multiplies compute even at flat message volume.
+- **Session count spike becomes a cost spike** — Each active group occupies a handler slot, so a burst of distinct keys multiplies compute even at flat message volume.
 - **Duplicate application after a redelivery** — An expired lock hands the group on mid-message, so a non-idempotent handler applies the same change twice.
 
 ### Readiness checklist
@@ -234,8 +239,8 @@ async function runOneGroup(broker: SessionBroker, handle: (m: Message) => Promis
 
 **Prevents**
 
-- [Race Condition](../../hazards/race-condition.md) — One consumer per group at a time removes the concurrent-update race entirely
-- [Head-of-Line Blocking](../../hazards/head-of-line-blocking.md) — The convoy is the answer to an ordered lane whose head can block everything.
+- [Head-of-Line Blocking](../../hazards/head-of-line-blocking.md) — Confines head-of-line blocking to one key's lane instead of the whole queue; inside the lane it remains.
+- [Race Condition](../../hazards/race-condition.md) — One consumer per group at a time removes the concurrent-update race while the lock holds; an expired lock redelivers mid-message.
 
 **Exposed to**
 

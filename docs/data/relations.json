@@ -4350,13 +4350,6 @@
       "note_b": "Remove the locks entirely and the hold-and-wait precondition disappears"
     },
     {
-      "a": "sequential-convoy",
-      "verb": "prevents-hazard",
-      "b": "race-condition",
-      "note_a": "One consumer per group at a time removes the concurrent-update race entirely",
-      "note_b": "Serialize per entity rather than detecting the collision afterwards"
-    },
-    {
       "a": "copy-on-write",
       "verb": "prevents-hazard",
       "b": "race-condition",
@@ -10650,13 +10643,6 @@
       "note_b": "A cold cache is one trigger and one sustaining effect among several."
     },
     {
-      "a": "sequential-convoy",
-      "verb": "prevents-hazard",
-      "b": "head-of-line-blocking",
-      "note_a": "The convoy is the answer to an ordered lane whose head can block everything.",
-      "note_b": "Ordering only within a keyed group means a stuck item blocks only its own group."
-    },
-    {
       "a": "priority-queue",
       "verb": "prevents-hazard",
       "b": "head-of-line-blocking",
@@ -13628,6 +13614,48 @@
       "b": "splitter",
       "note_a": "A split is a common source of the many small tasks a pool drains.",
       "note_b": "Per-split parallelism runs the fragments on a fixed worker pool."
+    },
+    {
+      "a": "sequential-convoy",
+      "verb": "prevents-hazard",
+      "b": "head-of-line-blocking",
+      "note_a": "Confines head-of-line blocking to one key's lane instead of the whole queue; inside the lane it remains.",
+      "note_b": "Ordering only within a keyed group means a stuck item blocks only its own group."
+    },
+    {
+      "a": "sequential-convoy",
+      "verb": "prevents-hazard",
+      "b": "race-condition",
+      "note_a": "One consumer per group at a time removes the concurrent-update race while the lock holds; an expired lock redelivers mid-message.",
+      "note_b": "Serialize per entity rather than detecting the collision afterwards"
+    },
+    {
+      "a": "sweeper",
+      "verb": "combines-with",
+      "b": "competing-consumers",
+      "note_a": "Reclaims the stale claim a crashed pool member left.",
+      "note_b": "When the queue is a table, no broker returns an expired claim; a sweeper does."
+    },
+    {
+      "a": "backpressure",
+      "verb": "combines-with",
+      "b": "competing-consumers",
+      "note_a": "Feeds the pool a bounded stream.",
+      "note_b": "A bigger pool raises the drain rate; backpressure still caps intake when the pool cannot keep up."
+    },
+    {
+      "a": "fan-out",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "Can fall into thundering herd when one publish hits every consumer at the same instant.",
+      "note_b": "One publish to many branches lands on every consumer at once."
+    },
+    {
+      "a": "fan-out",
+      "verb": "combines-with",
+      "b": "idempotency",
+      "note_a": "Each copy is delivered at least once, so every branch must tolerate a repeat.",
+      "note_b": "Fan-out multiplies redelivery, one branch per consumer."
     }
   ],
   "group_order": {
