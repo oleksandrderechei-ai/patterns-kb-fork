@@ -90,5 +90,6 @@ Some coupling is the point. A checkout that needs a price must know the pricing 
 
 - [Shotgun Surgery](../hazards/shotgun-surgery.md) — Draws module boundaries where changes stay inside them
 - [Spaghetti Code](../hazards/spaghetti-code.md) — Clear boundaries stop any part reaching into any other
+- [Big Ball of Mud](../hazards/big-ball-of-mud.md) — Low coupling keeps a change from spreading into a ball of mud
 
 <!-- relationships:end -->

@@ -16,7 +16,7 @@ Control flow too tangled to follow — every branch, jump, and shared variable d
 ## What it is
 <!--meta block=description-->
 
-Spaghetti code is a codebase where control flow has no discernible shape. Functions call each other in cycles, conditions nest deep, and state is mutated from a dozen unrelated places, so understanding one click means tracing the whole call graph. You recognise it by hundreds-of-lines functions, global variables with no owner, copy-pasted logic patched differently in each copy, and a change that breaks a test three modules away. It is compounding small shortcuts, not one mistake.
+Spaghetti code is a codebase where control flow has no discernible shape. Functions call each other in cycles, conditions nest deep, and state is mutated from a dozen unrelated places, so understanding one button click means tracing the whole call graph. You recognise it by functions hundreds of lines long, global variables with no owner, copy-pasted logic patched differently in each copy, and a change that breaks a test three modules away.
 
 ## Explained
 <!--meta block=explain-->
@@ -51,19 +51,19 @@ flowchart TB
 ## Why it hurts
 <!--meta block=cost-->
 
-- **Unreadable causality.** Understanding one behavior requires holding the whole program in your head; nobody can, so mental models go stale and wrong.
+- **Unreadable causality.** Understanding one behavior requires holding the whole program in your head; nobody can, so mental models go stale.
 - **Change becomes unsafe.** A local edit has non-local effects through shared state and hidden call paths, so every fix risks a regression somewhere unrelated.
-- **Tests resist writing.** Untangled logic can't be isolated, so it can't be unit tested — coverage stays low and confidence stays low with it.
-- **Onboarding cost explodes.** New engineers can't reason locally; every task starts with archaeology instead of implementation.
+- **Tests resist writing.** Tangled logic is hard to isolate, so it is hard to unit test; coverage and confidence stay low.
+- **Onboarding gets slow.** New engineers can't reason locally; every task starts with archaeology instead of implementation.
 - **Bugs hide in the gaps.** Duplicated, slightly-diverged copies of the same logic drift out of sync, so the "same" operation behaves differently depending on which copy ran.
-- **It compounds.** Left alone, spaghetti code is the on-ramp to [Big Ball of Mud](./big-ball-of-mud.md) — the whole-system version of the same problem.
+- **It compounds.** Left alone, it can grow into [Big Ball of Mud](./big-ball-of-mud.md), the whole-system version of the same problem.
 
 ## How to avoid it
 <!--meta block=mitigation-->
 
 Start with the state, not the control flow. Take one variable that far-apart code both reads and writes, and make it something passed in and returned out instead — the writes then show up in the signatures, and the trail a reader has to follow shrinks to what the function was handed. Do it to the strand you are already working on.
 
-Then fix a direction before you move anything else. Name the tiers you already have — entry point, rules, storage — and allow calls downward only; the cycle you cannot remove marks the module holding two concerns, so split that one first. Watch how many files a typical change touches, because that number tells you whether the flow untangled or just moved.
+Then fix a direction before you move anything else. Name the tiers you already have — entry point, rules, storage — and allow calls downward only; the cycle you cannot remove marks the module holding two concerns, so split that one first. Watch how many files a typical change touches, because that number tells you whether the flow untangled or just moved. Take the number from version-control history: files per merged change over the last several changes. It is a proxy, so confirm with how often changes cause regressions. To pick the first strand, list the cycles your dependency check reports and start with the module in the most cycles that also changes most. Stop when a typical change stays inside one tier.
 
 The direction holds only while something checks it. Make the rule executable as a dependency check that fails a merge, and change what review asks from "does this work" to "does this call downward", because a convention that lives in people's heads is renegotiated under every deadline. Then watch for the tier that only forwards: a layer that makes no decision is a file you must open on every change and learn nothing from, and folding it back is cheaper than defending it.
 
@@ -77,6 +77,11 @@ The direction holds only while something checks it. Make the rule executable as 
 **Combines with**
 
 - [Premature Optimization](./premature-optimization.md) — Hand-tuned shortcuts added "to be safe" tangle control flow further
+- [Big Ball of Mud](./big-ball-of-mud.md) — Left alone, tangled control flow spreads until no boundary in the system holds
+
+**Often confused with**
+
+- [God Object](./god-object.md) — Tangled control flow in any code, not one class holding many jobs
 
 **Mitigated by**
 

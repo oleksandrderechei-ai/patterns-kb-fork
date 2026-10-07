@@ -2044,12 +2044,20 @@
       "related": ["ai-agent", "agent-memory", "claim-check", "rag", "external-configuration-store"]
     },
     {
+      "id": "god-object",
+      "label": "God Object",
+      "definition": "One class knows and does almost everything",
+      "route": "/hazards/god-object.html",
+      "requires": [],
+      "related": ["spaghetti-code", "big-ball-of-mud"]
+    },
+    {
       "id": "spaghetti-code",
       "label": "Spaghetti Code",
       "definition": "Control flow too tangled to follow",
       "route": "/hazards/spaghetti-code.html",
       "requires": [],
-      "related": ["premature-optimization"]
+      "related": ["premature-optimization", "big-ball-of-mud", "god-object"]
     },
     {
       "id": "big-ball-of-mud",
@@ -2057,7 +2065,7 @@
       "definition": "No discernible architecture at all",
       "route": "/hazards/big-ball-of-mud.html",
       "requires": [],
-      "related": ["distributed-monolith", "lava-flow"]
+      "related": ["distributed-monolith", "lava-flow", "spaghetti-code", "god-object"]
     },
     {
       "id": "distributed-monolith",

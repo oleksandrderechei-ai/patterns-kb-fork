@@ -21,7 +21,7 @@ A **god object** is one class that knows about most of the system and does most 
 ## Explained
 <!--meta block=explain-->
 
-A god object is one class that knows about most of the system and does most of the work, such as validating input, talking to the database, applying business rules and coordinating every other class. It usually starts as an innocent Manager or Context class, and it grows because adding one more method to it is always quicker than designing a new class. You spot it by its gravity: most classes import it, its file is the longest in the repository, merge conflicts cluster there, and testing it means faking half the system. Any change can break something unrelated. Stop it growing first, so every new job gets its own class. Then move one job out at a time, choosing the cut from version history, since methods that change in the same commits belong together. Move the state with the job, because a stateless helper leaves every caller coupled as before. The old class may remain as a forwarding [facade](../patterns/gof/structural/facade.md).
+A god object is one class that knows about most of the system and does most of the work: validating input, talking to the database, applying business rules and coordinating every other class. It usually starts as an innocent Manager or Context class and grows because adding one more method is quicker than designing a new class. Stop it growing first, so every new job gets its own class. Then move one job out at a time, choosing the cut from version history, since methods that usually change in the same commits belong together; check the commits are not one large feature that touched many jobs. Move the state with the job, because a stateless helper leaves every caller coupled as before. The old class may remain as a forwarding [facade](../patterns/gof/structural/facade.md).
 
 - **Two entry points.** The facade doubles the surface while it lives, so put a removal date on it.
 - **Caller migration.** Every caller must move to the new class; do it one job at a time.
@@ -41,29 +41,30 @@ flowchart TB
 ```
 
 - No owner enforces a single responsibility per class, so the path of least resistance is always "add it here."
-- A class becomes the de facto integration point — every subsystem already talks to it, so wiring a new one through it is one line instead of a new interface.
+- A class becomes the de facto integration point: every subsystem already talks to it, so wiring a new one through it is one line instead of a new interface.
 - Deadline pressure rewards the fastest change, and extending an existing class beats designing a new collaborator and its tests.
 - Missing or weak module boundaries mean nothing stops a class from reaching into unrelated concerns.
 - Without [dependency injection](../patterns/gof/extra/dependency-injection.md), code reaches for a convenient global or singleton instead of taking a narrow, explicit dependency.
+- Growth feeds itself: the class that already holds the data and the callers is where the next feature seems to belong.
 
 ## Why it hurts
 <!--meta block=cost-->
 
-- Any change risks breaking unrelated behavior, because everything is coupled through the one class.
+- A change to one job can break another job, because everything is coupled through the one class.
 - Unit testing requires mocking a huge dependency graph, so tests are slow, brittle, or simply not written.
 - Parallel work collides constantly — two developers touching different features both edit the same file.
 - No one can hold the whole class in their head, so changes are made by cautious imitation rather than understanding.
 - It can't be reused or extracted piecemeal — replacing one responsibility means untangling all of them first.
-- Onboarding stalls: new engineers meet the god object early and it becomes the map of the whole system, for better and worse.
+- Onboarding stalls: new engineers meet the god object early and take it for the map of the whole system, so its tangles are copied into new code.
 
 ## How to avoid it
 <!--meta block=mitigation-->
 
-Stop the class growing before you try to shrink it. Every new responsibility gets its own class, even on the day that adding one more method to the big one would take a minute — that minute is what built it. Then move one existing job out at a time, starting with the one whose tests you most want back.
+Stop the class growing before you try to shrink it. Every new responsibility gets its own class, even when adding one more method to the big one would take a minute. Before each extraction, write tests that pin the current behavior, so a move that changes it shows up. Then move one existing job out at a time, starting with the one whose tests you most want back.
 
-Choose the cut from history rather than from the file. Methods that keep changing in the same commits are one responsibility, and that clustering still tells you the truth long after the class's own names stopped meaning anything. Hand the extracted class exactly the collaborators it needs and nothing wider, so the reach that grew the original is not available to the new one.
+Choose the cut from history rather than from the file. Methods that keep changing in the same commits are usually one responsibility, and that clustering still holds long after the class's own names stopped meaning anything; check that the commits are not one large feature that touched many jobs. Hand the extracted class exactly the collaborators it needs and nothing wider, so the reach that grew the original is not available to the new one.
 
-Expect the old class to survive as a facade that forwards to the new ones. That is fine while it stays a facade; the day it holds state or makes a decision again, it is the same class with better manners. Give each extracted responsibility a named owner and put a removal date on the facade, because a shim nobody is accountable for is where the next one starts.
+Expect the old class to survive as a facade that forwards to the new ones. That is fine while it stays a facade: review it against the rule that it has no fields and no branches, because once it holds state or makes a decision it is the same class again. Give each extracted responsibility a named owner and put a removal date on the facade, because a shim nobody is accountable for is where the next one starts.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -71,6 +72,11 @@ Expect the old class to survive as a facade that forwards to the new ones. That 
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Often confused with**
+
+- [Spaghetti Code](./spaghetti-code.md) — One class holding many unrelated jobs, whatever the control flow
+- [Big Ball of Mud](./big-ball-of-mud.md) — One class that does most of the work, inside a system that may be otherwise tidy
 
 **Mitigated by**
 

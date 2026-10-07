@@ -13,8 +13,8 @@ source: docs/data/relations.json
 # Prerequisites
 
 A **prerequisite record** is one page with the pages to read before it and the pages to
-read beside it. There are 333 records: 44 of them name something to read first, through 51
-requires edges, and 915 pairs of pages are related both ways.
+read beside it. There are 334 records: 44 of them name something to read first, through 51
+requires edges, and 918 pairs of pages are related both ways.
 
 Everything here is built from [`relations.json`](../data/relations.json), through its
 second form [`prerequisites.json`](../data/prerequisites.json). **Read first** lists a
@@ -288,8 +288,9 @@ record reached.
 
 | Page | What it is | Read first | Related |
 | --- | --- | --- | --- |
-| [Spaghetti Code](../hazards/spaghetti-code.md) | Control flow too tangled to follow | — | [Premature Optimization](../hazards/premature-optimization.md) |
-| [Big Ball of Mud](../hazards/big-ball-of-mud.md) | No discernible architecture at all | — | [Distributed Monolith](../hazards/distributed-monolith.md), [Lava Flow](../hazards/lava-flow.md) |
+| [God Object](../hazards/god-object.md) | One class knows and does almost everything | — | [Spaghetti Code](../hazards/spaghetti-code.md), [Big Ball of Mud](../hazards/big-ball-of-mud.md) |
+| [Spaghetti Code](../hazards/spaghetti-code.md) | Control flow too tangled to follow | — | [Premature Optimization](../hazards/premature-optimization.md), [Big Ball of Mud](../hazards/big-ball-of-mud.md), [God Object](../hazards/god-object.md) |
+| [Big Ball of Mud](../hazards/big-ball-of-mud.md) | No discernible architecture at all | — | [Distributed Monolith](../hazards/distributed-monolith.md), [Lava Flow](../hazards/lava-flow.md), [Spaghetti Code](../hazards/spaghetti-code.md), [God Object](../hazards/god-object.md) |
 | [Distributed Monolith](../hazards/distributed-monolith.md) | Separate services that still have to be released together | — | [Big Ball of Mud](../hazards/big-ball-of-mud.md) |
 | [Anemic Domain Model](../hazards/anemic-domain-model.md) | Data objects with no real behavior of their own | — | [Transaction Script](../patterns/enterprise/transaction-script.md), [Primitive Obsession](../hazards/primitive-obsession.md) |
 | [Boat Anchor](../hazards/boat-anchor.md) | Dead code or hardware kept around unused | — | [Lava Flow](../hazards/lava-flow.md) |
