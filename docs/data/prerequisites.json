@@ -641,7 +641,7 @@
       "definition": "A token grants temporary, limited access to a resource directly",
       "route": "/patterns/distributed/routing/valet-key.html",
       "requires": [],
-      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check"]
+      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing"]
     },
     {
       "id": "api-routing",
@@ -1937,7 +1937,7 @@
       "definition": "Bound what an autonomous agent can reach, on the filesystem and on the network",
       "route": "/patterns/security/agent-sandboxing.html",
       "requires": [],
-      "related": ["ai-agent", "acp"]
+      "related": ["ai-agent", "acp", "defense-in-depth", "valet-key"]
     },
     {
       "id": "container-presentational",
@@ -2577,7 +2577,7 @@
       "definition": "Independent layers of protection, so one failed or bypassed control is not a breach",
       "route": "/principles/defense-in-depth.html",
       "requires": [],
-      "related": ["multi-tenancy", "redundancy", "identity-as-perimeter", "single-access-point", "least-privilege", "intercepting-validator"]
+      "related": ["multi-tenancy", "redundancy", "identity-as-perimeter", "single-access-point", "least-privilege", "intercepting-validator", "agent-sandboxing"]
     },
     {
       "id": "conways-law",

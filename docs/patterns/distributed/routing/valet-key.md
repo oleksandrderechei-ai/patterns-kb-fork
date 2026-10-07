@@ -226,6 +226,7 @@ const uploadUrl = `https://blobs.example.com/${resource}?exp=${key.expiresAt}&ac
 - [Object Storage](./object-storage.md) — Grants a client temporary, direct access to a single object in the store.
 - [Least Privilege](../../security/least-privilege.md) — A scoped, expiring key is least privilege in action
 - [Claim Check](../../messaging/claim-check.md) — A pre-signed URL is a claim check that carries its own access grant.
+- [Agent Sandboxing](../../security/agent-sandboxing.md) — The agent is a client that should hold only a short-lived token.
 
 **Demonstrated by**
 

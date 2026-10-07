@@ -13880,6 +13880,20 @@
       "b": "quarantine",
       "note_a": "A built image from a public source enters through quarantine before anything pulls it.",
       "note_b": "Images are the commonest artifact quarantine holds; the immutable image is the unit it scans and republishes."
+    },
+    {
+      "a": "agent-sandboxing",
+      "verb": "combines-with",
+      "b": "defense-in-depth",
+      "note_a": "One independent layer; the human gate on irreversible actions is the other.",
+      "note_b": "An agent boundary is a worked layer for a non-human actor."
+    },
+    {
+      "a": "valet-key",
+      "verb": "combines-with",
+      "b": "agent-sandboxing",
+      "note_a": "The agent is a client that should hold only a short-lived token.",
+      "note_b": "Source of the task-scoped token that bounds a leak."
     }
   ],
   "group_order": {
