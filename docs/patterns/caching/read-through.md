@@ -27,12 +27,12 @@ A read-through cache loads missing values itself. You call one get(key): on a hi
 - **Reads only.** Pair it with a write rule or the cache goes stale.
 - **Coupled to the loader.** The cache must be wired to a loader function or data source, tighter than a plain key-value store.
 
-**Example.** User 42 is read 7,500 times a second, and loading it from the database takes 40 ms. When its entry expires, 7,500 x 0.04 = 300 readers arrive during the load. A plain cache sends 300 identical queries. A read-through cache with waiting sends 1 and hands the result to all 300. The cost is that all 300 wait the full 40 ms. If the database stalls, they wait for the loader timeout, say 2 s, and then fail together, so reloading the key at second 290 of a 300 s TTL keeps readers from ever meeting that wait.
+**Example.** User 42 is read 7,500 times a second, and loading it from the database takes 40 ms. When its entry expires, 7,500 x 0.04 = 300 readers arrive during the load. A plain cache sends 300 identical queries. A read-through cache with waiting sends 1 and hands the result to all 300. The cost is a wait: readers wait up to 40 ms, about 20 ms on average if they arrive evenly. If the database stalls, they wait for the loader timeout, say 2 s, and then fail together. Reloading the key at second 290 of a 300 s TTL lets most readers skip the wait, but a stalled store fails that reload too.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Who fills the cache? The cache does, through the loader wired into it. The application makes one call and never branches — steps 3–6 all happen inside the box, which is what lets a thousand simultaneous misses for one key share a single trip to the store."
+```mermaid caption="Who fills the cache? The cache does, through the loader wired into it. The application makes one call and never branches. Steps 3–6 all happen inside the box, so when the cache coalesces loads, a thousand simultaneous misses for one key share a single trip to the store."
 flowchart LR
     App["Application code"]:::ext
     subgraph Owned["One get() — the cache owns the fill"]
@@ -76,7 +76,7 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Synchronous load** — The cache blocks the caller until the loader returns. Simplest to reason about, but every concurrent caller on a miss waits for the same round trip.
-- **[Request coalescing](../distributed/resilience/request-coalescing.md) / single-flight** — Concurrent misses for the same key share one in-flight load instead of each triggering its own call — the first caller loads, the rest await that same promise.
+- **[Request coalescing](../distributed/resilience/request-coalescing.md) / single-flight** — Concurrent misses for the same key share one in-flight load instead of each triggering its own call. The first caller loads; the rest await that same promise. A failed or timed-out load fails every waiter, so decide whether to cache the failure briefly.
 - **Negative caching** — Cache a short-lived "not found" marker for missing keys, so a flood of lookups for absent data doesn't repeatedly round-trip the store.
 - **[Refresh-Ahead](./refresh-ahead.md)** — Instead of waiting for a miss, proactively reload a [hot key](../../hazards/hot-key.md) shortly before its entry expires, so the read-through load path stays cold for busy keys.
 - **Multi-level read-through** — A local [in-process cache](./in-process-cache.md) is itself read-through to a shared remote cache, which is read-through to the store — each tier only loads from the one behind it.
@@ -96,10 +96,11 @@ sequenceDiagram
 <!--meta polarity=con-->
 
 - **Needs a cache** that supports a bound loader function — harder to bolt onto an existing dumb cache.
-- **Cold reads pay a load penalty** — a cold cache or an evicted hot key still pays a synchronous load penalty on the next read.
+- **Cold reads are slow** — a cold cache or an evicted hot key makes the next read wait for the full synchronous load, 40 ms in the explain example.
 - **Ties the cache to one backing store's shape**, which is awkward when different callers want different fallback logic.
 - **Solves reads only** — writes still need a paired strategy or the cache goes stale silently.
-- **The load happens inside** `get()`, so nothing at the call site shows that a read reached the store — a latency regression looks like a slow cache until you read the cache's own hit and load statistics.
+- **The load happens inside** `get()`, so nothing at the call site shows a read reached the store. A latency regression looks like a slow cache until you read the cache's own hit and load statistics.
+- **Single-flight is per process**, so a fleet of N instances sends up to N loads per expiry; reaching one load needs a shared tier or a lock.
 
 ## When to use it
 <!--meta block=usage-->
@@ -129,6 +130,7 @@ class ReadThroughCache<K, V> {
   constructor(
     private readonly loader: (key: K) => Promise<V>,
     private readonly ttlMs = 30_000,
+    private readonly timeoutMs = 2_000,
   ) {}
 
   async get(key: K): Promise<V> {
@@ -138,12 +140,20 @@ class ReadThroughCache<K, V> {
     const pending = this.inFlight.get(key);
     if (pending) return pending;                 // coalesce concurrent misses
 
-    const load = this.loader(key).then((value) => {
-      this.entries.set(key, value);
-      this.inFlight.delete(key);
-      setTimeout(() => this.entries.delete(key), this.ttlMs);
-      return value;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("loader timeout")), this.timeoutMs);
     });
+    const load = Promise.race([this.loader(key), timeout])
+      .then((value) => {
+        this.entries.set(key, value);
+        setTimeout(() => this.entries.delete(key), this.ttlMs);
+        return value;
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        this.inFlight.delete(key);   // success and failure: a rejection is not cached
+      });
     this.inFlight.set(key, load);
     return load;
   }
@@ -236,6 +246,7 @@ const u = await users.get("42");
 **Exposed to**
 
 - [Stale Cache](../../hazards/stale-cache.md) — Can fall into stale cache when a cached entry has no knowledge of writes made elsewhere
+- [Hot Key](../../hazards/hot-key.md) — Can fall into hot key when an evicted or expired hot key sends every reader to one synchronous load on the source
 
 **Demonstrated by**
 

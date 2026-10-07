@@ -66,13 +66,14 @@ There's no perfect fix — how much staleness is acceptable is a per-datum judgm
 **Mitigated by**
 
 - [Write-Through](../patterns/caching/write-through.md) — Write the cache and store together, so a read after a write can't be stale
-- [Cache-Aside](../patterns/caching/cache-aside.md) — Invalidate the key on write, so the next read reloads the current value
 - [Refresh-Ahead](../patterns/caching/refresh-ahead.md) — Background refresh keeps the entry close to the source, bounding the stale window
+- [Cache-Aside](../patterns/caching/cache-aside.md) — Delete the key on write so the next read reloads; a late refill can still re-cache the old value until the TTL ends
 
 **Threatens**
 
 - [CDN](../patterns/distributed/routing/cdn.md) — Edge copies outlive the origin's change until expiry or purge
 - [Client-Side Cache](../patterns/caching/client-side-cache.md) — Copies on devices cannot be invalidated centrally
 - [Read-Through](../patterns/caching/read-through.md) — A cached entry has no knowledge of writes made elsewhere
+- [Distributed Cache](../patterns/caching/distributed-cache.md) — Every instance reads the same stale entry, so the error is fleet-wide
 
 <!-- relationships:end -->
