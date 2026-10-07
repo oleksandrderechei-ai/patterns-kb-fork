@@ -252,6 +252,7 @@ async function report(e: Experiment, result: Result) {
 
 - [Cascading Failure](../../../hazards/cascading-failure.md) — Rehearse the first failure and find the spread before it happens for real
 - [Retry Storm](../../../hazards/retry-storm.md) — A deliberate outage under load makes the amplification visible in a controlled window
+- [Metastable Failure](../../../hazards/metastable-failure.md) — Applying a trigger, removing it and checking that goodput returns exposes a loop before an incident does.
 
 **Implemented by**
 

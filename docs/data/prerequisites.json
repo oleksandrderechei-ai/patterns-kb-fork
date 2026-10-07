@@ -2049,7 +2049,7 @@
       "definition": "One class knows and does almost everything",
       "route": "/hazards/god-object.html",
       "requires": [],
-      "related": ["spaghetti-code", "big-ball-of-mud"]
+      "related": ["spaghetti-code", "big-ball-of-mud", "shotgun-surgery"]
     },
     {
       "id": "spaghetti-code",
@@ -2161,7 +2161,7 @@
       "definition": "Some work waits without bound while everything else keeps being served",
       "route": "/hazards/starvation.html",
       "requires": [],
-      "related": ["deadlock", "priority-inversion", "head-of-line-blocking"]
+      "related": ["deadlock", "priority-inversion", "head-of-line-blocking", "noisy-neighbour"]
     },
     {
       "id": "unbounded-queue",
@@ -2241,7 +2241,7 @@
       "definition": "Every pool slot is held by a slow call, so requests hang instead of failing",
       "route": "/hazards/connection-pool-exhaustion.html",
       "requires": [],
-      "related": ["deadlock", "chatty-io", "resource-leak"]
+      "related": ["deadlock", "chatty-io", "resource-leak", "cascading-failure", "noisy-neighbour"]
     },
     {
       "id": "retry-storm",
@@ -2265,7 +2265,7 @@
       "definition": "One failure's load lands on its peers and takes them down in turn",
       "route": "/hazards/cascading-failure.html",
       "requires": [],
-      "related": ["metastable-failure", "synchronous-io", "retry-storm"]
+      "related": ["metastable-failure", "synchronous-io", "retry-storm", "connection-pool-exhaustion"]
     },
     {
       "id": "noisy-neighbour",
@@ -2273,7 +2273,7 @@
       "definition": "One tenant's load degrades everyone sharing the same pool",
       "route": "/hazards/noisy-neighbour.html",
       "requires": [],
-      "related": ["monolithic-persistence"]
+      "related": ["monolithic-persistence", "starvation", "connection-pool-exhaustion"]
     },
     {
       "id": "clock-skew",
@@ -2313,7 +2313,7 @@
       "definition": "One small change needs many small edits in many places, and a missed one breaks the system",
       "route": "/hazards/shotgun-surgery.html",
       "requires": [],
-      "related": ["primitive-obsession"]
+      "related": ["primitive-obsession", "god-object"]
     },
     {
       "id": "lava-flow",

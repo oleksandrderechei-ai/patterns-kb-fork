@@ -74,5 +74,6 @@ The third is forgetting which documents are allowed to decay. Decision records a
 **Prevents**
 
 - [Boat Anchor](../hazards/boat-anchor.md) — A dated record of why something was kept makes it possible to tell a live constraint from a dead one
+- [Lava Flow](../hazards/lava-flow.md) — A dated record of why code was kept lets a reader tell live code from dead.
 
 <!-- relationships:end -->

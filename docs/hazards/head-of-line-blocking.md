@@ -16,7 +16,7 @@ One stuck or slow item at the front of an ordered lane holds up every item behin
 ## What it is
 <!--meta block=description-->
 
-Head-of-line blocking happens when work must leave a lane in the order it entered and the item at the front cannot move, so everything behind it waits. You see items needing 5 ms spend 30 s in the system, idle consumers, and an oldest-item age that climbs while depth barely moves. The defining trait is that the blocked items are innocent: the lane has capacity, but the order rule forbids anything passing the head.
+Head-of-line blocking happens when work must leave a lane in the order it entered and the item at the front cannot move, so everything behind it waits. You see items needing 5 ms spend 30 s in the system, idle consumers, and an oldest-item age that climbs, and depth that rises only if arrivals continue. The defining trait is that the blocked items are innocent: the lane has capacity, but the order rule forbids anything passing the head.
 
 ## Explained
 <!--meta block=explain-->
@@ -42,21 +42,21 @@ The cause is a straight line, with no loop: an ordering rule, plus one item that
 
 - **Fast requests inherit slow latency.** A request that needs 5 ms waits as long as the stuck item ahead of it, so the user sees the slowest case, not the typical one.
 - **Capacity idles while work waits.** Other consumers, other links and other output ports are free, and the lane cannot use them, so you pay for hardware that does nothing during the stall.
-- **Tail latency rises with no change in load.** p99 spikes whenever one slow item enters, so a graph of the median looks fine and the tail looks broken.
+- **Tail latency rises with no change in load.** p99 spikes when a slow item holds up many others, while the median looks fine.
 - **It is hard to see.** Each item's own time is normal and only the wait is long, so a trace of a single request shows no slow step.
-- **One bad item stops everything behind it.** A single poison message can stall a partition or a queue completely until someone moves it.
+- **One bad item stops everything behind it.** A poison message can stall a partition or queue until a timeout, dead-letter rule or person moves it.
 - **It spreads in a pipeline.** The stalled stage delivers nothing, so the next stage starves, and the effect shows up several hops from where it started.
 
 ## Getting out
 <!--meta block=mitigation-->
 
-Give each item its own place to wait. If most items never needed ordering against each other, order only within a group and let groups pass one another: a [sequential convoy](../patterns/messaging/sequential-convoy.md) orders by a key such as an order id, so a stuck item blocks only its own group. A [priority queue](../patterns/messaging/priority-queue.md) or a separate queue per class of work keeps cheap, urgent items out from behind slow ones. With several consumers taking the next item from one queue, a stuck item holds one worker and not the whole lane.
+Give each item its own place to wait. If most items never needed ordering against each other, order only within a group and let groups pass one another: a [sequential convoy](../patterns/messaging/sequential-convoy.md) orders by a key such as an order id, so a stuck item blocks only its own group. A [priority queue](../patterns/messaging/priority-queue.md) or a separate queue per class of work keeps cheap, urgent items out from behind slow ones. With several consumers taking the next item from one queue, a stuck item holds one worker and not the whole lane. Several consumers on one queue give up global order, so use that only where order is not needed.
 
-Then bound the head. Put a timeout on each item, so nothing can hold the front forever, and when it expires move the item out. Retry it later, or send it to a dead-letter queue after a few attempts, so the lane keeps moving and the bad item is kept for inspection. Pass a deadline with each request through [timeouts and deadlines](../patterns/distributed/resilience/timeout-deadline.md) so the work behind the head is not done for callers who have left. Cut large jobs into small chunks, so the longest item in a lane is short.
+Then bound the head. Put a timeout on each item, so nothing can hold the front forever, and when it expires move the item out. Retry it later, or send it to a dead-letter queue after a few attempts, so the lane keeps moving and the bad item is kept for inspection. Pass a deadline with each request through [timeouts and deadlines](../patterns/distributed/resilience/timeout-deadline.md) so the work behind the head is not done for callers who have left. Cut large jobs into small chunks, so the longest item in a lane is short. Alert on the age of the oldest item in each lane, since each item's own time looks normal.
 
-Where the lane is a transport, change the transport. Move from HTTP/1.1 pipelining to HTTP/2 to remove blocking at the HTTP level, and to HTTP/3 to remove it at the TCP level. Use several connections where one is a bottleneck, and in a switch use a queue per output so a packet bound for a busy port cannot hold up the rest.
+Where the lane is a transport, change the transport. Move from HTTP/1.1 pipelining to HTTP/2 to remove blocking at the HTTP level, and to HTTP/3 to remove it at the TCP level. HTTP/2 still stalls every stream on one lost packet, which is why HTTP/3 is the second step. Use several connections where one is a bottleneck, and in a switch use a queue per output so a packet bound for a busy port cannot hold up the rest.
 
-Finally, hide what you cannot remove. If a slow server at the front is the cause, [hedged requests](../patterns/distributed/resilience/hedged-request.md) send a copy to another replica, so the caller no longer waits on one slow lane. The half-fix to watch for is a split that is too coarse: a convoy keyed on a field with a few values, or two queues where one class still holds a slow item, puts a head in front of every group.
+Finally, hide what you cannot remove. If a slow server at the front is the cause, [hedged requests](../patterns/distributed/resilience/hedged-request.md) send a copy to another replica, so the caller no longer waits on one slow lane. The half-fix to watch for is a split that is too coarse: a convoy keyed on a field with a few values, or two queues where one class still holds a slow item, puts a head in front of every group. Hedge only idempotent requests; a duplicate in an ordered lane repeats work.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -77,6 +77,8 @@ Finally, hide what you cannot remove. If a slow server at the front is the cause
 - [Message Queue](../patterns/messaging/message-queue.md) — Many consumers on one queue mean a stuck item holds one worker, not the whole lane.
 - [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) — A per-item timeout bounds how long any one item may hold the front.
 - [Sequential Convoy](../patterns/messaging/sequential-convoy.md) — Ordering only within a keyed group means a stuck item blocks only its own group.
+- [Dead Letter Channel](../patterns/messaging/dead-letter-channel.md) — Dead-letter channel is the exit for a stuck head that retries cannot clear.
+- [Competing Consumers](../patterns/messaging/competing-consumers.md) — Competing consumers is the multi-worker form of the fix for a stuck head.
 
 **Threatens**
 

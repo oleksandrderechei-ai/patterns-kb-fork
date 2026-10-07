@@ -83,6 +83,8 @@ Size it from the downstream's real concurrency limit, not from your request rate
 **Combines with**
 
 - [Chatty I/O](./chatty-io.md) — A chatty caller holds slots far longer than its work needs, so call count alone can exhaust the pool.
+- [Cascading Failure](./cascading-failure.md) — A pool starved on one path can spread to every service sharing it, turning one stalled caller into a cascade.
+- [Noisy Neighbour](./noisy-neighbour.md) — Connection pool exhaustion is what a noisy neighbour looks like when the shared resource is a connection pool.
 
 **Often confused with**
 

@@ -10488,13 +10488,6 @@
       "note_b": "Hedging hides a slow server at the front by sending the request elsewhere."
     },
     {
-      "a": "hedged-request",
-      "verb": "prevents-hazard",
-      "b": "metastable-failure",
-      "note_a": "Used with a budget it adds little load, and without one it can sustain an overload.",
-      "note_b": "Unbudgeted hedges are one more way extra load sustains an outage, so cap them."
-    },
-    {
       "a": "leaky-bucket",
       "verb": "alternative-to",
       "b": "token-bucket",
@@ -14153,6 +14146,76 @@
       "b": "thundering-herd",
       "note_a": "A herd released after an outage is the first wave; the retries after its failures are the storm.",
       "note_b": "A recovery wave of synchronized retries is the herd's second round; backoff without jitter feeds both."
+    },
+    {
+      "a": "cascading-failure",
+      "verb": "combines-with",
+      "b": "connection-pool-exhaustion",
+      "note_a": "A shared pool lets pressure on one call path starve every other path, which is how the cascade crosses services.",
+      "note_b": "A pool starved on one path can spread to every service sharing it, turning one stalled caller into a cascade."
+    },
+    {
+      "a": "noisy-neighbour",
+      "verb": "combines-with",
+      "b": "starvation",
+      "note_a": "A noisy neighbour is one cause of starvation: a heavy tenant holding the shared pool.",
+      "note_b": "Starvation is the victim's symptom; a noisy neighbour is one way to produce it."
+    },
+    {
+      "a": "connection-pool-exhaustion",
+      "verb": "combines-with",
+      "b": "noisy-neighbour",
+      "note_a": "Connection pool exhaustion is what a noisy neighbour looks like when the shared resource is a connection pool.",
+      "note_b": "One tenant's burst holding every pooled connection is a noisy neighbour at the connection pool."
+    },
+    {
+      "a": "crdt",
+      "verb": "exposed-to",
+      "b": "clock-skew",
+      "note_a": "A last-write-wins register keeps the value with the higher timestamp, so skewed clocks pick the wrong winner.",
+      "note_b": "Skewed clocks make a last-write-wins register keep the wrong value."
+    },
+    {
+      "a": "fault-injection",
+      "verb": "prevents-hazard",
+      "b": "metastable-failure",
+      "note_a": "Applying a trigger, removing it and checking that goodput returns exposes a loop before an incident does.",
+      "note_b": "Applying a trigger, removing it and checking that goodput returns shows whether a loop sustains the outage."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "prevents-hazard",
+      "b": "head-of-line-blocking",
+      "note_a": "A dead-letter channel moves a repeatedly failing head aside so the lane keeps moving.",
+      "note_b": "Dead-letter channel is the exit for a stuck head that retries cannot clear."
+    },
+    {
+      "a": "competing-consumers",
+      "verb": "prevents-hazard",
+      "b": "head-of-line-blocking",
+      "note_a": "Competing consumers mean a stuck item holds one worker, not the whole lane.",
+      "note_b": "Competing consumers is the multi-worker form of the fix for a stuck head."
+    },
+    {
+      "a": "hedged-request",
+      "verb": "prevents-hazard",
+      "b": "metastable-failure",
+      "note_a": "Used with a budget it adds little load, and without one it can sustain an overload.",
+      "note_b": "A hedge adds little load under a budget, but unbudgeted hedges sustain an overload, so cap them."
+    },
+    {
+      "a": "god-object",
+      "verb": "combines-with",
+      "b": "shotgun-surgery",
+      "note_a": "A class that takes every client's special case is where one change must be repeated for each client.",
+      "note_b": "Shared code that grows a case for every client becomes one class everything leans on, while the clients still need edits together."
+    },
+    {
+      "a": "architecture-documentation",
+      "verb": "prevents-hazard",
+      "b": "lava-flow",
+      "note_a": "A dated record of why code was kept lets a reader tell live code from dead.",
+      "note_b": "Fear of removal fades when a record says why the code exists."
     }
   ],
   "group_order": {

@@ -23,7 +23,7 @@ Clock skew is the difference between the times two machines report for the same 
 
 Clock skew is the gap between what two machines say the time is. Each server counts time with its own crystal, which runs a little fast or slow, and a sync service corrects it over a network that adds delay of its own, sometimes by jumping the clock back. So readings are close but never equal, and no machine can see its own error. The trouble starts when code compares stamps from two machines and treats the larger as later. Last-write-wins keeps the higher timestamp, a lease ends when a local clock says so, and merged logs sort by time. Each is wrong whenever the skew is bigger than the gap between events, and nothing reports an error. Count order with logical clocks, not seconds. Guard a resource with an increasing token the resource checks, not with lease expiry alone. Time a duration on one machine with its monotonic clock. Where you must use real time, monitor offset and alert past the margin you assumed.
 
-**Example.** Two writes hit the same profile 150 ms apart. The first goes to node A, whose clock runs 300 ms fast, and is stamped 10:00:00.400. The second goes to node B, whose clock is exact, and is stamped 10:00:00.250. The store keeps the higher stamp, so the older write wins and the user's later edit is gone, with no error logged. Replace the stamps with vector clocks and the store sees two concurrent versions and keeps both. At 10,000 writes a second on a hot key, that error repeats many times a minute. The cost of the fix is a merge rule for the siblings.
+**Example.** Two writes hit the same profile 150 ms apart. The first goes to node A, whose clock runs 300 ms fast, and is stamped 10:00:00.400. The second goes to node B, whose clock is exact, and is stamped 10:00:00.250. The store keeps the higher stamp, so the older write wins and the user's later edit is gone, with no error logged. Replace the stamps with vector clocks and the store sees two concurrent versions and keeps both. Any two writes to one key closer together than the skew can resolve this wrong way, so more writes mean more losses. The cost of the fix is a merge rule for the siblings.
 
 ## How it happens
 <!--meta block=causes-->
@@ -46,17 +46,19 @@ flowchart LR
 - A virtual machine that is paused, migrated or suspended, whose clock then lags for a while or jumps when the host catches it up.
 - A leap second, a clock that is stuck or has no sync source, or a time server that is wrong, so a single machine is off by seconds or more while its peers are close to each other.
 - Timestamps from clients, such as phones, whose clocks users can set to any value.
+- A long garbage-collection or scheduler stall lets a lease lapse while the holder, with a healthy clock, still believes it holds it; a fencing token covers it.
 
 ## What it costs
 <!--meta block=cost-->
 
-- **Silent lost updates.** Last-write-wins by timestamp drops the older-by-clock write with no error, so two edits made seconds apart can leave only one, and the one that stays may be the older.
+- **Silent lost updates.** Last-write-wins by timestamp drops a write with no error, so two edits closer together than the skew can leave only one, and it may be the older.
 - **Effects ordered before causes.** A log merged by time shows the reply before the request, and a trace that comes out of order sends the on-call engineer to the wrong service.
 - **Mutual exclusion stops holding.** A lease that one side thinks has expired and the other thinks is live gives two holders, which is the double grant that [Split-Brain](./split-brain.md) shows at cluster scale.
 - **Bugs that match the clock, not the code.** A defect that appears only when two nodes are 200 ms apart does not reproduce on a laptop, and the data it damaged looks valid.
-- **Rules with a built-in margin.** A system that waits out the uncertainty, or issues tokens instead of trusting time, pays for it in latency on every operation, which makes the risk a priced cost in the design.
+- **Rules with a built-in margin.** Waiting out the uncertainty adds latency to every commit, and a token adds a round trip to the lock service on each grant.
+- **Fixes cost something.** Vector clocks need a merge rule for siblings and metadata per writer; fencing needs the resource to check the token.
 
-Skew turns a precise-looking number into a guess, and the damage lands in the one place nobody checks: the data that was kept. The cost grows with the write rate, because the chance that two conflicting writes fall within the skew grows with how many there are. A system that was right at 10 writes a second can lose updates at 10,000 a second without a single line changing.
+The cost grows with the write rate, because the chance that two conflicting writes fall within the skew grows with how many there are. A system that was right at 10 writes a second can lose updates at 10,000 a second without a single line changing.
 
 ## Getting out
 <!--meta block=mitigation-->
@@ -65,7 +67,7 @@ Stop comparing clocks across machines for anything that decides correctness. To 
 
 To guard a resource, do not trust lease expiry alone. Have the lock service hand out a number that rises with each grant and make the protected resource reject any write stamped with a lower one, the fencing described under [Distributed Lock](../patterns/distributed/coordination/distributed-lock.md). Then a holder whose lease ended without its knowledge, by skew or by a pause, has its writes refused. For durations and timeouts on one machine, use the monotonic clock, which does not step backward.
 
-Where you must use real time, bound it. Keep clocks synced with a time service you monitor, alert when a machine's offset passes the margin your rules assume, and take a machine with a bad clock out of rotation. Some systems go further and make uncertainty part of the answer: Google's Spanner reads time from an API that returns an interval, TrueTime, and waits out the interval before it commits, so ordering holds at a cost of a few milliseconds per write. A hybrid logical clock keeps stamps close to real time and still ordered causally. For wall-clock last-write-wins, accept that the older write can win and keep it for data where that is tolerable.
+Where you must use real time, bound it. Keep clocks synced with a time service you monitor, alert when a machine's offset passes the margin your rules assume, and take a machine with a bad clock out of rotation. Some systems go further and make uncertainty part of the answer: Google's Spanner reads time from an API that returns an interval, TrueTime, and waits out the interval before it commits, so ordering holds, at the cost of a wait as long as the interval on each write. A hybrid logical clock keeps stamps close to real time and still ordered causally. For wall-clock last-write-wins, accept that the older write can win and keep it for data where that is tolerable.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -91,5 +93,6 @@ Where you must use real time, bound it. Keep clocks synced with a time service y
 - [Event Sourcing](../patterns/architecture/event-sourcing.md) — Ordering events from many hosts by wall-clock time scrambles the stream
 - [Sliding Window](../patterns/distributed/coordination/sliding-window.md) — Wall-clock windows move their edge by the skew, so two hosts count different events.
 - [Unique ID Generation](../patterns/distributed/coordination/unique-id-generation.md) — Ids ordered by wall clock mislead when node clocks disagree.
+- [CRDT](../patterns/distributed/coordination/crdt.md) — Skewed clocks make a last-write-wins register keep the wrong value.
 
 <!-- relationships:end -->
