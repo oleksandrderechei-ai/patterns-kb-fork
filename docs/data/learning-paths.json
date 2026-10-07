@@ -1029,7 +1029,7 @@
       },
       "event-modeling": {
         "role": "The fact recorded once the command is accepted",
-        "tour": "The third lane. Each note is a past-tense fact, and the rule that every event needs a command in front of it is what stops the model containing effects that nothing causes.",
+        "tour": "The third lane. Each note is a past-tense fact, and the rule that every event needs a cause, usually a command in front of it, is what stops the model containing effects that nothing causes.",
         "fluency": "The fact recorded once the command is accepted"
       }
     },
@@ -1185,7 +1185,7 @@
       },
       "event-modeling": {
         "role": "The read model built from the event stream",
-        "tour": "The fourth lane is a projection: a shape maintained from events specifically so a screen can be answered in one read. Drawing it per screen is what surfaces how many distinct read shapes a system actually needs, which is almost always more than anyone guessed.",
+        "tour": "The fourth lane is a projection: a shape maintained from events specifically so a screen can be answered in one read. Drawing it per screen is what surfaces how many distinct read shapes a system actually needs, so the number is counted from the drawing, not guessed.",
         "fluency": "The read model built from the event stream"
       }
     },
@@ -1298,7 +1298,7 @@
       },
       "event-modeling": {
         "role": "A policy on the wall becomes a coordinated process",
-        "tour": "Wherever the model says one event automatically triggers a later command, there is a long-running process with its own state and its own failure branches. The drawing names it; this pattern is what it costs to build.",
+        "tour": "Wherever the model says one event automatically triggers a later command that can fail or wait, there is a long-running process with its own state and its own failure branches. The drawing names it; this pattern is the code that tracks that state and handles those failures.",
         "fluency": "A policy on the wall becomes a coordinated process"
       }
     },
@@ -2032,7 +2032,7 @@
     "/patterns/gof/behavioral/command.html": {
       "event-modeling": {
         "role": "The user's intent, as its own object",
-        "tour": "The second lane is this pattern by construction: an intent captured as an object, separate from whatever decides to accept it. Modelling it explicitly is what makes the given-when-then specification writable, because the command is the \"when\".",
+        "tour": "The second lane is this pattern: an intent captured as an object, separate from whatever decides to accept it. Modelling it explicitly is what makes the given-when-then specification writable, because the command is the \"when\".",
         "fluency": "The user's intent, as its own object"
       }
     },
