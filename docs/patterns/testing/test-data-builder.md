@@ -15,7 +15,7 @@ Builds a fully valid instance of a domain object through a chain of readable `wi
 ## What it is
 <!--meta block=description-->
 
-A test data builder is a small class that constructs one kind of domain object for tests. It starts from a complete, valid default and offers fluent withX() methods that override one field at a time, with build() assembling the result. It resolves the coupling of every test to the constructor's full shape: change the constructor or defaults and only the builder changes. It is the alternative to Object Mother, whose factory methods multiply with each scenario.
+A test data builder is a small class that constructs one kind of domain object for tests. It starts from a complete, valid default and offers fluent withX() methods that override one field at a time, with build() assembling the result. It resolves the coupling of every test to the constructor's full shape: when a new field has a sensible default, only the builder changes. It is the alternative to Object Mother, whose factory methods multiply with each scenario.
 
 ## Explained
 <!--meta block=explain-->
@@ -24,10 +24,10 @@ A test data builder is a small class that builds one kind of domain object for t
 
 - **Support code.** It is test code to write and keep right; build one only for objects used in many tests.
 - **Hidden defaults.** Defaults can hide which field matters; name every override a test depends on.
-- **Shared state.** A builder shared between tests leaks overrides; create a new one per test and copy on build.
+- **Shared state.** A mutable builder shared between tests leaks overrides; create one per test, or make withX() return a copy.
 - **Drift.** Defaults that drift from production data give false coverage; check them against real samples.
 
-**Example.** An Order has 12 required fields and 80 tests construct it directly. A new required field, currency, makes all 80 fail to compile. With a builder that supplies a default currency, you add one line and the 80 tests are untouched. A test of cancelled orders reads anOrder().withStatus(cancelled), with nothing else on the page. The cost shows when the default status is paid, and a test about shipping passes only because paid is the default, so a reader cannot tell. The fix is to state withStatus(paid) in that test.
+**Example.** An Order has 12 required fields and 80 tests construct it directly. A new required field, currency, makes all 80 fail to compile. With a builder that supplies a default currency, you add one line and the 80 tests are untouched. A test of cancelled orders reads anOrder().withStatus(cancelled) and nothing else. The cost shows when a shipping test passes only because the default status happens to suit it, and the test never says so. The fix is to state withStatus(paid) in that test.
 
 ## How it works
 <!--meta block=structure-->
@@ -44,7 +44,7 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Mutable, in-place builder** — Each `withX()` mutates the builder's internal state and returns `this`. Simplest to write, but sharing one builder instance across tests risks one test's overrides leaking into another's.
-- **Immutable / [copy-on-write](../concurrency/copy-on-write.md) builder** — Each `withX()` returns a new builder wrapping a copied state. A base builder can be defined once per suite and forked freely per test with no risk of cross-test contamination.
+- **Immutable / [copy-on-write](../concurrency/copy-on-write.md) builder** — Each `withX()` returns a new builder wrapping a copied state. A base builder can be defined once per suite and forked per test, as long as the copy is deep for collections or the state holds only immutable values.
 - **Named scenario shortcuts** — Layer static factories like `aCancelledOrder()` on top of the general builder, borrowing Object Mother's readability for common cases while keeping arbitrary overrides available underneath.
 - **Composite / nested builders** — A builder for an aggregate holds builders for its children — an `OrderBuilder` wrapping a list of `LineItemBuilder` — so a whole valid object graph can be built and overridden at any depth.
 
@@ -56,7 +56,7 @@ flowchart LR
 
 - **Every test gets a fully valid object** by default — only the relevant field needs stating.
 - **Reads like the scenario itself**: `aUser().withRole(admin).build()` states intent, hides constructor plumbing.
-- **Absorbs constructor and validation changes** into one place instead of every test file.
+- **Absorbs constructor and validation changes** into one place when the new field has a sensible default.
 - **Composes — nested builders** let a whole valid object graph stay easy to construct and override.
 
 ### Cons
@@ -66,6 +66,7 @@ flowchart LR
 - **Sensible defaults can hide** from the reader which fields actually matter to a given test.
 - **A mutable, shared builder** instance can leak overrides between tests if reused carelessly.
 - **Defaults that drift** from real production data give a false sense of coverage.
+- **A builder can skip invariants** the real constructor enforces, so tests may build states the domain forbids.
 
 ## When to use it
 <!--meta block=usage-->
@@ -82,7 +83,7 @@ flowchart LR
 
 - **The object is trivial to construct** — a builder just adds ceremony over a two-argument call.
 - **You need to drive UI interactions** rather than assemble data — that's [Page Object](./page-object.md)'s job.
-- **A few fixed scenarios cover every test** — a handful of fixed, well-named scenarios do, and a plain Object Mother factory is simpler.
+- **A few fixed, well-named scenarios cover every test**, so a plain Object Mother factory is simpler.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -97,15 +98,10 @@ interface Order {
 }
 
 class OrderBuilder {
-  private order: Order = {
-    id: "ord_1",
-    status: "pending",
-    items: [{ sku: "widget", qty: 1 }],
-  };
+  constructor(private readonly order: Order = { id: "ord_1", status: "pending", items: [{ sku: "widget", qty: 1 }] }) {}
 
-  withStatus(status: Status): this {
-    this.order.status = status;
-    return this;
+  withStatus(status: Status): OrderBuilder {
+    return new OrderBuilder({ ...this.order, status });
   }
 
   build(): Order {
@@ -116,7 +112,9 @@ class OrderBuilder {
 const anOrder = () => new OrderBuilder();
 
 // The test states only what's different from a valid default.
-const cancelled = anOrder().withStatus("cancelled").build();
+const base = anOrder(); // shared, never mutated
+const cancelled = base.withStatus("cancelled").build();
+const paid = base.withStatus("paid").build(); // base is unchanged
 ```
 
 ## In the wild
@@ -143,7 +141,7 @@ const cancelled = anOrder().withStatus("cancelled").build();
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- The default build() produces a fully valid object that passes the domain's own validation.
+- The default build() produces a fully valid object that passes the domain's own validation, and a test runs it through that validation.
 - The builder is immutable or reset per test so no override leaks across cases.
 - Defaults are reviewed against real production shape as the domain type evolves.
 
