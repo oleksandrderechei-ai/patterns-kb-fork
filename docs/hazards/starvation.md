@@ -93,8 +93,8 @@ Instrument before you tune. Per-class tail latency and the age of the oldest que
 **Often confused with**
 
 - [Deadlock](./deadlock.md) — Under deadlock nobody progresses; under starvation the system progresses fine while one victim never does
-- [Priority Inversion](./priority-inversion.md) — Priority inversion is one way a task is starved of central processing unit (CPU) time.
 - [Head-of-Line Blocking](./head-of-line-blocking.md) — Starvation is policy-driven and blocking is order-driven.
+- [Priority Inversion](./priority-inversion.md) — Priority inversion is one way a task is starved of central processing unit (CPU) time.
 
 **Mitigated by**
 

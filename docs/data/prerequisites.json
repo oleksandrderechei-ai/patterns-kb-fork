@@ -2161,7 +2161,7 @@
       "definition": "Some work waits without bound while everything else keeps being served",
       "route": "/hazards/starvation.html",
       "requires": [],
-      "related": ["deadlock", "priority-inversion", "head-of-line-blocking", "noisy-neighbour"]
+      "related": ["deadlock", "head-of-line-blocking", "noisy-neighbour", "priority-inversion"]
     },
     {
       "id": "unbounded-queue",
@@ -2305,7 +2305,7 @@
       "definition": "A high-priority task waits on a lock held by a low-priority one while medium-priority work runs",
       "route": "/hazards/priority-inversion.html",
       "requires": [],
-      "related": ["deadlock", "starvation", "priority-queue"]
+      "related": ["deadlock", "priority-queue", "starvation"]
     },
     {
       "id": "shotgun-surgery",

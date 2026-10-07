@@ -10175,13 +10175,6 @@
     {
       "a": "priority-inversion",
       "verb": "often-confused-with",
-      "b": "starvation",
-      "note_a": "The low task is outcompeted by unrelated work, not denied by policy.",
-      "note_b": "Priority inversion is one way a task is starved of central processing unit (CPU) time."
-    },
-    {
-      "a": "priority-inversion",
-      "verb": "often-confused-with",
       "b": "priority-queue",
       "note_a": "Priority is set on messages there and on locking tasks here.",
       "note_b": "A priority queue avoids the shared lock but starvation can still follow."
@@ -14216,6 +14209,20 @@
       "b": "lava-flow",
       "note_a": "A dated record of why code was kept lets a reader tell live code from dead.",
       "note_b": "Fear of removal fades when a record says why the code exists."
+    },
+    {
+      "a": "priority-inversion",
+      "verb": "often-confused-with",
+      "b": "starvation",
+      "note_a": "Here an unrelated task outcompetes the lock holder; starvation is the wider case, and inversion is one way into it.",
+      "note_b": "Priority inversion is one way a task is starved of central processing unit (CPU) time."
+    },
+    {
+      "a": "lock-free",
+      "verb": "prevents-hazard",
+      "b": "priority-inversion",
+      "note_a": "Takes no lock, so no low-priority holder can be preempted while a high-priority task waits.",
+      "note_b": "No lock means no holder to preempt, at the price of retries."
     }
   ],
   "group_order": {

@@ -15,14 +15,14 @@ You trade clarity for speed before you have measured where the time goes, so you
 ## What it is
 <!--meta block=description-->
 
-**Premature optimization** is making code harder to read or change for a speed or memory gain that nobody measured and no requirement asked for. It builds up through reasonable instincts: a hand-rolled cache, a denormalised table, a lock-free structure, each added "to be safe". You recognise it when the fastest-looking code sits in a path that runs rarely, while the profiler names a different function. The defining trait is the missing measurement, not the speed-up.
+**Premature optimization** is making code harder to read or change for a speed or memory gain that nobody measured and no requirement asked for. It builds up through reasonable instincts: a hand-rolled cache, a denormalised table, a lock-free structure, each added "to be safe". You recognise it when the fastest-looking code sits in a path that runs rarely, while the profiler names a different function.
 
 ## Explained
 <!--meta block=explain-->
 
-Premature optimization is spending complexity on speed before a measurement says the code is slow. You add a hand-rolled cache, a denormalised table or a lock-free structure because it looks like the slow part, and it pays off only if the guess was right. Usually the guess is wrong: the time goes to a query, a network hop or a serialisation step that you never looked at. Choose measuring first over tuning first, because a profile tells you which 3% of the code matters and a hunch does not. The principle behind it is the same as [YAGNI](../principles/yagni.md): a need you have not shown does not earn its cost. Written plain first, the code stays easy to change, and the one hot spot that the profile finds gets the clever treatment it deserves, with a recorded number that says why.
+Premature optimization is spending complexity on speed before a measurement says the code is slow. You add a hand-rolled cache, a denormalised table or a lock-free structure because it looks like the slow part, and it pays off only if the guess was right. Often the guess misses: the time goes to a query, a network hop or a serialisation step that you never looked at. Measure first: a profile shows which few functions dominate the time, and a hunch does not. The principle is the same as [YAGNI](../principles/yagni.md): a need you have not shown has not earned its cost. Write the code plain first, so it stays easy to change, and give the one hot spot the profile finds the clever treatment, with a recorded number as the reason.
 
-**Example.** A team rewrites an order-total loop with a lookup table to save 0.2 ms per request. The endpoint's p99 is 900 ms against a 300 ms budget, so the change moves nothing. A trace shows 700 ms in one unindexed query. Adding the index takes the p99 to 240 ms in an afternoon. The lookup table stays in the code: 140 extra lines, a stale-data bug two months later, and no benefit. The cost of the guess is the wasted week and the permanent complexity. The counter-move is a written latency budget and a trace before any speed work.
+**Example.** A team rewrites an order-total loop with a lookup table to save 0.2 ms per request. The endpoint's p99 is 900 ms against a 300 ms budget, so the change moves nothing. A trace shows 700 ms in one unindexed query. Adding the index takes the p99 to about 200 ms in an afternoon. The lookup table stays in the code: 140 extra lines, a stale-data bug two months later, and no benefit. The cost of the guess is the wasted week and the permanent complexity. The fix is a written latency budget and a trace before any speed work.
 
 ## How it happens
 <!--meta block=causes-->
@@ -35,8 +35,8 @@ flowchart TB
     D --> A
 ```
 
-- **Intuition about speed is usually wrong.** Developers guess the slow path from how the code looks, and the real cost sits in a query, a network hop or a serialisation step they never considered.
-- **Performance feels like rigour.** A clever data structure signals care in review, while a plain loop signals nothing, so cleverness gets rewarded.
+- **Intuition about speed is often wrong.** Developers guess the slow path from how the code looks, and the real cost sits in a query, a network hop or a serialisation step they never considered.
+- **Performance feels like rigour.** Reviewers credit a clever data structure and ignore a plain loop, so cleverness wins.
 - **No target exists.** With no latency or throughput budget written down, "fast enough" has no definition and the work never has a stopping point.
 - **Profiling is skipped because it is slow to set up.** Without a benchmark harness or production tracing, a guess is cheaper than a measurement.
 - **Fear of a later rewrite.** Teams assume that speed cannot be added afterwards, so they spend complexity up front on a need that may never arrive.
@@ -45,17 +45,17 @@ flowchart TB
 <!--meta block=cost-->
 
 - **Every optimisation is permanent complexity.** The cache needs invalidation, the denormalised copy needs syncing, and the hand-tuned loop needs a comment that the next reader must trust.
-- **The real bottleneck survives.** Time spent speeding up code that takes 2% of a request cannot lower latency by more than 2%.
+- **The real bottleneck survives.** Speeding up code that takes 2% of a serial request cannot lower latency by more than 2%.
 - **Changes slow down.** Code tuned for one access pattern resists the next feature, because the structure encodes assumptions that no longer hold.
-- **Bugs move into the hard places.** Caches, threads and hand-managed memory are where the subtle defects live, and the code that did not need them now carries them.
+- **Bugs move into the hard places.** Caches, threads and hand-managed memory hide the subtle defects, and code that did not need them now carries them.
 - **The speed-up can be negative.** A change that is faster in a micro-benchmark can lose on the real workload because of cache misses, contention or extra allocation.
 
 ## Getting out
 <!--meta block=mitigation-->
 
-Write the plain version first and put a number on "fast enough" before you touch it. A latency budget, such as a p99 of 300 ms for one endpoint, tells you when to stop, and a load test tells you whether you are inside it.
+Write the plain version first and put a number on "fast enough" before you touch it. A latency budget, such as a p99 of 300 ms for one endpoint, tells you when to stop, and a load test tells you whether you are inside it. Take the budget from the user-facing target and set the endpoint's share beneath it.
 
-When the budget is missed, profile the real workload and fix the largest cost first. Change one thing, measure again, and keep the change only if the number moved. A profiler flame graph or a distributed trace usually shows one or two hot spots, and they are rarely the ones the team suspected.
+When the budget is missed, profile the real workload and fix the largest cost first. Change one thing, measure again, and keep the change only if the number moved. A profiler flame graph or a distributed trace usually shows one or two hot spots, and they are rarely the ones the team suspected. Keep a change only if the gain is larger than the run-to-run variation across repeated runs.
 
 Keep the optimised code honest afterwards. Put the measurement that justified it in a comment or the commit message, and add a benchmark that fails if the gain disappears. An optimisation with no recorded number is a candidate for deletion at the next refactor.
 
