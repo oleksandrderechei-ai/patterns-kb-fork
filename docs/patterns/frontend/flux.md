@@ -27,7 +27,7 @@ Flux sends every state change around one loop in one direction. A view describes
 - **Longer trail.** Following a click takes several hops, so log every action and use a tool that replays them.
 - **Over-sharing.** Putting everything in the store couples unrelated parts, so keep state one component owns, such as an open dropdown, in that component.
 
-**Example.** A shop shows the cart count in the header, on the cart page and on the checkout button. Each component sets the count itself, and one day the header shows 3 while the page shows 2. With the loop, every change is an action such as ADD_ITEM 7, and all three components read the same state, so they cannot disagree. If the count is still wrong, the log shows 5 actions: replaying the first 4 gives the correct 3, and the fifth, REMOVE_ITEM 7, gives the wrong 2, so you look at one reducer case. The cost is that adding one item now touches an action, a reducer and a selector where a single setter used to be.
+**Example.** A shop shows the cart count in the header, on the cart page and on checkout. Each component sets the count itself, and the header shows 3 while the page shows 2. With the loop, every change is an action such as ADD_ITEM 7 and all three read the same state, so they cannot disagree unless one copies the count locally. If the count is wrong, the log shows 5 actions: with pure reducers, replaying the first 4 gives the correct 3 and the fifth, REMOVE_ITEM 7, gives 2. Check whether that action should have been dispatched, then the reducer case. The cost: adding one item touches an action, a reducer and a state read where one setter did.
 
 ## How it works
 <!--meta block=structure-->
@@ -42,10 +42,10 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Classic Flux** — The original Facebook design: a single dispatcher fans actions out to multiple independent stores, each owning one slice of domain state. Reach for the multi-store shape when different slices have genuinely separate lifecycles and you want the dispatcher to coordinate cross-store updates.
+- **Classic Flux** — The original Facebook design: a single dispatcher fans actions out to multiple independent stores, each owning one slice of domain state. Reach for the multi-store shape when different slices have separate lifecycles and you want the dispatcher to coordinate cross-store updates.
 - **Redux** — Collapses the many stores into one and relies on reducers being pure functions of `(state, action)`, by convention rather than enforcement. This makes the whole history a fold over an action log, which is client-side event sourcing and is what enables time-travel debugging and replay while effects stay outside reducers. The baseline when you want one auditable source of truth.
-- **Redux Toolkit** — `createSlice` generates the action creators and the reducer from one declaration, `configureStore` builds the store and its middleware, and updates are written as if they mutated. It is the standard way to write Redux, so hand-written action constants and switch statements are the older style. The cost is that the actions you debug are generated, so the action log names things you never typed.
-- **Lighter stores** — Zustand and Pinia keep the unidirectional discipline but shed most of the boilerplate: no separate action creators or dispatch strings, just typed update functions. Vuex keeps string-named mutations and actions, committed and dispatched by type. Pick these when you want the traceability without the boilerplate, and can accept a looser contract than pure reducers.
+- **Redux Toolkit** — `createSlice` generates the action creators and the reducer from one declaration, `configureStore` builds the store and its middleware, and updates are written as if they mutated. The cost is that the actions you debug have generated names, so the log shows things you never typed.
+- **Lighter stores** — Zustand and Pinia keep the unidirectional discipline but shed most of the boilerplate: no separate action creators or dispatch strings, just typed update functions. Vuex keeps string-named mutations and actions, committed and dispatched by type. Pick these when you want the traceability without the boilerplate, and can accept a looser contract than pure reducers. Vuex is in maintenance mode and Vue recommends Pinia as its store, so pick Vuex only to stay compatible with an existing codebase.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -61,7 +61,7 @@ flowchart LR
 ### Cons
 <!--meta polarity=con-->
 
-- **Boilerplate** — actions, reducers, and wiring add ceremony for what a direct setter would do.
+- **Boilerplate** — actions, reducers and wiring add files and steps for what a direct setter would do.
 - **Indirection**: following a click to its effect means tracing through action and reducer instead of reading one function.
 - **Easy to over-centralize**. Local UI state a component could own gets hoisted into the global store, coupling unrelated parts.
 - **Side effects need a home** — fetches and timers sit outside the reducers, in action creators or middleware, and replay must not fire them again.
@@ -81,7 +81,7 @@ flowchart LR
 
 - **The state is purely local to one component** — a `useState` or field is enough.
 - **The app is small** and a shared provider or lifted local state already covers it.
-- **The overhead of actions and reducers** would dwarf the coordination they buy you.
+- **The overhead of actions and reducers** would add more steps than it saves: few components read the state, so tracing a change is already short.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -139,9 +139,9 @@ store.dispatch({ type: "add", by: 5 }); // count: 6
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Renders per action** — How many components re-render for one dispatched action, shown by a render profiler. A large count says subscriptions are too broad.
+- **Renders per action** — How many components re-render for one dispatched action, shown by a render profiler. A count that grows with the number of mounted components, rather than a few, says subscriptions are too broad.
 - **Action volume** — Dispatches per second during interaction. A flood from one source, such as mouse move, shows an action that should be local state.
-- **Reducer duration** — Time spent in reducers per action. Slow reducers block every update.
+- **Reducer duration** — Time spent in reducers per action. Slow reducers block every update. One frame at 60 fps is about 16.7 ms (1000 / 60) and rendering shares it, so time dispatch with a timer around it.
 - **State tree size** — Size of the serialized state, since it is what you log, persist and diff.
 
 ### Failure modes under load
