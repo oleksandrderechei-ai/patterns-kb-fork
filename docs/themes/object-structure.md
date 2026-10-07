@@ -14,21 +14,23 @@ Once objects exist, they have to fit together. These patterns wrap, join and sha
 ## The question
 <!--meta block=description-->
 
-Objects rarely arrive in the shape the caller wants: an interface that does not match, a subsystem of a dozen classes where the caller wants one call, a hierarchy that multiplies with every variation, a tree to treat as one node. Each is a wrapping or joining problem, and the patterns differ mainly in intent. A **composite** holds children and is treated as one node. **Intrinsic state** is shared and never changes.
+Objects rarely arrive in the shape the caller wants: an interface that does not match, a subsystem of a dozen classes where the caller wants one call, a hierarchy that multiplies with every variation, a tree to treat as one node. Each is a wrapping or joining problem, and the patterns differ mainly in intent. A composite holds children and is treated as one node. A flyweight shares the part of an object that never changes, its intrinsic state.
 
 ## Explained
 <!--meta block=explain-->
 
-Objects rarely arrive in the shape a caller wants, and the structural patterns wrap or join them. Four share one shape, an object that wraps another, and differ by intent. An adapter converts one interface into the one the client expects. A facade offers a few high-level calls over many classes. A decorator keeps the interface and adds behaviour. A proxy keeps the interface and controls access. Choose by what you want to say, because the shapes look alike and a wrong name misleads the next reader. A bridge splits two independent concerns into two hierarchies so you extend each alone, a composite lets one item and a group answer the same calls, and a flyweight shares the unchanging part of many objects. Each wrapper adds a hop and an object to remember, so add one only when the mismatch or the multiplication is real.
+Objects rarely arrive in the shape a caller wants, and the structural patterns wrap or join them. Four share one shape, an object that wraps another, and differ by intent. An adapter converts one interface into the one the client expects. A facade offers a few high-level calls over many classes. A decorator keeps the interface and adds behaviour. A proxy keeps the interface and controls access. Choose by intent, because the shapes look alike and a wrong name misleads the next reader. A bridge splits two independent concerns into two hierarchies so you extend each alone, a composite lets one item and a group answer the same calls, and a flyweight shares the unchanging part of many objects. Each wrapper adds a hop and an object to remember, so add one only when the mismatch or the multiplication is real.
 
-**Example.** A drawing app has 3 shapes and 4 renderers. With one subclass per pair that is 12 classes, and a fifth renderer adds 3 more. A bridge splits them into 3 plus 4, seven classes, and the fifth renderer adds one. A group of shapes is a composite, so moving it is one call to the same move method. A page with 1 million letters would hold 1 million glyph objects, but a flyweight shares one object per distinct character and passes position in, so about 60 objects serve the page. The cost is the extra indirection each layer adds.
+**Example.** A drawing app has 3 shapes and 4 renderers. With one subclass per pair that is 12 classes, and a fifth renderer adds 3 more. A bridge splits them into 3 plus 4, seven classes, and the fifth renderer adds one. A group of shapes is a composite, so moving it is one call to the same move method. A page with 1 million letters would hold 1 million glyph objects, but a flyweight shares one object per distinct character and passes position in, so about 60 objects serve the page. That holds while the page uses about 60 distinct characters.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-Several of these patterns share one shape, an object that wraps another, and they differ only by the question they answer. An adapter converts one interface into the one the client expects. A facade simplifies many classes into a few high-level calls. A decorator keeps the same interface and adds behaviour. A proxy keeps the same interface and controls access. Choose by intent, because the shapes look alike and a wrong choice misleads the next reader. The [File System](../designs/file-system.md) case study uses a composite for files and folders, and the [Logging Service](../designs/logging-service.md) composes two axes without a class explosion.
+Several of these patterns share one shape, an object that wraps another, and they differ mainly by the question they answer. An adapter converts one interface into the one the client expects. A facade simplifies many classes into a few high-level calls. A decorator keeps the same interface and adds behaviour. A proxy keeps the same interface and controls access. Choose by intent, because the shapes look alike and a wrong choice misleads the next reader. The [File System](../designs/file-system.md) case study uses a composite for files and folders, and the [Logging Service](../designs/logging-service.md) composes two axes without a class explosion.
 
-Two others change how the structure is built. A bridge splits two independent concerns into two hierarchies up front, so you extend each side alone. A composite arranges objects in a tree so that a leaf and a container answer the same calls, and a flyweight shares the unchanging part of many leaves so a tree can hold millions of nodes. The cost throughout is indirection: each wrapper is another hop and another object to keep in mind.
+Three others change how the structure is built. A bridge splits two independent concerns into two hierarchies up front, so you extend each side alone. A composite arranges objects in a tree so that a leaf and a container answer the same calls. A flyweight shares the unchanging part of many leaves so a tree can hold millions of nodes.
+
+Each choice has its own price. A wrapper costs a hop and an object to keep in mind. Stacked decorators give a different result in a different order, and a wrapped object is no longer the original, so identity and type checks fail. A facade that grows into a catch-all becomes one more large class callers must learn. A flyweight costs a factory lookup and per-use state that every caller passes in. A composite costs type safety: leaves must answer calls only containers can honour, or callers fall back on runtime checks.
 
 ## The tour
 <!--meta block=tour-->
@@ -43,7 +45,7 @@ A class implements the target interface and forwards each call to the adaptee, t
 
 ### [Facade](../patterns/gof/structural/facade.md) {#tour-facade}
 
-One object with a small, high-level interface named after the tasks callers want, over several lower-level parts. It simplifies many interfaces where an adapter converts one, and it is the single surface callers need so they stop chaining through collaborators.
+One object with a small, high-level interface named after the tasks callers repeat, over several lower-level parts. It simplifies many interfaces where an adapter converts one. Callers can use it instead of chaining through collaborators, and the parts stay reachable for the tasks it does not cover.
 
 ### [Bridge](../patterns/gof/structural/bridge.md) {#tour-bridge}
 
@@ -51,7 +53,7 @@ The abstraction holds a reference to an implementation, and that reference is th
 
 ### [Decorator](../patterns/gof/structural/decorator.md) {#tour-decorator}
 
-A wrapper has the same interface as the thing it wraps and adds behaviour before or after the forwarded call. Callers cannot tell the layers apart, and stacking works because each wrapper stays substitutable for the original.
+A wrapper has the same interface as the thing it wraps and adds behaviour before or after the forwarded call. Callers cannot tell the layers apart, and stacking works because each wrapper stays substitutable for the original. Order matters: the outermost wrapper runs first on the way in and last on the way out, and a wrong order raises no error.
 
 ### [Proxy](../patterns/gof/structural/proxy.md) {#tour-proxy}
 
@@ -59,11 +61,11 @@ A stand-in with the same interface that can check permissions, create the subjec
 
 ### [Composite](../patterns/gof/structural/composite.md) {#tour-composite}
 
-Leaves and containers share one component interface, and containers hold children that may be other containers. Client code calls the same operations on both, and an iterator or a visitor can run across the whole tree.
+Leaves and containers share one component interface, and containers hold children that may be other containers. Client code calls the same operations on both, and an iterator or a visitor can run across the whole tree. The trade is where child-management calls live: on the shared interface the leaf exposes calls it cannot honour, and on the container only, callers must check the type.
 
 ### [Flyweight](../patterns/gof/structural/flyweight.md) {#tour-flyweight}
 
-Split an object into shared intrinsic state and per-use extrinsic state that the caller passes in. Shared leaves let one tree hold millions of nodes cheaply, and a factory hands back the shared instances.
+Split an object into shared intrinsic state, which must never change, and per-use extrinsic state that the caller passes in on every call. Shared leaves let one tree hold millions of nodes when most state is intrinsic and few distinct values exist, and a factory hands back the shared instances.
 
 <!-- tour:end -->
 
@@ -78,7 +80,7 @@ Split an object into shared intrinsic state and per-use extrinsic state that the
 | You need to add behaviour to one object without subclassing | Wrap and add | [Decorator](../patterns/gof/structural/decorator.md) |
 | You need to control access to an object, or create it lazily | Stand in front of it | [Proxy](../patterns/gof/structural/proxy.md) |
 | Callers should treat one item and a group of items the same way | Build a tree | [Composite](../patterns/gof/structural/composite.md) |
-| Millions of similar objects use too much memory | Share the unchanging part | [Flyweight](../patterns/gof/structural/flyweight.md) |
+| Millions of similar objects use too much memory and most of their state is identical | Share the unchanging part | [Flyweight](../patterns/gof/structural/flyweight.md) |
 
 ## Related areas
 <!--meta block=siblings-->

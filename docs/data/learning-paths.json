@@ -2058,7 +2058,7 @@
       },
       "object-structure": {
         "role": "Treat one and many the same",
-        "tour": "Leaves and containers share one component interface, and containers hold children that may be other containers. Client code calls the same operations on both, and an iterator or a visitor can run across the whole tree.",
+        "tour": "Leaves and containers share one component interface, and containers hold children that may be other containers. Client code calls the same operations on both, and an iterator or a visitor can run across the whole tree. The trade is where child-management calls live: on the shared interface the leaf exposes calls it cannot honour, and on the container only, callers must check the type.",
         "fluency": "Build a tree so a single element and a group answer the same calls."
       }
     },
@@ -2070,7 +2070,7 @@
       },
       "object-structure": {
         "role": "Offer a few calls over many classes",
-        "tour": "One object with a small, high-level interface named after the tasks callers want, over several lower-level parts. It simplifies many interfaces where an adapter converts one, and it is the single surface callers need so they stop chaining through collaborators.",
+        "tour": "One object with a small, high-level interface named after the tasks callers repeat, over several lower-level parts. It simplifies many interfaces where an adapter converts one. Callers can use it instead of chaining through collaborators, and the parts stay reachable for the tasks it does not cover.",
         "fluency": "Give callers a few task-shaped calls over a subsystem."
       }
     },
@@ -2082,7 +2082,7 @@
       },
       "object-structure": {
         "role": "Share the unchanging part",
-        "tour": "Split an object into shared intrinsic state and per-use extrinsic state that the caller passes in. Shared leaves let one tree hold millions of nodes cheaply, and a factory hands back the shared instances.",
+        "tour": "Split an object into shared intrinsic state, which must never change, and per-use extrinsic state that the caller passes in on every call. Shared leaves let one tree hold millions of nodes when most state is intrinsic and few distinct values exist, and a factory hands back the shared instances.",
         "fluency": "Share the unchanging part of many similar objects to save memory."
       }
     },
@@ -2988,7 +2988,7 @@
     "/patterns/gof/structural/decorator.html": {
       "object-structure": {
         "role": "Wrap to add behaviour",
-        "tour": "A wrapper has the same interface as the thing it wraps and adds behaviour before or after the forwarded call. Callers cannot tell the layers apart, and stacking works because each wrapper stays substitutable for the original.",
+        "tour": "A wrapper has the same interface as the thing it wraps and adds behaviour before or after the forwarded call. Callers cannot tell the layers apart, and stacking works because each wrapper stays substitutable for the original. Order matters: the outermost wrapper runs first on the way in and last on the way out, and a wrong order raises no error.",
         "fluency": "Add behaviour to an object by wrapping it in one with the same interface."
       }
     },
