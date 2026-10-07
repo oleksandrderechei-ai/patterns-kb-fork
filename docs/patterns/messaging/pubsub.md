@@ -17,18 +17,18 @@ Publishers broadcast to a topic and subscribers listen to it, but neither ever h
 ## What it is
 <!--meta block=description-->
 
-Publish-subscribe lets a service announce an event to a named topic instead of calling each interested service. A broker matches and delivers a copy to every subscriber, so the publisher holds no addresses, does not wait and does not need consumers online, and adding one needs no publisher change. The cost is that who consumes an event moves from code into topic names, schemas and configuration.
+A publisher that calls each interested service waits on all of them and must know every address. Publish-subscribe has it announce an event to a named topic instead, and a broker delivers a copy to every subscriber. The publisher holds no addresses and does not wait, adding a consumer needs no publisher change, and with durable subscriptions consumers need not be online. The cost is that who consumes an event moves from code into topic names, schemas and configuration.
 
 ## Explained
 <!--meta block=explain-->
 
-Publish-subscribe lets a service announce an event to a named topic and leaves delivery to a broker that hands a copy to every subscriber. The publisher holds no addresses, does not wait for answers and does not need the consumers to be up, so you add an eleventh consumer without touching it. Choose it over direct calls when the set of consumers is unknown or growing, and use a [queue](message-queue.md) instead when each message needs just one worker.
+Publish-subscribe lets a service announce an event to a named topic and leaves delivery to a broker that hands a copy to every subscriber. The publisher holds no addresses, does not wait for answers and, with durable subscriptions, does not need the consumers to be up, so you add an eleventh consumer without touching it. Choose it over direct calls when the set of consumers is unknown or growing, and use a [queue](message-queue.md) instead when each message needs just one worker.
 
 - **Dual write.** Publishing and the database write are two steps, so a crash between loses an event; use an outbox table in the same transaction.
 - **Dropped messages.** A non-durable subscription loses messages while nobody listens and tells the publisher nothing, so make it durable when loss matters.
 - **Schema drift.** A renamed field breaks consumers the publisher cannot list, so version the topic schema and check compatibility before release.
 
-**Example.** A signup service publishes user.signed_up at 50 a second. Three consumers need it: email, customer relationship management (CRM) and fraud. Called directly, they take 100, 150 and 250 ms, so signup waits 500 ms, and a CRM outage fails the signup. Published to a topic, signup returns after one publish. A fourth consumer, analytics, subscribes next month with no change to the publisher, and deliveries rise from 150 to 200 a second. The cost is that nothing in the signup code now says who consumes the event, so keep a list of subscribers.
+**Example.** A signup service publishes user.signed_up at 50 a second. Three consumers need it: email, customer relationship management (CRM) and fraud. Called directly, they take 100, 150 and 250 ms, so signup waits 500 ms, and a CRM outage fails the signup. Published to a topic, signup returns after one publish, and a durable CRM subscription catches up after its outage. A fourth consumer, analytics, subscribes next month with no change to the publisher, and deliveries rise from 150 to 200 a second. The cost is that nothing in the signup code now says who consumes the event, so keep a list of subscribers.
 
 ## How it works
 <!--meta block=structure-->
@@ -69,15 +69,15 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Publishers and subscribers are decoupled** in space, time, and synchronization — neither needs the other to exist, run, or respond.
+- **Publishers and subscribers are decoupled** in space and synchronization, and in time when subscriptions are durable: neither needs the other to exist or respond, or to run at the same moment.
 - **New subscribers attach without any change** to the publisher or its deploy.
 - **Broadcast to an unknown or changing number** of listeners is a first-class operation, not a loop over a hard-coded list.
-- **A broker can buffer, batch, and smooth bursts** that would otherwise overload a direct caller.
+- **A broker can buffer, batch, and smooth bursts** that would overload a direct caller, when subscriptions are durable, though each subscriber still receives its own full copy of the burst.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Delivery guarantees** — at-least-once, ordering, exactly-once — are now the system's problem, not one function call's: pay for them with an [outbox](../distributed/coordination/outbox.md) on the publishing side and an [inbox](../distributed/coordination/inbox.md) on the receiving one.
+- **Delivery guarantees** — at-least-once delivery, ordering and exactly-once effects — are now the system's problem, not one function call's: an [outbox](../distributed/coordination/outbox.md) makes publishing atomic with the write, an [inbox](../distributed/coordination/inbox.md) dedupes on receipt, and ordering holds only per key or partition.
 - **Consumers are hidden** — who consumes a topic and why lives in configuration and tribal knowledge, not in code a compiler can check.
 - **Debugging a request means tracing across processes** and topics instead of stepping through a call stack — carry a [correlation identifier](./correlation-identifier.md) on every message so the hops can be stitched back into one story.
 - **The broker is critical infrastructure** — its availability, throughput, and retention now bound the whole system.
@@ -119,7 +119,7 @@ class Broker {
 
   publish<T>(topic: string, payload: T): void {
     for (const handler of this.topics.get(topic) ?? []) {
-      handler(payload); // fire-and-forget — publisher never sees subscribers
+      handler(payload); // synchronous in-process call: the publisher waits, and a throwing handler stops delivery; a real broker decouples this
     }
   }
 }
@@ -135,9 +135,9 @@ bus.publish("order.placed", "order-42");
 <!--meta block=wild-->
 
 - **Apache Kafka** — Publishers append to a partitioned topic; each consumer group tracks its own offset, so groups read independently and can replay. Retention is bounded by retention.ms or retention.bytes, and ordering holds within a partition, not across the topic. {#wild-kafka}
-- **MQ Telemetry Transport (MQTT)** — A lightweight pub/sub protocol for IoT: subscribers match topic filters with the + and # wildcards, three QoS levels trade delivery guarantee for overhead, and a retained message gives a new subscriber the last value on a topic immediately. {#wild-mqtt}
+- **MQ Telemetry Transport (MQTT)** — A lightweight pub/sub protocol for the Internet of Things (IoT): subscribers match topic filters with the + and # wildcards, three Quality of Service (QoS) levels trade delivery guarantee for overhead, and a retained message gives a new subscriber the last value on a topic immediately. {#wild-mqtt}
 - **Google Cloud Pub/Sub** — Publishers write to a topic and each subscription gets an independent copy of the stream; a per-message ackDeadline governs redelivery, unacked messages are retained up to the configured window, and a dead-letter topic catches messages that exceed a max delivery attempts. {#wild-gcp-pubsub}
-- **Amazon Simple Notification Service (SNS)** — A fully managed pub/sub service: publish to a topic and SNS pushes each message to every subscription — Simple Queue Service (SQS) queues, Lambda functions, HTTP/S endpoints, email; per-subscription filter policies match message attributes so a subscriber only receives matching messages, and undeliverable messages go to a redrive dead-letter queue. Standard topics take unlimited messages per second with best-effort ordering and deduplication; first in, first out (FIFO) topics trade that throughput for strict ordering and deduplication, at up to 300 messages or 10 MB per second per topic. {#wild-sns}
+- **Amazon Simple Notification Service (SNS)** — Publish to a topic and SNS pushes each message to every subscription: Simple Queue Service (SQS) queues, Lambda functions, HTTP/S endpoints or email. Per-subscription filter policies match message attributes so a subscriber only receives matching messages, and undeliverable messages go to a redrive dead-letter queue. Standard topics favour throughput with best-effort ordering; first in, first out (FIFO) topics give strict ordering and deduplication at a lower per-topic throughput cap (check current quotas). {#wild-sns}
 - **Amazon EventBridge** — The routing-heavy end of the same idea: producers put events on a bus and subscribers are rules rather than subscriptions, matching on the content of the event and fanning each match out to its own targets. It buys content-based routing and filtering across producers that speak different shapes, at the cost of the wiring living in rule definitions rather than in either side's code. {#wild-eventbridge}
 - **NATS** — Subject-based publish and subscribe with wildcard subscriptions, deliberately kept small and in-memory by default; durable streams are an opt-in layer on top rather than the baseline. {#wild-nats}
 - **ZeroMQ** — The brokerless form: a socket library with a publish/subscribe socket type, so fan-out happens between peers with no server in the middle — and with no broker there is no durability, no replay and no backpressure but the socket's own. {#wild-zeromq}
@@ -150,32 +150,34 @@ bus.publish("order.placed", "order-42");
 <!--meta polarity=knob-->
 
 - **Subscription durability** — Whether the broker remembers a subscriber position across disconnects (durable) or delivers only while connected (ephemeral).
-- **Retention window** — How long the broker keeps published messages available for replay or a late subscriber before discarding them.
+- **Retention window** — How long the broker keeps published messages available for replay or a late subscriber before discarding them; size it above the longest subscriber outage you accept, then check storage use against the broker storage signal.
 - **Message time-to-live** — The age past which an undelivered message is discarded rather than held for a lagging consumer.
-- **Acknowledgement deadline** — How long a subscriber has to ack a delivered message before the broker redelivers it.
+- **Acknowledgement deadline** — How long a subscriber has to acknowledge (ack) a delivered message before the broker redelivers it.
 - **Per-subscription concurrency / consumer-group size** — How many consumers share one subscription to spread its load.
+- **Max delivery attempts and retry backoff** — How many times, and how far apart, the broker redelivers an unacknowledged message before it moves to the dead-letter destination.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Per-subscription backlog / consumer lag** — Messages published but not yet consumed by a given subscription; the core saturation signal per consumer.
-- **Oldest unacknowledged message age** — How long the slowest subscription has fallen behind the head of the topic.
+- **Per-subscription backlog / consumer lag** — Messages published but not yet consumed by a given subscription; the first number to alert on for each consumer.
+- **Oldest unacknowledged message age** — How long the slowest subscription has fallen behind the head of the topic; alert when it approaches the retention window or the message time-to-live, because past that point messages are lost.
 - **Redelivery / negative-ack rate** — Messages redelivered after a missed or negative ack, signaling failing or slow handlers.
-- **Broker storage for retained messages** — Disk used by the retention window; a stuck durable subscription pins it and it grows.
+- **Broker storage for retained messages** — Disk used by the retention window; a stuck durable subscription holds messages back, so disk use keeps growing.
+- **Dead-letter queue depth and growth rate** — Messages parked after exceeding the attempt limit; a rising count points to a poison message or a failing handler.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
 - **Slow or offline subscriber pins retention** — A durable subscription that stops consuming holds the retention floor; the broker cannot discard messages and disk fills.
-- **Fan-out amplification** — One published message multiplies into a delivery per subscription; a publish burst hits every subscriber at once.
+- **Fan-out amplification** — One published message multiplies into a delivery per subscription; a publish burst hits every subscriber at once; cap per-subscription buffers or delivery rates, and size broker capacity as subscribers times publish rate.
 - **Retention expiry data loss** — A subscriber down longer than the retention window permanently loses the messages published while it was gone.
 - **Silent drop to an absent ephemeral subscriber** — A message published while nothing is listening on a non-durable subscription is discarded, and the publisher gets no signal that anything was missed.
-- **Duplicate or reordered delivery** — At-least-once redelivery double-applies non-idempotent handlers, and ordering is not preserved across partitions.
+- **Duplicate or reordered delivery** — At-least-once redelivery double-applies non-idempotent handlers, and ordering is not preserved across partitions, where the broker splits a topic into them.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
-- Subscribers are idempotent — at-least-once delivery means duplicates
+- Subscribers are idempotent (handling a message twice changes nothing), because at-least-once delivery means duplicates.
 - Per-subscription lag and backlog are monitored and alerted
 - The retention window exceeds the longest tolerable subscriber downtime
 - Each subscription durability (durable vs. ephemeral) is a deliberate choice
@@ -215,6 +217,7 @@ bus.publish("order.placed", "order-42");
 - [Server-Sent Events](./server-sent-events.md) — An open server-sent events (SSE) stream is a push channel from a topic to a browser.
 - [WebSocket](./websocket.md) — A WebSocket is the last hop that delivers a topic's events to a client.
 - [Event-Carried State Transfer](./event-carried-state-transfer.md) — A topic carrying full state lets consumers build replicas.
+- [Idempotency](./idempotency.md) — Redelivery after a missed acknowledgement means every subscriber must tolerate a repeat.
 
 **Specializes**
 
@@ -229,6 +232,7 @@ bus.publish("order.placed", "order-42");
 - [Producer-Consumer](../concurrency/producer-consumer.md) — One-to-one hand-off vs. broadcast
 - [Message Queue](./message-queue.md) — Broadcast to many vs. one consumer per message
 - [Fan-Out](./fan-out.md) — Pub/sub is how you wire it; fan-out is the one-to-many delivery shape it produces.
+- [Recipient List](./recipient-list.md) — Subscribers choose what they receive; with a recipient list the sender computes the list.
 
 **Exposed to**
 

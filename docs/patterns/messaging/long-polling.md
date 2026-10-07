@@ -16,7 +16,7 @@ Long polling is a request the server deliberately leaves unanswered until it has
 ## What it is
 <!--meta block=description-->
 
-**Long polling** is an ordinary HTTP request that the server parks until an event arrives or a timeout of 20 to 60 seconds fires. The client then sends the next request at once, carrying a cursor such as the last event id so the server knows where to resume. It gives the latency of a push and the load of a slow poll, with no new infrastructure. Unlike [Server-Sent Events](./server-sent-events.md) or [WebSocket](./websocket.md), one connection carries one answer.
+Plain polling asks every second or two and most replies are empty. Long polling parks each HTTP request until an event arrives or a timeout fires, set below the path's shortest idle limit (often 20 to 60 seconds). The client asks again at once with a cursor, the last event id. It gives the latency of a push and the load of a slow poll, with no new infrastructure, and unlike [Server-Sent Events](./server-sent-events.md) or [WebSocket](./websocket.md) each connection carries one answer.
 
 ## Explained
 <!--meta block=explain-->
@@ -28,7 +28,7 @@ Long polling is a request the server leaves unanswered on purpose. The client as
 - **Gaps.** An event between two requests can be missed, so send a cursor and keep a short window of recent events.
 - **Reconnect storms.** After a restart every client returns together, so add jitter (a random delay) to the retry.
 
-**Example.** A shop shows 200,000 buyers the status of a card payment. Polling every 2 s sends 100,000 requests a second, and nearly all answer no. With long polling and a 30 s hold, each buyer sends about 1 request per 30 s, around 6,700 a second, and sees the result in well under a second. The cost is 200,000 parked sockets, which an event-driven server holds in memory but a thread-per-request server cannot. A restart makes all 200,000 reconnect, so each waits a random 1 to 5 s first.
+**Example.** A shop shows 200,000 buyers the status of a card payment. Polling every 2 s sends 100,000 requests a second, and nearly all answer no. With long polling and a 30 s hold, each buyer sends about 1 request per 30 s, around 6,700 a second, and sees the result in well under a second. The cost is 200,000 parked sockets, which an event-driven server holds in memory but a thread-per-request server cannot. A restart makes all 200,000 reconnect; a random 1 to 5 s delay still means about 50,000 requests a second at the start, so widen the window.
 
 ## How it works
 <!--meta block=structure-->
@@ -48,12 +48,12 @@ flowchart LR
 ```
 
 1. The client sends a request with the cursor of the last event it processed.
-2. The server checks for newer events. If it has none, it registers the request as waiting and sends nothing.
+2. The server registers the request as waiting, then checks for newer events. If there are any it answers at once; if not it sends nothing, so an event published in between still wakes it.
 3. An event is published, from a write, a job or a [publish-subscribe](./pubsub.md) topic the server listens to.
 4. The server finds the parked requests the event concerns and answers each with it.
 5. The client handles the event and sends the next request at once, with the new cursor.
 
-```mermaid caption="What happens when nothing arrives, and when the answer is in flight? An idle request ends with an empty reply at the timeout, and an event that lands between two requests is not lost because the next request asks from the cursor."
+```mermaid caption="What happens when nothing arrives, and when the answer is in flight? An idle request ends with an empty reply at the timeout, and an event that lands between two requests is not lost as long as the server still holds events back to the cursor the next request asks from."
 sequenceDiagram
     autonumber
     participant C as Client
@@ -76,7 +76,7 @@ The timeout is not a failure. It keeps the request under the idle limit of every
 - **Cursor resume** — the client sends the id of the last event it handled, and the server returns everything after it. This is what closes the gap between two requests, and it needs the server to keep a short window of recent events.
 - **Batching hold** — the server waits a few milliseconds after the first event before answering, so a burst of events leaves as one response instead of one request round trip each.
 - **Per-channel waits** — one request waits on a topic or user inbox. The server keeps a map from channel to waiting requests, so an event wakes only the requests that care.
-- **Transport fallback** — a library tries [WebSocket](./websocket.md) first and drops to long polling when a proxy blocks the upgrade. Socket.IO works this way.
+- **Transport fallback** — a library starts on long polling and upgrades to [WebSocket](./websocket.md) once the connection allows it, and stays on long polling when a proxy blocks the upgrade. Socket.IO works this way.
 - **Queue long poll** — a consumer waits on an empty queue for up to a set time, so it does not spin on empty reads. Amazon SQS (Simple Queue Service) exposes this as a receive-wait time.
 
 ## Trade-offs
@@ -87,7 +87,7 @@ The timeout is not a failure. It keeps the request under the idle limit of every
 
 - **Works through everything** — it is plain HTTP, so proxies, firewalls and every client library handle it, and nothing new is deployed.
 - **Near-push latency** — an event leaves the moment it exists, with no polling interval to wait out.
-- **Stateless-friendly** — the cursor travels with each request, so any server can answer and no [sticky session](../distributed/routing/sticky-session.md) is needed.
+- **Stateless-friendly** — the cursor travels with each request, so no [sticky session](../distributed/routing/sticky-session.md) is needed, provided the event window sits in a store or topic every node reads.
 - **Cheap when idle** — a quiet client costs one request per timeout, not one per second.
 
 ### Cons
@@ -122,9 +122,11 @@ The timeout is not a failure. It keeps the request under the idle limit of every
 type Ev = { id: number; data: string };
 const log: Ev[] = [];                       // recent events, oldest first
 const waiters = new Set<() => void>();      // parked requests
+const WINDOW = 1000;    // event window; tune to the resume gap
 
 export function publish(data: string) {
   log.push({ id: (log.at(-1)?.id ?? 0) + 1, data });
+  if (log.length > WINDOW) log.shift();   // trim: keep a window, not every event
   waiters.forEach((wake) => wake());        // wake every parked request
 }
 
@@ -142,11 +144,17 @@ export async function handle(after: number, holdMs = 25_000) {
 
 // Client: ask, handle, ask again at once, back off with jitter on error.
 async function poll(url: string, after = 0) {
+  let delay = 1000;
   for (;;) {
     try {
       const r = await fetch(`${url}?after=${after}`);
+      if (!r.ok) throw new Error(String(r.status));
       if (r.status === 200) for (const e of await r.json()) after = e.id;
-    } catch { await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000)); }
+      delay = 1000;                          // success resets the backoff
+    } catch {
+      await new Promise((r) => setTimeout(r, delay * (0.5 + Math.random())));
+      delay = Math.min(delay * 2, 30_000);   // double up to a cap, with jitter
+    }
   }
 }
 ```
@@ -228,6 +236,6 @@ async function poll(url: string, after = 0) {
 
 **Often confused with**
 
-- [Polling Consumer](./polling-consumer.md) — The server holds one request open until data arrives, to avoid empty replies
+- [Polling Consumer](./polling-consumer.md) — A polling consumer asks a queue at its own pace and may get nothing; long polling parks one HTTP request until data arrives or a timeout fires.
 
 <!-- relationships:end -->

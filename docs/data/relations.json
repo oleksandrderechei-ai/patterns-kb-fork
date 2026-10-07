@@ -11294,13 +11294,6 @@
       "note_b": "A burst waits in the queue while the consumer drains it at a steady rate"
     },
     {
-      "a": "long-polling",
-      "verb": "often-confused-with",
-      "b": "polling-consumer",
-      "note_a": "The server holds one request open until data arrives, to avoid empty replies",
-      "note_b": "The consumer asks the channel for work, and the call may return empty"
-    },
-    {
       "a": "canonical-data-model",
       "verb": "combines-with",
       "b": "message-translator",
@@ -13509,6 +13502,34 @@
       "b": "bulkhead",
       "note_a": "One permit budget per remote service is how a semaphore becomes a bulkhead",
       "note_b": "A bulkhead's permit is a counting semaphore sized per dependency"
+    },
+    {
+      "a": "idempotency",
+      "verb": "combines-with",
+      "b": "pubsub",
+      "note_a": "Each topic subscription needs it, because the broker redelivers messages.",
+      "note_b": "Redelivery after a missed acknowledgement means every subscriber must tolerate a repeat."
+    },
+    {
+      "a": "pubsub",
+      "verb": "often-confused-with",
+      "b": "recipient-list",
+      "note_a": "Subscribers choose what they receive; with a recipient list the sender computes the list.",
+      "note_b": "The topic holds the subscriber set; the sender names no recipient."
+    },
+    {
+      "a": "long-polling",
+      "verb": "often-confused-with",
+      "b": "polling-consumer",
+      "note_a": "A polling consumer asks a queue at its own pace and may get nothing; long polling parks one HTTP request until data arrives or a timeout fires.",
+      "note_b": "The consumer asks the channel for work, and the call may return empty"
+    },
+    {
+      "a": "reverse-proxy",
+      "verb": "combines-with",
+      "b": "server-sent-events",
+      "note_a": "A held SSE stream is the traffic that proxy buffering and idle timeouts break.",
+      "note_b": "Turn buffering off on the stream route and keep its idle timeout above the keepalive interval."
     }
   ],
   "group_order": {

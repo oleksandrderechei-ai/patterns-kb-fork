@@ -228,6 +228,7 @@ const unsent = (await dispatch(order)).filter((o) => !o.ok);
 - [Content-Based Router](./content-based-router.md) — A content-based router picks the first matching rule; a recipient list takes every match
 - [Fan-Out](./fan-out.md) — Fan-out copies to every consumer; a recipient list copies to a computed subset
 - [Routing Slip](./routing-slip.md) — Sends one copy of the message to every recipient at once, in parallel
+- [Publish-Subscribe](./pubsub.md) — The topic holds the subscriber set; the sender names no recipient.
 
 **Implemented by**
 
