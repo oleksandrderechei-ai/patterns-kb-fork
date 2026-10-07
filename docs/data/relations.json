@@ -4601,13 +4601,6 @@
       "note_b": "Election with terms and fencing stops a stale leader writing"
     },
     {
-      "a": "write-through",
-      "verb": "prevents-hazard",
-      "b": "stale-cache",
-      "note_a": "Write the cache and store together, so a read after a write can't be stale",
-      "note_b": "Write the cache and store together, so a read after a write can't be stale"
-    },
-    {
       "a": "cache-aside",
       "verb": "prevents-hazard",
       "b": "no-caching",
@@ -12565,13 +12558,6 @@
       "note_b": "A design where one expiry puts every edge miss on a single row."
     },
     {
-      "a": "bitly",
-      "verb": "exposed-to",
-      "b": "hot-key",
-      "note_a": "One viral code draws hundreds of thousands of requests a second onto a single row.",
-      "note_b": "A design where one link carries most of the read load."
-    },
-    {
       "a": "cqrs",
       "verb": "combines-with",
       "b": "repository",
@@ -13985,6 +13971,41 @@
       "b": "lava-flow",
       "note_a": "Both are dead code kept out of fear; a boat anchor was built on purpose and never removed, lava flow is accidental residue nobody can explain. Often found together.",
       "note_b": "Both are dead code kept out of fear; lava flow is residue of unknown purpose, a boat anchor was built on purpose and left in. Often found together."
+    },
+    {
+      "a": "distributed-cache",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "Can fall into hot key when a hashed shard gives one popular entry a single owner node",
+      "note_b": "A shared cache shards entries, so one popular entry has a single owner node"
+    },
+    {
+      "a": "bitly",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "Can fall into hot key when one viral code puts hundreds of thousands of reads a second on a single row",
+      "note_b": "One link carries most of the read load"
+    },
+    {
+      "a": "write-through",
+      "verb": "prevents-hazard",
+      "b": "stale-cache",
+      "note_a": "Write the cache and store together, so a read after a write sees the new value in this cache",
+      "note_b": "Write the cache and store together, so a read after a write sees the new value in this cache unless another layer or replica holds a copy"
+    },
+    {
+      "a": "distributed-cache",
+      "verb": "exposed-to",
+      "b": "stale-cache",
+      "note_a": "Replicas and tiers each hold a copy that expires on its own schedule",
+      "note_b": "Can fall into a stale cache when one copy outlives a write made elsewhere"
+    },
+    {
+      "a": "in-process-cache",
+      "verb": "prevents-hazard",
+      "b": "no-caching",
+      "note_a": "Keeps the repeated read in the app's own memory, the fastest hit",
+      "note_b": "The fastest placement, with a separate copy in every instance"
     }
   ],
   "group_order": {

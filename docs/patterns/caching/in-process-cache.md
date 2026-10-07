@@ -205,6 +205,7 @@ function set<V>(key: string, value: V, ttlMs: number): void {
 **Prevents**
 
 - [Hot Key](../../hazards/hot-key.md) — A local fallback cache keeps the hottest key in the app's own memory
+- [No Caching](../../hazards/no-caching.md) — Keeps the repeated read in the app's own memory, the fastest hit
 
 **Exposed to**
 

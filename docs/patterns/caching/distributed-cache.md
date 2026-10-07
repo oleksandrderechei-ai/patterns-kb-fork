@@ -201,6 +201,8 @@ async function getUser(id: string): Promise<User> {
 
 - [Hot Key](../../hazards/hot-key.md) — Can fall into hot key when one viral key lives on the single node of the shared tier that owns it
 - [Stale Cache](../../hazards/stale-cache.md) — Can fall into stale cache when a database write leaves the shared entry in place, so every instance reads the same old value until expiry or invalidation
+- [Hot Key](../../hazards/hot-key.md) — Can fall into hot key when a hashed shard gives one popular entry a single owner node
+- [Stale Cache](../../hazards/stale-cache.md) — Replicas and tiers each hold a copy that expires on its own schedule
 
 **Demonstrated by**
 

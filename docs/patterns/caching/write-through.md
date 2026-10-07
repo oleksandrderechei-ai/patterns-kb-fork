@@ -210,7 +210,7 @@ class WriteThroughCache<K, V> {
 
 **Prevents**
 
-- [Stale Cache](../../hazards/stale-cache.md) — Write the cache and store together, so a read after a write can't be stale
+- [Stale Cache](../../hazards/stale-cache.md) — Write the cache and store together, so a read after a write sees the new value in this cache
 
 **Exposed to**
 

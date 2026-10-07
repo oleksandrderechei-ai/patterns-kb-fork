@@ -13,13 +13,8 @@ source: docs/data/relations.json
 # Prerequisites
 
 A **prerequisite record** is one page with the pages to read before it and the pages to
-<<<<<<< HEAD
-read beside it. There are 334 records: 44 of them name something to read first, through 51
-requires edges, and 918 pairs of pages are related both ways.
-=======
-read beside it. There are 336 records: 44 of them name something to read first, through 50
-requires edges, and 872 pairs of pages are related both ways.
->>>>>>> 727c211 (feat: boat-anchor, leaky-abstraction, cache-stampede groomed by kb-improve)
+read beside it. There are 336 records: 44 of them name something to read first, through 51
+requires edges, and 920 pairs of pages are related both ways.
 
 Everything here is built from [`relations.json`](../data/relations.json), through its
 second form [`prerequisites.json`](../data/prerequisites.json). **Read first** lists a

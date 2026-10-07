@@ -24,9 +24,9 @@ A **hot key** is one cache entry that draws far more reads than the rest, so the
 A hot key is one cache entry that gets far more reads than all the others, so the one cache node that owns it saturates while the rest sit idle. Caching works as intended, since every read is served from memory, but a sharded cache places each key on exactly one node by hashing, and hashing balances the number of keys, not the traffic. You meet it with a celebrity profile, a viral post, a global setting or a live scoreboard. Adding cache nodes does nothing, because the hot key still lives on one of them. It differs from a [cache stampede](cache-stampede.md), which is brief and ends when the value is reloaded, while a hot key stays until you change how it is read. The only lever is the read path. Copy the entry onto several nodes and spread reads across the copies. Keep a short-lived copy in each application process for the hottest values. Replication fits read-heavy keys but not one that everyone writes.
 
 - **Staleness.** Every copy must be refreshed or expire, so set the expiry to the staleness you can tolerate.
-- **Write fan-out.** Each edit must update every copy; keep the copy count small.
+- **Write fan-out.** Each edit must update every copy; use the fewest copies that bring each node under its limit (5 in the example).
 
-**Example.** A cache cluster has 10 nodes, each good for 100,000 reads a second. One celebrity profile gets 400,000 reads a second, so its owner node is 4 times over its limit while the other 9 nodes sit near idle. You copy the profile under 5 keys on 5 nodes, so each takes 80,000 reads a second. You also add a 2 s copy in each of 200 app servers, so the fleet reads the cache at most 100 times a second. A profile edit now takes up to 2 s to appear.
+**Example.** A cache cluster has 10 nodes, each good for 100,000 reads a second. One celebrity profile gets 400,000 reads a second, so its owner node is 4 times over its limit while the other 9 nodes sit near idle. You copy the profile under 5 keys on 5 nodes, so each takes 80,000 reads a second. Pick key suffixes that hash to 5 different nodes. You also add a 2 s copy in each of 200 app servers, so the fleet reads the cache at most 100 times a second. App-server copies alone cut it to 100 a second; replicate only if that is not enough. A profile edit now takes up to 2 s to appear.
 
 ## How it happens
 <!--meta block=causes-->
@@ -50,12 +50,15 @@ flowchart TB
 - **One node becomes the bottleneck.** The node owning the hot key saturates its CPU or network while the rest of the cluster is nearly idle — capacity that can't be brought to bear on the problem.
 - **The blast radius is wider than the key.** A saturated node also serves every other key that hashes to it, so unrelated data behind the same node gets slow or unavailable too.
 - **It hides behind good averages.** Cluster-wide hit rate and average latency look healthy; the damage is a tail concentrated on one shard, easy to miss until that shard tips over.
-- **Caching alone can't scale past it.** The usual read-scaling move — add cache nodes — does nothing here, so the hot key quietly caps the throughput of an otherwise horizontally-scalable design.
+- **Caching alone can't scale past it.** Adding cache nodes does nothing until the key's reads are spread over copies, so the hot key caps an otherwise scalable design.
+- **Failures roll on.** If the saturated node fails, a hash ring hands its keys, the hot key included, to the next node, which then overloads.
 
 ## How to avoid it
 <!--meta block=mitigation-->
 
-The fix is to stop routing all of the hot key's traffic to one place. **Replicate the hot entry** across several cache nodes and spread reads over the copies, so the load is shared instead of concentrated. And keep an **in-process local cache** in front of the [shared cache](../patterns/caching/distributed-cache.md) for the very hottest values, so repeated reads are answered from the application's own memory and never leave it. Note that [consistent hashing](../patterns/distributed/routing/consistent-hashing.md), which keeps hit rates high across a changing pool, does not help here — it still sends every request for one key to the same node; spreading the key itself is the move.
+The fix is to stop routing all of the hot key's traffic to one place. **Replicate the hot entry** across several cache nodes and spread reads over the copies, so the load is shared instead of concentrated. And keep an **in-process local cache** in front of the [shared cache](../patterns/caching/distributed-cache.md) for the very hottest values, so repeated reads are answered from the application's own memory and never leave it. [Consistent hashing](../patterns/distributed/routing/consistent-hashing.md), which keeps hit rates high across a changing pool, does not help here — it still sends every request for one key to the same node. Store the copies under suffixed keys (key#1 to key#n) so they hash to different nodes, and have each reader pick a suffix at random. Use the fewest copies that bring each node under its limit. Each process reloads its local copy once per expiry, so edits show only after that expiry.
+
+Find hot keys with per-key read counters or sampled access logs, and compare each node's load with the cluster median. Replicate only keys that stay over the limit. For a write-heavy key, split the value (sharded counters) or batch writes; replication does not fix it.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -80,8 +83,9 @@ The fix is to stop routing all of the hot key's traffic to one place. **Replicat
 - [Cache-Aside](../patterns/caching/cache-aside.md) — One popular key lives on a single cache node, and every reader goes to it
 - [Consistent Hashing](../patterns/distributed/routing/consistent-hashing.md) — Placement by hash balances key count, not traffic
 - [Sharding](../patterns/distributed/routing/sharding.md) — A sharded cache puts a viral key on exactly one shard
-- [Bitly](../designs/bitly.md) — A design where one link carries most of the read load.
 - [Read-Through](../patterns/caching/read-through.md) — An evicted or expired hot key sends every reader to one synchronous load on the source
 - [Distributed Cache](../patterns/caching/distributed-cache.md) — One node of the shared tier takes all of a viral key's reads while the rest idle
+- [Distributed Cache](../patterns/caching/distributed-cache.md) — A shared cache shards entries, so one popular entry has a single owner node
+- [Bitly](../designs/bitly.md) — One link carries most of the read load
 
 <!-- relationships:end -->
