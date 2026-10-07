@@ -215,6 +215,7 @@ func callDownstream() error {
 **Combines with**
 
 - [Thread Pool](./thread-pool.md) — A pool bounds concurrency; a counting semaphore is the primitive that does the bounding
+- [Bulkhead](../distributed/resilience/bulkhead.md) — One permit budget per remote service is how a semaphore becomes a bulkhead
 
 **Often confused with**
 

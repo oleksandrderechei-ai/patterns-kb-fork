@@ -1,7 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "patterns-site", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "8000"], "port": 8000, "cwd": "site" },
-    { "name": "patterns-site-alt", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "4173"], "port": 4173, "cwd": "site" }
+    { "name": "patterns-site", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "8000"], "port": 8000, "cwd": "site/dist" },
+    { "name": "patterns-site-alt", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "4173"], "port": 4173, "cwd": "site/dist" }
   ]
 }

@@ -227,6 +227,7 @@ for (const [type, pool] of Object.entries(pools)) {
 - [Fallback](./fallback.md) — A call turned away by the bulkhead can be answered from a fallback.
 - [Timeout / Deadline](./timeout-deadline.md) — A permit held by a hung call is only freed when a deadline expires
 - [Multi-Tenancy](../routing/multi-tenancy.md) — Compartments per tenant keep one tenant's load from spending another's capacity.
+- [Semaphore](../../concurrency/semaphore.md) — A bulkhead's permit is a counting semaphore sized per dependency
 
 **Alternative to**
 
