@@ -2631,14 +2631,14 @@
     "/patterns/concurrency/future-promise.html": {
       "concurrency": {
         "role": "Let the caller move on and collect the result later",
-        "tour": "Submitting work to the pool hands back a placeholder at once. The caller carries on, and the value or the error is written into the placeholder when the work finishes, so the caller can wait for it only when it truly needs it.",
+        "tour": "Submitting work to the pool hands back a placeholder at once. The caller carries on, and the value or the error is written into the placeholder when the work finishes, so the caller waits only when it needs the value.",
         "fluency": "Get a placeholder now and read the result when the work finishes."
       }
     },
     "/patterns/concurrency/semaphore.html": {
       "concurrency": {
         "role": "Cap how many threads hold a resource",
-        "tour": "A counter holding N permits: acquire takes one and blocks at zero, release returns one. It bounds concurrency as a budget rather than excluding everyone, and it sizes the pool's limit, so work waits at the cap instead of piling into memory.",
+        "tour": "A counter holding N permits: acquire takes one and blocks at zero, release returns one. It bounds concurrency as a budget rather than excluding everyone, and it caps how many threads reach one scarce resource, so extra work waits at the cap instead of overloading it.",
         "fluency": "Allow only N threads at a time into a resource."
       }
     },
@@ -2652,35 +2652,35 @@
     "/patterns/concurrency/rw-lock.html": {
       "concurrency": {
         "role": "Let readers share, make writers exclusive",
-        "tour": "A finer-grained monitor: any number of threads may hold read mode together, but a writer waits for every reader and then excludes everyone. It pays off when reads far outnumber writes and readers were queueing behind each other for no reason.",
+        "tour": "A finer-grained monitor: any number of threads may hold read mode together, but a writer waits for every reader and then excludes everyone. It pays off when reads far outnumber writes and readers were queueing behind each other for no reason. Depending on the lock's policy, a steady stream of readers can starve a writer, and on short critical sections a plain mutex can be faster.",
         "fluency": "Allow many simultaneous readers or one writer, never both."
       }
     },
     "/patterns/concurrency/copy-on-write.html": {
       "concurrency": {
         "role": "Take the lock off the read path entirely",
-        "tour": "Nobody edits the shared structure in place. A writer clones it, changes the clone and swaps the one reference, so readers take no lock and never meet a half-updated version. The cost moves to the writer, which copies, so it suits rare writes.",
+        "tour": "Nobody edits the shared structure in place. A writer clones it, changes the clone and swaps the one reference, so readers take no lock and never meet a half-updated version. Writers still need one lock or a compare-and-swap on that reference, or two clones lose an update. The cost moves to the writer, which copies, so it suits rare writes.",
         "fluency": "Let readers run lock-free by publishing a new copy for each write."
       }
     },
     "/patterns/concurrency/lock-free.html": {
       "concurrency": {
         "role": "Retry an atomic update instead of waiting",
-        "tour": "A thread reads a word, computes the new value and commits with a single compare-and-swap that writes only if the word is unchanged. The loser re-reads and tries again, so no thread ever blocks. A mutex is simpler, so go lock-free only when contention proves it necessary.",
+        "tour": "A thread reads a word, computes the new value and commits with a single compare-and-swap that writes only if the word is unchanged. The loser re-reads and tries again, so no thread holds up the others, though one thread can lose the swap repeatedly under heavy contention. A mutex is simpler, so go lock-free only when contention proves it necessary.",
         "fluency": "Update shared memory with an atomic retry loop instead of a lock."
       }
     },
     "/patterns/concurrency/thread-confinement.html": {
       "concurrency": {
         "role": "Make the race impossible by giving state one owner",
-        "tour": "Every race needs mutable state and more than one thread on it. Locks discipline the second; confinement removes the first. With a single owning thread per piece of state there is no lock to take and no interleaving to reason about.",
+        "tour": "Every race needs mutable state and more than one thread on it. Locks discipline the second; confinement removes the first. With a single owning thread per piece of state there is no lock to take and no data race on that state; keep each invariant inside one message, because messages from different senders can still interleave.",
         "fluency": "Give each piece of mutable state a single owning thread."
       }
     },
     "/patterns/concurrency/actor-model.html": {
       "concurrency": {
         "role": "Confinement with messages between owners",
-        "tour": "An actor has private state, a mailbox and a behavior, and never touches another actor's memory. It is confinement made concrete, with message passing as the only way in. Bounded mailboxes push back on a fast sender, and it is the alternative to guarding shared state with a lock.",
+        "tour": "An actor has private state, a mailbox and a behavior, and never touches another actor's memory. It is confinement made concrete, with message passing as the only way in. A bounded mailbox pushes back on a fast sender; an unbounded one does not, so set the bound.",
         "fluency": "Isolated actors that share nothing and communicate only by messages."
       }
     },
@@ -3275,7 +3275,7 @@
     "/patterns/concurrency/double-checked-locking.html": {
       "concurrency": {
         "role": "Skip the lock on the fast path of lazy creation",
-        "tour": "Check for the object without a lock, then lock and check again before creating it. It is subtle: it needs a memory barrier to be correct.",
+        "tour": "Check for the object without a lock, then lock and check again before creating it. It is subtle: without a memory barrier (a fence that orders memory writes), another thread can see the reference before the object is fully built.",
         "fluency": "Avoid taking a lock on every read of a lazily created value, and know why it is subtle."
       }
     },
@@ -3338,7 +3338,7 @@
     "/patterns/concurrency/fork-join.html": {
       "concurrency": {
         "role": "Split a job, run the pieces, merge the results",
-        "tour": "A job splits into small pieces that run on a pool, often with work stealing, then the join waits for them and merges the results.",
+        "tour": "A job splits into small pieces that run on a pool, often with work stealing (an idle worker takes queued pieces from a busy one), then the join waits for them and merges the results.",
         "fluency": "Split work into pieces, run them in parallel and merge the results."
       }
     }
