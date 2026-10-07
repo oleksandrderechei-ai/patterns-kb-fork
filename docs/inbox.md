@@ -49,3 +49,9 @@ A trap that fits no tier is usually two facts in one bullet. Split it and route 
   `mint` and `derive` in every form. Check new prose by hand:
   `grep -rniE '\bterminal\b' CLAUDE.md docs .claude/rules`.
   Leaves when `terminal` joins a `house` term's `avoid` list.
+- **The block writers escape what the rules say they keep.** `kb.mjs production` and `wild`
+  wrote `` \` `` around an inline-code name (`max.poll.interval.ms`) that markdown-authoring
+  says passes through, and `kb.mjs explain --costs` turned a `[label](path.md)` link in a
+  cost note into escaped text. After each writer call, check the page file: `grep -n '\\'
+  docs/<path>.md`, and restore the backtick or link by hand. Leaves when the writers pass
+  inline code and cost links through, with a test case for each.
