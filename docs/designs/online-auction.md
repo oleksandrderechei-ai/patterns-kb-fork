@@ -27,7 +27,7 @@ An online auction keeps one true highest bid per item while thousands of people 
 - **Retries.** Each collision costs a retry, rare per item, so cap the retries.
 - **Watcher push.** Pushing a new high to up to 100 million watchers needs a channel per item that every connection server listens to, then relays.
 
-**Example.** The peak is about 15,000 bids a second, ten times the average, because bidding bunches into the last minutes. One item sits at $50. Two bids arrive in the same millisecond, $60 and $55, and both read 50. The $60 update changes the row and succeeds. The $55 update finds the high is no longer 50, so it changes zero rows. It re-reads 60, sees 55 does not beat it and rejects the bid at once. The cost is that second read and the few milliseconds the queue added.
+**Example.** The peak is about 15,000 bids a second, ten times the average, because bidding bunches into the last minutes. One item sits at $50. After a consumer restart, two bids are in flight at once, $60 and $55, and both read 50. The $60 update changes the row and succeeds. The $55 update finds the high is no longer 50, so it changes zero rows. It re-reads 60, sees 55 does not beat it and rejects the bid at once. The cost is that second read and the few milliseconds the queue added.
 
 ## Requirements
 <!--meta block=requirements-->
@@ -52,7 +52,7 @@ Out of scope, named up front to keep the design narrow: search, category filteri
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Bid throughput.** Say each of 10M live auctions draws ~100 bids over a ~1-week life. That is 10M × 100 ÷ 7 days ≈ 140M bids/day ≈ **~1,400 bids/sec** on average. Bidding is bursty — auctions cluster their action into the final minutes and the evening — so design for a peak roughly 10× the mean, call it **~15k bids/sec**. That write rate, on a single hot scalar per auction, is the number the architecture has to survive.
+**Bid throughput.** Say each of 10M live auctions draws ~100 bids over a ~1-week life. That is 10M × 100 ÷ 7 days about 143M bids/day, about **1,650 bids/sec** on average. Bidding is bursty — auctions cluster their action into the final minutes and the evening — so design for a peak roughly 10× the mean, about 16k at the mean times ten; call it **~15k bids/sec**, rounded. That write rate, on a single hot scalar per auction, is the number the architecture has to survive.
 
 **Storage.** An auction row is ~1&nbsp;KB; a bid is ~500 bytes. At 10M × 52 weeks ≈ 520M auctions/year, storage is ≈ 520M × (1&nbsp;KB + 100 × 500&nbsp;B) ≈ **~25&nbsp;TB/year**. Real, but not the pressing constraint — modern solid-state drives (SSDs) swallow it and replication covers durability. Write throughput, not disk, is what forces the interesting choices.
 
@@ -91,12 +91,12 @@ GET /auctions/{auctionId}
 GET /auctions/{auctionId}/bid-stream   // SSE: pushes each new maxBid
 ```
 
-The bid response is a **202 Accepted**, not a 200: the bid is safely captured, but whether it wins is decided a step later, and the outcome comes back over the live stream. That small honesty — acknowledging receipt separately from adjudication — is what lets the durability and consistency machinery sit behind the endpoint without making the caller wait on it.
+The bid response is a **202 Accepted**, not a 200: the bid is safely captured, but whether it wins is decided a step later, and the bidder sees the result when the stream pushes the new `maxBid`: if it is not their amount, they lost. Acknowledging receipt separately from adjudication lets the durability and consistency machinery sit behind the endpoint without making the caller wait on it.
 
 ## How the system is built
 <!--meta block=architecture-->
 
-Split listing from bidding into two services with opposite shapes. The **Auction Service** is read-tuned and thin — create and fetch listings. The **Bid Service** is write-tuned and does the hard part: it never touches the database on the request path. A bid is dropped into a durable log the instant it arrives, acknowledged, and adjudicated asynchronously by a consumer that owns the auction's true high. That same consumer, on accepting a new high, publishes it so every real-time connection watching the item — wherever it is hosted — learns the new number. The split matters because bidding traffic is ~100× listing traffic, and the two want to be tuned and scaled independently.
+Split listing from bidding into two services with opposite shapes. The **Auction Service** is read-tuned and thin — create and fetch listings. The **Bid Service** is write-tuned and does the hard part: it never touches the database on the request path. A bid is dropped into a durable log the instant it arrives, acknowledged, and adjudicated asynchronously by a consumer that owns the auction's true high. That same consumer, on accepting a new high, publishes it so every real-time connection watching the item — wherever it is hosted — learns the new number. The split matters because bidding traffic (about 1,650 bids/sec) is about 100× listing traffic (520M listings a year, about 16 a second), and the two want to be tuned and scaled independently.
 
 ```mermaid caption="A bid is durable at the queue before it is judged; the consumer holds the true high in the auction row and broadcasts each new one through pub/sub so every SSE server sees it."
 flowchart TB
@@ -127,9 +127,9 @@ flowchart TB
 
 This is the crux. Two bids arrive on an auction whose high is $10. User&nbsp;A reads $10 and writes $100 — accepted. User&nbsp;B, reading a stale $10 through replication lag, writes $20 — also accepted, because $20 beats the $10 they saw. Now two people believe they lead. That is a textbook [race condition](../hazards/race-condition.md) on a contended value, and it must be closed.
 
-The naïve fix — take a [pessimistic lock](../patterns/distributed/coordination/pessimistic-locking.md) over the auction's bid rows with `SELECT … FOR UPDATE` — is worse than it looks. Locking existing rows does not stop a concurrent transaction from inserting a fresh bid, so the race survives; and the lock set grows with every bid on the item, turning a hot auction into a queue of stalled transactions. Lock as few rows as possible for as short a time as possible — and this does the opposite.
+The naïve fix — take a [pessimistic lock](../patterns/distributed/coordination/pessimistic-locking.md) over the auction's bid rows with `SELECT … FOR UPDATE` — fails twice. Locking existing rows does not stop a concurrent transaction from inserting a fresh bid, so the race survives; and the lock set grows with every bid on the item, turning a hot auction into a queue of stalled transactions.
 
-Caching the max in Redis and comparing there is faster but relocates the problem: now the cache and the database can disagree, and there is no clean cross-system transaction to keep them honest. The clean answer collapses the two systems into one: **keep the high on the auction row itself** and guard the update. Lock-free is the better version — [optimistic concurrency control](../patterns/distributed/coordination/optimistic-concurrency-control.md), which fits because true collisions are rare. Read the row's `max_bid` as an implicit version, then issue a [conditional write](../patterns/distributed/coordination/conditional-write.md) that only lands if the max is still what you read. If it changed underneath you, the update touches zero rows — retry from the read. One row, no held lock, and the occasional retry is the whole cost.
+Caching the max in Redis and comparing there is faster but relocates the problem: now the cache and the database can disagree, and there is no clean cross-system transaction to keep them honest. The clean answer collapses the two systems into one: **keep the high on the auction row itself** and guard the update. Use [optimistic concurrency control](../patterns/distributed/coordination/optimistic-concurrency-control.md), which fits because true collisions are rare. Read the row's `max_bid` as an implicit version, then issue a [conditional write](../patterns/distributed/coordination/conditional-write.md) that only lands if the max is still what you read. If it changed underneath you, the update touches zero rows — retry from the read. One row, no held lock, and the occasional retry is the whole cost.
 
 ```sql summary="SQL — optimistic compare-and-set on the auction row"
 -- read the current high (this value is the "version")
@@ -140,15 +140,16 @@ UPDATE auctions
    SET max_bid = :amount
  WHERE id = :auctionId
    AND max_bid = :seen_max        -- 0 rows affected => someone raced us
-   AND :amount > max_bid;
+   AND :amount > max_bid
+   AND end_date > now();
 
--- 1 row affected: record the winning bid as 'accepted'
+-- run the UPDATE and the bid insert in one transaction; commit only when 1 row is affected (record the bid as 'accepted')
 -- 0 rows affected: re-read max_bid and retry, or reject if we no longer lead
 ```
 
 ### 2 · Durability — never drop a bid
 
-Adjudicating on the request path couples acceptance to the Bid Service being up and un-overloaded, and a popular auction's final minute can produce thousands of bids per second — more than the service can take head-on. Rather than drop bids, crash, or massively over-provision, get every bid into a durable [message queue](../patterns/messaging/message-queue.md) the moment it arrives, acknowledge from there, and let the consumer judge at its own pace. This is [load leveling](../patterns/distributed/resilience/load-leveling.md): the queue absorbs the surge so the service sees a smooth rate. It is also a [producer-consumer](../patterns/concurrency/producer-consumer.md) split — the API-side producer only appends; the Bid Service consumes. Kafka fits: high throughput, on-disk durability with replication, and — by partitioning the topic on `auctionId` — a total order of bids within an auction, which decides ties fairly, while different auctions process in parallel. The trade is a few milliseconds of queue latency for the guarantee that an acknowledged bid outlives any single crash; if the consumer dies mid-bid, the message is still there to reprocess.
+Adjudicating on the request path couples acceptance to the Bid Service being up and un-overloaded, and a popular auction's final minute can produce thousands of bids per second — more than the service can take head-on. Rather than drop bids, crash, or massively over-provision, get every bid into a durable [message queue](../patterns/messaging/message-queue.md) the moment it arrives, acknowledge from there, and let the consumer judge at its own pace. This is [load leveling](../patterns/distributed/resilience/load-leveling.md): the queue absorbs the surge so the service sees a smooth rate. It is also a [producer-consumer](../patterns/concurrency/producer-consumer.md) split — the API-side producer only appends; the Bid Service consumes. Kafka fits: high throughput, on-disk durability with replication, and — by partitioning the topic on `auctionId` — a total order of bids within an auction, which decides ties fairly, while different auctions process in parallel. The trade is a few milliseconds of queue latency for the guarantee that an acknowledged bid, once the broker has acknowledged the write to its in-sync replicas, outlives any single crash. If the consumer dies mid-bid, the message is still there to reprocess, so redelivery can arrive twice: each bid carries a client-supplied bid id with a unique constraint on it, and a repeat is a no-op.
 
 ### 3 · Showing the high bid in real time
 
@@ -176,7 +177,7 @@ sequenceDiagram
 
 ### 5 · Ending the auction
 
-A fixed end date is trivial. "End an hour after the last bid" is not — it is a scheduling problem. The cheap version stores a running `end_time` on the auction row and lets a periodic sweep close whatever has expired. The precise version uses a delayed-task [scheduler](../patterns/concurrency/scheduling.md) — a Redis sorted set keyed by fire time, or a durable job queue — that on each bid schedules a check for one hour later; when it fires, it closes the auction only if that bid is still the latest. Doing it well pulls in clock drift and concurrent termination attempts, which is exactly the kind of adjacent complexity a staff answer surfaces unprompted.
+A fixed end date is trivial. "End an hour after the last bid" is not — it is a scheduling problem. The cheap version stores a running `end_time` on the auction row and lets a periodic sweep close whatever has expired. The precise version uses a delayed-task [scheduler](../patterns/concurrency/scheduling.md) — a Redis sorted set keyed by fire time, or a durable job queue — that on each bid schedules a check for one hour later; when it fires, it closes the auction only if that bid is still the latest. A bid that arrives after the end is rejected, because the guarded update from deep dive&nbsp;1 also requires the auction to be still open. Pitfalls: clock drift and concurrent termination attempts.
 
 ```mermaid caption="How optimistic compare-and-set resolves two bids racing on the same auction."
 sequenceDiagram
@@ -214,7 +215,7 @@ sequenceDiagram
 - Asynchronous adjudication means a bidder learns win-or-lose a beat after submitting, not synchronously.
 - Queue and pub/sub add a few milliseconds of latency and real operational surface — partitions, consumer lag, replication.
 - Optimistic concurrency degrades on a genuinely white-hot single auction, where retries pile up under contention.
-- The live layer coordinates through pub/sub, so a stream can briefly miss an update if a broadcaster drops a message.
+- The live layer coordinates through pub/sub, so a stream can briefly miss an update if a broadcaster drops a message; the client re-reads `GET /auctions/{auctionId}` on reconnect to catch up.
 
 ## What's expected at each level
 <!--meta block=levels-->
