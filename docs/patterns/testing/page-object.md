@@ -16,7 +16,7 @@ Wraps a UI screen's structure and interactions behind one class with a single te
 ## What it is
 <!--meta block=description-->
 
-A page object is a class that models one screen, or one meaningful part of it, in a user-interface test. It owns the locators and exposes intention-revealing methods such as login(email, password); tests call those methods and never touch a selector. It resolves brittleness through duplication: when a field is renamed, one page object changes and every test is fixed at once. The object exposes state and actions, and the test owns the assertions.
+A page object is a class that models one screen, or one meaningful part of it, in a user-interface test. It owns the locators and exposes intention-revealing methods such as login(email, password); tests call those methods and never touch a selector. It removes selector duplication: when a field is renamed, one page object changes and every test that goes through it is fixed. The object exposes state and actions, and the test owns the assertions.
 
 ## Explained
 <!--meta block=explain-->
@@ -28,7 +28,7 @@ A page object is a class that models one screen, or one meaningful part of it, i
 - **Slow setup.** Driving setup through screens is slow; seed data directly.
 - **Timing.** It does not fix timing; use proper waits underneath.
 
-**Example.** A suite of 60 UI tests each types into the field with id email. A designer renames it to user-email, and all 60 tests fail. With a LoginPage object holding that selector, you make one edit and all 60 pass again. Each test also logs in through the form, 8 seconds each, 60 times 8 is 480 seconds, 8 minutes. Seeding the logged-in session directly takes 0.2 seconds, so the suite spends 12 seconds on setup. The cost is the page object itself, which the team must keep up to date for every screen change.
+**Example.** A suite of 60 UI tests each types into the field with id email. A designer renames it to user-email, and all 60 tests fail. With a LoginPage object holding that selector, you make one edit and all 60 pass again. Separately, and with or without a page object, setup speed depends on how tests log in. Assume 8 seconds per UI login (illustrative): 60 times 8 is 480 seconds. Seeding the logged-in session directly, assume 0.2 seconds each, cuts setup to 12 seconds. The cost of the page object is that the team must keep it up to date for every screen change.
 
 ## How it works
 <!--meta block=structure-->
@@ -54,7 +54,7 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Component Object (Widget Object)** — One object per reusable fragment — a nav bar, a modal, a date picker — composed into whichever page objects embed it, instead of duplicating its locators on every page.
-- **Fluent page objects** — Each action method returns the page object for wherever the browser ends up next, so tests read as a chain and the compiler rejects a step that doesn't make sense from the current screen.
+- **Fluent page objects** — Each action method returns the page object for wherever the browser ends up next, so tests read as a chain and, in a statically typed language, the compiler rejects a step that doesn't make sense from the current screen; in a dynamic one the wrong step fails at run time.
 - **Page Factory / [lazy elements](../gof/extra/lazy-initialization.md)** — Locators are declared as fields and resolved on first use rather than in the constructor, so a page object can be built before its elements exist in the DOM (Document Object Model).
 - **Base Page superclass** — Shared waits, navigation helpers, and common chrome (header, footer, toast messages) live in a base class that every concrete page object extends.
 
@@ -66,7 +66,7 @@ sequenceDiagram
 
 - **Tests read as user intent** — "log in", "submit order" — not as a maze of selectors.
 - **One place to fix when the UI changes**; every test using that method is fixed with it.
-- **Encapsulates a stable public API per screen** and hides the brittle DOM behind it.
+- **Each screen gets one stable set of methods**; the brittle page markup stays behind them.
 - **Non-automation engineers can follow** and even write tests against the exposed methods.
 
 ### Cons
@@ -74,7 +74,7 @@ sequenceDiagram
 
 - **Another layer to build** and keep in sync with the UI — overhead a tiny suite may not need.
 - **A poorly scoped page object grows** into a dumping ground for every locator on the screen.
-- **Encourages driving every setup step through the UI**, when a direct data seed would be faster and less flaky.
+- **Methods like `login()` make UI setup the easy path**, even where a direct data seed would be faster and less flaky.
 - **Doesn't fix flaky waits or timing** on its own — it still needs a solid waiting strategy underneath.
 
 ## When to use it
@@ -90,7 +90,7 @@ sequenceDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **One-off or rarely changing UI** — the UI is a one-off script or barely changes; the wrapping overhead outweighs the benefit.
+- **One-off or rarely changing UI**; the wrapping overhead outweighs the benefit.
 - **State can be set** up faster through an API or a data seed than by driving the UI to get there.
 - **You're testing at the component or unit level**, where a lighter, in-process test harness suffices.
 
@@ -106,9 +106,9 @@ class LoginPage {
   }
 
   async login(email: string, password: string): Promise<HomePage> {
-    await this.page.locator("#email").fill(email);
-    await this.page.locator("#password").fill(password);
-    await this.page.locator("button[type=submit]").click();
+    await this.page.locator("[data-testid=email]").fill(email);
+    await this.page.locator("[data-testid=password]").fill(password);
+    await this.page.locator("[data-testid=submit]").click(); // click auto-waits
     return new HomePage(this.page); // caller lands on the next screen
   }
 }
@@ -140,7 +140,7 @@ await expect(home.welcomeBanner()).toBeVisible();
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Waiting strategy** — Auto-waiting with a configurable timeout, or explicit waits for a condition — never fixed sleeps, which are the main source of flake.
+- **Waiting strategy** — Auto-waiting with a configurable timeout, or explicit waits for a condition. Avoid fixed sleeps, a common cause of flake.
 - **Locator strategy** — Stable test-id attributes versus CSS or XPath selectors tied to layout; the latter break when the DOM is restructured even though behavior is unchanged.
 - **Retries** — How many times a failed test is automatically re-run to absorb transient flake before it is reported as a failure.
 - **Parallelism** — The number of parallel browser instances or workers, which trades suite wall-clock time against resource use and cross-test isolation.
@@ -148,7 +148,7 @@ await expect(home.welcomeBanner()).toBeVisible();
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Flaky-test rate** — Tests that pass and fail without any code change — the primary health metric of a UI suite.
+- **Flaky-test rate** — Tests that pass and fail without any code change — a core health metric of a UI suite.
 - **Suite duration** — Wall-clock time for the UI suite; UI tests are the slowest tier and this is what caps how often they run.
 - **Retry rate** — How often a test only passes on a retry — a leading indicator of flake even while the suite stays green.
 
