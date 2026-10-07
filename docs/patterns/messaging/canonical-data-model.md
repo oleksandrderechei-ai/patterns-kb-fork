@@ -16,23 +16,23 @@ Defines one shared message format for every application in an integration, so ea
 ## What it is
 <!--meta block=description-->
 
-Applications that exchange data each use their own format, and translating between every pair needs up to N × (N − 1) translators for N applications. A new application then adds N more. A **canonical data model** is one shared format for messages between applications. Each application translates only to and from it, so you write 2N translators and a new application adds two. The price is a shared model that every team has to agree on and keep stable.
+Applications that exchange data each use their own format, and translating between every pair needs up to N × (N − 1) translators for N applications. A new application adds 2N more. A **canonical data model** is one shared format for messages between applications. Each application translates only to and from it, so you write 2N translators and a new application adds two. The price is a shared model that every team has to agree on and keep stable.
 
 ## Explained
 <!--meta block=explain-->
 
-A canonical data model is one agreed message format that every application in an integration speaks. Each application keeps its own internal format and translates at its edge, to and from the shared one, with a [message translator](./message-translator.md). Choose it over pairwise translation when many systems exchange the same business concepts, such as customer and order, and systems come and go. Choose direct translation for two or three systems, where agreeing on a model costs more than it saves. Without it, one field change in one system ripples into every translator that touches it, and nobody can say which ones those are.
+A canonical data model is one agreed message format that every application in an integration speaks. Each application keeps its own internal format and translates at its edge, to and from the shared one, with a [message translator](./message-translator.md). Choose it over pairwise translation when many systems exchange the same business concepts, such as customer and order, and systems come and go. Choose direct translation for two or three systems, where agreeing on a model costs more than it saves. Without it, one field change in one system ripples into every translator that touches it, and nobody keeps a current list of which ones those are.
 
 - **The model needs an owner.** Every change is a negotiation; name one owning group and publish a versioning policy.
 - **Lowest common denominator.** It can drop what one system needs; keep it to shared concepts and allow named extension fields.
 - **Two translations per message.** Each message is translated in and out; skip the model where only two systems talk.
 
-**Example.** A retailer has 6 systems: web shop, ERP, warehouse, CRM, billing and shipping. Pairwise translation needs up to 6 x 5 = 30 translators, and a 7th system adds 12 more. With one canonical Order, it needs 6 x 2 = 12 translators, and a 7th system adds 2. When the warehouse changes its order format, one translator changes instead of five. The cost: the shop needs a gift note the model lacks. Adding it as an optional field needs all six teams to agree, which is a meeting, not a sprint.
+**Example.** A retailer has 6 systems: web shop, ERP, warehouse, CRM, billing and shipping. Pairwise translation needs up to 6 × 5 = 30 translators, and a 7th system adds 12 more. With one canonical Order, it needs 6 × 2 = 12 translators, and a 7th system adds 2. When the warehouse changes its order format, 2 translators change instead of up to 10. The cost: the shop needs a gift note the model lacks. Adding it as an optional field needs all six teams to agree, which is a meeting, not a sprint.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Who has to know whose format? Nobody but themselves. At steps 1 and 3 each application talks to its own translator only, and the bus carries one shared shape, so a new application adds one more pair of translators at its edge and touches no other system."
+```mermaid caption="Who has to know whose format? Nobody knows another system's format. At steps 1 and 3 each application talks to its own translator only, and the channel between applications carries one shared shape, so a new application adds one more pair of translators at its edge and touches no other system."
 flowchart LR
     A["Web shop"]:::ext
     TA["Translator: shop to canonical"]
@@ -64,7 +64,7 @@ sequenceDiagram
 
 The model describes business concepts that several systems share, such as Customer, Order and Invoice. It leaves out what only one system cares about. Each application keeps its own internal format and database, and the translators sit at the edge, so the model governs messages and does not reach into storage.
 
-A model is a contract, and it needs the rules of a contract: one owner, a versioning policy, and a rule for what may change without breaking readers. Adding an optional field is safe, and removing or renaming a field breaks every consumer that reads it.
+A model is a contract, and it needs the rules of a contract: one owner, a versioning policy, and a rule for what may change without breaking readers. Adding an optional field is safe, and removing or renaming a field breaks every consumer that reads it. Consumers and the shared schema must accept fields they do not know; if a strict check rejects unknown fields, adding an optional field is a breaking change.
 
 ## Variations
 <!--meta block=variations-->
@@ -81,10 +81,10 @@ A model is a contract, and it needs the rules of a contract: one owner, a versio
 ### Pros
 <!--meta polarity=pro-->
 
-- **Translators grow as 2N, not N × (N − 1)** — six applications need 12 translators, not 30.
-- **A new application adds two translators** — one to the model and one from it, with no change to the others.
-- **A change stays local** — when one application changes its format, one translator changes and no other application notices.
-- **The business vocabulary is written down once** — an order means one thing on the bus, whatever each system calls it inside.
+- **Translators grow as 2N, not N × (N − 1)** — six applications need 12 translators, not up to 30, because 30 counts every pair talking in both directions.
+- **A new application adds two translators** — one to the model and one from it, with no change to the others when its data fits the model. A concept the model lacks needs a model change.
+- **A change stays local** — when one application changes its format, only its own two translators change and no other application notices. A change to the model itself still reaches every consumer.
+- **The business vocabulary is written down once** — each field has one documented meaning on the channel, whatever each system calls it inside. Writing it down does not stop systems filling it differently.
 - **Messages can be checked in one place** — one schema validates every message on the channel.
 
 ### Cons
@@ -165,8 +165,9 @@ function toWarehouse(o: CanonicalOrder) {
 
 - **Translation failure rate per application** — Messages a translator could not convert. A rise after a release points at the application that changed.
 - **Schema validation rejects** — Messages that fail the canonical schema. It shows producers that drift from the contract.
-- **Share of traffic per model version** — How many messages still use old versions. It tells you when a version can be retired.
+- **Share of traffic per model version** — How many messages still use each old version, tagged by model version and sending application. Retire a version when its share stays at zero for longer than the slowest sender's release cycle; the tags name who still sends it.
 - **Translation latency** — Time spent in translators per message, which adds to every flow.
+- **Reconciliation mismatches** — Sampled counts or totals compared between source and consumer for the same entity. A gap with no schema validation rejects points to meaning drift.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
