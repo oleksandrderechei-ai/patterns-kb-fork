@@ -3009,7 +3009,7 @@
     "/patterns/gof/behavioral/state.html": {
       "object-behavior": {
         "role": "Change behaviour as the object's own state changes",
-        "tour": "The context holds a state object and delegates to it, and each concrete state is a class implementing the same interface. One call does something different depending on which state is plugged in. It is often confused with strategy, which swaps an algorithm rather than following state.",
+        "tour": "The context holds a state object and delegates to it, and each concrete state is a class implementing the same interface. One call does something different depending on which state is plugged in. It is often confused with strategy. Here the states usually pick the next state themselves, while a strategy is chosen by the client and stays put.",
         "fluency": "Let an object change what it does when its internal state changes."
       }
     },
@@ -3023,14 +3023,14 @@
     "/patterns/gof/extra/null-object.html": {
       "object-behavior": {
         "role": "A do-nothing member of the family",
-        "tour": "A real object with the same interface whose methods do nothing or return a neutral value, handed back instead of null. It is a neutral strategy, it holds no state so one shared instance serves every call site, and it is valid only where the contract allows doing nothing.",
+        "tour": "A real object with the same interface whose methods do nothing or return a neutral value, handed back instead of null. It is a neutral strategy. Because it holds no state it can be one shared instance serving every call site; if it records anything, give each caller its own. It is valid only where the contract allows doing nothing.",
         "fluency": "Return a harmless do-nothing object instead of null."
       }
     },
     "/patterns/gof/behavioral/chain-of-responsibility.html": {
       "object-behavior": {
         "role": "Pass the request along until someone handles it",
-        "tour": "Handlers line up, and each deals with the request or forwards it to its successor, so the sender never knows which one answers. One handler may stop the request, which a decorator never does. A validator chain is the textbook use.",
+        "tour": "Handlers line up, and each deals with the request or forwards it to its successor, so the sender never knows which one answers. One handler may stop the request, which a decorator usually does not, since it normally still calls the object it wraps. Decide what an unhandled request does, because the order of the handlers changes the outcome. A validator chain is the usual use.",
         "fluency": "Send a request through a line of handlers until one deals with it."
       }
     },
@@ -3051,7 +3051,7 @@
     "/patterns/gof/behavioral/visitor.html": {
       "object-behavior": {
         "role": "Add an operation without editing the classes",
-        "tour": "Each element exposes accept, and the visitor carries one method per element type. A new operation is a new visitor and the element classes never change. A traversal walks the structure and hands each node to the visitor.",
+        "tour": "Each element exposes accept, and the visitor carries one method per element type. A new operation is a new visitor and the element classes stay as they are. The price runs the other way: a new element type means editing every visitor, so use it when the hierarchy is stable and the operations change. A traversal walks the structure and hands each node to the visitor.",
         "fluency": "Move an operation out of a class hierarchy into a separate object."
       }
     },
@@ -3065,7 +3065,7 @@
     "/patterns/gof/behavioral/memento.html": {
       "object-behavior": {
         "role": "Save a snapshot you can restore",
-        "tour": "The originator snapshots its state into an opaque memento, and a caretaker holds mementos without looking inside. Command does and memento captures the state to undo, and immutable snapshots make undo trivial.",
+        "tour": "The originator snapshots its state into an opaque memento, and a caretaker holds mementos without looking inside. Command records the action to undo; memento captures the state to restore. Immutable snapshots make restoring simple, but each one costs memory, so cap the history or snapshot only the change.",
         "fluency": "Capture an object's state in a separate object so you can restore it later."
       }
     },
