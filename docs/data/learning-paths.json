@@ -1802,7 +1802,7 @@
       },
       "scalability": {
         "role": "Distribute across a horizontal fleet",
-        "tour": "The front door for horizontal scale: it spreads incoming requests across every instance in the fleet, so the capacity autoscaling adds actually gets used. Health checks pull dead instances out of rotation before they cost you requests.",
+        "tour": "The front door for horizontal scale: it spreads incoming requests across every instance in the fleet, so the capacity autoscaling adds actually gets used. Health checks pull dead instances out of rotation after a few failed probes, which bounds the lost requests but does not remove them.",
         "fluency": "Distribute across a horizontal fleet"
       },
       "global-traffic-and-ingress": {
@@ -1859,7 +1859,7 @@
       },
       "scalability": {
         "role": "Partition data to scale writes",
-        "tour": "Splits a dataset across many nodes by key, so write throughput scales with node count instead of hitting the ceiling of a single primary. The cost is that queries spanning shards get harder and a bad key choice creates hot spots.",
+        "tour": "Splits a dataset across many nodes by key, so write throughput scales with node count when the key spreads writes evenly, instead of hitting the ceiling of a single primary. The cost is that queries spanning shards get harder, and a skewed key creates hot spots that leave one node as the ceiling.",
         "fluency": "Partition data to scale writes"
       },
       "proximity-search": {
@@ -1918,7 +1918,7 @@
       },
       "scalability": {
         "role": "Statelessness is what lets you add instances freely",
-        "tour": "Statelessness is what lets you add instances freely: if a request can land on any instance because no instance holds session state the others lack, you can add or kill instances without a migration plan. Push the state to a shared store and the fleet becomes disposable — this is the precondition every pattern above depends on.",
+        "tour": "Statelessness is what lets you add instances freely: if a request can land on any instance because no instance holds session state the others lack, you can add or kill instances without a migration plan. Push the state to a shared store and the fleet becomes disposable. That store is now data you must scale. This is the precondition for the load balancer, autoscaling and competing consumers.",
         "fluency": "Statelessness is what lets you add instances freely"
       },
       "continuous-delivery": {
@@ -2094,7 +2094,7 @@
       },
       "scalability": {
         "role": "Scale work across parallel consumers",
-        "tour": "Turns a queue of work into parallel throughput: add consumer instances and the backlog drains faster, with no coordination beyond each consumer claiming its own message.",
+        "tour": "Turns a queue of work into parallel throughput: add consumer instances and the backlog drains faster. The only coordination is each consumer claiming its own message. Delivery can repeat, so make handlers safe to repeat, and parallel consumers give up order unless related messages share a partition key.",
         "fluency": "Scale work across parallel consumers"
       },
       "long-running-tasks": {
