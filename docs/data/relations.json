@@ -13945,13 +13945,6 @@
       "note_b": "Both are dead code kept out of fear; lava flow is residue of unknown purpose, a boat anchor was built on purpose and left in. Often found together."
     },
     {
-      "a": "distributed-cache",
-      "verb": "exposed-to",
-      "b": "hot-key",
-      "note_a": "Can fall into hot key when a hashed shard gives one popular entry a single owner node",
-      "note_b": "A shared cache shards entries, so one popular entry has a single owner node"
-    },
-    {
       "a": "bitly",
       "verb": "exposed-to",
       "b": "hot-key",
@@ -13964,13 +13957,6 @@
       "b": "stale-cache",
       "note_a": "Write the cache and store together, so a read after a write sees the new value in this cache",
       "note_b": "Write the cache and store together, so a read after a write sees the new value in this cache unless another layer or replica holds a copy"
-    },
-    {
-      "a": "distributed-cache",
-      "verb": "exposed-to",
-      "b": "stale-cache",
-      "note_a": "Replicas and tiers each hold a copy that expires on its own schedule",
-      "note_b": "Can fall into a stale cache when one copy outlives a write made elsewhere"
     },
     {
       "a": "in-process-cache",
@@ -14043,13 +14029,6 @@
       "note_b": "A caller that cannot get a resource fails fast instead of blocking forever."
     },
     {
-      "a": "test-stub",
-      "verb": "prevents-hazard",
-      "b": "static-cling",
-      "note_a": "Stands in for the static call only once a seam exists, so inject first",
-      "note_b": "A canned collaborator can replace the static call only once a seam exists"
-    },
-    {
       "a": "chatty-io",
       "verb": "combines-with",
       "b": "connection-pool-exhaustion",
@@ -14074,7 +14053,7 @@
       "a": "materialized-view",
       "verb": "prevents-hazard",
       "b": "busy-database",
-      "note_a": "Computes the costly shape once on a schedule, so the read is a lookup instead of per-request compute; staleness must be bounded",
+      "note_a": "Computes the costly shape once on a schedule, so a read becomes a lookup; staleness must be bounded",
       "note_b": "Precompute near-data work on a schedule, so it stops costing store CPU per request"
     },
     {

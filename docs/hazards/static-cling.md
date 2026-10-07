@@ -94,7 +94,6 @@ In legacy code, do not convert everything at once. Add the seam at one call site
 - [Dependency Inversion Principle](../principles/dependency-inversion.md) — Depending on an abstraction the caller owns is the general form of the fix
 - [Gateway](../patterns/enterprise/gateway.md) — An injected gateway turns a hidden static call to the outside world into a visible dependency
 - [Test Stub](../patterns/testing/test-stub.md) — Code that takes its collaborator at a seam, so a stub can stand in, has no static call to cling to
-- [Test Stub](../patterns/testing/test-stub.md) — A canned collaborator can replace the static call only once a seam exists
 
 **Threatens**
 

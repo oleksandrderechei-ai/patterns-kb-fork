@@ -199,6 +199,5 @@ await expect(brittle.getFormattedBalance("acc_1")).rejects.toThrow();
 **Prevents**
 
 - [Static Cling](../../hazards/static-cling.md) — Wanting to stub a collaborator forces it behind an injected seam, which leaves no static call to cling to
-- [Static Cling](../../hazards/static-cling.md) — Stands in for the static call only once a seam exists, so inject first
 
 <!-- relationships:end -->

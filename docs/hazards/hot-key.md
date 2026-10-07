@@ -85,7 +85,6 @@ Find hot keys with per-key read counters or sampled access logs, and compare eac
 - [Sharding](../patterns/distributed/routing/sharding.md) — A sharded cache puts a viral key on exactly one shard
 - [Read-Through](../patterns/caching/read-through.md) — An evicted or expired hot key sends every reader to one synchronous load on the source
 - [Distributed Cache](../patterns/caching/distributed-cache.md) — One node of the shared tier takes all of a viral key's reads while the rest idle
-- [Distributed Cache](../patterns/caching/distributed-cache.md) — A shared cache shards entries, so one popular entry has a single owner node
 - [Bitly](../designs/bitly.md) — One link carries most of the read load
 
 <!-- relationships:end -->

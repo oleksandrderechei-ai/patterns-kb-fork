@@ -78,6 +78,5 @@ Staleness has no perfect fix. How much is acceptable is a per-datum judgment, so
 - [Client-Side Cache](../patterns/caching/client-side-cache.md) — Copies on devices cannot be invalidated centrally
 - [Read-Through](../patterns/caching/read-through.md) — A cached entry has no knowledge of writes made elsewhere
 - [Distributed Cache](../patterns/caching/distributed-cache.md) — Every instance reads the same stale entry, so the error is fleet-wide
-- [Distributed Cache](../patterns/caching/distributed-cache.md) — Can fall into a stale cache when one copy outlives a write made elsewhere
 
 <!-- relationships:end -->
