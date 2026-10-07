@@ -1192,7 +1192,7 @@
     "/patterns/distributed/coordination/optimistic-concurrency-control.html": {
       "dealing-with-contention": {
         "role": "Bet no one else wrote, verify the bet at write time, retry the rare loser",
-        "tour": "When the decision needs a little application logic but collisions are rare, don't lock — assume no one else touched the row and check that assumption as you write. Attach a version that changes on every write and condition the update on the version you read still being current. If a concurrent writer moved it first, your update matches zero rows and you retry. You pay only when there is a real conflict, which makes it ideal for high read-to-write ratios.",
+        "tour": "When the decision needs a little application logic but collisions are rare, don't lock — assume no one else touched the row and check that assumption as you write. Attach a version that changes on every write and condition the update on the version you read still being current. If a concurrent writer moved it first, your update matches zero rows and you retry. You pay only when there is a real conflict, which makes it a fit when the same row is rarely written by two writers at once, however read-heavy the traffic.",
         "fluency": "Bet no one else wrote, verify the bet at write time, retry the rare loser"
       },
       "data-platform": {
@@ -1227,7 +1227,7 @@
     "/patterns/distributed/coordination/pessimistic-locking.html": {
       "dealing-with-contention": {
         "role": "Lock the contended rows up front when collisions are frequent",
-        "tour": "When collisions are frequent, optimism degrades into a retry storm. Lock the contended rows up front instead — `SELECT ... FOR UPDATE` — so a competing writer blocks until you commit rather than doing work it will have to discard. The price is that every writer pays lock overhead even when it would never have collided, and a lock held across slow I/O — a payment call, say — stalls everyone queued behind it.",
+        "tour": "When collisions are frequent, optimism degrades into a retry storm. Lock the contended rows up front instead — `SELECT ... FOR UPDATE` — so a competing writer blocks until you commit rather than doing work it will have to discard. The price is that every writer pays lock overhead even when it would never have collided, and a lock held across slow I/O — a payment call, say — stalls everyone queued behind it. Lock rows in one fixed order and set a lock timeout, or two writers can deadlock or wait without end.",
         "fluency": "Lock the contended rows up front when collisions are frequent"
       }
     },
@@ -2185,7 +2185,7 @@
       },
       "dealing-with-contention": {
         "role": "Make the retry safe so a duplicate write is harmless",
-        "tour": "Every rung above leans on retrying the loser, and a retry is only safe if doing the write twice equals doing it once. Give each operation a key the store remembers, so a replayed or duplicated request returns the first result instead of applying a second charge. It doesn't resolve contention on its own — it is what makes the whole ladder's retries trustworthy from client to store.",
+        "tour": "A retry is only safe if doing the write twice equals doing it once, and that holds for optimistic retries and for any client or queue redelivery on every rung. Give each operation a key the store remembers, so a replayed or duplicated request returns the first result instead of applying a second charge. Keep the key at least as long as your longest redelivery, and claim it in one atomic step, such as a unique constraint. Idempotency doesn't resolve contention on its own; it is what makes retries trustworthy from client to store.",
         "fluency": "Make the retry safe so a duplicate write is harmless"
       },
       "multi-step-processes": {
@@ -3177,7 +3177,7 @@
     "/patterns/distributed/coordination/lease.html": {
       "dealing-with-contention": {
         "role": "Make the lock expire on its own: a time-bound grant the holder must renew.",
-        "tour": "A lease is a grant that ends at a deadline unless the holder renews it. A holder that crashes frees the resource when the deadline passes, with no cleanup job. A paused holder can still act after expiry, so pair it with a check at the resource.",
+        "tour": "A lease is a grant that ends at a deadline unless the holder renews it. A holder that crashes frees the resource when the deadline passes, with no cleanup job. A paused holder can still act after expiry, so pair it with a check at the resource. Choose the term longer than your worst pause and renew at a third to a half of it; a short term recovers fast but renews often, a long one leaves a crashed holder's resource idle.",
         "fluency": "The time-bound core of a distributed lock: a crashed holder frees the resource at the deadline, with no cleanup job."
       }
     },
