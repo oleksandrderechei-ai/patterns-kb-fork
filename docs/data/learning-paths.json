@@ -2284,7 +2284,7 @@
     "/patterns/ml/embeddings.html": {
       "ml-system-design": {
         "role": "The default representation for categorical, graph, and text signals",
-        "tour": "The default way to feed high-cardinality categorical, graph, and text signals into a model, and the backbone of retrieval-style architectures. Being specific about the loss, negatives, and dimensionality is what reads as real production experience.",
+        "tour": "A common way to feed high-cardinality (many distinct values) categorical, graph, and text signals into a model, and the backbone of retrieval-style architectures. Name the loss, the negatives (examples the model should score low) and the dimensionality: specifics like these read as production experience.",
         "fluency": "The default representation for categorical, graph, and text signals"
       },
       "harmful-content": {
@@ -2311,7 +2311,7 @@
       },
       "ml-system-design": {
         "role": "The Inference and Evaluation phase: offline metrics that predict online, tied to the objective",
-        "tour": "Design offline metrics that predict online results and tie back to the business objective; strong machine learning (ML)-metric performance with no business impact is not valued. Each system type — classification, recommender, search, generative — needs its own evaluation strategy.",
+        "tour": "Design offline metrics that predict online results and tie back to the business objective; strong ML-metric performance with no business impact carries little weight. Each system type (classification, recommender, search, generative) needs its own evaluation strategy.",
         "fluency": "The inference-and-evaluation phase: offline metrics that predict online, tied to the objective"
       },
       "harmful-content": {
@@ -2333,7 +2333,7 @@
     "/patterns/ml/feature-engineering.html": {
       "ml-system-design": {
         "role": "The Data and Features phase: enumerate sources, encode, keep train and serve in sync",
-        "tour": "The data-and-features phase is where interviews are won or lost. Enumerate signal sources before individual features, choose an encoding per source, and flag the pitfalls — leakage, cold start, drift — that a given problem is most exposed to.",
+        "tour": "The data-and-features phase often decides the interview. Enumerate signal sources before individual features, choose an encoding per source, and name the pitfalls this problem is most exposed to: leakage (a feature that carries the answer; a time-based split helps catch it), cold start (a new user or item with no history) and drift (inputs that change over time).",
         "fluency": "The data-and-features phase: enumerate sources, encode, keep train and serve in sync"
       },
       "harmful-content": {
@@ -2355,7 +2355,7 @@
     "/patterns/ml/generalization.html": {
       "ml-system-design": {
         "role": "The will-it-hold-up phase: capacity vs data, regularisation, drift",
-        "tour": "Model capacity against available data, regularisation, and drift — the questions behind \"will this hold up in production?\" Proposing a huge model on tiny data is a red flag interviewers are highly sensitive to.",
+        "tour": "Model capacity against available data, regularisation (a penalty that discourages overfitting), and drift: the questions behind \"will this hold up in production?\" Interviewers often mark down a huge model proposed on tiny data.",
         "fluency": "The will-it-hold-up phase: capacity vs data, regularisation, drift"
       },
       "harmful-content": {
