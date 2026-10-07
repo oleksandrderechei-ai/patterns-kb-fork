@@ -15,7 +15,7 @@ Deciding which signals a model gets to see and how they reach it — enumerating
 ## What it is
 <!--meta block=description-->
 
-Most cases of a model not learning what you want trace back to a missing, stale or inconsistently computed input, not to the architecture. Feature engineering chooses which inputs the model sees and shapes them so it can learn from them. It asks four questions: what the sources of signal are, how each is encoded, how fresh it stays, and how training and serving stay in sync.
+A common cause of a model not learning what you want is a missing, stale or inconsistently computed input, not the architecture. Feature engineering chooses which inputs the model sees and shapes them so it can learn from them. It asks four questions: what the sources of signal are, how each is encoded, how fresh it stays, and how training and serving stay in sync.
 
 ## Explained
 <!--meta block=explain-->
@@ -47,7 +47,7 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Raw text and images** — Tokenize text through an encoder and patch-encode images through a vision backbone, either trained jointly with the model or fine-tuned from a pretrained backbone. Manual extraction (bag-of-words counts, colour histograms) is now rare.
-- **Sparse categoricals** — Item IDs, user IDs, and enums become an embedding table — one learned vector per category, looked up by ID. For very high cardinality, the hashing trick maps IDs into a fixed bucket count so heavy users keep clean signal while the long tail converges toward an average.
+- **Sparse categoricals** — Item IDs, user IDs, and enums become an embedding table — one learned vector per category, looked up by ID. For very high cardinality, the hashing trick maps IDs into a fixed bucket count, so colliding IDs share a vector: with enough buckets heavy IDs mostly stay distinct while rare IDs share buckets, and raising the bucket count limits the damage.
 - **Sequences** — Lists such as recent watches or clicks are either mean-aggregated (cheap, order-free, for light rankers filtering millions of candidates) or fed as tokens through a transformer that learns temporal structure (for heavy rankers maximising quality).
 - **Numeric scalars** — The one place classic feature engineering still earns its keep. Take the log of a value spanning orders of magnitude, bucket one whose effect rises and falls rather than climbing, and pull a rate measured over three views toward a prior.
 
@@ -58,9 +58,9 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Enumerating sources before individual features** gives broad, structured coverage and avoids both the blank-page freeze and the thirty-feature stream-of-consciousness dump.
-- **Good signal selection outweighs model choice** — the right sources with a modest model beat a sophisticated model starved of signal.
+- **Good signal selection often outweighs model choice** when current inputs are missing, stale or inconsistent: the right sources with a modest model can beat a sophisticated model starved of signal.
 - **Narrating serving cadence** (static → batch → streaming → request-time) surfaces the infrastructure cost of each signal before it is built.
-- **Naming the pitfalls a problem is exposed to** — leakage, cold start, drift, adversarial evasion — is exactly what distinguishes a senior answer.
+- **Naming the pitfalls a problem is exposed to** (leakage, cold start, drift, adversarial evasion) shows which failures to design against.
 
 ### Cons
 <!--meta polarity=con-->
@@ -69,7 +69,7 @@ flowchart LR
 - **A tempting fast-moving signal** can quietly demand a whole streaming pipeline; not every signal justifies the bottom tier of cadence.
 - **Leaked features look excellent offline** and fail online, and the leak is often subtle enough to require squinting to spot.
 - **Hand-crafted numeric features are increasingly a minority** of what feeds top-of-funnel ranking, so over-investing there can read as dated.
-- **A signal that encodes the system's own past decision** — where an item was placed, how it was ranked — teaches the model to reproduce its own ordering, and it cannot be supplied honestly at scoring time because the ordering does not exist yet.
+- **A signal that encodes the system's own past decision** — where an item was placed, how it was ranked — teaches the model to reproduce its own ordering, and it cannot be supplied at scoring time because the ordering does not exist yet.
 
 ## When to use it
 <!--meta block=usage-->
@@ -77,7 +77,7 @@ flowchart LR
 ### Reach for it when
 <!--meta polarity=when-->
 
-- **You are designing an ML system** and must decide what data the model sees — roughly a third of a system-design interview.
+- **You are designing an ML system** and must decide which inputs, encodings and cadences the model gets before any training.
 - **A model performs worse in production** than offline and you suspect a missing, stale, or inconsistently-computed signal rather than the architecture.
 - **A rate feature** (negatives per view, click rate) is unstable or undefined at low counts and needs smoothing or a prior.
 - **A new entity has no history**, so history-dependent features are blank and need an explicit missing-value strategy.
@@ -119,7 +119,7 @@ smoothedRate(1800, 9000);  // 0.199: the evidence is there, so it stands
 <!--meta polarity=knob-->
 
 - **Serving cadence per signal** — Static, batch-recomputed, streaming, or computed at request time. It is the single decision that fixes how much infrastructure a signal costs and how fresh it can be.
-- **Freshness window or time to live (TTL)** — How stale a materialised value may be before it is recomputed, and whether a value past that age is refreshed, served anyway, or treated as missing.
+- **Freshness window or time to live (TTL)** — How stale a materialised value may be before it is recomputed, and whether a value past that age is refreshed, served anyway, or treated as missing. Work it out from how fast the signal's predictive value decays: compare score quality against input age on logged data, and alert at a fraction of that age.
 - **Smoothing prior on rate signals** — The pseudo-count added to a ratio so that one click on two views does not read as a fifty percent rate. The prior strength decides how many observations it takes to move away from the population average.
 - **Missing-value policy** — Per signal: an explicit default, an imputed value, or a dedicated missing indicator the model can learn from. Chosen deliberately rather than inherited from whatever the pipeline emits.
 - **Backfill window** — How much history a new or changed signal is recomputed over before it can be trained on, bounded by what the source data actually retains.
@@ -182,6 +182,6 @@ smoothedRate(1800, 9000);  // 0.199: the evidence is there, so it stands
 
 **Implemented by**
 
-- [Data & Analytics](../../capabilities/data-analytics.md) — Managed feature stores keep training and serving features consistent, so you do not hand-build that sync.
+- [Data & Analytics](../../capabilities/data-analytics.md) — Feature stores help keep training and serving values consistent by sharing one definition, but you still monitor skew.
 
 <!-- relationships:end -->

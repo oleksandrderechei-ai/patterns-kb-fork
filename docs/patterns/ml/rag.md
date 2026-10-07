@@ -1,6 +1,6 @@
 ---
 title: Retrieval-Augmented Generation
-description: "Fetch the relevant passages first, then let the model answer only from them"
+description: "Fetch the relevant passages first, then let the model answer from them and say so when they do not hold the answer"
 area: ml
 owner: Oleksandr Derechei
 tags: [machine-learning, read-optimization, latency, data-access]
@@ -26,7 +26,7 @@ Retrieval-augmented generation searches your documents when a question arrives a
 - **Silent misses** A miss gives a confident wrong answer, so fetch many passages, rerank them, and answer with no document found when nothing fits.
 - **Slower, longer requests** Each request pays a search and a longer prompt, so keep passages few.
 - **Chunk size** Chunks too small lose context and too large blur, so split on document structure with some overlap.
-- **Stale index** A stale index answers from withdrawn documents, so re-ingest on every change.
+- **Stale index** A stale index answers from withdrawn documents, so re-ingest or delete on every change.
 
 **Example.** A handbook holds 10 million tokens. Splitting it into 400-token passages that overlap by 50 gives about 28,600 passages (10,000,000 divided by 350). A question searches the index, takes the top 40, and a reranker keeps 5, so the prompt grows by 5 times 400, 2,000 tokens, instead of an impossible 10 million. The answer cites passage 2. The cost lands on a Monday: the refund policy changed, and until that one document is re-ingested the index still answers from the old text.
 
@@ -50,10 +50,10 @@ flowchart LR
 <!--meta block=variations-->
 
 - **Hybrid retrieval** — Run a vector search and a keyword search, then fuse the two rankings. The standard production shape, because dense vectors are worst at exactly what users type most literally: identifiers, error codes, product names.
-- **Retrieve then rerank** — Over-fetch cheaply, then score the candidates with a slower model that reads question and passage together. Usually the single largest quality gain available, since the first-stage ranking only has to get the answer into the candidate set.
+- **Retrieve then rerank** — Over-fetch cheaply, then score the candidates with a slower model that reads question and passage together. Often a large quality gain, since the first-stage ranking only has to get the answer into the candidate set.
 - **Query rewriting** — Have the model rephrase or decompose the question before searching, so retrieval is not held to the user's wording — and a multi-part question becomes several retrievals rather than one that half-matches.
 - **Metadata-filtered retrieval** — The model emits structured filters — date range, tenant, document type — alongside the semantic query, so retrieval is scoped before ranking rather than trimmed afterwards. This is also where permission scoping belongs.
-- **Graph-structured retrieval** — Extract entities and relationships during ingestion and traverse them, instead of ranking passages independently. Answers questions that need several documents joined, which independent top-k ranking cannot reach.
+- **Graph-structured retrieval** — Extract entities and relationships during ingestion and traverse them, instead of ranking passages independently. Suits questions that join several documents through known entity relations, which independent top-k ranking reaches poorly. Ingestion costs more.
 - **Agentic retrieval** — The model decides whether to retrieve at all and may retrieve repeatedly as it reasons, so retrieval becomes a tool call in a loop rather than a fixed step. Better on hard questions, and unbounded in cost unless the loop is capped.
 - **Per-sequence and per-token conditioning** — The original formulation lets the same retrieved passages shape the whole answer, or lets different passages shape individual tokens. Production systems almost always use the first.
 
@@ -64,7 +64,7 @@ flowchart LR
 <!--meta polarity=pro-->
 
 - **Answers carry provenance**, because every retrieved passage brings its source reference with it.
-- **Knowledge is updated by changing documents**, not by retraining, so corrections ship in minutes.
+- **Knowledge is updated by changing documents**, not by retraining, so a correction is live once re-ingestion finishes and the lag is measured.
 - **Private and tenant-scoped corpora stay out** of model weights, so nothing is memorised that later has to be unlearned.
 - **A corpus far larger** than any context window is usable, because only the selected passages are ever paid for.
 
@@ -107,6 +107,10 @@ def ingest(doc):
             payload={"text": passage, "source": doc.url, "acl": doc.acl},
         )
 
+### withdrawal — runs when a document is deleted or superseded
+def withdraw(doc):
+    index.delete(filter={"source": doc.url})
+
 ### request path
 def answer(question, user):
     # Permissions filter INSIDE the query. Filtering after ranking drops the best
@@ -116,7 +120,8 @@ def answer(question, user):
         filter={"acl": {"any_of": user.groups}},
         limit=40,                      # over-fetch: stage one only has to include it
     )
-    hits = rerank(question, hits)[:5]  # slower model reads question + passage together
+    hits = [h for h in rerank(question, hits) if h.score >= MIN_SCORE][:5]
+    # slower model reads question + passage; MIN_SCORE is tuned on the labelled set, so weak matches drop and the abstention below can fire
 
     if not hits:
         return "I don't have a document covering that."
@@ -144,8 +149,8 @@ def answer(question, user):
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Chunk size and overlap** — How passages are split, and how much adjacent text each one repeats. The single most consequential retrieval setting, and wrong in both directions.
-- **Retrieval depth: fetch k and rerank k** — How many candidates the cheap first stage returns and how many survive reranking into the prompt. Trades tokens and latency against the chance the answer is present at all.
+- **Chunk size and overlap** — How passages are split, and how much adjacent text each one repeats. Start at 400 tokens with 50 overlap, as in the sketch, then sweep sizes and keep the one with the best recall at k on the labelled set. Too small loses context, too large dilutes the vector.
+- **Retrieval depth: fetch k and rerank k** — How many candidates the cheap first stage returns and how many survive reranking into the prompt. Start near 40 fetched and 5 kept, as in the sketch. Raise fetch k until recall at k stops improving, then cut rerank k to fit the token budget. Trades tokens and latency against the chance the answer is present at all.
 - **Hybrid fusion weighting** — How dense and lexical rankings are combined. Shifts behaviour between paraphrased questions and literal identifier lookups.
 - **Embedding model and index parameters** — Which model produces the vectors, and the approximate-nearest-neighbour build settings that trade recall against query time. Changing the model means re-embedding the corpus.
 
@@ -204,6 +209,10 @@ def answer(question, user):
 **Requires**
 
 - [Embeddings](./embeddings.md) — Passages and questions only become comparable once both are vectors from the same model
+
+**Often confused with**
+
+- [Agent Memory](./agent-memory.md) — This fetches passages from a corpus that already exists; that keeps what an agent learned and wrote down itself.
 
 **Implemented by**
 

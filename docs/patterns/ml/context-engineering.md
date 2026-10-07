@@ -78,7 +78,7 @@ sequenceDiagram
 - **Pre-indexed graph** — A persistent structural index of the corpus, queried for exactly the relevant nodes rather than searched. It turns "read the repository" into "read these four files", and it must be rebuilt as the corpus moves or it will point at code that is no longer there.
 - **Compaction** — Periodic lossy summarisation of the transcript in place. The only move that reclaims space already spent, and the only one that can silently discard the goal along with the noise.
 - **Offload and reference** — Large tool output is written to a file and the transcript keeps a handle — the [claim check](../messaging/claim-check.md) applied to a context window. Lossless, since the material can be re-read, at the price of an extra call when it is needed again.
-- **Sub-agent isolation** — A child loop reads the bulky material in its own window and returns a conclusion. It protects the parent's window completely, and the parent then only ever sees the conclusion.
+- **Sub-agent isolation** — A child loop reads the bulky material in its own window and returns only a conclusion, so the parent's window stays clean. The child's token spend is moved, not saved, and the parent cannot check a conclusion it never saw the evidence for.
 - **Scoped multi-repository workspace** — An explicit registry naming the repositories and their boundaries, so work that crosses two of them loads two rather than all of them. It is the same discipline as a [configuration store](../distributed/coordination/external-configuration-store.md): the scope is declared data, not something inferred at run time.
 
 ## Trade-offs
@@ -88,15 +88,15 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - **Makes a corpus orders of magnitude larger** than the window workable at all.
-- **Raises answer quality even when nothing was overflowing**, because less irrelevant material competes for attention.
-- **Cuts cost directly**: every turn re-sends the window, so a smaller window is cheaper on every remaining turn.
+- **Can raise answer quality before the window fills**, when irrelevant material was crowding out instructions. Check it against task success, since token counts alone do not show it.
+- **Cuts cost directly**: every turn re-sends the window, so a smaller window is cheaper on every remaining turn. The net saving is the tokens not re-sent minus the extra fetch turns.
 - **Lets a session outlive** the window, which is what makes long-running work possible.
 - **Makes what the model is working from inspectable** — you can look at what was loaded and why.
 
 ### Cons
 <!--meta polarity=con-->
 
-- **Every reduction is lossy**. Compaction, summarisation and terse encodings all discard something, and the model cannot tell that it is missing.
+- **Compaction and summaries are lossy**: they and terse encodings discard something, and the model cannot tell what is missing. Offloading loses nothing only while the file survives and the agent knows to re-read it.
 - **Lazy loading costs turns**: each fetch is another round trip, so latency rises as window pressure falls.
 - **Indexes go stale against a moving codebase**, and a stale index is confidently wrong rather than usefully empty.
 - **Aggressive pruning causes re-fetching**, which costs more than keeping the material would have.
@@ -163,8 +163,8 @@ async function maybeCompact(transcript: Message[], durable: Message[], windowSiz
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Compaction threshold** — The fraction of the window at which the transcript is summarised. Too low discards what the task still needs; too high leaves no room for the turns that follow.
-- **Offload size threshold** — The output size above which a result is written to disk and referenced. Below it, inlining is cheaper than the later re-read.
+- **Compaction threshold** — The fraction of the window at which the transcript is summarised. Too low discards what the task still needs; too high leaves no room for the turns that follow. The sketch starts at 0.75, a starting point and not a measured default: lower it if the goal gets lost, raise it if the re-read rate climbs.
+- **Offload size threshold** — The output size above which a result is written to disk and referenced. Below it, inlining is cheaper than the later re-read. The sketch starts at 4,000 tokens, a starting point and not a measured default; tune it against the re-read rate.
 - **Retrieval count and reranking depth** — How many candidates are fetched and how hard they are re-scored. More recall, less room, lower average relevance.
 - **Index refresh trigger** — On commit, on a timer, or on demand. It sets how wrong the index is allowed to be.
 - **Durable instruction set** — What is re-attached after every compaction. Anything not on this list does not survive a summary.
@@ -173,7 +173,7 @@ async function maybeCompact(transcript: Message[], durable: Message[], windowSiz
 <!--meta polarity=signal-->
 
 - **Window occupancy by part** — Instructions, retrieved material, transcript and tool output as shares. It shows which part is actually crowding out the work.
-- **Compactions per session** — Frequent compaction means the offload threshold is too high, not that the window is too small.
+- **Compactions per session** — Frequent compaction often means the offload threshold is too high. Check window occupancy by part before raising the threshold or the window.
 - **Re-read rate** — How often the same file or offloaded result is fetched again. High means pruning is too aggressive and is costing more than it saves.
 - **Index staleness** — Age of the index against the last change to the corpus. This is the number that predicts confidently wrong pointers.
 - **Task success against tokens per task** — Track both. Tokens falling while success falls is not an improvement, and only the pair shows it.
@@ -219,6 +219,7 @@ async function maybeCompact(transcript: Message[], durable: Message[], windowSiz
 - [AI Agent](../architecture/ai-agent.md) — The window pressure it manages is created by the loop re-sending everything each turn
 - [Claim Check](../messaging/claim-check.md) — Offloading bulky tool output and keeping a reference is this pattern, applied to a context window
 - [Retrieval-Augmented Generation](./rag.md) — Index-and-fetch over a codebase, so only the named material is read
+- [External Configuration Store](../distributed/coordination/external-configuration-store.md) — A multi-repository scope registry is declared data, like a config store, not inferred at run time.
 
 **Often confused with**
 

@@ -753,7 +753,7 @@
       "definition": "Copy live requests to a new version and discard its answers",
       "route": "/patterns/distributed/routing/shadow-traffic.html",
       "requires": [],
-      "related": ["service-mesh", "wire-tap"]
+      "related": ["service-mesh", "wire-tap", "evaluation"]
     },
     {
       "id": "rolling-deployment",
@@ -1033,7 +1033,7 @@
       "definition": "Settings live in a central store, not in the deployment package",
       "route": "/patterns/distributed/coordination/external-configuration-store.html",
       "requires": [],
-      "related": ["cache-aside", "blue-green-deployment", "secure-session-manager", "microservices", "convention-over-configuration"]
+      "related": ["cache-aside", "blue-green-deployment", "secure-session-manager", "microservices", "convention-over-configuration", "context-engineering"]
     },
     {
       "id": "containerization",
@@ -2017,15 +2017,15 @@
       "definition": "Measuring an ML system as a stack, with offline metrics that predict online results",
       "route": "/patterns/ml/evaluation.html",
       "requires": [],
-      "related": ["generalization", "embeddings", "feature-engineering", "rag"]
+      "related": ["generalization", "embeddings", "feature-engineering", "rag", "shadow-traffic"]
     },
     {
       "id": "rag",
       "label": "Retrieval-Augmented Generation",
-      "definition": "Fetch the relevant passages first, then let the model answer only from them",
+      "definition": "Fetch the relevant passages first, then let the model answer from them and say so when they do not hold the answer",
       "route": "/patterns/ml/rag.html",
       "requires": ["embeddings"],
-      "related": ["evaluation", "materialized-view", "change-data-capture", "ai-agent", "context-engineering"]
+      "related": ["evaluation", "materialized-view", "change-data-capture", "ai-agent", "context-engineering", "agent-memory"]
     },
     {
       "id": "agent-memory",
@@ -2033,7 +2033,7 @@
       "definition": "Keep what was learned, not what was said, so the next session starts informed",
       "route": "/patterns/ml/agent-memory.html",
       "requires": [],
-      "related": ["context-engineering", "embeddings", "ai-agent"]
+      "related": ["context-engineering", "embeddings", "ai-agent", "rag"]
     },
     {
       "id": "context-engineering",
@@ -2041,7 +2041,7 @@
       "definition": "Treat the model's input window as a budget and decide what occupies it",
       "route": "/patterns/ml/context-engineering.html",
       "requires": [],
-      "related": ["ai-agent", "agent-memory", "claim-check", "rag"]
+      "related": ["ai-agent", "agent-memory", "claim-check", "rag", "external-configuration-store"]
     },
     {
       "id": "spaghetti-code",

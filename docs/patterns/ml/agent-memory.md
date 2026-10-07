@@ -21,14 +21,14 @@ An [agent](../architecture/ai-agent.md) forgets everything when a session ends, 
 ## Explained
 <!--meta block=explain-->
 
-Agent memory is a small store of facts that an [agent](../architecture/ai-agent.md) writes down on purpose during a session and reads back at the start of the next, so the next session begins informed instead of blank. It keeps what was learned, such as which test runner this repository uses, and drops the transcript, which is long and mostly noise. Choose it over replaying the whole transcript when the same person and agent return to the same work and re-explaining costs a visible share of every session. Skip it for one-shot tasks and for anything the repository or database already states.
+Agent memory is a small store of facts that an [agent](../architecture/ai-agent.md) writes down on purpose during a session and reads back at the start of the next, so the next session begins informed instead of blank. It keeps what was learned, such as a house rule the reviewer enforces, and drops the transcript, which is long and mostly noise. Choose it over replaying the whole transcript when the same person and agent return to the same work and re-explaining costs a visible share of every session. Skip it for one-shot tasks and for anything the repository or database already states.
 
 - **Window space** Recalled facts use room the work needs, so set a token budget and load a subset.
 - **Stale facts** A replaced fact sounds as sure as a current one, so check new facts against close matches and retire the old entry.
 - **Leaky scope** Mixed scopes show one customer's facts in another's session, so key every entry to a user or project.
 - **Durable bad entries** A bad entry is re-read every session, so treat writes as untrusted input and keep the store readable.
 
-**Example.** A coding agent works on one repository for 20 sessions. Each starts with 10 minutes of explaining that tests run with pytest. After session 1 it stores 12 facts of about 25 tokens each, 300 tokens, under a 500-token budget, so session 2 loads all 12 and skips the explaining. In session 9 the team moves to tox. The write check finds the pytest fact as a close match and retires it, so the store stays at 12 facts. Without retirement it would hold 13, two of them naming different runners. The cost is 300 tokens of every session's window, 0.3% of a 100,000-token window.
+**Example.** A coding agent works on one repository for 20 sessions. Each starts with 10 minutes of explaining house rules, such as that billing changes need a ticket. After session 1 it stores 12 facts of about 25 tokens each, 300 tokens, under a 500-token budget, so session 2 loads all 12 and skips the explaining. In session 9 the rule changes to two approvals instead of a ticket. The write check finds the ticket fact as a close match and retires it, so the store stays at 12 facts. Without retirement, or if the check misses, it would hold 13, two naming different rules. The cost is 300 tokens of every session's window, 0.3% of a 100,000-token window.
 
 ## How it works
 <!--meta block=structure-->
@@ -72,10 +72,10 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Instruction file** — A small human-readable file loaded at the start of every session, which the agent itself edits as it learns. Cheap, reviewable and diffable, and bounded by the context window — which is also its limit, since it cannot grow past what you are willing to load every time.
+- **Instruction file** — A small human-readable file loaded at the start of every session, which the agent edits as it learns. Cheap, reviewable and diffable. Bounded by the context window: it cannot grow past what you are willing to load every time.
 - **Episodic log** — A compressed record per session — what was attempted, what worked — replayed selectively rather than in full. It answers "have we tried this before", which the instruction file cannot, and it grows without bound unless something prunes it.
-- **Semantic store** — Facts distilled and indexed by [embedding](./embeddings.md), fetched by relevance at the moment of need. This is the form that scales past the window, and it returns what reads alike rather than what is true, so precision falls as the store grows.
-- **Knowledge graph** — Entities and typed relations, queried rather than searched, so a multi-hop question is answerable at all. It buys real recall and costs a schema plus an extraction step that has to keep working as the domain moves.
+- **Semantic store** — Facts distilled and indexed by [embedding](./embeddings.md), fetched by relevance at the moment of need. The form that scales past the window.
+- **Knowledge graph** — Entities and typed relations, queried rather than searched, so a multi-hop question is answerable. It costs a schema and an extraction step that must keep working as the domain moves.
 - **Shared cross-client store** — One store that several different agent applications read, so a fact learned in one tool is not trapped there. The scoping and permission questions get much harder the moment two tools with different trust levels share a store.
 
 ## Trade-offs
@@ -94,7 +94,7 @@ sequenceDiagram
 <!--meta polarity=con-->
 
 - **Everything recalled costs window space**, so a memory loaded indiscriminately improves recall and degrades reasoning at the same time.
-- **Stale memory is worse than none**: a superseded fact is asserted with exactly the confidence of a current one.
+- **Stale memory can be worse than none** when nothing flags it: a superseded fact is asserted with the same confidence as a current one.
 - **The write step is itself** a model call, so it distils badly sometimes, and nothing signals when it has.
 - **Similarity retrieval returns what reads alike rather** than what is true, and precision falls as the store grows.
 - **A memory store is a durable injection surface** — anything written once is re-read into context every session afterwards.
@@ -132,8 +132,8 @@ type Memory = {
   writtenAt: string;
 };
 
-async function remember(candidate: string, scope: Memory["scope"], store: Store) {
-  // Cheap rejections first — most candidates are restatements of something already held.
+async function remember(candidate: string, source: string, scope: Memory["scope"], store: Store) {
+  // Look up near matches first, then classify: one model call per candidate.
   const near = await store.search(candidate, scope, { limit: 5 });
   const verdict = await model.classify({ candidate, existing: near });
 
@@ -144,7 +144,7 @@ async function remember(candidate: string, scope: Memory["scope"], store: Store)
     case "novel":      break;
     case "ephemeral":  return;                                   // true today, useless next week
   }
-  await store.insert({ ...candidate, scope, writtenAt: new Date().toISOString() });
+  await store.insert({ id: newId(), fact: candidate, source, scope, writtenAt: new Date().toISOString() });
 }
 
 // Recall is budgeted, not exhaustive: the window is shared with the actual work.
@@ -179,7 +179,7 @@ async function recall(scope: Memory["scope"], store: Store, tokenBudget: number)
 
 - **Store size and growth rate** — Entries per week against entries retired per week. If the second is near zero the write policy has no supersession.
 - **Recall hit rate** — How often a loaded entry is actually referenced in the session. Low means you are paying window space for nothing.
-- **Contradiction count** — Entries in the same scope asserting incompatible facts. It should be zero and it never is.
+- **Contradiction count** — Entries in the same scope asserting incompatible facts. Target zero; expect some.
 - **Entry age at use** — How old the facts being relied on are. Old and heavily used is either your best content or your most dangerous.
 - **Manual deletions** — How often a human removes an entry. A rise is the write policy degrading, and it is the only signal that catches it early.
 
@@ -228,6 +228,7 @@ async function recall(scope: Memory["scope"], store: Store, tokenBudget: number)
 **Often confused with**
 
 - [Context Engineering](./context-engineering.md) — This decides what survives the session; that decides what enters this one
+- [Retrieval-Augmented Generation](./rag.md) — This keeps what the agent learned across sessions; that fetches passages from documents that already exist.
 
 **Implemented by**
 
