@@ -1587,7 +1587,7 @@
     "/patterns/distributed/routing/async-request-reply.html": {
       "api-design": {
         "role": "Answer slow work with a handle instead of a held connection",
-        "tour": "Some operations take longer than any connection between you and the caller will survive. Accepting the request, returning the address of a status resource, and doing the work elsewhere keeps the boundary responsive — and makes the idempotency key above mandatory rather than advisable.",
+        "tour": "Some operations take longer than any connection between you and the caller will survive. Accepting the request, returning the address of a status resource, and doing the work elsewhere keeps the boundary responsive. It also makes the idempotency key on the accepting request close to mandatory, because a timed-out accept is otherwise retried blind.",
         "fluency": "Answer slow work with a handle instead of a held connection"
       }
     },
@@ -1828,7 +1828,7 @@
     "/patterns/distributed/routing/pagination.html": {
       "api-design": {
         "role": "Bound what one request can return, however much data exists",
-        "tour": "A collection endpoint with no upper bound is a promise you cannot keep once the table grows. Handing back a bounded page plus a way to ask for the next one caps what any single request costs — and choosing a cursor over an offset is what keeps the last page as cheap as the first.",
+        "tour": "A collection endpoint with no upper bound is a promise you cannot keep once the table grows. Handing back a bounded page plus a way to ask for the next one caps what any single request costs. Choosing a cursor over an offset keeps the last page as cheap as the first, when the cursor column is indexed.",
         "fluency": "Bound what one request can return, however much data exists"
       }
     },

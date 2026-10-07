@@ -21,12 +21,12 @@ A published API is a contract that callers you have never met build against, so 
 
 Designing an API means shaping a boundary that callers you do not control build against, so every field you publish is a promise you must keep. Put sign-in checks, limits and routing in one [API gateway](../patterns/distributed/routing/api-gateway.md), so no service repeats them. Choose one shared API when your clients want about the same calls. Choose a backend per client type (a small server that serves only the mobile app, say) when one screen needs several calls that could be one. Each promise also brings a failure. Changing a field breaks callers, so run [versions](../patterns/distributed/routing/api-versioning.md) side by side. A write that times out may or may not have happened, so make the client send a unique key and have the server return the first result for a repeated key ([idempotency](../patterns/messaging/idempotency.md)). One busy caller can starve the rest, so cap each caller with a [rate limiter](../patterns/distributed/resilience/rate-limiter.md), an allowance that refills at a fixed rate and permits short bursts.
 
-- **Shared shape.** One API fits no client well, and many backends mean more code, so split only where one screen needs several calls.
-- **Version overhead.** Old and new versions side by side double what you test, so give callers a date to move by.
-- **Key storage.** The server must keep each idempotency key to answer a repeat, so expire keys after a day.
+- **Shared shape.** One API fits unlike clients badly and each extra backend means more code, so split only where one screen needs several calls.
+- **Version overhead.** Each live version adds a full test run, so run few and set the move-by date from your slowest client's release cycle.
+- **Key storage.** The server keeps each key to answer a repeat, so expire keys after your longest real retry, such as a day.
 - **Refused callers.** Limits turn bursts into errors, so return a retry-after hint and size bursts to real clients.
 
-**Example.** A bank app home screen needs the balance, 10 recent payments and offers. On a shared API that is 3 calls of 100 ms each, 300 ms in sequence. A mobile backend joins them in one 120 ms call, and you now maintain a second server. A payment POST times out at 5 s and the app retries. With no key, the customer is charged 40 twice. With a key, the server returns the first attempt's result, at the price of storing each key for 24 h. A partner is capped at 100 requests a second with a burst of 200. A script sending 200 a second drains the bucket in 2 s and is then refused.
+**Example.** A bank app home screen needs the balance, 10 recent payments and offers. On a shared API that is 3 calls of 100 ms each, 300 ms in sequence. A mobile backend joins them in one 120 ms call, and you now maintain a second server. A payment POST times out at 5 s and the app retries. With no key, the customer is charged 40 twice. With a key, the server returns the first attempt's result, at the price of storing each key for 24 h. A partner is capped at 100 requests a second with a burst of 200. A script sending 200 a second drains the bucket in 2 s, then only 100 a second pass.
 
 ## The trade-space
 <!--meta block=tradespace-->
@@ -95,7 +95,7 @@ The throttle that keeps one client — buggy, abusive, or just popular — from 
 
 ### [Pagination](../patterns/distributed/routing/pagination.md) {#tour-pagination}
 
-A collection endpoint with no upper bound is a promise you cannot keep once the table grows. Handing back a bounded page plus a way to ask for the next one caps what any single request costs — and choosing a cursor over an offset is what keeps the last page as cheap as the first.
+A collection endpoint with no upper bound is a promise you cannot keep once the table grows. Handing back a bounded page plus a way to ask for the next one caps what any single request costs. Choosing a cursor over an offset keeps the last page as cheap as the first, when the cursor column is indexed.
 
 ### [API Versioning](../patterns/distributed/routing/api-versioning.md) {#tour-api-versioning}
 
@@ -103,7 +103,7 @@ The answer to "we published it, so now we cannot change it". Running the old and
 
 ### [Asynchronous Request-Reply](../patterns/distributed/routing/async-request-reply.md) {#tour-async-request-reply}
 
-Some operations take longer than any connection between you and the caller will survive. Accepting the request, returning the address of a status resource, and doing the work elsewhere keeps the boundary responsive — and makes the idempotency key above mandatory rather than advisable.
+Some operations take longer than any connection between you and the caller will survive. Accepting the request, returning the address of a status resource, and doing the work elsewhere keeps the boundary responsive. It also makes the idempotency key on the accepting request close to mandatory, because a timed-out accept is otherwise retried blind.
 
 <!-- tour:end -->
 
@@ -116,8 +116,12 @@ Some operations take longer than any connection between you and the caller will 
 | Each client type to get calls shaped for its screens | Per-client | [Backend-for-Frontend](../patterns/distributed/routing/bff.md) |
 | A payload contract you can evolve without leaking internals | Contract | [DTO](../patterns/enterprise/dto.md) over a [Service Layer](../patterns/enterprise/service-layer.md) |
 | Writes that survive a timeout-and-retry unharmed | Safe retry | [Idempotency](../patterns/messaging/idempotency.md) |
-| To keep one caller from overwhelming the backend | Throttle | [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) / [Token Bucket](../patterns/distributed/resilience/token-bucket.md) |
-| A long-lived flow or an agent-discoverable surface | Streaming / agent | [API Gateway](../patterns/distributed/routing/api-gateway.md) variations |
+| To keep one caller from overwhelming the backend | Throttle | [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) |
+| A long-lived flow or an agent-discoverable surface | Streaming / agent | [API Gateway](../patterns/distributed/routing/api-gateway.md) (the Streaming Gateway and Agent-Facing Gateway variations) |
+| A list endpoint that grows without bound | Bounded reads | [Pagination](../patterns/distributed/routing/pagination.md) |
+| Work that outlives a connection | Handle, not a held call | [Asynchronous Request-Reply](../patterns/distributed/routing/async-request-reply.md) |
+| A field must change while live callers depend on it | Versioned contract | [API Versioning](../patterns/distributed/routing/api-versioning.md) |
+| Untrusted input reaching your handlers | Edge check | [Intercepting Validator](../patterns/security/intercepting-validator.md) |
 
 ## Related areas
 <!--meta block=siblings-->
@@ -127,3 +131,4 @@ Some operations take longer than any connection between you and the caller will 
 - [Performance](./performance.md) — Caching and load balancing that decide how the boundary scales and how fast it answers.
 - [Scalability](./scalability.md) — Growing the capacity behind the API as callers and load multiply.
 - [Streaming](./streaming.md) — When the response isn't one payload but an unbounded flow the API must carry.
+- [Long-Running Tasks](./long-running-tasks.md) — The queue, worker and redelivery mechanics behind an accepted request; this page covers the status-resource contract the caller sees.
