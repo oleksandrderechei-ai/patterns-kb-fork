@@ -26,7 +26,7 @@ An operation is idempotent when running it twice has the same effect as running 
 
 - **Two writes.** The key and the effect can strand one on a crash, so commit both in one transaction.
 - **Racing duplicates.** Two can both pass a read-then-write check, so claim the key atomically, such as with a unique constraint.
-- **Key store growth.** Expire entries after longer than your longest redelivery and alert on its size.
+- **Key store growth.** Expire entries only after your longest retry or redelivery window has passed, and alert on the store's size.
 
 **Example.** A warehouse consumer reads message m-310, reserve 2 units of SKU 7. It reserves, crashes before acknowledging, and the broker redelivers. Without a check, stock drops by 4. With a table of processed message ids, the reservation and the insert of m-310 commit in one transaction, so the second try hits the unique constraint and is skipped: stock drops by 2. The cost is the table. At 5,000 messages a day, keeping ids for 7 days, since the broker redelivers for at most 4, holds 35,000 rows, and an expiry job must trim it.
 
@@ -64,10 +64,11 @@ flowchart TB
 <!--meta block=variations-->
 
 - **Idempotency key** — The client generates a token for one logical operation and sends it on every attempt; the server persists key → result and returns the stored result on repeats.
-- **Natural idempotency** — Design the operation so repetition is harmless by construction — `PUT` that sets absolute state, or a `DELETE` where removing an already-absent thing is a no-op. It is the same contract HTTP already gives: `GET`, `HEAD`, `PUT`, and `DELETE` are idempotent by the spec (RFC 9110), while `POST` and `PATCH` are not — which is exactly why write APIs bolt an explicit key onto those two.
+- **Natural idempotency** — Design the operation so repetition is harmless by construction: `PUT` that sets absolute state, or a `DELETE` where removing an already-absent thing is a no-op. The HTTP methods the spec (RFC 9110) calls idempotent are listed under wild; `POST` and `PATCH` are not, which is why write APIs bolt an explicit key onto them.
 - **Bounded dedup window** — Keep the key → result mapping only for a TTL (time to live), not forever, trading unlimited storage growth for a small risk of accepting a very late duplicate as new.
 - **[Idempotent consumer](../distributed/coordination/inbox.md)** — A message consumer tracks processed message IDs instead of trusting the broker's delivery guarantee, so redelivery after a crash or rebalance never reprocesses an event.
-- **Request fingerprinting** — Persist a hash of the request payload alongside the key. A repeat carrying the same key but a different body is a client mistake, not a genuine retry, so reject it (a `409`/`422`) instead of silently replaying the first result — catching an accidentally reused key before it returns the wrong answer.
+- **Request fingerprinting** — Persist a hash of the request payload alongside the key. A repeat carrying the same key but a different body is a client mistake, not a genuine retry, so reject it (a `409`/`422`) instead of silently replaying the first result.
+- **Key propagation** — Pass the same key to the downstream API, so an effect you do not own is deduplicated there too, as with the Stripe Idempotency-Key header under wild. A local transaction cannot span an outside call; where the downstream takes no key, reconcile.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -75,19 +76,20 @@ flowchart TB
 ### Pros
 <!--meta polarity=pro-->
 
-- **Makes retries genuinely safe** — clients can retry blindly on timeout instead of guessing.
+- **Makes retries safe inside the dedup window** — once the key claim is atomic and the store is shared, clients can retry on timeout instead of guessing.
 - **Removes duplicate side effects** from redelivered messages, replays, and double-clicks.
 - **Underpins recovery techniques like Saga compensation** and outbox replay that depend on re-running steps.
-- **Shrinks the failure surface**: "did it work?" no longer needs a special out-of-band check.
+- **Shrinks the failure surface** — inside the dedup window, "did it work?" needs no special out-of-band check; after expiry, or for an effect outside your store, it still does.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **A key/result store is another piece of infrastructure** — schema, storage, and cleanup to maintain.
 - **Turning a naturally non-idempotent operation** (an increment, a "send once" email) into an idempotent one is real design work, not a flag to flip.
-- **A dedup window trades off storage against risk**: too short and late duplicates slip through, too long and the store grows unbounded — size it from the longest redelivery you have actually measured, and alert on the store's growth rather than trusting the expiry fired.
-- **Two duplicate requests racing before** the first completes can still double-execute — make claiming the key and recording the result one atomic step (a unique constraint, a conditional put), never a read followed by a write.
-- **The key and the effect are two writes**, so a crash between them leaves a key with nothing behind it, or an effect no key will ever match — commit both in one transaction where the store allows it, and reconcile where it does not.
+- **A dedup window trades storage against risk** — too short, and late duplicates slip through. Too long, and the store grows larger and costs more. Size it from the longest redelivery you have measured, and alert on store growth rather than assuming expiry ran.
+- **Two duplicates racing before the first finishes can both execute** — claim the key and record the result in one atomic step, such as a unique constraint or a conditional put.
+- **The key and the effect are two writes** — a crash between them leaves a key with no effect, or an effect no key matches. Commit both in one transaction where the store allows, and reconcile where it does not.
+- **Every write now depends on the key store** — an outage forces a choice between rejecting writes and risking duplicates.
 
 ## When to use it
 <!--meta block=usage-->
@@ -105,6 +107,7 @@ flowchart TB
 - **The operation is already naturally idempotent** — a plain read, or a write that only ever sets an absolute value.
 - **Duplicates are cheap and harmless** — a non-critical analytics ping, a log line.
 - **You'd be adding a key/result** store purely out of caution, with no retry path that could ever trigger a duplicate.
+- **The downstream can refuse a stale write itself** — by comparing a token or version. Use a [fencing token](../distributed/coordination/fencing-token.md) or a [conditional write](../distributed/coordination/conditional-write.md) there instead of a key store.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -117,6 +120,7 @@ async function pay(key: string, amount: number): Promise<Receipt> {
   if (!claim.isNew) return claim.result;   // a repeat — hand back the first answer
 
   const receipt = await charge(amount);
+  // A crash between charge and saveResult strands the claim; see production-failure-5.
   await store.saveResult(key, receipt);    // now every later copy finds this
   return receipt;
 }
@@ -129,23 +133,20 @@ class IdempotencyStore {
   // A Map stands in for the real backing store. In production this must be a
   // shared, durable store (Redis, DynamoDB) with a TTL — a process-local Map
   // is not seen by other instances and is lost on restart, so duplicates slip through.
-  private results = new Map<string, StoredResult>();
+  private results = new Map<string, Promise<StoredResult>>();
 
   async execute(key: string, handler: () => Promise<StoredResult>): Promise<StoredResult> {
-    const cached = this.results.get(key);
-    if (cached) return cached; // duplicate — skip re-execution
-
-    // The check-and-record step must be atomic (unique constraint, conditional
-    // put) so two concurrent duplicates can't both slip past the cache miss.
-    const result = await handler();
-    this.results.set(key, result);
-    return result;
+    // In one process, get and set with no await between them are atomic, so a concurrent duplicate finds the pending promise and shares one run. Across instances, use a unique constraint or a conditional put.
+    const existing = this.results.get(key);
+    if (existing) return existing;
+    const pending = handler();
+    this.results.set(key, pending);
+    pending.catch(() => this.results.delete(key));
+    return pending;
   }
 }
 
-// One boundary of four in a KYC flow, each keyed by whichever side can see the
-// duplicate: client key on create, vendor request id on callback (below), task
-// row id on a re-claimed lease, event id on a redelivered webhook.
+// One of four places a duplicate can arrive in a KYC (identity check) flow: client key on create, vendor request id on callback (below), task row id on a re-claimed lease, event id on a redelivered webhook.
 const store = new IdempotencyStore();
 const { flowId, providerRequestId, verdict } = parseCallback(req);
 const key = `idVendor:${flowId}:${providerRequestId}`;
@@ -156,7 +157,7 @@ res.status(result.status).json(result.body);
 ## In the wild
 <!--meta block=wild-->
 
-- **Stripe API** — Accepts an Idempotency-Key header on POST requests, stores the result of the first call, and replays the same response for any retry carrying the same key instead of charging a card twice. Reusing a key with different request parameters returns an error rather than a stale replay, and keys are retained for 24 hours, after which the same key is treated as new. {#wild-stripe}
+- **Stripe API** — Accepts an Idempotency-Key header on POST requests, stores the result of the first call, and replays the same response for any retry carrying the same key instead of charging a card twice. Reusing a key with different request parameters returns an error rather than a stale replay, and keys may be removed once they are at least 24 hours old, after which the same key is treated as new. {#wild-stripe}
 - **HTTP methods (RFC 9110)** — Defines GET, HEAD, PUT, DELETE, OPTIONS, and TRACE as idempotent so intermediaries and clients may safely repeat them after a failed response; POST and PATCH are deliberately excluded, which is why write APIs bolt on an explicit idempotency key. {#wild-http}
 - **Kafka idempotent producer** — With enable.idempotence=true, each batch is tagged with a producer id and a per-partition monotonic sequence number, so the broker discards duplicates from producer retries and preserves order within a single producer session. {#wild-kafka-idempotent-producer}
 
@@ -166,10 +167,11 @@ res.status(result.status).json(result.body);
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Dedup window / key TTL** — How long the key-to-result mapping is retained before it expires — must cover the maximum retry or redelivery window, traded against unbounded store growth.
+- **Dedup window / key TTL** — How long the key-to-result mapping is retained before it expires — must cover the maximum retry or redelivery window, traded against unbounded store growth. Read the longest client retry schedule and the broker's redelivery limit from your own client and broker config, add margin, and use the larger.
 - **Key scope / granularity** — What one idempotency key spans — one logical operation. A client-supplied key is not globally unique, so compose the stored key from tenant/user + endpoint/path + the client token, so keys cannot collide across users or endpoints and retries of the same operation always match.
 - **Atomicity mechanism** — The check-and-record primitive that makes the dedup safe: a unique constraint, a conditional put, or a compare-and-set, so two concurrent duplicates cannot both pass the cache-miss check.
 - **Store durability** — Where the key-to-result mapping lives and how durable it is. It must be a shared, distributed store — a process-local one does not survive multiple instances or a restart. Losing it reopens the door to duplicate side effects on the next retry.
+- **In-flight claim lease** — How long a claimed key with no result counts as running before another attempt may re-claim it. Until then a duplicate gets a retry-later reply (409), not an empty result; a crash between claim and result is recovered when the lease expires.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -178,6 +180,7 @@ res.status(result.status).json(result.body);
 - **Dedup store size / growth** — Row or key count over time; unbounded growth points at a TTL that never fires or cleanup that is not running.
 - **Concurrent-duplicate rate** — Requests bearing the same key that arrive before the first has recorded its result — the race the atomic check must win.
 - **Check-and-record latency** — Time the dedup lookup and write add to every mutating request, since it sits on the critical path of each write.
+- **Fingerprint-mismatch rate** — How often a repeat carries a stored key with a different request body. Non-zero means a client reuses keys.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -185,8 +188,9 @@ res.status(result.status).json(result.body);
 - **Non-atomic check-and-record** — If the read and the write are separate steps, two concurrent duplicates both see a cache miss and both execute — a double charge under load.
 - **Process-local dedup store** — An in-memory key store behind a load balancer, or lost on restart, is not shared across instances, so a retry routed elsewhere sees no key and re-applies the side effect.
 - **Key reused with a different payload** — Treating a reused key as a replay when the request body differs returns the wrong stored result; without a fingerprint check the mismatch goes unnoticed.
-- **The window is the wrong size** — Set short, a retry arriving after the key expired is taken for a new request and the effect applies twice. Set long, or never cleaned, the key store grows until it becomes its own incident. Both directions surface first under the load that produced the retries.
+- **The window is the wrong size** — Set short, a retry arriving after the key expired is taken for a new request and the effect applies twice. Set long, or never cleaned, the key store grows until it becomes its own incident.
 - **Result recorded out of step with the operation** — Recording the key before the operation commits, or a crash between the two, can leave a stored key with no completed effect — or a completed effect with no key.
+- **Failed first attempt stored as the answer** — If an error or 5xx is kept under the key, every retry replays the failure; if nothing is kept, the retry re-runs the work. Decide per outcome (success, 4xx, 5xx) which are stored and which release the key for a real retry.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -194,10 +198,10 @@ res.status(result.status).json(result.body);
 - Two duplicates were fired concurrently at a running instance, and exactly one effect landed — the race proven, not reasoned about.
 - A retry was routed to a different instance, and to the same instance after a restart, and both found the key.
 - Somebody has agreed what happens to a duplicate that arrives after the window — accepted risk, not a surprise discovered in an incident.
-- Store the result with the key so a duplicate returns the original response instead of re-executing.
-- Scope each key to one logical operation, keyed per tenant and endpoint, so distinct operations never collide.
-- Validate a request fingerprint so a key reused with a different body is rejected, not replayed.
-- Alert on dedup-store growth to catch a TTL or cleanup that stopped working.
+- A duplicate of a finished request returned the original stored response, and the operation ran once.
+- Two different operations from one tenant, and one client token from two tenants, each ran without colliding on a key.
+- A repeat carrying the same key and a different body was rejected, not replayed.
+- An alert on dedup-store growth fired when expiry was switched off in a test.
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -242,6 +246,7 @@ res.status(result.status).json(result.body);
 - [Message Queue](./message-queue.md) — The queue redelivers, so repeats must be harmless.
 - [Aggregator](./aggregator.md) — An aggregator that tallies messages double counts a redelivery unless its input is deduplicated.
 - [Fan-Out](./fan-out.md) — Fan-out multiplies redelivery, one branch per consumer.
+- [Polling Consumer](./polling-consumer.md) — Pull consumers redeliver after a timeout, so this is the property they need.
 
 **Enables**
 

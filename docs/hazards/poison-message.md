@@ -96,5 +96,6 @@ Prevent the next one. Validate against a schema where the message enters, so bad
 - [Competing Consumers](../patterns/messaging/competing-consumers.md) — Each redelivery ties up a worker and repeats the failure
 - [Sequential Convoy](../patterns/messaging/sequential-convoy.md) — Ordered processing makes one bad message block every message behind it
 - [Publish-Subscribe](../patterns/messaging/pubsub.md) — A subscriber that keeps failing on one event redelivers it without end
+- [Polling Consumer](../patterns/messaging/polling-consumer.md) — The polling loop redelivers it after every failed attempt.
 
 <!-- relationships:end -->

@@ -226,6 +226,7 @@ async function screen(
 - [Pagination](../distributed/routing/pagination.md) — A paged query across partitions is the everyday case: fan out, merge on the sort key, keep only the page
 - [Recipient List](./recipient-list.md) — Its distribution form sends to a recipient list rather than broadcasting
 - [Timeout / Deadline](../distributed/resilience/timeout-deadline.md) — The gather step needs a deadline, or one slow recipient holds the caller open.
+- [Fan-In](./fan-in.md) — Its gather half is a fan-in; this page names the convergence topology.
 
 **Composed of**
 

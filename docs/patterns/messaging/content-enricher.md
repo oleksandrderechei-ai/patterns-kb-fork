@@ -21,13 +21,13 @@ A message often carries only an id or a few fields, while the next step needs th
 ## Explained
 <!--meta block=explain-->
 
-A content enricher is a step between two channels that adds missing data to a message. It reads a key from the message, such as a customer id, looks that key up in a database, a service or a cache, merges the result in and forwards the fuller message. Choose it over a lookup inside each consumer when several consumers need the same data and you want one place that knows the source. Choose [event-carried state transfer](./event-carried-state-transfer.md) instead when the producer can include the data itself at no cost. Without it, ten consumers call the customer service for each order, and one change in that service breaks all ten.
+A content enricher is a step between two channels that adds missing data to a message. It reads a key from the message, such as a customer id, looks that key up in a database, a service or a cache, merges the result in and forwards the fuller message. Choose it over a lookup inside each consumer when several consumers need the same data and you want one place that knows the source. Choose [event-carried state transfer](./event-carried-state-transfer.md) instead when the producer can include the data itself at no cost. Without it, ten consumers call the customer service for each order, and one change in that service can break all ten.
 
 - **An extra call on every message.** Latency and source load grow with traffic; cache hot keys and batch lookups.
 - **Stale or missing data.** A cache serves old values and a source can fail; set a lifetime and a default or dead-letter rule.
 - **A new dependency.** A down source stops the flow; use a timeout and move failed messages aside.
 
-**Example.** Orders arrive at 3,000 a minute with a customer id only, and the fraud check needs country and tier. The enricher calls the customer service, which takes 40 ms, so each order is 40 ms slower and the service takes 3,000 calls a minute. A cache with a 10-minute lifetime and a 95% hit rate cuts that to 150 calls a minute. The cost is staleness: a customer upgraded 3 minutes ago shows the old tier for up to 7 more minutes. The team keeps the cache for country, which never changes, and skips it for tier.
+**Example.** Orders arrive at 3,000 a minute with a customer id only, and the fraud check needs country and tier. The enricher calls the customer service, which takes 40 ms, so each order is 40 ms slower and the service takes 3,000 calls a minute. A cache with a 10-minute lifetime and a 95% hit rate cuts that to 150 calls a minute. The cost is staleness: a customer upgraded 3 minutes ago shows the old tier for up to 7 more minutes. The team keeps the cache because the fraud check can live with a tier up to 7 minutes old. A check that needs a fresh tier would shorten the lifetime, and calls would rise toward 3,000 a minute.
 
 ## How it works
 <!--meta block=structure-->
@@ -75,10 +75,11 @@ The lookup sits on the path of every message, so its latency adds to the whole f
 <!--meta block=variations-->
 
 - **Lookup enricher** — Reads a key from the message and fetches the extra fields from a database or service. The common case, and the one whose cost is a call per message.
-- **Self-contained enricher** — Adds data that needs no external source: a timestamp, the host name, a trace id. It costs nothing on the hot path, and it is how most headers are added.
+- **Self-contained enricher** — Adds data that needs no external source: a timestamp, the host name, a trace id. It costs nothing on the hot path, and it is a common way to add headers.
 - **Cached enricher** — Keeps recent lookups in memory so repeated keys skip the source. It cuts calls sharply for hot keys, and it makes stale data a possibility you must price.
 - **Batch enricher** — Collects a group of messages, asks the source for all their keys in one request and merges the answers back. It trades a little latency for far fewer calls.
 - **Enrich at the producer** — The sender includes the data in the message itself, as [event-carried state transfer](./event-carried-state-transfer.md) does. No lookup is needed at read time, and the producer takes on the job of knowing the data.
+- **Local-replica enricher** — Keeps a replicated copy of the reference data beside the enricher, so each lookup is local. The cost is keeping the copy fresh.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -99,6 +100,7 @@ The lookup sits on the path of every message, so its latency adds to the whole f
 - **Cached data goes stale**, so a consumer can act on a value that has already changed. Set a lifetime from how fast the field changes.
 - **The message grows**, which raises broker and network cost. Add only the fields consumers use.
 - **A merge rule hides coupling** — consumers come to depend on enriched fields. Version the enriched schema as you would any other contract.
+- **Replays re-enrich with current data**, so output can differ from the first run, and a message moved aside loses its place in the key's order. Store the enriched output if exact replay matters.
 
 ## When to use it
 <!--meta block=usage-->
@@ -123,7 +125,9 @@ The lookup sits on the path of every message, so its latency adds to the whole f
 ```typescript summary="TypeScript — look up the customer with a cache and a timeout, or dead-letter the message"
 interface Order { orderId: string; customerId: string }
 interface EnrichedOrder extends Order { country: string; tier: string }
+interface Customer { country: string; tier: string }
 
+const TTL_MS = 10 * 60_000; // cache lifetime; also cap the map size
 const cache = new Map<string, { value: Customer; expires: number }>();
 
 async function enrich(order: Order): Promise<EnrichedOrder> {
@@ -132,7 +136,7 @@ async function enrich(order: Order): Promise<EnrichedOrder> {
 
   if (!customer) {
     customer = await withTimeout(customers.get(order.customerId), 200); // bound the wait
-    cache.set(order.customerId, { value: customer, expires: Date.now() + 10 * 60_000 });
+    cache.set(order.customerId, { value: customer, expires: Date.now() + TTL_MS });
   }
   return { ...order, country: customer.country, tier: customer.tier };
 }
@@ -141,7 +145,7 @@ async function handle(order: Order) {
   try {
     await outChannel.send(await enrich(order));
   } catch {
-    await deadLetter.send(order); // the stream keeps moving; this one is retried later
+    await deadLetter.send(order); // park it for inspection or a redrive; the stream keeps moving
   }
 }
 ```
@@ -160,17 +164,17 @@ async function handle(order: Order) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Lookup timeout** — How long to wait for the source. Too long stalls the flow behind one slow call; too short sends healthy messages to the dead-letter channel.
-- **Cache lifetime and size** — How long a looked-up value is reused and how many are kept. Sets the staleness window against the load on the source.
+- **Lookup timeout** — How long to wait for the source. Too long stalls the flow behind one slow call; too short sends healthy messages to the dead-letter channel. Start near the p99 lookup latency plus a margin, and keep it below the flow's latency budget.
+- **Cache lifetime and size** — How long a looked-up value is reused and how many are kept. Sets the staleness window against the load on the source. Start from the longest age a consumer can tolerate for the fastest-changing field.
 - **Failure policy** — Whether a failed lookup retries, sends a default value or moves the message aside. The default value must be safe for every consumer.
 - **Batch size** — How many keys one lookup request carries, for a batch enricher. Larger batches cut calls and add waiting.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Lookup latency, tail** — p99 of the call to the source. It sets the floor of the flow latency.
+- **Lookup latency, tail** — p99 of the call to the source. Every cache miss adds it to flow latency.
 - **Cache hit ratio** — Share of messages answered without calling the source. A fall means new keys or a lifetime too short.
-- **Lookup error and timeout rate** — Share of messages that could not be enriched. It is the number of messages heading to the dead-letter channel or to a default.
+- **Lookup error and timeout rate** — Share of lookups that failed or timed out. Those messages go to the dead-letter channel or take a default, which the next signal counts.
 - **Messages enriched with a default** — A count of messages sent on with fallback values. A rise means consumers are quietly acting on guesses.
 
 ### Failure modes under load
@@ -178,7 +182,7 @@ async function handle(order: Order) {
 
 - **Source outage stops the flow** — With no timeout or fallback, every message waits on the source and the queue behind the enricher grows.
 - **Stale cache** — A value changes at the source and consumers keep acting on the old one until the lifetime ends.
-- **Expiry burst** — Many hot keys expire together and the source takes a spike of lookups at once.
+- **Expiry burst** — Many hot keys expire together and the source takes a spike of lookups at once. Add random jitter to each expiry, and refresh hot keys before they expire.
 - **Lookup per item on a batch** — One large message split into thousands of items makes thousands of calls to the source.
 
 ### Readiness checklist
@@ -213,6 +217,7 @@ async function handle(order: Order) {
 - [Claim Check](./claim-check.md) — Fetches the missing data and merges it into the message
 - [Cache-Aside](../caching/cache-aside.md) — The lookup an enricher repeats for every message is a natural fit for a cache in front of the data source
 - [Pipe-and-Filter](../architecture/pipe-filter.md) — Is one filter in the pipeline, taking a message in and passing a larger one on
+- [Dead Letter Channel](./dead-letter-channel.md) — A message whose lookup fails or times out goes to the dead-letter channel instead of stalling the flow
 
 **Alternative to**
 

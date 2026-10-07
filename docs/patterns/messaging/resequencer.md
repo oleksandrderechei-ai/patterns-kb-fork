@@ -24,7 +24,7 @@ Messages stop arriving in the order they were sent as soon as they cross several
 A resequencer sits in front of a consumer that needs messages in order. It buffers each arriving message under its sequence number and releases one only when every lower number has already gone out, so a late message delays the stream instead of corrupting it. Choose it over making the consumer cope with any order when later steps truly depend on earlier ones and the transport cannot promise order, as happens with [competing consumers](./competing-consumers.md) or retries. Choose one ordered queue per key instead when you can give up parallelism across that key. Without it, a payment event arriving before the event that added the last item charges the wrong total, and nothing reports it.
 
 - **A gap blocks the stream.** One lost message holds the rest; set a timeout from real arrival skew and dead-letter the gap.
-- **Held messages use memory.** A restart loses the buffer; cap it per key and rely on redelivery from the source.
+- **Held messages use memory.** A restart loses the buffer and the next number; cap it per key and replay from the first unreleased one.
 - **Senders must number consecutively.** A skipped number reads as a loss, so a producer that filters must renumber.
 
 **Example.** Order o-9 sends events 1 (add item), 2 (add item), 3 (pay) and 4 (ship). They arrive as 1, 3, 4, 2. The resequencer releases 1, then holds 3 and 4 because it expects 2. Message 2 arrives 800 ms after 3, and 2, 3 and 4 leave together, so payment sees both items. Without it, the charge would miss item 2. The cost is that payment waited 800 ms. If 2 never arrives, a 30 s timeout releases 3 and 4 and reports the gap, so the stream stops waiting after 30 s, not forever.
@@ -74,7 +74,7 @@ The stream is defined by a key, usually the same value a [correlation identifier
 <!--meta block=variations-->
 
 - **Per-key resequencer** — Each key, such as an order id, gets its own expected number and buffer. One stuck order then blocks only itself, and memory is held per active key instead of globally.
-- **Timeout release** — After a wait limit, the resequencer skips the missing number, reports the gap and continues. It trades a guarantee of completeness for a guarantee that the stream keeps moving.
+- **Timeout release** — After a wait limit, the resequencer skips the missing number, reports the gap and continues. A message that arrives after its number was skipped falls below the expected number, so send it to a dead-letter channel or it is dropped unseen. It trades a guarantee of completeness for a guarantee that the stream keeps moving.
 - **Batch resequencer** — Collects a known set, then sorts and releases it whole. It fits a [splitter](./splitter.md) that stamps a total count, and it behaves like an [aggregator](./aggregator.md) that outputs the messages in order instead of one merged message.
 - **Ordered stream instead** — Route all messages of one key to one consumer so the broker never reorders them, as a [sequential convoy](./sequential-convoy.md) does. No buffer is needed, and parallelism across keys is the only parallelism you keep.
 - **Bounded window** — The buffer has a maximum size. When it fills, the oldest held message is released and the gap is treated as lost, which caps memory at a known figure.
@@ -85,16 +85,16 @@ The stream is defined by a key, usually the same value a [correlation identifier
 ### Pros
 <!--meta polarity=pro-->
 
-- **Restores order without a single-consumer bottleneck** — workers stay parallel, and only the final step sees a sequence.
+- **Restores order without a single-consumer bottleneck** — workers stay parallel, and only the final step sees a sequence. The resequencer itself holds state per key, so route by key to scale it.
 - **Hides the transport from the consumer** — retries, redelivery and parallel paths can reorder messages, and the consumer need not know.
 - **Makes a late message a delay, not a corruption** — the consumer never acts on step 3 before step 2.
-- **Gives gaps a name** — a timeout reports exactly which number is missing, instead of a silent wrong state later.
+- **Gives gaps a name** — a timeout reports the missing number or range, instead of a silent wrong state later.
 
 ### Cons
 <!--meta polarity=con-->
 
 - **A lost message blocks everything behind it** until the timeout fires. Pick a timeout from the real arrival skew, and send the gap to a [dead-letter channel](./dead-letter-channel.md).
-- **The buffer holds state in memory**, so a restart loses held messages. Persist the buffer or accept redelivery from the source.
+- **The buffer holds state in memory**, so a restart loses held messages and the next expected number. Ack a message only after release and persist the next expected number with the buffer, or redelivery has nothing to replay.
 - **Every message waits for its predecessors**, so tail latency rises with the worst skew. Resequence per key, never globally.
 - **Senders must number messages consecutively per key**, which is new coupling. A deliberate skip looks like a loss, so a producer that filters must renumber.
 - **A sender that restarts at 1** looks like a stream of duplicates. Carry an epoch beside the number, or reset the stream explicitly.
@@ -124,11 +124,11 @@ interface Msg { key: string; seq: number; body: unknown }
 class Resequencer {
   private next = new Map<string, number>();            // next expected number per key
   private held = new Map<string, Map<number, Msg>>();  // early arrivals per key
-  constructor(private release: (m: Msg) => void) {}
+  constructor(private release: (m: Msg) => void, private onGap: (key: string, from: number, to: number) => void) {}
 
   accept(m: Msg): void {
     let n = this.next.get(m.key) ?? 1;
-    if (m.seq < n) return;                             // duplicate or replay: drop
+    if (m.seq < n) return;                             // duplicate, replay, or a late arrival after a skip: drop
     const buf = this.held.get(m.key) ?? new Map<number, Msg>();
     this.held.set(m.key, buf.set(m.seq, m));
     while (buf.has(n)) {                               // drain every consecutive message
@@ -144,6 +144,7 @@ class Resequencer {
     const buf = this.held.get(key);
     if (!buf?.size) return;
     const lowest = Math.min(...buf.keys());
+    this.onGap(key, this.next.get(key) ?? 1, lowest);   // report the skipped range [from, lowest)
     this.next.set(key, lowest);
     this.accept(buf.get(lowest)!);
   }
@@ -163,7 +164,7 @@ class Resequencer {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Gap timeout** — How long a stream waits for a missing number before skipping it. Too short releases messages out of order; too long stalls everything behind the gap.
+- **Gap timeout** — How long a stream waits for a missing number before skipping it. Set it above a high percentile of measured arrival skew per key. Too short skips a number that was only late, and that message is then dropped as a duplicate; too long stalls everything behind the gap.
 - **Buffer capacity** — The most held messages per key and in total. It caps memory, and a full buffer forces a release or a rejection.
 - **Gap policy** — Whether a timed-out gap is skipped, sent to a dead-letter channel, or halts the stream for a person to decide.
 - **Key granularity** — The field that defines a stream. A finer key, such as one order, confines a stuck gap to that order.
@@ -215,6 +216,7 @@ class Resequencer {
 
 - [Competing Consumers](./competing-consumers.md) — Parallel consumers finish out of order, so a resequencer downstream restores the original sequence
 - [Splitter](./splitter.md) — The parts of a split message can arrive out of order, and the resequencer puts them back by sequence number
+- [Dead Letter Channel](./dead-letter-channel.md) — Receives the gap a timeout skipped, and the late message that follows it, instead of dropping them silently
 
 **Alternative to**
 

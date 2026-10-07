@@ -20,13 +20,13 @@ Different messages often need different sequences of steps, such as validate, en
 ## Explained
 <!--meta block=explain-->
 
-A routing slip is a list of steps attached to the message itself. Each processor does its step, removes its entry and forwards the message to the next address on the list, so the route is set when the message is created and no central component holds it. Choose it over a [content-based router](./content-based-router.md) when the sequence is chosen per message and has many steps, so a fixed pipeline would need a branch for every combination. Choose a central orchestrator instead when you need one place to see progress or to undo earlier steps. Without a slip, adding one new sequence means editing the router that every other sequence shares.
+A routing slip is a list of steps attached to the message itself. Each processor does its step, removes its entry and forwards the message to the next address on the list, so the route is set when the message is created and no central component holds it. Choose it over a [content-based router](./content-based-router.md) when each message needs its own sequence and there are many steps, so a fixed pipeline would need a branch for every combination. Choose a central orchestrator instead when you need one place to see progress or to undo earlier steps.
 
 - **No central view.** Nothing holds progress; carry a correlation id and trace each hop.
 - **The route is fixed once sent.** A step cannot react to a distant result unless it edits the slip; allow that only under named rules.
 - **Failure and undo are yours.** A failed step strands the message; use a dead-letter channel and keep undo steps explicit.
 
-**Example.** A lender handles 10,000 applications a day, 7,000 standard and 3,000 premium. A standard slip is validate, credit-score, fraud-check, notify. A premium slip swaps fraud-check for manual-review. Each step takes about 120 ms, so a standard application finishes in about 500 ms with queue hops. Adding a new route, such as a fast-track with two steps, means changing only the creator. The cost shows when credit-score is down for 5 minutes: messages wait in its queue, and an operator finds them by correlation id because no component holds the route.
+**Example.** A lender handles 10,000 applications a day, 7,000 standard and 3,000 premium. A standard slip is validate, credit-score, fraud-check, notify. A premium slip swaps fraud-check for manual-review. Each step takes about 120 ms, so a standard application finishes in about 500 ms with queue hops. Adding a new route, such as a fast-track with two steps, means changing only the creator. The cost shows when credit-score is down for 5 minutes: at about 7 applications a minute, about 35 messages wait in its queue, and an operator finds them by correlation id, since no component holds the route and each hop logs the id.
 
 ## How it works
 <!--meta block=structure-->
@@ -51,7 +51,7 @@ flowchart LR
     classDef ext stroke-dasharray:4 4
 ```
 
-```mermaid caption="What happens when a step fails? The message stops where it is. The slip records which steps are done, so a retry resumes at the failed step, and a message that keeps failing goes to the dead-letter channel."
+```mermaid caption="What happens when a step fails? The message stops where it is. The message stays at the failed step with the rest of the slip intact, so a retry resumes there, and a message that keeps failing goes to the dead-letter channel. Only a slip with undo keeps a list of finished entries."
 sequenceDiagram
     autonumber
     participant A as Step A
@@ -99,6 +99,7 @@ The creator decides the route, so it needs to know the available steps and which
 - **Failure and undo are yours.** A failing step strands the message, so send it to a [dead-letter channel](./dead-letter-channel.md) and keep any undo steps explicit.
 - **A dynamic slip is hard to test.** A step that edits the route makes the path depend on data, so restrict edits to a few named rules.
 - **The message grows** with the length of the slip, which matters for routes of dozens of steps.
+- **Redelivery repeats a step.** Consume, pop the entry and forward is not one atomic action, so under at-least-once delivery a step can run twice; make every step [idempotent](./idempotency.md) and acknowledge the input only after the forward succeeds.
 
 ## When to use it
 <!--meta block=usage-->
@@ -148,7 +149,7 @@ await send("validate", {
 ## In the wild
 <!--meta block=wild-->
 
-- **Apache Camel routingSlip** — The routingSlip() EIP step reads a list of endpoint addresses from an expression, usually a message header, and sends the message to each in turn. {#wild-camel-routing-slip}
+- **Apache Camel routingSlip** — The routingSlip() EIP step reads a list of endpoint addresses from an expression, usually a message header, and sends the message to each in turn. Camel runs the slip inside that one step, so the hops are calls made from one route and the receiving endpoints do not each forward the message. {#wild-camel-routing-slip}
 - **Spring Integration routing slip** — A routingSlip header on a message holds the route, and a router that supports it reads the next entry and forwards, with strategies to compute the next hop. {#wild-spring-integration-routing-slip}
 - **MassTransit Courier** — MassTransit builds a routing slip of activities for a message, runs each activity in turn, and can run the compensation of completed activities when one fails. {#wild-masstransit-courier}
 
@@ -158,10 +159,11 @@ await send("validate", {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Retry count per step** — How many times a step retries before the message goes to the dead-letter channel. Too many hides a persistent fault; too few dead-letters on a blip.
-- **Maximum slip length** — A cap on entries, which also stops a dynamic slip from growing without end.
+- **Retry count per step** — How many times a step retries, with backoff, before the message goes to the dead-letter channel; start from how long the dependency's typical outage lasts. Too many hides a persistent fault; too few dead-letters on a blip.
+- **Maximum slip length** — A cap on entries, set at the longest legitimate route plus a margin and enforced at creation. It also stops a dynamic slip from growing without end.
 - **Slip edit rules** — Which steps may insert or skip entries and where. Fewer rules make the route predictable.
 - **Address naming** — Logical step names mapped to queues at the edge, so renaming a queue does not break messages in flight.
+- **Maximum hops per message** — A hop counter in the envelope. A message that passes the slip's original length plus the inserts you allow goes to the dead-letter channel, which ends a route loop.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -169,7 +171,7 @@ await send("validate", {
 - **Queue depth per step** — Where messages wait. A growing queue at one step marks the slow or failing step.
 - **End-to-end latency per route** — Time from creation to an empty slip, split by route. A rise on one route points at one of its steps.
 - **Dead-letter rate per step** — Messages that exhausted retries at each step, which locates a persistent fault.
-- **Age of the oldest message in flight** — Time since creation of the oldest message with a non-empty slip. It shows stuck messages before any step reports an error.
+- **Age of the oldest message in flight** — Time since creation of the oldest message with a non-empty slip. It shows stuck messages before any step reports an error. Alert when it passes a multiple of that route's slowest normal end-to-end latency (signal 2).
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -178,6 +180,7 @@ await send("validate", {
 - **Route loop** — A dynamic slip that re-inserts an earlier step sends the message round forever.
 - **Stale address** — A queue is renamed or removed while messages carrying its old name are in flight.
 - **Slow step backs up the route** — One step takes longer than its arrival rate and the queue before it grows without bound.
+- **Duplicate step run** — A retry or redelivery repeats a step's side effect, such as sending a notification twice.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -209,6 +212,7 @@ await send("validate", {
 **Combines with**
 
 - [Pipe-and-Filter](../architecture/pipe-filter.md) — The slip chooses which filters a message passes through, and in what order
+- [Dead Letter Channel](./dead-letter-channel.md) — A step that exhausts its retries sends the stranded message here
 
 **Alternative to**
 
@@ -217,7 +221,11 @@ await send("validate", {
 
 **Often confused with**
 
-- [Recipient List](./recipient-list.md) — Sends the message through steps one after another, each step forwarding to the next address
+- [Recipient List](./recipient-list.md) — One copy walks the steps in order, each forwarding to the next; a recipient list sends a copy to every recipient at once.
+
+**Exposed to**
+
+- [Unbounded Queue](../../hazards/unbounded-queue.md) — A slow step's queue grows without bound while the slip keeps feeding it
 
 **Implemented by**
 

@@ -11217,13 +11217,6 @@
       "note_b": "The route travels with the message as an ordered list, so no central router has to know every sequence"
     },
     {
-      "a": "recipient-list",
-      "verb": "often-confused-with",
-      "b": "routing-slip",
-      "note_a": "Sends one copy of the message to every recipient at once, in parallel",
-      "note_b": "Sends the message through steps one after another, each step forwarding to the next address"
-    },
-    {
       "a": "workflow-orchestration",
       "verb": "alternative-to",
       "b": "routing-slip",
@@ -13490,13 +13483,6 @@
       "note_b": "The topic holds the subscriber set; the sender names no recipient."
     },
     {
-      "a": "long-polling",
-      "verb": "often-confused-with",
-      "b": "polling-consumer",
-      "note_a": "A polling consumer asks a queue at its own pace and may get nothing; long polling parks one HTTP request until data arrives or a timeout fires.",
-      "note_b": "The consumer asks the channel for work, and the call may return empty"
-    },
-    {
       "a": "reverse-proxy",
       "verb": "combines-with",
       "b": "server-sent-events",
@@ -13670,6 +13656,90 @@
       "b": "claim-check",
       "note_a": "A large result leaves the status body and becomes a short-lived link the caller fetches",
       "note_b": "The finished state of a long-running operation is a natural place to hand back a reference instead of a payload"
+    },
+    {
+      "a": "fan-in",
+      "verb": "combines-with",
+      "b": "scatter-gather",
+      "note_a": "Scatter-gather is fan-out plus fan-in, with a deadline and a correlation id added.",
+      "note_b": "Its gather half is a fan-in; this page names the convergence topology."
+    },
+    {
+      "a": "fan-in",
+      "verb": "exposed-to",
+      "b": "unbounded-queue",
+      "note_a": "Fast sources outrun the collector, so its buffer grows without a cap.",
+      "note_b": "A fan-in collector is a common place it appears."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "recipient-list",
+      "note_a": "A recipient list's empty result is a message nobody will see, so it lands here.",
+      "note_b": "A list that computes to empty goes here instead of vanishing."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "resequencer",
+      "note_a": "A gap that never fills lands here, so the resequencer can release the rest",
+      "note_b": "Receives the gap a timeout skipped, and the late message that follows it, instead of dropping them silently"
+    },
+    {
+      "a": "polling-consumer",
+      "verb": "exposed-to",
+      "b": "poison-message",
+      "note_a": "A message that always fails is polled, fails and returns forever, taking a poller slot each time.",
+      "note_b": "The polling loop redelivers it after every failed attempt."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "polling-consumer",
+      "note_a": "A polling consumer is where the redelivery loop starts; this channel catches the message at the attempt cap.",
+      "note_b": "Failed messages stop after a set number of attempts and land here, so a bad message stops taking a poller slot."
+    },
+    {
+      "a": "long-polling",
+      "verb": "often-confused-with",
+      "b": "polling-consumer",
+      "note_a": "A polling consumer asks a queue at its own pace and may get nothing; long polling parks one HTTP request until data arrives or a timeout fires.",
+      "note_b": "Pulls from a queue at its own pace and may get nothing back at once; long polling is one request held open until data arrives, and is also a way to run this loop."
+    },
+    {
+      "a": "content-enricher",
+      "verb": "combines-with",
+      "b": "dead-letter-channel",
+      "note_a": "A message whose lookup fails or times out goes to the dead-letter channel instead of stalling the flow",
+      "note_b": "Messages an enricher cannot complete arrive here"
+    },
+    {
+      "a": "recipient-list",
+      "verb": "often-confused-with",
+      "b": "routing-slip",
+      "note_a": "A routing slip sends one message through an ordered chain of steps, each forwarding to the next; a recipient list sends a copy to every recipient at once.",
+      "note_b": "One copy walks the steps in order, each forwarding to the next; a recipient list sends a copy to every recipient at once."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "routing-slip",
+      "note_a": "A slip route's failed step is a source of dead letters",
+      "note_b": "A step that exhausts its retries sends the stranded message here"
+    },
+    {
+      "a": "routing-slip",
+      "verb": "exposed-to",
+      "b": "unbounded-queue",
+      "note_a": "A slow step's queue grows without bound while the slip keeps feeding it",
+      "note_b": "A route of many steps has a queue per step, and any one of them can back up"
+    },
+    {
+      "a": "idempotency",
+      "verb": "combines-with",
+      "b": "polling-consumer",
+      "note_a": "Pull consumers redeliver after a timeout, so this is the property they need.",
+      "note_b": "A message can be handled twice when the consumer dies before acknowledging, so the handler must tolerate a repeat."
     }
   ],
   "group_order": {

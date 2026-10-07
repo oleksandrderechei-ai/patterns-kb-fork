@@ -1505,7 +1505,7 @@
       "definition": "Undeliverable messages land somewhere visible, not lost",
       "route": "/patterns/messaging/dead-letter-channel.html",
       "requires": ["message-queue"],
-      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter"]
+      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter", "recipient-list", "resequencer", "polling-consumer", "content-enricher", "routing-slip"]
     },
     {
       "id": "correlation-identifier",
@@ -1521,7 +1521,7 @@
       "definition": "Broadcasts a request, then merges the responses",
       "route": "/patterns/messaging/scatter-gather.html",
       "requires": [],
-      "related": ["mapreduce", "correlation-identifier", "pagination", "recipient-list", "fork-join", "timeout-deadline"]
+      "related": ["mapreduce", "correlation-identifier", "pagination", "recipient-list", "fork-join", "timeout-deadline", "fan-in"]
     },
     {
       "id": "wire-tap",
@@ -1545,7 +1545,7 @@
       "definition": "The same request applied twice has the same effect as once",
       "route": "/patterns/messaging/idempotency.html",
       "requires": [],
-      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer", "fencing-token", "pubsub", "message-queue", "aggregator", "fan-out"]
+      "related": ["dead-letter-channel", "competing-consumers", "least-astonishment", "timeout-deadline", "conditional-write", "async-request-reply", "minimize-coordination", "unique-id-generation", "command-query-separation", "event-carried-state-transfer", "fencing-token", "pubsub", "message-queue", "aggregator", "fan-out", "polling-consumer"]
     },
     {
       "id": "fan-in",
@@ -1553,7 +1553,7 @@
       "definition": "Many parallel sources converge into one stream or one result",
       "route": "/patterns/messaging/fan-in.html",
       "requires": [],
-      "related": ["mapreduce", "aggregator", "fan-out", "future-promise", "big-compute"]
+      "related": ["mapreduce", "aggregator", "fan-out", "future-promise", "big-compute", "scatter-gather"]
     },
     {
       "id": "message-encoding",
@@ -1569,7 +1569,7 @@
       "definition": "Sends each message to a computed set of channels — not one, and not all",
       "route": "/patterns/messaging/recipient-list.html",
       "requires": [],
-      "related": ["content-based-router", "fan-out", "scatter-gather", "splitter", "routing-slip", "pubsub"]
+      "related": ["content-based-router", "fan-out", "scatter-gather", "splitter", "pubsub", "dead-letter-channel", "routing-slip"]
     },
     {
       "id": "resequencer",
@@ -1577,7 +1577,7 @@
       "definition": "Releases out-of-order messages to the consumer in sequence",
       "route": "/patterns/messaging/resequencer.html",
       "requires": [],
-      "related": ["competing-consumers", "splitter", "aggregator", "sequential-convoy"]
+      "related": ["competing-consumers", "splitter", "aggregator", "sequential-convoy", "dead-letter-channel"]
     },
     {
       "id": "polling-consumer",
@@ -1585,7 +1585,7 @@
       "definition": "Pulls the next message from a channel when it has capacity",
       "route": "/patterns/messaging/polling-consumer.html",
       "requires": [],
-      "related": ["message-queue", "backpressure", "competing-consumers", "load-leveling", "long-polling"]
+      "related": ["message-queue", "backpressure", "competing-consumers", "load-leveling", "dead-letter-channel", "long-polling", "idempotency"]
     },
     {
       "id": "content-enricher",
@@ -1593,7 +1593,7 @@
       "definition": "Adds missing data to a message from another source before it moves on",
       "route": "/patterns/messaging/content-enricher.html",
       "requires": [],
-      "related": ["message-translator", "claim-check", "cache-aside", "event-carried-state-transfer", "pipe-filter"]
+      "related": ["message-translator", "claim-check", "cache-aside", "event-carried-state-transfer", "pipe-filter", "dead-letter-channel"]
     },
     {
       "id": "routing-slip",
@@ -1601,7 +1601,7 @@
       "definition": "Carries the list of processing steps inside the message itself",
       "route": "/patterns/messaging/routing-slip.html",
       "requires": [],
-      "related": ["content-based-router", "recipient-list", "workflow-orchestration", "pipe-filter"]
+      "related": ["content-based-router", "workflow-orchestration", "pipe-filter", "recipient-list", "dead-letter-channel"]
     },
     {
       "id": "canonical-data-model",

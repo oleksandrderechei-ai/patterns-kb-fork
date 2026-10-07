@@ -214,6 +214,11 @@ async function runTask(task: Task): Promise<void> {
 - [Message Router](./message-router.md) — Unroutable messages arrive from the router's no-match path.
 - [Message Translator](./message-translator.md) — Unconvertible messages arrive here from a translator.
 - [Splitter](./splitter.md) — Isolated per-item failures from a split are what it receives.
+- [Recipient List](./recipient-list.md) — A recipient list's empty result is a message nobody will see, so it lands here.
+- [Resequencer](./resequencer.md) — A gap that never fills lands here, so the resequencer can release the rest
+- [Polling Consumer](./polling-consumer.md) — A polling consumer is where the redelivery loop starts; this channel catches the message at the attempt cap.
+- [Content Enricher](./content-enricher.md) — Messages an enricher cannot complete arrive here
+- [Routing Slip](./routing-slip.md) — A slip route's failed step is a source of dead letters
 
 **Enables**
 

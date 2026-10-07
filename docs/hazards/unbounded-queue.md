@@ -86,5 +86,7 @@ A bounded queue also gives you **backpressure** for free: when the buffer is ful
 - [Thread Pool](../patterns/concurrency/thread-pool.md) — A work queue with no limit hides overload until the heap is exhausted
 - [Channels](../patterns/concurrency/channels.md) — A channel with an unlimited buffer removes the backpressure the channel would otherwise give
 - [Pipe-and-Filter](../patterns/architecture/pipe-filter.md) — Between pipeline stages it grows silently when one filter is slower than the one before.
+- [Fan-In](../patterns/messaging/fan-in.md) — A fan-in collector is a common place it appears.
+- [Routing Slip](../patterns/messaging/routing-slip.md) — A route of many steps has a queue per step, and any one of them can back up
 
 <!-- relationships:end -->
