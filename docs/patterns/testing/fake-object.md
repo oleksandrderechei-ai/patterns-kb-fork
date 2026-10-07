@@ -27,7 +27,7 @@ A fake object is a test double that really works: it has the same interface as t
 - **Drift.** It misses the real thing's edge cases and gives false confidence; run the same tests against both.
 - **No call record.** It does not show that a call happened or in what order; use a mock when the call is the point.
 
-**Example.** A suite of 400 tests each needs a user repository. Against a real Postgres, resetting state takes about 250 ms a test, 400 times 250 ms, 100 seconds. Against an in-memory fake, it takes about 1 ms, 0.4 seconds. The fake allows two saves with the same email, while the real table has a unique index and rejects the second. Three tests pass on the fake and fail in production. The fix is to run one shared test, saving a duplicate email must fail, against both, so the fake is changed to match.
+**Example.** A suite of 400 tests each needs a user repository. Say resetting a real Postgres takes about 250 ms a test, so 400 times 250 ms is 100 seconds. Against an in-memory fake, say it takes about 1 ms, so 0.4 seconds. The fake allows two saves with the same email, while the real table has a unique index and rejects the second. Three tests pass on the fake and fail in production. The fix is one shared test, saving a duplicate email must fail, run against both in CI, so the fake is changed to match and later drift fails the build.
 
 ## How it works
 <!--meta block=structure-->
@@ -46,7 +46,7 @@ flowchart LR
 - **In-memory [repository](../enterprise/repository.md)** — Backs a repository or DAO (data access object) interface with a plain in-memory collection instead of a real database — the most common fake in application code.
 - **In-memory file system** — Stands in for disk I/O so tests read and write without touching the real filesystem or leaving artifacts behind.
 - **In-process fake service** — A small server that speaks the real wire protocol over a loopback socket, letting integration-style tests exercise real HTTP or RPC (remote procedure call) handling without the network.
-- **Shared, maintained fake** — Some libraries ship an official in-memory driver alongside the real one — maintained in lockstep so it can't silently drift from production behavior.
+- **Shared, maintained fake** — Some libraries ship an official in-memory driver alongside the real one, maintained by the same authors, which lowers drift but does not remove it; only a shared contract test proves parity.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -80,9 +80,9 @@ flowchart LR
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The dependency only appears** in one or two tests — a canned stub is quicker to write.
+- **The dependency only appears** in one or two tests — a canned stub is quicker to write. Switch to a fake once several tests need the same canned data, or once a stub starts holding state.
 - **The point of the test is verifying** that a particular call happened, in order — use a Mock Object instead.
-- **Real integration still needs proof** — you still need to prove it works; a fake replaces unit-level friction, not the contract test against the real thing.
+- **Real integration still needs proof** — a fake removes unit-level friction, not the need for a contract test against the real thing.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -99,7 +99,10 @@ class FakeUserRepository implements UserRepository {
   private readonly rows = new Map<string, User>();
 
   async save(user: User): Promise<void> {
-    this.rows.set(user.id, { ...user }); // real insert semantics
+    for (const row of this.rows.values()) {
+      if (row.email === user.email && row.id !== user.id) throw new Error("duplicate email"); // production-knob-2: enforce the unique index
+    }
+    this.rows.set(user.id, { ...user });
   }
 
   async findById(id: string): Promise<User | null> {
@@ -130,7 +133,7 @@ assert(found?.email === "a@example.com");
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Seeded initial state** — The data the fake is preloaded with before each test — an empty store, or a fixture set shared across a suite.
+- **Seeded initial state** — The data the fake is preloaded with before each test — an empty store, or a fixture set shared across a suite. Default to an empty store per test; use a shared fixture only for read-only suites, reset between tests.
 - **Constraint enforcement** — Whether the fake enforces the invariants the real store does — unique keys, required fields, referential integrity — or silently accepts anything.
 - **Fault injection** — A switch to make the fake return the same errors the real dependency does — timeouts, conflict responses — so error-handling paths still get exercised.
 - **Concurrency semantics** — Whether the fake models atomicity and isolation or treats every operation as independent and serial.
@@ -138,8 +141,8 @@ assert(found?.email === "a@example.com");
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Contract-test divergence** — Run the same behavioral suite against the fake and the real dependency; a case that passes on one and fails on the other is drift.
-- **Fake-only green** — Bugs caught in integration against the real dependency but missed by every test using the fake — the count is how much the fake is hiding.
+- **Contract-test divergence** — Run the same behavioral suite against the fake and the real dependency; a case that passes on one and fails on the other is drift. Any divergence fails CI; run it on every change to the interface or the fake.
+- **Fake-only green** — Bugs caught in integration against the real dependency but missed by every test using the fake — count them to size the drift, and add a contract case for each one.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
