@@ -24,9 +24,9 @@ A message translator sits on the channel between a producer and a consumer and r
 
 - **Silent errors.** A dropped field, cut precision or misread date passes through looking valid. Validate output against the consumer schema and test with boundary values.
 - **Schema drift.** Every schema change on either side means a mapping change, so version the mappings with the schemas.
-- **Pairwise growth.** One translator per pair of systems grows as N times N. Translate everything to one shared canonical format and you need about 2N.
+- **Pairwise growth.** One translator per pair of systems grows as N(N-1), roughly N squared. Translate everything to one canonical format and you need about 2N.
 
-**Example.** A partner sends dates as 03/04/2026, meaning 3 April, day first. A translator written for month first outputs 2026-03-04. That is a valid date, so every schema check passes, and parcels are booked a month early. Days 1 to 12 of each month are silently wrong, about 39% of a 31-day month. Days 13 to 31 fail loudly, because there is no month 13. A test using 13/04/2026 catches the bug at once, and a test using 03/04/2026 alone never would. With 6 systems, pairwise translators number 30, against 12 with a canonical shape.
+**Example.** A partner sends dates as 03/04/2026, meaning 3 April, day first. A translator written for month first outputs 2026-03-04. That is a valid date, so every schema check passes, and parcels are booked a month early. 11 of the first 12 days of each month are silently wrong, about 35% of a 31-day month, and the error runs from one to eleven months. Days 13 to 31 fail loudly, because there is no month 13. A test using 13/04/2026 catches the bug at once, and a test using 03/04/2026 alone never would. With 6 systems, pairwise translators number 30, against 12 with a canonical shape.
 
 ## How it works
 <!--meta block=structure-->
@@ -52,10 +52,10 @@ flowchart LR
 ## Variations
 <!--meta block=variations-->
 
-- **Canonical Data Model** — Translate every format to and from one shared canonical schema instead of pairwise — N systems then need N translators, not N².
+- **Canonical Data Model** — Translate every format to and from one shared canonical schema instead of pairwise. N systems then need about 2N translators (one each way), not N(N-1).
 - **Envelope Wrapper** — Wraps or unwraps transport-specific headers and routing metadata around an unchanged payload, translating only the envelope.
 - **Normalizer** — Routes several differently-shaped but semantically equivalent inputs each through its own translator, so all emerge in one common shape.
-- **Declarative / schema-driven mapping** — Expresses the mapping as data — XSLT, JSONata, a field-mapping config — instead of code, so a schema change doesn't require a redeploy.
+- **Declarative / schema-driven mapping** — Expresses the mapping as data (XSLT, JSONata, a field-mapping config) instead of code, so a schema change can ship as a config update if the translator reloads mappings at runtime. The mapping still needs the same tests and version pinning as code.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -63,7 +63,7 @@ flowchart LR
 ### Pros
 <!--meta polarity=pro-->
 
-- **Decouples producer and consumer schemas** — either evolves without breaking the other.
+- **Decouples producer and consumer schemas** — either can evolve without breaking the other, as long as the mapping is updated and tested for each change.
 - **Confines format-conversion logic to one place instead** of scattering it across every consumer.
 - **Integrating a legacy or third-party format becomes additive** — one new translator, not a system-wide schema change.
 - **Testable in isolation**: feed it a sample message, assert the output shape.
@@ -74,7 +74,8 @@ flowchart LR
 - **Adds a hop and a processing cost** on every message, more so for large payloads or heavy conversions like XML to JSON.
 - **Lossy conversions** — dropped fields, truncated precision, timezone drift — can fail silently unless validated.
 - **Another moving part to version**: a schema change on either side means updating the mapping too.
-- **Adding translators pairwise between many** systems creates N² maintenance sprawl if no canonical model is introduced.
+- **Adding translators pairwise between many** systems grows as N(N-1), roughly N², unless a canonical model cuts it to about 2N.
+- **Unmappable messages** — A message that fails mapping needs a dead-letter path that keeps its original payload, or it blocks the queue or is lost.
 
 ## When to use it
 <!--meta block=usage-->
@@ -113,8 +114,9 @@ class OrderTranslator {
       orderId: msg.ord_id,
       customer: { name: msg.cust_name },
       total: {
+        // float division can lose precision for money; keep minor units as an integer or decimal string when the consumer allows
         amount: msg.amt_cents / 100,
-        currency: msg.ccy.toUpperCase(),
+        currency: msg.ccy.toUpperCase(), // check against a known currency list, not just uppercase
       },
     };
   }
@@ -122,7 +124,10 @@ class OrderTranslator {
 
 // Sits on the channel between producer and consumer
 function onLegacyOrder(raw: LegacyOrder, publish: (o: CanonicalOrder) => void) {
-  publish(new OrderTranslator().translate(raw));
+  const out = new OrderTranslator().translate(raw);
+  // validate the output, not just the parse (structure step 4 to 5)
+  if (!validAgainstConsumerSchema(out)) throw new Error("reject: send to dead-letter channel");
+  publish(out);
 }
 ```
 
@@ -190,6 +195,7 @@ function onLegacyOrder(raw: LegacyOrder, publish: (o: CanonicalOrder) => void) {
 - [Postel's Law](../../principles/postels-law.md) — Turns tolerated input variety into one internal format
 - [Message Encoding](./message-encoding.md) — A translator converts between formats; the compatibility rules decide when a translation is needed at all
 - [Canonical Data Model](./canonical-data-model.md) — A translator converts an application's own format to and from the canonical one
+- [Dead Letter Channel](./dead-letter-channel.md) — A message the mapping cannot convert is moved aside, not retried.
 
 **Often confused with**
 

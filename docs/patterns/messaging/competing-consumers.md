@@ -228,6 +228,7 @@ for (let i = 0; i < workerCount; i++) runConsumer(taskQueue, runKycStep);
 - [Polling Consumer](./polling-consumer.md) — Competing consumers often poll, so each worker takes work only when it has capacity
 - [Web-Queue-Worker](../architecture/web-queue-worker.md) — The worker tier is the usual home for this: one queue, many identical consumers.
 - [Producer-Consumer](../concurrency/producer-consumer.md) — The in-process base shape the competing workers share.
+- [Splitter](./splitter.md) — A splitter is what turns one big message into the many that a pool can share.
 
 **Requires**
 

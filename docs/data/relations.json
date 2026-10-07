@@ -13579,6 +13579,55 @@
       "b": "message-router",
       "note_a": "Unroutable messages arrive from the router's no-match path.",
       "note_b": "Messages that match no rule go to the dead-letter channel, not a default queue."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "message-translator",
+      "note_a": "Unconvertible messages arrive here from a translator.",
+      "note_b": "A message the mapping cannot convert is moved aside, not retried."
+    },
+    {
+      "a": "aggregator",
+      "verb": "combines-with",
+      "b": "idempotency",
+      "note_a": "A redelivered fragment must not count twice, so each fragment id is recorded.",
+      "note_b": "An aggregator that tallies messages double counts a redelivery unless its input is deduplicated."
+    },
+    {
+      "a": "content-based-router",
+      "verb": "combines-with",
+      "b": "message-encoding",
+      "note_a": "Pin the routed fields in a versioned schema so rules keep matching.",
+      "note_b": "A router that reads body fields breaks first when a field is renamed."
+    },
+    {
+      "a": "competing-consumers",
+      "verb": "combines-with",
+      "b": "splitter",
+      "note_a": "A splitter is what turns one big message into the many that a pool can share.",
+      "note_b": "Fragments are one-item messages that a consumer pool drains in parallel."
+    },
+    {
+      "a": "dead-letter-channel",
+      "verb": "combines-with",
+      "b": "splitter",
+      "note_a": "Isolated per-item failures from a split are what it receives.",
+      "note_b": "A fragment that fails every attempt is diverted, not left to stall the batch."
+    },
+    {
+      "a": "backpressure",
+      "verb": "combines-with",
+      "b": "splitter",
+      "note_a": "A splitter is a burst source that needs the bound.",
+      "note_b": "Bounds how fast a large split can flood the fragment channel."
+    },
+    {
+      "a": "thread-pool",
+      "verb": "combines-with",
+      "b": "splitter",
+      "note_a": "A split is a common source of the many small tasks a pool drains.",
+      "note_b": "Per-split parallelism runs the fragments on a fixed worker pool."
     }
   ],
   "group_order": {

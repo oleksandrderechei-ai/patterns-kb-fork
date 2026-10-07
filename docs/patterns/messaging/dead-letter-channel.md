@@ -209,6 +209,8 @@ async function runTask(task: Task): Promise<void> {
 - [Competing Consumers](./competing-consumers.md) — The cap is what stops a poison message circulating through the whole pool
 - [Message Encoding](./message-encoding.md) — An undecodable payload is the most common thing a dead-letter channel catches
 - [Message Router](./message-router.md) — Unroutable messages arrive from the router's no-match path.
+- [Message Translator](./message-translator.md) — Unconvertible messages arrive here from a translator.
+- [Splitter](./splitter.md) — Isolated per-item failures from a split are what it receives.
 
 **Enables**
 

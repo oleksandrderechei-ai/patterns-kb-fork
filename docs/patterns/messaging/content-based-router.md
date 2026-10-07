@@ -16,7 +16,7 @@ Inspects a message's actual content — not its type, not its headers — and fo
 ## What it is
 <!--meta block=description-->
 
-A **content-based router** reads each message from one inbound channel, looks at values in its body, and forwards it to one of several outbound channels, with a default channel for anything that matches nothing. Producers send one kind of message to one place, and each consumer sees only its own share, so branching logic stays out of both. It differs from a plain [message router](./message-router.md) because it decides only on values inside the body.
+A **content-based router** reads each message from one inbound channel, looks at values in its body, and forwards it to one of several outbound channels, with a default channel for anything that matches nothing. Producers send one kind of message to one place, and each consumer sees only its own share, so branching logic stays out of both. It differs from a plain [message router](./message-router.md) in deciding on body values, though a header check may come first.
 
 ## Explained
 <!--meta block=explain-->
@@ -26,8 +26,9 @@ A content-based router reads each message from one inbound channel, looks at val
 - **Layout coupling.** The router depends on the message layout, so pin routed fields with a versioned schema and keep rules off deeply nested paths.
 - **Rule tangle.** Keep rules in an ordered list with a test per rule.
 - **Silent catch-all.** Send unmatched messages to a dead-letter channel (a side channel for failures) and alert on its depth.
+- **Malformed body.** A message that fails to parse also goes to the dead-letter channel, so one bad message cannot block the router.
 
-**Example.** Support tickets arrive at 50 a second on one queue. The rules, first match wins: category billing goes to the billing queue, priority urgent goes to the on-call queue, anything else goes to general. With 10% billing and 2% urgent, billing gets 5 a second and on-call 1 a second, and an urgent billing ticket goes to billing, so rule order is a decision you make. Then a producer renames category to topic. No ticket matches billing any more, and with a catch-all those 5 a second land in general unnoticed. With an unmatched channel, its depth alarm fires within a minute.
+**Example.** Support tickets arrive at 50 a second on one queue. The rules, first match wins: category billing goes to the billing queue, priority urgent goes to the on-call queue, category general goes to the general queue, and anything else goes to an unmatched channel with a depth alarm. With 10% billing and 2% urgent, billing gets 5 a second and on-call at most 1, since an urgent billing ticket goes to billing: rule order is a decision you make. Then a producer renames category to topic. No ticket matches billing or general any more, so about 49 a second land in unmatched, not hidden in general, and its alarm fires once its evaluation window passes.
 
 ## How it works
 <!--meta block=structure-->
@@ -73,9 +74,10 @@ flowchart LR
 <!--meta polarity=con-->
 
 - **Becomes a central, must-not-break piece of infrastructure** — a bug there misroutes everything behind it.
-- **Must parse the full message body** to route, adding cost and a dependency on the message schema.
+- **Must read the body fields its rules name**, adding parse cost and a dependency on the message schema.
 - **Conditions accrete over time into a tangle** of nested, hard-to-audit rules.
 - **A catch-all default branch can silently swallow** or misroute anything unclassified.
+- **Consume-then-publish is not atomic** — a crash between the two loses or duplicates a message, so ack after publish and make consumers idempotent.
 
 ## When to use it
 <!--meta block=usage-->
@@ -93,6 +95,7 @@ flowchart LR
 - **The destination is knowable from a header** or message type alone — a plain header-based router is cheaper and skips parsing the body.
 - **There's only one consumer or one destination** — there's nothing to route between.
 - **Routing rules change so often they're really business logic** — put them in a rules engine or the domain layer, not hardcoded into the router.
+- **More than one destination must get each message** — use a [Recipient List](./recipient-list.md). Each message follows a fixed path: use a [Routing Slip](./routing-slip.md).
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -132,9 +135,9 @@ dispatch({ amount: 15_000, region: "US" }, {
 <!--meta block=wild-->
 
 - **Apache Camel choice()** — The choice().when(predicate) DSL evaluates predicates — Simple, XPath, or JSONPath expressions over the message body — and sends each exchange down exactly one branch, with otherwise() as the explicit catch-all for anything unmatched. {#wild-apache-camel-choice}
-- **AWS EventBridge** — Rules match JSON event patterns against the event payload itself, including nested fields, and deliver each matching event only to that rule targets. There is no otherwise branch — an event matching no rule is simply not delivered, so a catch-all rule is needed to observe unclassified events. {#wild-aws-eventbridge}
+- **AWS EventBridge** — Rules match JSON event patterns against the event payload itself, including nested fields, and deliver each matching event only to that rule's targets. There is no otherwise branch: an event matching no rule is simply not delivered, so a catch-all rule is needed to observe unclassified events. {#wild-aws-eventbridge}
 - **Spring Integration payload routers** — Routers such as payload-type-router and expression-based routers resolve the output channel from the message payload rather than its headers; a default-output-channel catches unmatched messages, and resolution-required controls whether an unresolvable message raises an error instead. {#wild-spring-integration-router}
-- **Amazon Simple Notification Service (SNS) filter policies** — Each subscription to a topic can carry a filter policy matched against a message attributes (or, optionally, its body), so a subscriber receives only the messages that match — content-based routing applied at the topic edge, per subscriber, instead of in a central router. {#wild-amazon-sns-filter-policy}
+- **Amazon Simple Notification Service (SNS) filter policies** — Each subscription to a topic can carry a filter policy matched against a message's attributes (or, optionally, its body), so a subscriber receives only the messages that match — content-based routing applied at the topic edge, per subscriber, instead of in a central router. {#wild-amazon-sns-filter-policy}
 
 ## In production
 <!--meta block=production-->
@@ -142,7 +145,7 @@ dispatch({ amount: 15_000, region: "US" }, {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Rule order (first-match)** — The sequence in which conditions are evaluated; with first-match-wins semantics, reordering rules changes where overlapping messages land.
+- **Rule order (first-match)** — The sequence in which conditions are evaluated; with first-match-wins semantics, reordering rules changes where overlapping messages land. Put the most specific rules first and keep a test table of sample messages with the expected channel for every overlap.
 - **Default / otherwise branch** — Where a message that matches no rule goes — an explicit channel versus an implicit drop determines whether unclassified traffic is caught or lost.
 - **Header prefilter vs. body parse** — Whether a cheap header or type check narrows candidates before the router parses the full body, trading routing cost against how much of the payload it must read.
 - **Rule source** — Whether rules are hardcoded or externalized to a table or rules engine that operators can change without redeploying the router.
@@ -150,17 +153,17 @@ dispatch({ amount: 15_000, region: "US" }, {
 ### Signals to watch
 <!--meta polarity=signal-->
 
-- **Per-branch match distribution** — Volume routed to each destination channel; a branch that drops to zero is an early sign of upstream schema drift.
-- **Unmatched / default rate** — Fraction of messages falling through to the default branch — a spike means messages stopped classifying as expected.
+- **Per-branch match distribution** — Volume routed to each destination channel; a branch that drops to zero is an early sign of upstream schema drift, for a branch that normally has steady traffic.
+- **Unmatched / default rate** — Fraction of messages falling through to the default branch — a spike means messages stopped classifying as expected. Take a baseline over a normal week and alert at a multiple of it; any non-zero parse-failure rate deserves a look.
 - **Parse-failure rate** — Messages the router cannot deserialize far enough to route — a direct dependency on the payload schema showing up at runtime.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
 - **Schema drift** — A producer renames or restructures a routed field and every affected message silently falls through to the default branch.
-- **Unparseable payload** — A malformed body the router cannot read leaves it with no basis to route, and no fallback means the message is stuck or dropped.
+- **Unparseable payload** — A malformed body gives the router nothing to route on. With no fallback it is dropped, or retried without end so it blocks the queue; cap retries, then dead-letter it with the original body and the error.
 - **Catch-all swallows traffic** — A permissive default branch quietly absorbs anything unclassified, hiding misrouting until someone notices the missing messages downstream.
-- **Rule tangle** — Overlapping conditions accreted over time cause the wrong rule to match first, misrouting a subset that is hard to spot.
+- **Rule tangle** — Rules that overlap after years of additions let the wrong rule match first. The misrouted subset is hard to spot.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -193,6 +196,7 @@ dispatch({ amount: 15_000, region: "US" }, {
 - [Fan-Out](./fan-out.md) — Filtering trims a broadcast fan-out down to the relevant subscribers.
 - [Dead Letter Channel](./dead-letter-channel.md) — A payload matching no rule goes to the dead-letter channel, not nowhere
 - [Message Translator](./message-translator.md) — Route by shape first, then translate each branch into one format
+- [Message Encoding](./message-encoding.md) — Pin the routed fields in a versioned schema so rules keep matching.
 
 **Alternative to**
 

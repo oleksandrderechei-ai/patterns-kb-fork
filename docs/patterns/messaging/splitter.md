@@ -24,9 +24,10 @@ A splitter takes one message holding many items, such as a file of records, and 
 
 - **No all-or-nothing.** Some items succeed and some fail. Track each item outcome and decide up front whether to undo the successes.
 - **Volume.** Message count and overhead multiply by the item count, so split only as far as the work needs.
-- **Lost grouping.** Order and grouping vanish unless each fragment carries parent id, position and total, which tells an aggregator when all pieces have finished.
+- **Lost grouping.** Order and grouping vanish unless each fragment carries parent id, position and total. The total tells an aggregator when all pieces have finished.
+- **Duplicates.** At-least-once delivery repeats fragments. Count distinct positions, not arrivals, or the total proves nothing.
 
-**Example.** A nightly file holds 12,000 records, and validating one takes 40 ms. One consumer working through the file takes 12,000 x 40 ms = 480 s. Split into 12,000 messages and read by 8 consumers, it takes 60 s. Each message carries file id f-7, its position and the total, 12,000. Three records fail validation. The aggregator sees 11,997 successes plus 3 failures, which equals the total, so it reports the file as finished with 3 rejects. Without the total, nothing could tell a finished file from a lost message.
+**Example.** A nightly file holds 12,000 records, and validating one takes 40 ms. One consumer working through the file takes 12,000 x 40 ms = 480 s. Split into 12,000 messages and read by 8 consumers, it takes about 60 s at best, plus per-message broker and serialization cost. Each message carries file id f-7, its position and the total, 12,000. Three records fail validation. The aggregator counts distinct positions: 11,997 successes plus 3 failures equals the total, so it reports the file as finished with 3 rejects. A deadline reports any missing fragment as lost. Without the total, nothing could tell a finished file from a lost message.
 
 ## How it works
 <!--meta block=structure-->
@@ -80,6 +81,7 @@ flowchart LR
 - **Drops ordering and grouping** unless a correlation id and sequence are carried through, and honored, downstream.
 - **Needs a paired Aggregator**, or equivalent tracking, to know when all fragments have completed.
 - **Partial failure across fragments** creates a "some succeeded, some didn't" state that must be handled explicitly, not ignored.
+- **Crash mid-split or redelivery of the parent** leaves a partial or duplicate fan-out, so make the split restartable and dedupe on parent id plus position.
 
 ## When to use it
 <!--meta block=usage-->
@@ -94,7 +96,7 @@ flowchart LR
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **The message is already a single atomic unit** — there's nothing meaningful to split.
+- **The message is already a single atomic unit** — there is nothing meaningful to split. If it is only too big for the broker, use [claim-check](./claim-check.md). If the whole message goes to many endpoints, use [recipient-list](./recipient-list.md).
 - **Processing must stay strictly ordered or transactional** across the whole batch, with no way to reconcile pieces later.
 - **The elements aren't independent** — splitting would break an invariant that only holds across the full set, like a balanced double-entry ledger.
 
@@ -143,16 +145,17 @@ for (const fragment of splitOrder(order)) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Per-split parallelism** — Whether fragments are processed sequentially or dispatched in parallel across a worker pool.
-- **Batch / chunk size** — For a very large composite, how many elements go into each emitted message rather than one per element.
+- **Per-split parallelism** — Whether fragments are processed sequentially or dispatched in parallel across a worker pool. Parallel dispatch breaks arrival order, so keep one partition or key per correlation id when order matters.
+- **Batch / chunk size** — For a very large composite, how many elements go into each emitted message rather than one per element. Start at one per message and raise it only while per-message overhead outweighs the per-item work.
 - **Fragment size limit** — The broker per-message size ceiling each fragment must fit under after the split.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Fan-out amplification factor** — Fragments emitted per input message; the volume multiplier the downstream channel must absorb.
-- **Downstream backlog after split** — Queue depth on the fragment channel, which spikes when one large composite explodes into many messages.
+- **Downstream backlog after split** — Queue depth on the fragment channel, which spikes when one large composite explodes into many messages. Alert when depth keeps rising instead of draining between splits.
 - **Per-fragment failure rate** — Fragments that error on their own, indicating a partial-batch condition to reconcile.
+- **Open groups at the aggregator** — Count and age of parent ids holding fewer fragments than their total. A group older than the processing deadline means a lost fragment.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
@@ -194,6 +197,10 @@ for (const fragment of splitOrder(order)) {
 - [Message Router](./message-router.md) — The split feeds a router that sends each fragment to its endpoint
 - [Recipient List](./recipient-list.md) — The split commonly feeds a recipient list or a router
 - [Resequencer](./resequencer.md) — A splitter numbers its parts so a resequencer can rebuild their order
+- [Competing Consumers](./competing-consumers.md) — Fragments are one-item messages that a consumer pool drains in parallel.
+- [Dead Letter Channel](./dead-letter-channel.md) — A fragment that fails every attempt is diverted, not left to stall the batch.
+- [Backpressure](../concurrency/backpressure.md) — Bounds how fast a large split can flood the fragment channel.
+- [Thread Pool](../concurrency/thread-pool.md) — Per-split parallelism runs the fragments on a fixed worker pool.
 
 **Alternative to**
 
