@@ -24,7 +24,7 @@ A message router reads each message from one input channel and forwards it uncha
 
 - **Coupling point.** Every message crosses it, so keep it stateless and run several copies.
 - **Rule sprawl.** Keep rules in one ordered table with a test per rule.
-- **Misrouting.** Log which rule matched, and send unmatched messages to a [dead-letter channel](./dead-letter-channel.md) (a side queue for failures), not a default queue.
+- **Misrouting.** Log which rule matched, and send unmatched messages to a dead-letter channel (a side queue for failures), not a default queue.
 
 **Example.** A router reads 300 messages a second and sorts them by a tenant-tier header with two rules: premium (10%, so 30 a second) goes to a fast queue and standard (the other 270 a second) goes to a standard queue. Assume one router copy handles 500 a second: at a launch of 900 a second that is 2 copies at 90% busy, so plan a third for headroom. Then a release misspells the header on every premium message, so neither rule matches. With the standard queue as the default, those 30 messages a second would sit there unnoticed. With a dead-letter channel for unmatched messages, its depth alarm fires once the depth passes its threshold.
 
