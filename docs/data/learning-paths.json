@@ -733,7 +733,7 @@
     "/patterns/architecture/ai-agent.html": {
       "harness-engineering": {
         "role": "The loop the harness is built around",
-        "tour": "Start here, because everything else on this page is a decision about this loop. Reason, act, observe, repeat until a stop condition fires — and the stop condition, the tool list and the transcript are all harness, not model.",
+        "tour": "Start here, because everything else on this page is a decision about this loop. Reason, act, observe, repeat until a stop condition fires. The stop condition, the tool list and the transcript are all harness, not model. A turn cap and a token cap set in the runtime are stop conditions the model cannot skip.",
         "fluency": "The loop the harness is built around"
       }
     },
@@ -2277,7 +2277,7 @@
     "/patterns/ml/context-engineering.html": {
       "harness-engineering": {
         "role": "What enters the window, and what leaves it",
-        "tour": "The other half of the guides: not what the agent may do, but what it can see while deciding. This is where a long session is either kept coherent or quietly allowed to forget the goal it was given.",
+        "tour": "The other half of the guides: not what the agent may do, but what it can see while deciding. This is where a long session keeps its goal or loses it as early instructions leave the window.",
         "fluency": "What enters the window, and what leaves it"
       }
     },
@@ -2306,7 +2306,7 @@
     "/patterns/ml/evaluation.html": {
       "harness-engineering": {
         "role": "How you know the harness improved anything",
-        "tour": "The sensors half, generalised. A harness change is a change to a non-deterministic system, so the only honest before-and-after is a suite you can run — otherwise you are tuning token counts and calling it progress.",
+        "tour": "The sensors half, applied to the harness itself. A harness change alters a non-deterministic system, so a suite you can rerun is how you show whether it helped.",
         "fluency": "How you know a harness change improved anything"
       },
       "ml-system-design": {
@@ -2377,7 +2377,7 @@
     "/patterns/security/agent-sandboxing.html": {
       "harness-engineering": {
         "role": "The boundary that buys autonomy",
-        "tour": "The permission half. Declaring the boundary once is what lets routine work proceed unasked, which is the only way the prompts that remain get read rather than clicked through.",
+        "tour": "The permission half. Declaring the boundary once lets routine work proceed unasked, which keeps the prompts that remain few enough to be read rather than clicked through.",
         "fluency": "The boundary that buys autonomy"
       }
     },
