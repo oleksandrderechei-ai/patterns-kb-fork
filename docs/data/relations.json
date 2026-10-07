@@ -14041,6 +14041,27 @@
       "b": "starvation",
       "note_a": "Barging permit release lets a fresh thread retake the permit and starve queued waiters.",
       "note_b": "A semaphore whose release lets the releasing thread retake the permit starves the queued waiters."
+    },
+    {
+      "a": "load-shedding",
+      "verb": "prevents-hazard",
+      "b": "unbounded-queue",
+      "note_a": "Refuses new work past a busy level, so the queue never builds a backlog.",
+      "note_b": "Refusing work past a limit keeps the queue shallow."
+    },
+    {
+      "a": "load-leveling",
+      "verb": "exposed-to",
+      "b": "unbounded-queue",
+      "note_a": "Its buffer absorbs bursts, so with no depth cap it can grow until memory runs out.",
+      "note_b": "A burst-absorbing buffer with no cap becomes the outage."
+    },
+    {
+      "a": "timeout-deadline",
+      "verb": "prevents-hazard",
+      "b": "resource-leak",
+      "note_a": "An acquire timeout turns a silent hang from a leak into a loud error; it does not return the lost resource.",
+      "note_b": "A caller that cannot get a resource fails fast instead of blocking forever."
     }
   ],
   "group_order": {

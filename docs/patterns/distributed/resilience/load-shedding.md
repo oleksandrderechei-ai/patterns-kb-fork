@@ -232,6 +232,7 @@ export async function handle(req: Request, run: () => Promise<Response>) {
 
 - [Cascading Failure](../../../hazards/cascading-failure.md) — Refusing the excess is what stops one saturated service dragging its callers down with it
 - [Metastable Failure](../../../hazards/metastable-failure.md) — Shedding by measured saturation is the usual way out of a metastable state.
+- [Unbounded Queue](../../../hazards/unbounded-queue.md) — Refuses new work past a busy level, so the queue never builds a backlog.
 
 **Demonstrated by**
 

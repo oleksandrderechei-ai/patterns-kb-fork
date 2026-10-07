@@ -257,6 +257,10 @@ async function idWorker(queue: LevelingQueue, permitsPerSecond: number) {
 - [Thundering Herd](../../../hazards/thundering-herd.md) — Buffers a concurrency spike the consumer cannot take at once
 - [Busy Front End](../../../hazards/busy-front-end.md) — Moves resource-hungry work off the tier answering requests, and flattens the spike on the way
 
+**Exposed to**
+
+- [Unbounded Queue](../../../hazards/unbounded-queue.md) — Its buffer absorbs bursts, so with no depth cap it can grow until memory runs out.
+
 **Demonstrated by**
 
 - [Ad Click Aggregator](../../../designs/ad-click-aggregator.md) — a durable queue between producer and consumer absorbs bursts and decouples ingest from processing
