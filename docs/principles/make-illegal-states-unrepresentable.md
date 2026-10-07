@@ -95,5 +95,6 @@ Strict types also have a price at the edges. Every external input, from a databa
 **Prevents**
 
 - [Primitive Obsession](../hazards/primitive-obsession.md) — Moves the rules about a value into its type, so a bad value cannot be built
+- [Partial Object](../hazards/partial-object.md) — Required constructor fields make the half-filled instance impossible to build
 
 <!-- relationships:end -->

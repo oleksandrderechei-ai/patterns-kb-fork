@@ -198,4 +198,8 @@ console.log(byId.get(c1.id.value)!.equals(c1)); // true: same identity, differen
 
 - [Anemic Domain Model](../../hazards/anemic-domain-model.md) — A rich entity keeps its own invariants, so rules do not drift into services.
 
+**Exposed to**
+
+- [Anemic Domain Model](../../hazards/anemic-domain-model.md) — Can fall into anemic domain model when it is only an id plus accessors and its rules live in services
+
 <!-- relationships:end -->
