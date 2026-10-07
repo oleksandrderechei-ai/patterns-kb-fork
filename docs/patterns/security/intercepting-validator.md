@@ -15,7 +15,7 @@ Places a dedicated checkpoint between untrusted input and business logic, so not
 ## What it is
 <!--meta block=description-->
 
-An intercepting validator is a checkpoint in front of business logic that inspects every incoming request before it proceeds. Validation is factored into one or more validator objects, often chained one per concern, that a controller or filter invokes before dispatching. A request that fails any rule is rejected on the spot, so attacker-controlled input never reaches domain code, and the rules live in one place that is testable and auditable apart from the logic they protect.
+An intercepting validator is a checkpoint in front of business logic that inspects every incoming request before it proceeds. Validation is split into validator objects, often one per concern, that a controller or filter invokes before dispatching. A request that fails any rule is rejected on the spot, so input that breaks a rule never reaches domain code, and the rules live in one place that is testable and auditable apart from the logic.
 
 ## Explained
 <!--meta block=explain-->
@@ -32,7 +32,7 @@ An intercepting validator is a checkpoint in front of your business logic that r
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="Where does a bad field get stopped? At step 5, inside the gate — so step 6 hands business logic only input that every rule has already accepted, and no handler has to remember the check itself."
+```mermaid caption="Where does a bad field get stopped? At step 5, inside the gate, so step 6 hands business logic only input that passed every rule and no handler repeats the check; passing is not proof of safety."
 flowchart LR
     Cl["Client"]:::ext
     Rules[("Rule set")]
@@ -56,7 +56,7 @@ flowchart LR
 
 - **Programmatic validators** — Validation rules are written directly in code as a chain of validator objects, each testing one concern — presence, type, length, format — and short-circuiting on the first failure.
 - **Declarative validators** — Rules are expressed as configuration or schema — annotations, a JSON Schema, an XML rule set — so non-code changes can tighten or loosen validation without a redeploy.
-- **Allow-list vs. deny-list** — Validating against a whitelist of known-good shapes catches everything unexpected; a blacklist of known-bad patterns is perpetually one attack behind.
+- **Allow-list vs. deny-list** — Validating against an allow-list of known-good shapes rejects anything unexpected, so it covers new input only as tightly as the shapes are drawn; a deny-list of known-bad patterns misses each new variant.
 - **Client- and server-paired validation** — Client-side checks give fast feedback and cut round trips, but they're trivially bypassed — the server-side interceptor remains the only check that actually enforces the rule.
 
 ## Trade-offs
@@ -75,7 +75,7 @@ flowchart LR
 
 - **Adds a layer every request pays** for, even the vast majority that are already valid.
 - **Rules can drift out** of sync with what business logic actually needs, producing false positives or false negatives.
-- **Rule chain becomes a monolith** — an unmanaged chain of special cases becomes its own monolith if rules aren't kept modular.
+- **Rule chain becomes a monolith** — an unmanaged chain of special cases grows into a second program unless each rule stays small and separate.
 - **Passing the gate is not proof** of safety further down — it doesn't replace parameterized queries or output encoding.
 
 ## When to use it
@@ -93,7 +93,7 @@ flowchart LR
 
 - **The input is already fully trusted and internal**, with no crossing of a trust boundary.
 - **The check needs deep business context** that only the domain logic itself can evaluate correctly.
-- **A neighboring pattern already** validates the same request earlier in the pipeline — don't re-check what the [Gatekeeper](../distributed/routing/gatekeeper.md) or [API Gateway](../distributed/routing/api-gateway.md) already enforced.
+- **A neighboring pattern already** validates the same request earlier, such as the [Gatekeeper](../distributed/routing/gatekeeper.md) or [API Gateway](../distributed/routing/api-gateway.md), and this service sits inside the same trust boundary; a service across a different boundary should still validate.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -118,12 +118,13 @@ class ValidationChain<T> {
 interface SignupRequest { email: string; age: number; }
 
 const signupValidator = new ValidationChain<SignupRequest>([
+  (r) => (r.email.length <= 254 ? null : "email too long"), // cap length before the regex runs (RFC 5321 limits an address to 254 characters)
   (r) => (/^[^@]+@[^@]+\.[^@]+$/.test(r.email) ? null : "invalid email"),
-  (r) => (r.age >= 13 ? null : "must be 13 or older"),
+  (r) => (typeof r.age === "number" && r.age >= 13 ? null : "must be 13 or older"),
 ]);
 
 function handleSignup(raw: unknown) {
-  const req = signupValidator.run(raw as SignupRequest); // intercepted here
+  const req = signupValidator.run(raw as SignupRequest); // intercepted here; raw as SignupRequest stands in for parsing, parse raw first in real code
   return createAccount(req); // business logic never sees invalid input
 }
 ```
@@ -141,8 +142,8 @@ function handleSignup(raw: unknown) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Payload and field size limits** — Caps on request body size, field length, array count, and nesting depth, enforced before parsing. Too low rejects legitimate large inputs; absent, an attacker can exhaust memory or CPU with an oversized or deeply nested payload.
-- **Allow-list vs deny-list strictness** — Whether rules accept only known-good shapes or merely reject known-bad patterns. Allow-listing catches everything unexpected; a deny-list is perpetually one attack behind. The choice is the single biggest lever on coverage.
+- **Payload and field size limits** — Caps on request body size, field length, array count, and nesting depth, enforced before parsing. Too low rejects legitimate large inputs; absent, an attacker can exhaust memory or CPU with an oversized or deeply nested payload. Set each cap from the largest legitimate payload seen in logs plus headroom, and enforce it at the edge or server config as well as in the validator.
+- **Allow-list vs deny-list strictness** — Whether rules accept only known-good shapes or reject known-bad patterns. Allow-listing covers unanticipated input; a deny-list covers only what its authors thought of.
 - **Reject-unknown-fields mode** — Whether a payload carrying fields the schema does not declare is rejected or silently dropped. Strict rejection surfaces client drift and mass-assignment attempts; lenient mode is more forgiving but hides them.
 - **Error-response verbosity** — How much a rejection tells the caller. Detailed field-level errors help legitimate clients but also hand an attacker a map of exactly what the validator expects; terse errors are safer but harder to integrate against.
 
