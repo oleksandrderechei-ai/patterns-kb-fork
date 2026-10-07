@@ -2925,21 +2925,21 @@
     "/patterns/gof/creational/builder.html": {
       "object-creation": {
         "role": "Assemble one complex object in steps",
-        "tour": "Drive the builder through small named steps and ask it for the finished product, instead of one constructor taking every field. It is the alternative to a family factory when you want one product built in steps, and named steps make an unexpected argument order impossible.",
+        "tour": "Drive the builder through small named steps and ask it for the finished product, instead of one constructor taking every field. It is the alternative to a family factory when you want one product built in steps, and named steps remove the positional argument-order mistake, though a wrong value in the right step is still possible.",
         "fluency": "Construct a complex object step by step instead of one huge constructor."
       }
     },
     "/patterns/gof/creational/prototype.html": {
       "object-creation": {
         "role": "Copy a configured example",
-        "tour": "Each object knows how to clone itself, so the client asks an example for a copy of the right concrete type without naming it. A family factory can clone registered prototypes instead of newing them.",
+        "tour": "Each object knows how to clone itself, so the client asks an example for a copy of the right concrete type without naming it. A family factory can clone registered prototypes instead of calling new on them. A shallow copy shares nested objects, so copy deeply any field that must stay separate.",
         "fluency": "Make new objects by copying an existing instance."
       }
     },
     "/patterns/gof/creational/singleton.html": {
       "object-creation": {
         "role": "Allow exactly one instance",
-        "tour": "The class hides its constructor, keeps the sole instance in a static field and hands it out through an accessor. It answers how many instances exist, and it costs you a global, which the next steps offer ways around.",
+        "tour": "The class hides its constructor, keeps the sole instance in a static field and hands it out through an accessor. It answers how many instances exist, and it costs you a global, which dependency injection avoids.",
         "fluency": "Permit only one instance of a class and give it a well-known access point."
       }
     },
@@ -2953,7 +2953,7 @@
     "/patterns/gof/extra/lazy-initialization.html": {
       "object-creation": {
         "role": "Build on first use",
-        "tour": "An accessor checks whether the value exists, creates and stores it if not, and returns the cached one afterwards. It is the classic way a single instance is created, and it spares you the cost when the value is never needed.",
+        "tour": "An accessor checks whether the value exists, creates and stores it if not, and returns the cached one afterwards. It is the classic way a single instance is created, and it spares you the cost when the value is never needed. Two threads reaching it first can each build it unless you add locking, and the first caller pays the full build time.",
         "fluency": "Defer building a value until the first moment it is needed."
       }
     },
