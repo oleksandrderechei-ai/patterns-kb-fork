@@ -20,7 +20,7 @@ Two teams build the same application and get systems that share no shape: one a 
 ## Explained
 <!--meta block=explain-->
 
-An architecture style is a set of rules about which kinds of parts may exist and how they may call each other, and the shape of your system follows from the rules. Each rule buys a property. If every service owns one capability and its own data, you can release one without the others and a failure stays inside it. Break a rule, such as two services sharing a database, and the property goes while the network calls stay. Choose by how complicated your domain is, not by fashion. [Layers](../patterns/architecture/layered.md) stacked in one program (screens, logic, data) suit a plain business domain. A web front end, a queue and background workers ([web-queue-worker](../patterns/architecture/web-queue-worker.md)) suit a simple domain with a few heavy jobs. [Microservices](../patterns/architecture/microservices.md), many small services released on their own, suit a complicated domain that changes often. Too simple a style lets code tangle into a [Big Ball of Mud](../hazards/big-ball-of-mud.md), a system nobody can safely change. Rank your goals first, such as launch date or budget, and revisit the choice when they change.
+An architecture style is a set of rules about which kinds of parts may exist and how they may call each other, and the shape of your system follows from the rules. Each rule buys a property. If every service owns one capability and its own data, you can release one without the others and a failure stays inside it unless other services wait on it. Break a rule, such as two services sharing a database, and the property goes while the network calls stay. Choose by how complicated your domain is, not by fashion. [Layers](../patterns/architecture/layered.md) stacked in one program (screens, logic, data) suit a plain business domain. A web front end, a queue and background workers ([web-queue-worker](../patterns/architecture/web-queue-worker.md)) suit a simple domain with a few heavy jobs. [Microservices](../patterns/architecture/microservices.md), many small services released on their own, suit a complicated domain that changes often. Too simple a style lets code tangle into a [Big Ball of Mud](../hazards/big-ball-of-mud.md), a system nobody can safely change. Rank your goals first, such as launch date or budget, and revisit the choice when they change.
 
 - **Network hops.** Every split turns a function call into a network call, so count the hops on your slowest path before you split.
 - **Tooling bill.** Distributed styles need correlated logs, tracing and automated releases, or your first outage cannot be read.
@@ -40,9 +40,9 @@ Constraints create challenges as well as benefits. Weigh a style for one subdoma
 
 Prioritise before you pick. Name the business drivers, translate them into architecture characteristics — a hard launch date pushes maintainability, testability and reliability up the list, while a tight budget pushes feasibility and simplicity up instead — and rank them with the stakeholders who own the workload rather than with the architects alone.
 
-Then treat the choice as revisable. Measure the characteristics you ranked, check that the constraints are still being honoured, and revise — and because changing architectural direction later is expensive, spend more on the first decision than feels comfortable. Four of the ten live inside one deployable and answer a different question from the rest: how the code is cut, not how many things you deploy. [Hexagonal](../patterns/architecture/hexagonal.md) and [Microkernel](../patterns/architecture/microkernel.md) decide which way dependencies point, and [Vertical Slice](../patterns/architecture/vertical-slice.md) and [REPR](../patterns/architecture/repr.md) cut by operation instead of by tier. Styles combine rather than compete: event-driven is commonly the primary style, with services, [pipes and filters](../patterns/architecture/pipe-filter.md) or [event sourcing](../patterns/architecture/event-sourcing.md) layered into it.
+Then treat the choice as revisable. Measure the characteristics you ranked, check that the constraints are still being honoured, and revise — and because changing architectural direction later is expensive, spend more on the first decision than feels comfortable. Five of the ten styles below live inside one deployable and answer a different question from the rest: how the code is cut, not how many things you deploy. Layered cuts by tier, [Hexagonal](../patterns/architecture/hexagonal.md) and [Microkernel](../patterns/architecture/microkernel.md) decide which way dependencies point, and [Vertical Slice](../patterns/architecture/vertical-slice.md) and [REPR](../patterns/architecture/repr.md) cut by operation instead of by tier. Styles combine rather than compete: event-driven is commonly the primary style, with services, [pipes and filters](../patterns/architecture/pipe-filter.md) or [event sourcing](../patterns/architecture/event-sourcing.md) layered into it.
 
-```mermaid caption="The first axis is a match, not a maximum — and only one of the two mismatches looks like progress while you are making it."
+```mermaid caption="The first axis is a match, not a maximum: only one of the two mismatches looks like progress while you are making it."
 flowchart LR
     D["Domain complexity"] --> M{"Match?"}
     A["Architecture complexity"] --> M
@@ -76,11 +76,11 @@ Request, endpoint and response sit in one place per operation, with the route de
 
 ### [Microkernel / Plugin](../patterns/architecture/microkernel.md) {#tour-microkernel}
 
-The core stays small enough to audit and changes almost never, while every feature arrives as a plug-in behind a contract. A bad feature then ships broken to nobody but its own users, and you can sandbox each plug-in so one crash cannot take the host down.
+The core stays small enough to audit and changes almost never, while every feature arrives as a plug-in behind a contract. A bad feature can then be unloaded or isolated without editing the core, and a crash stays out of the host only if you pay for sandboxing or process isolation.
 
 ### [Web-Queue-Worker](../patterns/architecture/web-queue-worker.md) {#tour-web-queue-worker}
 
-A web front end takes requests, a queue holds the work, and a back-end worker does whatever is resource-intensive, long-running or batch. The two halves scale independently and neither blocks the other, which is the whole benefit. Left unwatched, both halves accrete features until each is a monolith of its own.
+A web front end takes requests, a queue holds the work, and a back-end worker does whatever is resource-intensive, long-running or batch. The two halves scale independently and the front end does not wait on the worker, which is the benefit. The queue can deliver a message twice, so the worker must tolerate a repeat, and a full queue still backs up the front end. Left unwatched, both halves keep gaining features until each is a monolith of its own.
 
 ### [Microservices](../patterns/architecture/microservices.md) {#tour-microservices}
 
@@ -88,7 +88,7 @@ Decompose functionally instead of horizontally: small autonomous services, one b
 
 ### [Event-Driven](../patterns/architecture/eda.md) {#tour-eda}
 
-Producers emit streams of events and consumers react in near real time, joined by a channel rather than by an address. Adding a consumer touches no producer, and a consumer that is down delays nobody. What you inherit is delivery and ordering as explicit design problems, plus eventual consistency in every view built from the stream.
+Producers emit streams of events and consumers react in near real time, joined by a channel rather than by an address. Adding a consumer touches no producer, and a consumer that is down delays no producer, though the views it feeds fall behind until it returns. What you inherit is delivery and ordering as explicit design problems, plus eventual consistency in every view built from the stream.
 
 ### [Big Data](../patterns/architecture/big-data.md) {#tour-big-data}
 
@@ -107,14 +107,14 @@ Start from the nature of the problem, and read the table by its middle column: a
 
 | Style | How it manages dependencies | Domain it suits |
 | --- | --- | --- |
-| [Layered](../patterns/architecture/layered.md) | Horizontal tiers, separated at the network boundary | A traditional business domain where updates are infrequent |
+| [Layered](../patterns/architecture/layered.md) | Horizontal layers, each calling only the layer below, usually in one deployable | A traditional business domain where updates are infrequent |
 | [Hexagonal](../patterns/architecture/hexagonal.md) | Every dependency points inward at the core, through ports the outside implements | A domain whose rules you want to test and reuse apart from the framework and the database |
 | [Vertical Slice](../patterns/architecture/vertical-slice.md) | One request owned end to end, with no shared tiers between features | A domain built feature by feature, where shared layers add files and no value |
 | [REPR](../patterns/architecture/repr.md) | Request, endpoint and response for one operation in one place | A web API of many small operations that several people edit at once |
-| [Microkernel](../patterns/architecture/microkernel.md) | A minimal core plus plug-ins that carry every feature | A product that other teams or customers extend, and where one feature must not crash the rest |
+| [Microkernel](../patterns/architecture/microkernel.md) | A minimal core plus plug-ins that carry every feature | A product that other teams or customers extend, and where one feature must not crash the rest, provided plug-ins can be isolated from the host |
 | [Web-Queue-Worker](../patterns/architecture/web-queue-worker.md) | Front end and back-end jobs decoupled by asynchronous messaging | A relatively simple domain with some resource-intensive tasks |
 | [Microservices](../patterns/architecture/microservices.md) | Vertically decomposed services calling each other through APIs | A complicated domain with frequent updates |
-| [Event-Driven](../patterns/architecture/eda.md) | Producer or consumer; each subsystem keeps an independent view | Sensor fleets and real-time systems |
+| [Event-Driven](../patterns/architecture/eda.md) | Producers and consumers joined by a channel; each subsystem keeps its own view of the data | Sensor fleets and real-time systems, or any domain where new consumers must join without editing the producers |
 | [Big Data](../patterns/architecture/big-data.md) | Divide a huge dataset into chunks, process each locally in parallel | Batch and real-time analysis, and predictive work over history |
 | [Big Compute](../patterns/architecture/big-compute.md) | Allocate one problem's data across thousands of cores | Compute-intensive domains such as simulation |
 

@@ -776,7 +776,7 @@
     "/patterns/architecture/eda.html": {
       "architecture-styles": {
         "role": "Producers assert facts, consumers react on their own clock",
-        "tour": "Producers emit streams of events and consumers react in near real time, joined by a channel rather than by an address. Adding a consumer touches no producer, and a consumer that is down delays nobody. What you inherit is delivery and ordering as explicit design problems, plus eventual consistency in every view built from the stream.",
+        "tour": "Producers emit streams of events and consumers react in near real time, joined by a channel rather than by an address. Adding a consumer touches no producer, and a consumer that is down delays no producer, though the views it feeds fall behind until it returns. What you inherit is delivery and ordering as explicit design problems, plus eventual consistency in every view built from the stream.",
         "fluency": "Producers assert facts, consumers react on their own clock",
         "heading": "Event-Driven"
       }
@@ -835,7 +835,7 @@
       },
       "architecture-styles": {
         "role": "Put the slow work behind a queue",
-        "tour": "A web front end takes requests, a queue holds the work, and a back-end worker does whatever is resource-intensive, long-running or batch. The two halves scale independently and neither blocks the other, which is the whole benefit. Left unwatched, both halves accrete features until each is a monolith of its own.",
+        "tour": "A web front end takes requests, a queue holds the work, and a back-end worker does whatever is resource-intensive, long-running or batch. The two halves scale independently and the front end does not wait on the worker, which is the benefit. The queue can deliver a message twice, so the worker must tolerate a repeat, and a full queue still backs up the front end. Left unwatched, both halves keep gaining features until each is a monolith of its own.",
         "fluency": "Put the slow work behind a queue"
       }
     },
@@ -2603,7 +2603,7 @@
     "/patterns/architecture/microkernel.html": {
       "architecture-styles": {
         "role": "A small core and plug-ins for everything volatile",
-        "tour": "The core stays small enough to audit and changes almost never, while every feature arrives as a plug-in behind a contract. A bad feature then ships broken to nobody but its own users, and you can sandbox each plug-in so one crash cannot take the host down.",
+        "tour": "The core stays small enough to audit and changes almost never, while every feature arrives as a plug-in behind a contract. A bad feature can then be unloaded or isolated without editing the core, and a crash stays out of the host only if you pay for sandboxing or process isolation.",
         "fluency": "Keep a minimal core and ship each feature as a plug-in."
       }
     },
