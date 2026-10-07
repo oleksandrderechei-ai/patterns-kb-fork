@@ -497,7 +497,7 @@
       "definition": "Isolates resources so one failure can't sink all",
       "route": "/patterns/distributed/resilience/bulkhead.html",
       "requires": [],
-      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline", "multi-tenancy"]
+      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline", "multi-tenancy", "semaphore"]
     },
     {
       "id": "health-endpoint",
@@ -1265,7 +1265,7 @@
       "definition": "Cap how many threads may hold a resource at once with N permits",
       "route": "/patterns/concurrency/semaphore.html",
       "requires": [],
-      "related": ["monitor-object", "thread-pool", "mutex"]
+      "related": ["monitor-object", "thread-pool", "mutex", "bulkhead"]
     },
     {
       "id": "thread-confinement",
