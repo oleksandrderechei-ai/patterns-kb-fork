@@ -1761,7 +1761,7 @@
       "definition": "Builds behavior by composing small functions",
       "route": "/patterns/functional/pipeline.html",
       "requires": [],
-      "related": ["pipe-filter", "currying", "monad", "functor"]
+      "related": ["pipe-filter", "currying", "monad", "functor", "immutability"]
     },
     {
       "id": "immutability",
@@ -1769,7 +1769,7 @@
       "definition": "Never mutate — always return new data",
       "route": "/patterns/functional/immutability.html",
       "requires": [],
-      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "dto", "builder", "flyweight"]
+      "related": ["event-sourcing", "value-object", "memento", "actor-model", "lens-optics", "functor", "thread-confinement", "make-illegal-states-unrepresentable", "dto", "builder", "flyweight", "pipeline"]
     },
     {
       "id": "lens-optics",

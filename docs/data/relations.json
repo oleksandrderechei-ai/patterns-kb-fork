@@ -13789,6 +13789,13 @@
       "b": "in-process-cache",
       "note_a": "Both keep a copy next to the reader; this one lives on the user's device, so a hit never reaches your servers",
       "note_b": "Both keep a copy next to the reader; this one lives inside one server process and serves only that instance's callers, not the user's device"
+    },
+    {
+      "a": "immutability",
+      "verb": "combines-with",
+      "b": "pipeline",
+      "note_a": "Pipelines of pure stages are the usual way to chain transformations of immutable values",
+      "note_b": "Pure stages only compose safely when values are never edited in place"
     }
   ],
   "group_order": {
