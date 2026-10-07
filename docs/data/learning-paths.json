@@ -1599,7 +1599,7 @@
       },
       "spike-handling": {
         "role": "Add capacity as the surge builds",
-        "tour": "Add capacity as the surge builds. A load signal — central processing unit (CPU), queue depth, request rate — triggers new instances so throughput grows with demand; because it's never instant, it's a complement to absorbing and shedding during ramp-up, not a substitute for them.",
+        "tour": "Add capacity as the surge builds. A load signal — central processing unit (CPU), queue depth, request rate — triggers new instances so throughput grows with demand; because it's never instant, it's a complement to absorbing and shedding during ramp-up, not a substitute for them. Measure how long a new instance takes to start; if that is longer than the spike, scaling cannot help.",
         "fluency": "Add capacity as the surge builds"
       },
       "scalability": {
@@ -1682,7 +1682,7 @@
       },
       "spike-handling": {
         "role": "Serve the static surge from the edge",
-        "tour": "Serve the static surge from the edge. Cacheable responses live on nodes near the user, so a spike in reads for a viral asset never reaches origin at all — the cheapest form of absorption available.",
+        "tour": "Serve the static surge from the edge. Cacheable responses live on nodes near the user, so repeat reads for a viral asset are served from the edge and only a cache miss reaches origin.",
         "fluency": "Serve the static surge from the edge"
       },
       "performance": {
@@ -2484,7 +2484,7 @@
     "/patterns/distributed/resilience/request-coalescing.html": {
       "spike-handling": {
         "role": "One origin call for a herd of identical misses",
-        "tour": "A surge on a hot key sends hundreds of identical misses to the origin at once. A gate in front of the fetch lets the first caller do the work while the rest wait on its result, so duplicate demand never reaches the backend and the genuine demand left is what shedding has to size.",
+        "tour": "A surge on a hot key sends hundreds of identical misses to the origin at once. A gate in front of the fetch lets the first caller do the work while the rest wait on its result, so duplicate demand through that gate never reaches the backend; one gate per process still lets each process send one. The genuine demand left is what shedding has to size.",
         "fluency": "Collapse concurrent identical requests into one call to the origin."
       }
     },

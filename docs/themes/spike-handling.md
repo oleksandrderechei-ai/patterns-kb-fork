@@ -20,16 +20,16 @@ Every system is sized for a steady load and eventually sees a rate far past it: 
 ## Explained
 <!--meta block=explain-->
 
-When traffic suddenly passes what your system was sized for, you have three honest answers, and each costs something different. Absorb the burst by queuing the work and draining it at a rate you can sustain, which costs delay. Shed it by refusing the excess so that what gets through succeeds, which costs the refused requests. Scale by adding capacity so the surge becomes the new normal, which costs time, since nothing starts instantly. They work on different timescales, so a mature system layers them: shed what is clearly over budget, queue the legitimate burst, and scale in the background so the queue actually drains. A queue has a limit too, so cap its length and tell producers to slow down. Without containment, one saturated dependency adds waiting to every caller and the overload spreads, so give each dependency its own share of threads and stop calling one that is failing. Choose shedding over a bigger queue when users would give up before the delay ends.
+When traffic suddenly passes what your system was sized for, you have three honest answers, and each costs something different. Absorb the burst by queuing the work and draining it at a rate you can sustain, which costs delay. Shed it by refusing the excess so that what gets through succeeds, which costs the refused requests. Scale by adding capacity so the surge becomes the new normal, which costs time, since nothing starts instantly. They work on different timescales, so a mature system layers them: shed what is clearly over budget, queue the legitimate burst, and scale in the background so the queue actually drains. A queue has a limit too, so cap its length at the spare drain rate times the longest wait users accept, and tell producers to slow down. Without containment, one saturated dependency adds waiting to every caller and the overload spreads, so give each dependency its own share of threads and stop calling one that is failing. Choose shedding over a bigger queue when users would give up before the delay ends.
 
-**Example.** A service handles 1,000 requests a second and normally gets 600. A launch sends 3,000 a second for 60 s. Absorbing queues 2,000 a second for 60 s, a 120,000 request backlog. With 400 a second of spare capacity afterward, it takes 300 s to drain, so the last user waits 5 minutes. Shedding refuses 2,000 a second, 120,000 refusals, but everyone else is served at once. Scaling is too slow here: new copies take 90 s to start, and the spike is half over by then.
+**Example.** A service handles 1,000 requests a second and normally gets 600. A launch sends 3,000 a second for 60 s. Absorbing queues 2,000 a second for 60 s, a 120,000 request backlog. With 400 a second of spare capacity afterward, it takes 300 s to drain, and the longest wait is 120 s: 120,000 requests are ahead of the last spike request, served at 1,000 a second. Shedding refuses 2,000 a second, 120,000 refusals, but everyone else is served at once. Scaling is too slow here: new copies take 90 s to start, and the 60 s spike is over by then.
 
 ## The trade-space
 <!--meta block=tradespace-->
 
-Absorb, shed, and scale are not competing strategies you pick once — they operate on different timescales and compose. Scaling is slow but raises the ceiling; absorbing is instant but finite (a queue has a limit too); shedding is instant and unlimited but sacrifices some requests to save the rest. A mature system layers all three: shed the traffic that's clearly over budget, absorb the legitimate burst in a queue while capacity catches up, and scale in the background so the queue actually drains instead of growing forever. Two buckets pace traffic at the edge: [Token Bucket](../patterns/distributed/resilience/token-bucket.md) lets a quiet caller burst and then paces it, while [Leaky Bucket](../patterns/distributed/resilience/leaky-bucket.md) turns a burst into a short wait at a fixed rate and refuses only what overflows the queue. When the spike is identical reads on one hot key, [Request Coalescing](../patterns/distributed/resilience/request-coalescing.md) cuts the duplicate demand before any of this has to size it.
+Absorb, shed, and scale are not competing strategies you pick once. They operate on different timescales and compose. Scaling is slow but raises the ceiling; absorbing is instant but finite (a queue has a limit too); shedding is instant and not bounded by queue size, but sacrifices some requests to save the rest. A mature system layers all three: shed the traffic that's clearly over budget, absorb the legitimate burst in a queue while capacity catches up, and scale in the background so the queue actually drains instead of growing forever. Set the shed budget from load-tested capacity, then check it against the longest wait users accept, and shed the least important requests first, not at random. Two buckets pace traffic at the edge: [Token Bucket](../patterns/distributed/resilience/token-bucket.md) lets a quiet caller burst and then paces it, while [Leaky Bucket](../patterns/distributed/resilience/leaky-bucket.md) turns a burst into a short wait at a fixed rate and refuses only what overflows the queue. When the spike is identical reads on one hot key, [Request Coalescing](../patterns/distributed/resilience/request-coalescing.md) cuts the duplicate demand, so shedding and queues only deal with the demand that is left. Retries from refused callers can turn shedding into a bigger spike, so pace them with [Retry Backoff](../patterns/distributed/resilience/retry-backoff.md).
 
-None of that helps if the overload is allowed to spread. A saturated dependency that keeps getting called just adds latency everywhere that calls it — which is why containment (bulkheads, circuit breakers) sits alongside the three primary strategies rather than as a fourth option: it's what keeps one overwhelmed part from taking down the parts that are still healthy. The [Distributed Rate Limiter](../designs/distributed-rate-limiter.md) case study enforces per-client quotas at the edge of a fleet.
+None of that helps if the overload is allowed to spread. A saturated dependency that keeps getting called just adds latency everywhere that calls it. Containment (bulkheads, circuit breakers) therefore sits alongside the three primary strategies rather than as a fourth option: it's what keeps one overwhelmed part from taking down the parts that are still healthy. The [Distributed Rate Limiter](../designs/distributed-rate-limiter.md) case study enforces per-client quotas at the edge of a fleet.
 
 ```mermaid caption="The three strategies compose — containment keeps the overloaded part from sinking the rest."
 flowchart TB
@@ -66,7 +66,7 @@ Requests join a queue of fixed size and leave at a fixed rate, so a burst become
 
 ### [Autoscaling](../patterns/distributed/routing/autoscaling.md) {#tour-autoscaling}
 
-Add capacity as the surge builds. A load signal — central processing unit (CPU), queue depth, request rate — triggers new instances so throughput grows with demand; because it's never instant, it's a complement to absorbing and shedding during ramp-up, not a substitute for them.
+Add capacity as the surge builds. A load signal — central processing unit (CPU), queue depth, request rate — triggers new instances so throughput grows with demand; because it's never instant, it's a complement to absorbing and shedding during ramp-up, not a substitute for them. Measure how long a new instance takes to start; if that is longer than the spike, scaling cannot help.
 
 ### [Backpressure](../patterns/concurrency/backpressure.md) {#tour-backpressure}
 
@@ -86,7 +86,7 @@ Contain the blast radius of overload. Partitioning resources — thread pools, c
 
 ### [CDN](../patterns/distributed/routing/cdn.md) {#tour-cdn}
 
-Serve the static surge from the edge. Cacheable responses live on nodes near the user, so a spike in reads for a viral asset never reaches origin at all — the cheapest form of absorption available.
+Serve the static surge from the edge. Cacheable responses live on nodes near the user, so repeat reads for a viral asset are served from the edge and only a cache miss reaches origin.
 
 ### [Cache-Aside](../patterns/caching/cache-aside.md) {#tour-cache-aside}
 
@@ -94,7 +94,7 @@ Take read pressure off the origin. Populate a cache on first miss, then serve ev
 
 ### [Request Coalescing](../patterns/distributed/resilience/request-coalescing.md) {#tour-request-coalescing}
 
-A surge on a hot key sends hundreds of identical misses to the origin at once. A gate in front of the fetch lets the first caller do the work while the rest wait on its result, so duplicate demand never reaches the backend and the genuine demand left is what shedding has to size.
+A surge on a hot key sends hundreds of identical misses to the origin at once. A gate in front of the fetch lets the first caller do the work while the rest wait on its result, so duplicate demand through that gate never reaches the backend; one gate per process still lets each process send one. The genuine demand left is what shedding has to size.
 
 <!-- tour:end -->
 
@@ -104,13 +104,13 @@ A surge on a hot key sends hundreds of identical misses to the origin at once. A
 | If you need… | Strategy | Reach for |
 | --- | --- | --- |
 | Smooth a burst of work without losing any of it | Absorb | [Queue-Based Load Leveling](../patterns/distributed/resilience/load-leveling.md) |
-| Protect the system from traffic past its safe rate | Shed | [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) |
+| Cap traffic at a fixed safe rate, whatever the server's current load | Shed | [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) |
 | Let one client burst briefly but cap its sustained rate | Shed | [Token Bucket](../patterns/distributed/resilience/token-bucket.md) |
 | Hold a partner API to an exact steady rate whatever the burst | Smooth | [Leaky Bucket](../patterns/distributed/resilience/leaky-bucket.md) |
 | Grow capacity to meet a sustained surge | Scale | [Autoscaling](../patterns/distributed/routing/autoscaling.md) |
 | Stop a downstream queue from growing unbounded | Signal | [Backpressure](../patterns/concurrency/backpressure.md) |
 | Keep one saturated dependency from starving others | Isolate | [Bulkhead](../patterns/distributed/resilience/bulkhead.md) |
-| Every request slows down until none finish in time | Shed | [Load Shedding](../patterns/distributed/resilience/load-shedding.md) |
+| Every request slows down until none finish in time, so refuse work on live saturation (queue depth, in-flight requests) | Shed | [Load Shedding](../patterns/distributed/resilience/load-shedding.md) |
 | Stop hammering a downstream that's already failing | Fail fast | [Circuit Breaker](../patterns/distributed/resilience/circuit-breaker.md) |
 | Take read-heavy spikes off the origin entirely | Edge / cache | [CDN](../patterns/distributed/routing/cdn.md), [Cache-Aside](../patterns/caching/cache-aside.md) |
 | Hundreds of identical reads hit the origin when one hot key expires | Collapse | [Request Coalescing](../patterns/distributed/resilience/request-coalescing.md) |
@@ -118,6 +118,8 @@ A surge on a hot key sends hundreds of identical misses to the origin at once. A
 ## Related areas
 <!--meta block=siblings-->
 
-- [Resilience](./resilience.md) — Containing overload so one saturated part doesn't take down the rest is a resilience concern too.
+- [Resilience](./resilience.md) — Containing overload so one saturated part doesn't take down the rest is a resilience concern too. Go there when the trigger is a failing dependency rather than a load surge.
 - [Scalability](./scalability.md) — Autoscaling and sharding are how "scale" as a spike response actually gets built.
 - [Performance](./performance.md) — Caching and edge delivery cut the load a spike generates in the first place.
+- [Scaling Writes](./scaling-writes.md) — Its ladder ends in queues and load shedding, the write-path form of these spike answers; go there when the surge is on writes.
+- [Scaling Reads](./scaling-reads.md) — CDN, Cache-Aside and Request Coalescing also sit on its read ladder; go there when the load is steady read growth, not a sudden surge.
