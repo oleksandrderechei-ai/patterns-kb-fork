@@ -204,6 +204,7 @@ func (c *Counter) Value() int {
 **Combines with**
 
 - [Barrier](./barrier.md) — A lock guards the arrival count of a barrier
+- [Copy-on-Write](./copy-on-write.md) — Copy-on-write readers never take the mutex; only writers do, around clone-and-publish
 
 **Alternative to**
 

@@ -1305,7 +1305,7 @@
       "definition": "Readers never lock — writers publish a new copy",
       "route": "/patterns/concurrency/copy-on-write.html",
       "requires": [],
-      "related": ["lock-free", "rw-lock", "iterator"]
+      "related": ["lock-free", "rw-lock", "iterator", "mutex"]
     },
     {
       "id": "mutex",
@@ -1313,7 +1313,7 @@
       "definition": "One thread at a time holds the lock, so shared data is never seen half-changed",
       "route": "/patterns/concurrency/mutex.html",
       "requires": [],
-      "related": ["active-object", "channels", "semaphore", "lock-free", "thread-confinement", "barrier"]
+      "related": ["active-object", "channels", "semaphore", "lock-free", "thread-confinement", "barrier", "copy-on-write"]
     },
     {
       "id": "proactor",

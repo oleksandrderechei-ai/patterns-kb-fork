@@ -14699,6 +14699,13 @@
       "b": "thread-pool",
       "note_a": "Independent items on a queue keep every thread busy with no meeting point; a barrier holds all threads at each phase end",
       "note_b": "Use a barrier instead when the same threads must all finish one phase before any starts the next"
+    },
+    {
+      "a": "copy-on-write",
+      "verb": "combines-with",
+      "b": "mutex",
+      "note_a": "A mutex around clone-and-publish keeps two writers from discarding each other's copy; readers never take it",
+      "note_b": "Copy-on-write readers never take the mutex; only writers do, around clone-and-publish"
     }
   ],
   "group_order": {
