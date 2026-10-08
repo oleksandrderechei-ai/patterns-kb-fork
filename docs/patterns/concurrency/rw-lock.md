@@ -238,7 +238,7 @@ func (c *Cache) GetOrLoad(key string, load func() int) int {
 
 **Demonstrated by**
 
-- [Parking Lot](../../designs/parking-lot.md) — Parking Lot uses a read-write lock to let many entrances search while claiming is exclusive
 - [File System](../../designs/file-system.md) — read-heavy tree traversal is exactly where separating shared reads from exclusive writes earns its keep
+- [Parking Lot](../../designs/parking-lot.md) — Parking Lot names a read-write lock as the step after one coarse lock: many entrances search while claiming stays exclusive.
 
 <!-- relationships:end -->

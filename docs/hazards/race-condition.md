@@ -105,5 +105,6 @@ Pick the lightest mechanism the contention allows: optimistic when conflicts are
 - [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) — Rate Limiter's check-then-count is a check-then-act race when its counter is shared
 - [Inventory Management](../designs/inventory-management.md) — the inventory transfer shows the check-then-act race and its lock fix
 - [Distributed Rate Limiter](../designs/distributed-rate-limiter.md) — Two gateways reading the same last token both admit; a shard-side script closes the window.
+- [Parking Lot](../designs/parking-lot.md) — A check-then-act on a shared set: two entrances claim one parking bay.
 
 <!-- relationships:end -->

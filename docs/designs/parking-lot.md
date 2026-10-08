@@ -23,7 +23,7 @@ A lot assigns a compatible spot and issues a ticket on entry, then validates the
 
 A parking lot design keeps spots and tickets as plain data and puts every rule in one lot object: it finds a free spot of the right type, issues an immutable ticket, and on exit prices the stay and frees the spot. Occupancy is a set of taken spot ids the lot maintains, not a flag on each spot. Choose the set over a flag when occupancy is a relationship the system manages; a locker door really holds a parcel whether or not the software agrees, so there a flag fits. Keep pricing as a method on the lot until a second fee rule exists, since a pricing-strategy interface answers a need nobody has yet.
 
-- **Two copies of truth.** The set comes from tickets, so update both and claim a spot inside one lock, or two entrances take one bay.
+- **Two records of one fact.** The set repeats what tickets imply, so update both inside the lock that scans, or two entrances take one bay.
 - **Naive allocation.** First-match ignores walking distance and floor fullness, so add a placement rule when that matters.
 - **Money.** Floating point drifts, so store fees as whole cents.
 
@@ -68,7 +68,9 @@ The lot exposes exactly two operations — deliberately no `getAvailableSpots()`
 ```python summary="Pseudocode — the public API"
 class ParkingLot:
     enter(vehicleType) -> Ticket   # assigns a spot, issues a ticket; raises if the lot is full
+        # lock: scan spots of the matching type not in occupiedSpotIds; none -> raise; add id to occupiedSpotIds; store Ticket(id, spotId, vehicleType, entryTime) in tickets
     exit(ticketId)     -> long     # validates, charges cents, frees the spot; raises if invalid
+        # lock: look up ticket (missing -> raise); fee = hours rounded up x hourlyRateCents; remove spotId and ticket; return fee
 ```
 
 ## How the system is built
@@ -114,7 +116,7 @@ The tell is whether a fact is intrinsic to an entity or a relationship the syste
 
 - **Flag on the spot.** An `occupied` boolean on `ParkingSpot` is simple and the spot "knows" its own state — but it duplicates truth (the active tickets already imply occupancy), so the two must be kept in sync or a spot gets double-assigned. Defensible with discipline; it is exactly the choice the [Amazon Locker](./amazon-locker.md) design makes, because there occupancy really is physical.
 - **Compute it from tickets.** A spot is occupied iff an active ticket references it — no stored state at all, conceptually the cleanest. But every entry rescans all tickets and, under concurrency, must lock the whole ticket map.
-- **Occupancy index (chosen).** Keep the spot a pure data holder and let the lot maintain a `Set<String> occupiedSpotIds` — a maintained index, like a database index. It is technically redundant with ticket data, but it gives O(1) checks and, crucially, a clean concurrency boundary: you can lock just the set when claiming a spot instead of the whole ticket map.
+- **Occupancy index (chosen).** Keep the spot a pure data holder and let the lot maintain a `Set<String> occupiedSpotIds` — a maintained index. It is redundant with ticket data, but each spot check is O(1) (`enter()` still scans the spots, cheap at 200) and the set is a clean concurrency boundary. The chosen design still holds one lock over the set and the ticket map; locking just the set works only if the ticket map is safe for concurrent writes.
 
 ### 2 · Where does fee calculation live?
 
@@ -126,7 +128,7 @@ Pricing is a business policy, not a property of a receipt.
 
 ### 3 · Concurrent entrances
 
-Two entrances can both see one spot as free and both claim it — a race in the window between checking availability and recording the claim. The pragmatic interview answer is a coarse lock around the whole of `enter()`: a 200-spot lot turning over every couple of hours needs ~0.03 vehicles/sec, while a synchronised `enter()` — an uncontended monitor around a 200-entry scan and two in-memory writes — runs in microseconds and so sustains hundreds of thousands of calls a second, millions of times the demand. The lock is nowhere near the bottleneck, and correctness wins over cleverness. When contention is real, a [read-write lock](../patterns/concurrency/rw-lock.md) lets many entrances search concurrently and takes the exclusive lock only to claim, re-checking after acquiring it and retrying if another thread got there first. Notably, the ticket stores its spot as an `id` string rather than a spot reference — keeping the record from reaching into the domain model, in the spirit of the [Law of Demeter](../principles/law-of-demeter.md).
+Two entrances can both see one spot as free and both claim it — a race in the window between checking availability and recording the claim. The pragmatic interview answer is a coarse lock around the whole of `enter()`: a 200-spot lot turning over every couple of hours needs ~0.03 vehicles/sec, while a synchronised `enter()` — an uncontended monitor around a 200-entry scan and two in-memory writes — runs in microseconds so a single core can serve far more than that demand; measure before relying on it. The lock is nowhere near the bottleneck, and correctness wins over cleverness. `exit()` takes the same lock, so ticket look-up, fee, spot release and ticket removal are one step; two exits of one ticket cannot both succeed. When contention is real, a [read-write lock](../patterns/concurrency/rw-lock.md) lets many entrances search concurrently and takes the exclusive lock only to claim (release the read lock first, since upgrading it in place commonly deadlocks), re-checking after acquiring it and retrying if another thread got there first.
 
 Without the lock the interleaving is plain. Gate A scans and finds spot `C-12` free, gate B scans and finds `C-12` free, and both add it to `occupiedSpotIds` and issue a ticket. The set accepts the second add silently, so nothing fails and two cars hold tickets for one bay. The lock closes the window by making the scan and the claim one step.
 
@@ -194,14 +196,14 @@ Stamping the rate on the ticket at entry makes the price match what was posted w
 ### What it buys
 <!--meta polarity=pro-->
 
-- Occupancy in one place (the index) — O(1) checks and a tight lock scope for claiming a spot.
+- Occupancy in one place (the index) — O(1) check per spot, and a set a finer lock can guard if contention is ever real; the chosen design locks all of `enter()` (dive 3).
 - Dumb data classes and a rules-owning orchestrator, so pricing and allocation change without touching Spot or Ticket.
 - Immutable tickets and integer-cent money remove whole classes of bug.
 
 ### What it gives up
 <!--meta polarity=con-->
 
-- The occupancy index is computed from tickets — it must be updated in lockstep with them or it drifts.
+- The occupancy index duplicates what tickets imply — it must be updated in lockstep with them, under one lock, or it drifts.
 - "Never existed" and "already used" collapse into one "invalid ticket" error; splitting them needs a used-ticket set.
 - First-match allocation ignores placement quality (proximity, floor balancing) until a strategy is added.
 - Exact-type matching turns a car away while large bays sit empty, so occupancy on a quiet day stays below what the spots could hold.
@@ -226,14 +228,18 @@ Stamping the rate on the ticket at entry makes the price match what was posted w
 
 - [Amazon Locker](./amazon-locker.md) — Both assign a resource and free it later; they differ on whether occupancy is intrinsic to the slot or a relationship the manager tracks
 
+**Exposed to**
+
+- [Race Condition](../hazards/race-condition.md) — Two gates scan the same spot free, both add it and both issue a ticket until find-and-claim is one locked step.
+
 **Demonstrates**
 
 - [Value Object](../patterns/ddd/value-object.md) — The Ticket is an immutable record — set once at entry, read-only after
 - [Strategy](../patterns/gof/behavioral/strategy.md) — Held in reserve for pricing and floor-allocation once the rules genuinely diverge
-- [Read-Write Lock](../patterns/concurrency/rw-lock.md) — Fine-grained locking lets entrances search concurrently and claim a spot exclusively
 - [Single Responsibility Principle](../principles/single-responsibility.md) — Fee logic stays out of Ticket so the record isn't also a pricing calculator
 - [Separation of Concerns](../principles/separation-of-concerns.md) — Business rules live in the orchestrator; Spot and Ticket stay dumb data
 - [You Aren't Gonna Need It (YAGNI)](../principles/yagni.md) — A PricingStrategy interface is deferred until pricing actually gets complex
 - [Law of Demeter](../principles/law-of-demeter.md) — The Ticket stores a spot id string, not a spot object, so it can't reach into the model
+- [Read-Write Lock](../patterns/concurrency/rw-lock.md) — Named as the next step when one coarse lock contends; the page ships a plain lock.
 
 <!-- relationships:end -->
