@@ -25,9 +25,9 @@ A proactor starts an I/O operation and gives the system a buffer to fill. The sy
 
 - **Buffer lifetime.** A buffer freed before its completion arrives corrupts data. Tie its lifetime to the handler, or use a buffer pool.
 - **Platform differences.** Completion ports, io_uring and POSIX AIO behave differently. Use a library that wraps them behind one interface.
-- **Pinned memory.** Every posted read holds a buffer while the connection idles. Cap operations in flight and size buffers to a typical message.
+- **Pinned memory.** Every posted read keeps its buffer reserved while the connection idles. Cap operations in flight and size buffers to a typical message.
 
-**Example.** A server holds 10,000 idle connections and posts one 4 KB read on each, so 10,000 x 4 KB = 40 MB sits pinned before a byte arrives. A reactor would hold none, and borrow one shared buffer only when a socket turns ready. In return, a 64 MB file send costs the loop nothing, because the system does the copy, while a reactor handler would block the loop for that copy. The counter-move for memory is to post reads on active connections only, or to read into pooled buffers.
+**Example.** A server holds 10,000 idle connections and posts one 4 KB read on each, so 10,000 x 4 KB = 40 MB sits pinned before a byte arrives. A reactor would hold none, and borrow one shared buffer only when a socket turns ready. In return, with a kernel proactor a 64 MB file send costs the loop only the submit and the completion handler, because the system does the copy; a reactor that read the file itself would block for that copy. To save memory, cap reads in flight and read into pooled buffers; posting only on active connections first needs a readiness check, which brings a reactor back.
 
 ## How it works
 <!--meta block=structure-->
@@ -69,7 +69,7 @@ sequenceDiagram
 - **Kernel proactor** — The operating system itself runs the operation and posts completions: Windows I/O completion ports and Linux `io_uring`. No thread of yours waits during the I/O.
 - **Emulated proactor** — A library keeps an event loop on readiness underneath, does the read when the socket is ready, and then calls your handler with the data. Callers see completions, though a [reactor](./reactor.md) does the work.
 - **Reactor vs. proactor** — A reactor says "this descriptor is ready, read it yourself". A proactor says "your read has finished, here is the data". The reactor suits readiness-based systems, and the proactor suits platforms with real asynchronous I/O.
-- **Pooled completion handlers** — Several threads wait on one completion queue and any of them runs the next handler. It uses many cores, and handlers then need their own care over shared state.
+- **Pooled completion handlers** — Several threads wait on one completion queue and any of them runs the next handler. It uses many cores, but one connection's handlers can then run on different threads, so guard shared state or give each connection a serial queue.
 - **Batched submission** — Many operations go to the system in one call and completions come back in a batch. It cuts system calls when each operation is small.
 - **Completion as a future** — The completion fulfils a [future or promise](./future-promise.md), so callers write `await` instead of a handler.
 
@@ -79,8 +79,8 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **The loop never copies bytes** — the system does the read or write, so one large transfer does not stall other connections.
-- **Works for files too** — a regular file is always ready to a readiness check, but an asynchronous read still runs in the background.
+- **With a kernel proactor the loop never copies bytes** — the system does the read or write, so one large transfer does not stall other connections; an emulated proactor still copies on the loop.
+- **Works for files too** — a regular file is always ready to a readiness check, but a kernel asynchronous read runs in the background; an emulation on hidden threads only moves the blocking off the loop.
 - **Handlers get finished results** — code reads as handle-the-data, with no read-until-would-block loop to write.
 - **Many operations in flight at once** — the system can order disk and network work itself, which suits high-throughput servers.
 
@@ -91,6 +91,7 @@ sequenceDiagram
 - **Platform APIs differ** — completion ports, `io_uring` and POSIX AIO behave differently, so use a library that hides the difference.
 - **Pre-posted reads pin memory** — each idle connection holds a buffer; cap in-flight operations and size buffers to the usual message.
 - **Control flow is split across handlers** — a failure in step three is far from the code that started step one; use futures and structured logs with an operation id.
+- **Cancel does not stop the operation** — a cancelled operation still completes and may write into its buffer until then; wait for that completion before freeing the buffer or closing the handle, and give every operation a deadline.
 
 ## When to use it
 <!--meta block=usage-->
@@ -142,6 +143,10 @@ func dispatch() {
 // asyncRead(conn, make([]byte, 4096), func(buf []byte, n int, err error) {
 //     if err == nil { process(buf[:n]) } // data is here; buf is ours again
 // })
+//
+// Real code adds: a semaphore capping asyncRead calls in flight (a full
+// queue blocks the goroutines, it does not drop events), a closed flag for
+// finished connections, and a worker pool for heavy handler work.
 ```
 
 ## In the wild
@@ -149,7 +154,7 @@ func dispatch() {
 
 - **Windows I/O completion ports** — The kernel proactor on Windows. You associate a handle with a port by `CreateIoCompletionPort`, start overlapped operations, and threads take finished ones with `GetQueuedCompletionStatus`. {#wild-windows-iocp}
 - **Linux io_uring** — A submission queue and a completion queue shared with the kernel. You queue many operations at once, and the kernel posts a completion entry for each as it finishes. {#wild-linux-io-uring}
-- **Boost.Asio** — The C++ library whose design follows this pattern: you call `async_read` with a handler. It uses native completion APIs where the platform has them, and emulates them over readiness elsewhere. {#wild-boost-asio}
+- **Boost.Asio** — The C++ library whose design follows this pattern: you call `async_read` with a handler. It uses native completions on Windows; on Linux it emulates them over readiness (epoll) by default, with `io_uring` an opt-in (`BOOST_ASIO_HAS_IO_URING`). {#wild-boost-asio}
 - **POSIX AIO** — The portable C interface `aio_read` and `aio_write`, with completion by signal or thread callback. Support and speed differ by system. {#wild-posix-aio}
 
 ## In production
@@ -161,7 +166,7 @@ func dispatch() {
 - **operations in flight** — How many reads and writes are posted at once. It sets pinned memory and how well the system can order the work.
 - **buffer size and pool** — Size to the usual message, and reuse buffers from a pool instead of allocating per operation.
 - **completion threads** — How many threads wait on the completion queue. On Windows the port's concurrency value is the number allowed to run at once.
-- **queue depth** — On `io_uring`, the number of entries you ask for when creating the ring. It bounds the operations submitted before completions are drained.
+- **queue depth** — On `io_uring`, the number of entries you ask for when creating the ring. It bounds the operations submitted before completions are drained, and the completion ring defaults to twice that number (`io_uring_setup(2)`).
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -175,7 +180,7 @@ func dispatch() {
 <!--meta polarity=failure-->
 
 - **buffer reused too early** — Code frees or rewrites a buffer before its completion arrives, and the system writes into memory you no longer own.
-- **completion queue overflow** — Completions arrive faster than the loop drains them. On `io_uring` the ring can overflow when too many are outstanding.
+- **completion queue overflow** — Completions arrive faster than the loop drains them. On `io_uring` the completion ring can overflow when in-flight operations exceed its size, so keep them below it.
 - **blocked handler** — A handler that blocks holds up every completion behind it, which looks like a latency spike with no error.
 - **cancel races** — A completion can arrive after you cancelled or closed a handle, so handlers must tolerate results for dead connections.
 
