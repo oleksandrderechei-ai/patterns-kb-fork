@@ -665,7 +665,7 @@
       "definition": "Moves service-to-service networking into a managed proxy layer",
       "route": "/patterns/distributed/routing/service-mesh.html",
       "requires": [],
-      "related": ["api-gateway", "retry-backoff", "timeout-deadline", "circuit-breaker", "load-balancer", "identity-as-perimeter", "distributed-tracing", "shadow-traffic", "fault-injection"]
+      "related": ["api-gateway", "retry-backoff", "timeout-deadline", "circuit-breaker", "load-balancer", "identity-as-perimeter", "distributed-tracing", "shadow-traffic", "fault-injection", "load-balancers-and-gateways"]
     },
     {
       "id": "sticky-session",
@@ -849,7 +849,7 @@
       "definition": "Many customers on shared infrastructure, with a tenant key and a choice of how much each tenant shares",
       "route": "/patterns/distributed/routing/multi-tenancy.html",
       "requires": [],
-      "related": ["deployment-stamp", "sharding", "defense-in-depth", "rate-limiter", "bulkhead"]
+      "related": ["deployment-stamp", "sharding", "defense-in-depth", "rate-limiter", "bulkhead", "identity-providers"]
     },
     {
       "id": "geode",
@@ -2770,6 +2770,22 @@
       "route": "/comparisons/message-brokers.html",
       "requires": [],
       "related": ["dead-letter-channel"]
+    },
+    {
+      "id": "load-balancers-and-gateways",
+      "label": "Load balancers, proxies & gateways",
+      "definition": "What sits in front of your services — the cloud's own balancer, NGINX, HAProxy, Traefik, Envoy or an API gateway",
+      "route": "/comparisons/load-balancers-and-gateways.html",
+      "requires": [],
+      "related": ["service-mesh"]
+    },
+    {
+      "id": "identity-providers",
+      "label": "Identity providers",
+      "definition": "Self-hosted Keycloak, Authentik, Ory and ZITADEL against the managed answers from your cloud, Auth0 and Okta",
+      "route": "/comparisons/identity-providers.html",
+      "requires": [],
+      "related": ["multi-tenancy"]
     }
   ]
 }

@@ -14797,6 +14797,27 @@
       "b": "dead-letter-channel",
       "note_a": "Cloud queues give the dead-letter path as configuration; the comparison shows which brokers do.",
       "note_b": "Every broker compared on message-brokers needs a dead-letter destination for messages that keep failing."
+    },
+    {
+      "a": "identity-providers",
+      "verb": "combines-with",
+      "b": "multi-tenancy",
+      "note_a": "Realms, organizations and per-tenant pools are this pattern's isolation choices, picked per product.",
+      "note_b": "Each identity product compared there picks its own tenant isolation: realms, organizations or one deployment per tenant."
+    },
+    {
+      "a": "workflow-orchestrators",
+      "verb": "implements",
+      "b": "scheduling",
+      "note_a": "Airflow and Prefect own the calendar and re-run a failed date.",
+      "note_b": "Airflow and Prefect are the batch schedulers that run this pattern; the workflow-orchestrators comparison picks between them."
+    },
+    {
+      "a": "load-balancers-and-gateways",
+      "verb": "combines-with",
+      "b": "service-mesh",
+      "note_a": "Envoy is usually taken through a mesh; the mesh supplies the control plane the comparison tells you not to hand-write.",
+      "note_b": "The proxies compared on load-balancers-and-gateways are what a mesh runs as its data plane; Envoy is the common one."
     }
   ],
   "group_order": {
