@@ -14776,6 +14776,13 @@
       "b": "noisy-neighbour",
       "note_a": "A per-key bucket caps what one tenant can take, so a burst spends that tenant's own tokens.",
       "note_b": "A per-key token bucket gives each tenant a bounded burst."
+    },
+    {
+      "a": "object-stores",
+      "verb": "combines-with",
+      "b": "valet-key",
+      "note_a": "Every store here issues signed URLs, so clients upload and download directly and bytes skip your service.",
+      "note_b": "Object stores are where the signed URLs are issued; this page compares six of them."
     }
   ],
   "group_order": {

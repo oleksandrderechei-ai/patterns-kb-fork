@@ -641,7 +641,7 @@
       "definition": "A token grants temporary, limited access to a resource directly",
       "route": "/patterns/distributed/routing/valet-key.html",
       "requires": [],
-      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing", "identity-as-perimeter"]
+      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing", "identity-as-perimeter", "object-stores"]
     },
     {
       "id": "api-routing",
@@ -2746,6 +2746,14 @@
       "route": "/comparisons/application-platforms.html",
       "requires": ["stateless-service"],
       "related": []
+    },
+    {
+      "id": "object-stores",
+      "label": "Object stores",
+      "definition": "Six blob stores behind one API — three you rent, three you run",
+      "route": "/comparisons/object-stores.html",
+      "requires": [],
+      "related": ["valet-key"]
     },
     {
       "id": "relational-databases",
