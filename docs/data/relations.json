@@ -14468,6 +14468,13 @@
       "b": "thundering-herd",
       "note_a": "One celebrity post triggers 200M feed writes at once and stalls the queue; the follower threshold is the mitigation.",
       "note_b": "A design where one celebrity post fires a burst of fan-out writes that arrive together."
+    },
+    {
+      "a": "ad-click-aggregator",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "A viral ad floods one ad_id partition; mitigated by salting the key for known-hot ads only.",
+      "note_b": "A design where one ad draws most clicks and overloads one stream shard."
     }
   ],
   "group_order": {

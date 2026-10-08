@@ -87,5 +87,6 @@ Find hot keys with per-key read counters or sampled access logs, and compare eac
 - [Distributed Cache](../patterns/caching/distributed-cache.md) — One node of the shared tier takes all of a viral key's reads while the rest idle
 - [Bitly](../designs/bitly.md) — One link carries most of the read load
 - [Instagram](../designs/instagram.md) — A design where one celebrity post concentrates fan-out load on one key.
+- [Ad Click Aggregator](../designs/ad-click-aggregator.md) — A design where one ad draws most clicks and overloads one stream shard.
 
 <!-- relationships:end -->

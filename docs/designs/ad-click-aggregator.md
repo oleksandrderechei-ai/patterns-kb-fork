@@ -47,16 +47,16 @@ Out of scope, named to keep the design narrow: ad targeting and serving, cross-d
 - **Latency** — advertiser queries return in **sub-second** time.
 - **No data loss** — collection is accurate and fault-tolerant; a dropped click is a wrong number an advertiser is billed on.
 - **Freshness** — as near-real-time as possible; advertisers see a click soon after it happens.
-- **Idempotency** — the same click is never counted twice.
+- **Idempotency** — a click is counted once after reconciliation; a duplicate can sit in the live count until the recount corrects it.
 
 ## Right-sizing
 <!--meta block=sizing-->
 
 **Writes.** Peak is ~10k clicks/sec. Treating peak as roughly 10× the mean gives ~1k clicks/sec on average, so ~1k × 86,400 ≈ **100M clicks/day**. This stream, not the query load, is what the architecture has to survive.
 
-**Reads.** Advertiser traffic is a rounding error next to that — dashboards polling pre-computed numbers. The write-to-read asymmetry is the entire story, and it is why the read side gets a query-optimised store while the write side gets a stream.
+**Reads.** Advertiser traffic is small next to that — dashboards polling pre-computed numbers. The write-to-read asymmetry is the main fact, and it is why the read side gets a query-optimised store while the write side gets a stream.
 
-**Batch window.** If a batch job ran every 5 minutes it would sweep ~3M events; at ~100 bytes each that is ~300&nbsp;MB per run — small enough for a single machine. The volume is modest; the rate is the challenge, which is why the choice is about throughput, not storage.
+**Batch window.** If a batch job ran every 5 minutes it would sweep ~300k events at the ~1k/sec mean (~30&nbsp;MB at ~100 bytes each) and ~3M events at the 10k/sec peak (~300&nbsp;MB), small enough for one machine either way. The volume is modest; the rate is the challenge, which is why the choice is about throughput, not storage.
 
 **Dedup set.** Keeping one id per click for idempotency costs 100M/day × 16 bytes (a 128-bit id) ≈ **1.6&nbsp;GB** — trivial to hold in memory.
 
@@ -92,7 +92,7 @@ GET /ads/123/metrics?from=1640000000&to=1640003600&granularity=1m
 }
 ```
 
-The ad's link points at `/click`, so a click arrives as an ordinary browser navigation — a GET carrying the signed impression — and the redirect is a **server-side 302** rather than a destination the browser already knows. The server tracks the click first and only then hands back the redirect, so every click is guaranteed to pass through the system. A client-side redirect shipped with the ad is simpler but leaky — a savvy user or extension can grab the destination URL and navigate straight there, skipping tracking and quietly corrupting the numbers.
+The ad's link points at `/click`, so a click arrives as an ordinary browser navigation — a GET carrying the signed impression — and the redirect is a **server-side 302** rather than a destination the browser already knows. The server tracks the click first and only then hands back the redirect, so every click on a /click link is tracked before the redirect. A client-side redirect shipped with the ad is simpler but leaky — a savvy user or extension can grab the destination URL and navigate straight there, skipping tracking and quietly corrupting the numbers.
 
 ## How the system is built
 <!--meta block=architecture-->
@@ -143,7 +143,7 @@ At 10k writes/sec the transactional store is already saturated, and a `GROUP BY`
 
 ### 2 · Scaling to 10k clicks per second
 
-Every hop scales out. The Click Processor is stateless and autoscales behind the load balancer. The stream is [partitioned by `ad_id`](../patterns/distributed/routing/sharding.md) so all events for one ad land on one shard and Flink can read shards in parallel — Kinesis, for instance, caps a shard near 1&nbsp;MB/s or 1,000 records/sec, so many shards are mandatory. One Flink job per shard keeps aggregation embarrassingly parallel, and a self-managed OLAP (online analytical processing) store can be sharded by `advertiser_id` so a single advertiser's data sits on one node. The failure mode is a [hot shard](../hazards/hot-key.md): a viral ad — think a superstar-fronted spot during a final — floods one partition, spiking its latency and risking loss. The mitigation is to salt the partition key for known-popular ads only, appending a random suffix (`ad_id:0..N`) so the load fans across shards; Flink strips the suffix and upserts with a `SUM` so the sub-partitions recombine into one correct total on write.
+Every hop scales out. The Click Processor is stateless and autoscales behind the load balancer. The stream is [partitioned by `ad_id`](../patterns/distributed/routing/sharding.md) so all events for one ad land on one shard and Flink can read shards in parallel — Kinesis, for instance, caps a shard near 1&nbsp;MB/s or 1,000 records/sec, so many shards are mandatory. One Flink job per shard keeps aggregation embarrassingly parallel, and a self-managed OLAP store can be sharded by `advertiser_id` so a single advertiser's data sits on one node. The failure mode is a [hot shard](../hazards/hot-key.md): a viral ad — think a superstar-fronted spot during a final — floods one partition, spiking its latency and risking loss. The mitigation is to salt the partition key for known-popular ads only, found by watching each ad_id's per-shard rate against the 1,000 records/sec cap, appending a random suffix (`ad_id:0..N`) so the load fans across shards; Flink strips the suffix and upserts with a `SUM` so the sub-partitions recombine into one correct total on write.
 
 ```mermaid caption="How does a viral ad stop flooding one shard? Known-hot ads get a salted partition key, so the load fans across shards and the SUM upsert recombines it into one total."
 flowchart TB
@@ -164,15 +164,15 @@ flowchart TB
 
 ### 3 · Never losing a click
 
-The stream is the durability layer: Kafka replicates across brokers, Kinesis across availability zones, and a multi-day retention window means a crashed processor replays from where it left off rather than losing data. Flink checkpoints its state to S3 for resume-from-failure, but for minute-sized windows that is often over-engineered — a Flink outage loses at most a minute of aggregates, all recoverable from the retained stream, and knowing when the textbook answer is overkill is itself a signal of seniority. The real guarantee comes from the batch layer: every raw click is also sinked to S3 (via Kafka Connect or Kinesis Firehose, adding no load to Flink), and a daily Spark job re-aggregates the lake [MapReduce-style](../patterns/distributed/coordination/mapreduce.md) and reconciles it against the live counts, correcting any drift from bad deploys or transient errors. That append-only raw log is the [source of truth](../patterns/architecture/event-sourcing.md) the fast path is measured against.
+The stream is the durability layer: Kafka replicates across brokers, Kinesis across availability zones, and a multi-day retention window means a crashed processor replays from where it left off rather than losing data. Flink checkpoints its state to S3 for resume-from-failure, but for minute-sized windows that is often over-engineered — a Flink outage loses at most a minute of aggregates, all recoverable from the retained stream. The real guarantee comes from the batch layer: every raw click is also sinked to S3 (via Kafka Connect or Kinesis Firehose, adding no load to Flink), and a daily Spark job re-aggregates the lake [MapReduce-style](../patterns/distributed/coordination/mapreduce.md) and reconciles it against the live counts, correcting any drift from bad deploys or transient errors. That append-only raw log is the [source of truth](../patterns/architecture/event-sourcing.md) the fast path is measured against. Kinesis keeps records 24 hours by default, so extended retention must be enabled for a multi-day replay.
 
 ### 4 · Counting each click exactly once
 
-Idempotency is not deduping by user — logging `user_id` forces every user to be logged in and collapses retargeting to one click per user per ad, forever. The unit that works is the **impression**. The Ad Placement Service generates a fresh id for every render, signs `impression_id + ad_id` with a **hash-based message authentication code (HMAC)** secret, and ships it with the ad; the browser echoes it back on click. The Click Processor verifies the signature (a microsecond hash, not asymmetric crypto) to reject forged ids, then enforces [idempotency](../patterns/messaging/idempotency.md): check the id against a Redis set — a hit means duplicate, drop it; a miss means write to the stream first, then record the id. That ordering is deliberate — if the cache update fails, a click is never lost, only occasionally double-written, and reconciliation catches it. Dedup has to happen before the stream write, because it cannot span aggregation windows: a duplicate straddling a minute boundary would otherwise land in two buckets. The set is a ~1.6&nbsp;GB Redis Cluster with a replica and persistence enabled.
+Idempotency is not deduping by user — logging `user_id` forces every user to be logged in and collapses retargeting to one click per user per ad, forever. The unit that works is the **impression**. The Ad Placement Service generates a fresh id for every render, signs `impression_id + ad_id` with a **hash-based message authentication code (HMAC)** secret, and ships it with the ad; the browser echoes it back on click. The Click Processor verifies the signature (a microsecond hash, not asymmetric crypto) to reject forged ids, then enforces [idempotency](../patterns/messaging/idempotency.md): check the id against a Redis set — a hit means duplicate, drop it; a miss means write to the stream first, then record the id. That ordering is deliberate — if the cache update fails, a click is never lost, only occasionally double-written, and reconciliation catches it. Two concurrent duplicates can also both miss the check and both write, and the recount only removes them if it dedupes on impression_id, so the Spark job must. Dedup has to happen before the stream write, because it cannot span aggregation windows: a duplicate straddling a minute boundary would otherwise land in two buckets. The set is a ~1.6&nbsp;GB Redis Cluster with a replica and persistence enabled.
 
 ### 5 · Keeping big-range queries fast
 
-Pre-aggregation already makes the common query — one ad over a recent window — instant. The slow tail is the wide query: a year of a campaign is millions of minute-buckets to sum on read. The answer is more of the same medicine one level up: a nightly job rolls the minute buckets into daily and weekly tables, and a query hits the coarsest table that satisfies its range, drilling down to finer granularity only where needed. It is caching by another name — spend storage on the query shapes advertisers actually run, to buy back read latency.
+Pre-aggregation already makes the common query — one ad over a recent window — instant. The slow tail is the wide query: a year of a campaign is millions of minute-buckets to sum on read. The answer is more of the same medicine one level up: a nightly job rolls the minute buckets into daily and weekly tables, and a query hits the coarsest table that satisfies its range, drilling down to finer granularity only where needed. It is caching by another name — spend storage on the query shapes advertisers actually run, to buy back read latency. Rollups sum clicks, but unique_users is a distinct count and does not add across buckets, so a rollup table either keeps a mergeable per-bucket sketch for it or reports clicks only.
 
 ```mermaid caption="How is each click counted exactly once? Dedup by signed impression id, and write to the stream before recording the id — so a cache failure double-writes (reconciliation fixes it) rather than losing a click."
 sequenceDiagram
@@ -233,6 +233,7 @@ sequenceDiagram
 **Exposed to**
 
 - [Hot Partition](../hazards/hot-partition.md) — Falls into it when one ad_id takes most clicks; key-salting spreads it.
+- [Hot Key](../hazards/hot-key.md) — A viral ad floods one ad_id partition; mitigated by salting the key for known-hot ads only.
 
 **Demonstrates**
 
