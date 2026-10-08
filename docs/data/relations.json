@@ -14692,6 +14692,13 @@
       "b": "unbounded-queue",
       "note_a": "An unbounded request queue turns overload into growing memory and latency",
       "note_b": "An active object's request queue grows without limit when callers outpace its single thread"
+    },
+    {
+      "a": "barrier",
+      "verb": "alternative-to",
+      "b": "thread-pool",
+      "note_a": "Independent items on a queue keep every thread busy with no meeting point; a barrier holds all threads at each phase end",
+      "note_b": "Use a barrier instead when the same threads must all finish one phase before any starts the next"
     }
   ],
   "group_order": {

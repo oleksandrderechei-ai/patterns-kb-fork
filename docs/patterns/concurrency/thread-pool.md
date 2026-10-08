@@ -204,6 +204,10 @@ func (p *Pool) Submit(task func()) error {
 - [Backpressure](./backpressure.md) — A bounded queue in front of the pool rejects or parks submitters instead of growing
 - [Splitter](../messaging/splitter.md) — A split is a common source of the many small tasks a pool drains.
 
+**Alternative to**
+
+- [Barrier](./barrier.md) — Use a barrier instead when the same threads must all finish one phase before any starts the next
+
 **Variant of**
 
 - [Object Pool](../gof/extra/object-pool.md) — A thread pool is an object pool of workers

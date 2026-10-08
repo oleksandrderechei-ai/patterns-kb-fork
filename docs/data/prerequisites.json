@@ -1209,7 +1209,7 @@
       "definition": "Reuses a fixed set of worker threads",
       "route": "/patterns/concurrency/thread-pool.html",
       "requires": [],
-      "related": ["bulkhead", "producer-consumer", "future-promise", "semaphore", "reactor", "fork-join", "proactor", "backpressure", "splitter"]
+      "related": ["bulkhead", "producer-consumer", "future-promise", "semaphore", "reactor", "fork-join", "proactor", "backpressure", "splitter", "barrier"]
     },
     {
       "id": "future-promise",
@@ -1353,7 +1353,7 @@
       "definition": "Every thread waits at a point until all have arrived, then all continue together",
       "route": "/patterns/concurrency/barrier.html",
       "requires": [],
-      "related": ["fork-join", "mutex", "mapreduce"]
+      "related": ["fork-join", "mutex", "mapreduce", "thread-pool"]
     },
     {
       "id": "fork-join",
