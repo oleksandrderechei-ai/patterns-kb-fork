@@ -110,6 +110,23 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     as the real burst (`token-bucket`);
   - a second pass for the plan lines dropped as over the cap of 8, mostly wording,
     em-dash and one-claim-per-item splits.
+- From the kb-improve run on the ten comparison pages (its pull request lists every dropped
+  finding):
+  - a gate for the cost-lead stop: nine of the ten comparisons shipped every explain cost as
+    one run-on sentence ("**Lead** Note"), and KB-014 passed them all;
+  - matrix rows readers asked for that need a source for every column: cold start after idle
+    (`application-platforms`), versioning and object lock (`object-stores`), out-of-band
+    change detection (`infrastructure-as-code`), "if it goes down" (`identity-providers`);
+  - claims to verify before they land: SeaweedFS read-after-write per replication mode,
+    Authentik dropping Redis in 2025.10, Auth0 password-hash export, Kong's OSS packaging
+    after 3.9, Meilisearch's enterprise-edition license split, Pulumi secrets in state;
+  - edges drafted but over the cap or unverified: `relational-databases` implements
+    `failover`, `key-value-stores` implements `lsm-tree`, `application-platforms`
+    alternative-to `container-orchestration`, `search-engines` combines-with
+    `change-data-capture`, `workflow-orchestrators` alternative-to `message-queue`,
+    `infrastructure-as-code` implements `containerization`;
+  - an owner call on how a comparison names a hazard its products carry: `exposed-to` is
+    barred from a comparison, so `search-engines` cannot point at `dual-write-inconsistency`.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 
