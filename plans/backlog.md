@@ -110,6 +110,24 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     as the real burst (`token-bucket`);
   - a second pass for the plan lines dropped as over the cap of 8, mostly wording,
     em-dash and one-claim-per-item splits.
+- From the kb-improve run over the 15 Advanced case-study pages (its pull request lists
+  every dropped finding):
+  - a sourcing pass for the 51 findings dropped as "needs a source": TTLs, thresholds,
+    retry caps, error codes, shard counts and lease timings readers asked for in the
+    deep dives and interfaces;
+  - a second pass for the 99 findings dropped as over the cap of 8;
+  - two owner design calls the pages leave open: how `robinhood`'s trade processor
+    handles a fill that lands before the order's id is indexed, and whether a `FAILED`
+    run ends a `job-scheduler` recurrence;
+  - edges drafted but over the cap: `online-chess` demonstrates `websocket` and
+    `long-polling`, `ticketmaster` demonstrates `conditional-write`, `leetcode`
+    demonstrates `async-request-reply` and `web-queue-worker`, `youtube` exposed-to
+    `hot-partition`;
+  - the `saga` edge notes on both persona-identification pages still say "failure
+    terminals", and the `alternative-to` note between the two pages does not say what
+    this side argues; each is an unlink then link;
+  - an owner call on `video-recommendations`, a theme page filed in the Advanced
+    case-study area: move it with kb-move or keep it there.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 
