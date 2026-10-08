@@ -14524,6 +14524,20 @@
       "b": "stale-cache",
       "note_a": "Cached, replica-served counts run up to a minute behind, so checkout is the authority and answers 409.",
       "note_b": "A design whose cached listing can show an item for up to its 60 s TTL after the last unit is claimed."
+    },
+    {
+      "a": "fb-live-comments",
+      "verb": "demonstrates",
+      "b": "server-sent-events",
+      "note_a": "one-way comment stream over plain HTTP with Last-Event-ID reconnect, chosen over WebSocket for a read-heavy, write-light viewer",
+      "note_b": "a live comment feed pushes events to millions of viewers and replays the gap from the last event id"
+    },
+    {
+      "a": "fb-live-comments",
+      "verb": "exposed-to",
+      "b": "hot-partition",
+      "note_a": "one mega-stream's comments and connections overload the server that owns its video's channel",
+      "note_b": "a live-comment design that hashes on liveVideoId concentrates one viral stream on one server"
     }
   ],
   "group_order": {

@@ -44,18 +44,18 @@ Out of scope: replies and reactions to comments — named explicitly so the feed
 ### Non-functional
 <!--meta requirement=nfr-->
 
-- **Latency** — a comment reaches watching viewers in under 200&nbsp;ms end-to-end, the point past which people no longer perceive a delay.
+- **Latency** — a comment reaches watching viewers in under 200&nbsp;ms end-to-end on the push path, a working target for feeling live. Mega-streams served from the CDN relax this to about 1–2&nbsp;s.
 - **Availability** — favoured over consistency; [eventual consistency](../themes/consistency-and-replication.md) is fine, since a briefly-missing comment is harmless while a stalled feed is not.
 - **Scale** — millions of concurrent videos, and thousands of comments per second on a single hot video.
 
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Writes are cheap.** Even a busy stream at a few thousand comments/sec is a modest ingest load for a wide-column store — the write path is never the bottleneck. What matters is the multiplier on the other side.
+**Writes are cheap.** Even a busy stream at a few thousand comments/sec is a modest ingest load for a wide-column store — the write path is rarely the bottleneck at aggregate volume, but one hot video sends all its writes to one key, so check that key's write rate against the store's per-key limit. What matters is the multiplier on the other side.
 
 **Fan-out is the load.** A stream with 50k concurrent viewers running at 100 comments/sec must push 50k × 100 ≈ **5M messages/sec** — for one video. Multiply by the number of live videos and the delivery tier, not the database, is what the architecture has to survive.
 
-**Connections are the wall.** Real-time delivery means one long-lived connection held open per viewer. A well-tuned server sustains on the order of **~100k concurrent connections** before file descriptors, CPU and memory — not any TCP port limit — cap it. Millions of viewers therefore imply tens to hundreds of delivery servers, and a single mega-stream can demand more connections than a whole fleet has.
+**Connections are the wall.** Real-time delivery means one long-lived connection held open per viewer. A well-tuned server sustains about **100k concurrent connections** before file descriptors, CPU and memory — not any TCP port limit — cap it. Millions of viewers therefore imply tens to hundreds of delivery servers, and a single mega-stream can demand more connections than a whole fleet has.
 
 **Storage is an afterthought.** A comment is a few hundred bytes; even a million of them is well under a gigabyte. Retention policy, not disk, is the only real question.
 
@@ -125,7 +125,7 @@ flowchart TB
 The obvious first cut is polling: the client asks `GET /comments/:id?since={last}` every few seconds and appends whatever is new. It works as a starting point and fails at scale — to feel live you would have to poll every few milliseconds, and almost every one of those requests comes back empty, burning the database on questions with no answer. The fix is to invert the direction: the server pushes.
 
 - **WebSockets.** A full-duplex channel per viewer. Right for balanced chat, where both sides talk constantly — but here the ratio is lopsided: a viewer reads far more than they write. Paying for a two-way socket per viewer is overhead the workload does not justify.
-- **Server-Sent Events (chosen).** A one-way server-to-client stream over ordinary HTTP; the rare write is a plain `POST`. It matches the imbalance exactly — cheap frequent reads, occasional writes — and comes with built-in reconnection. The warts are operational: some proxies buffer streaming responses in ways that are miserable to debug, browsers cap concurrent SSE connections per domain, and long-lived connections are harder to monitor than request/response.
+- **Server-Sent Events (chosen).** A one-way server-to-client stream over ordinary HTTP; the rare write is a plain `POST`. It matches the imbalance exactly — cheap frequent reads, occasional writes — and comes with built-in reconnection. The warts are operational: some proxies buffer streaming responses in ways that are hard to debug, browsers cap concurrent SSE connections per domain, and long-lived connections are harder to monitor than request/response. Browsers cap concurrent SSE connections per domain at about 6 on HTTP/1.1; HTTP/2 multiplexing largely lifts the cap.
 
 With SSE chosen, a new comment is persisted, handed to the messaging tier, and streamed to every connected viewer of that video — a [fan-out](../patterns/messaging/fan-out.md) from one write to many readers.
 
@@ -134,7 +134,7 @@ With SSE chosen, a new comment is persisted, handed to the messaging tier, and s
 One server cannot hold millions of connections, so delivery spreads across a fleet — and now viewers of the same video sit on different servers. A comment arriving at server&nbsp;1 reaches its local viewers but has no path to viewers of the same video parked on server&nbsp;2. Something has to carry the comment across the fleet.
 
 - **Broadcast every comment to every server.** Publish to one channel; every messaging server subscribes and forwards to whichever of its viewers care. Dead simple, and wasteful — every server processes every comment for every video whether or not it has a single viewer for it. Impractical at this scale.
-- **Partitioned pub/sub with viewer co-location (chosen).** Split the stream into N channels by `hash(liveVideoId) % N` — bounded channels, not one per video, which a broker like Kafka could not sustain — and have each server subscribe only to the channels it needs. To stop a server from accumulating every channel under round-robin, the Layer&nbsp;7 load balancer applies [consistent hashing](../patterns/distributed/routing/consistent-hashing.md) on `liveVideoId` so same-video viewers converge on the same server. This is [publish/subscribe](../patterns/messaging/pubsub.md) with intelligent routing done by the [load balancer](../patterns/distributed/routing/load-balancer.md).
+- **Partitioned pub/sub with viewer co-location (chosen).** Split the stream into N channels by `hash(liveVideoId) % N` — bounded channels, not one per video, which a broker like Kafka could not sustain — and have each server subscribe only to the channels it needs. To stop a server from accumulating every channel under round-robin, the Layer&nbsp;7 load balancer applies [consistent hashing](../patterns/distributed/routing/consistent-hashing.md) on `liveVideoId` so same-video viewers converge on the same server. This is [publish/subscribe](../patterns/messaging/pubsub.md) with intelligent routing done by the [load balancer](../patterns/distributed/routing/load-balancer.md). Consistent hashing prefers co-location; it does not force it. When one video's viewers pass a server's ceiling of about 100k connections (the same figure as the 100k-viewer flip to CDN), the balancer spreads them over several servers, each subscribing to that video's channel. If a server dies, its clients auto-reconnect with Last-Event-ID and rehash.
 - **A dispatcher service.** Invert pub/sub: instead of servers subscribing to topics, a dispatcher keeps a live map of which servers hold viewers for each video and routes each comment to exactly those servers. It centralises routing and enables load-aware rules, at the cost of keeping that map accurate as viewers churn — extra machinery most designs do not need.
 
 On technology: Redis pub/sub suits this better than Kafka, which struggles with the constantly-changing subscription patterns of viewers hopping between videos. Redis is low-latency and fire-and-forget — acceptable precisely because comments are already persisted, so a message dropped during a blip is recovered by the catch-up path below.
@@ -157,7 +157,8 @@ flowchart TB
 Mobile networks drop — tunnels, backgrounding, wifi-to-cellular hand-offs. A viewer must be able to reconnect and recover what they missed without the feed silently skipping ahead.
 
 - **Ignore it.** On reconnect, just resume from now; anything posted during the gap is gone. A five-second drop during a tense moment loses exactly the reactions the viewer came for. Rejected.
-- **Last-Event-ID plus client tracking (chosen).** Every SSE message carries the comment id as its event id; on an auto-reconnect the browser resends the last one it saw in the `Last-Event-ID` header, and the server replays what came after before resuming the live stream. The client also stores that id locally, so it can ask for catch-up explicitly (`GET …?cursor={last}&limit=100`) and animate the gap smoothly or show "you missed 47 comments". Because a reconnect usually lands on a different server, replay reads from a [shared Redis cache](../patterns/caching/distributed-cache.md) of recent comments that any server can serve. The subtlety is the seam between the replayed history and the resumed live stream: comments can arrive on both paths at once, so the client dedupes by comment id — receiving the same comment twice is a no-op, which keeps the merge [idempotent](../patterns/messaging/idempotency.md). Replay is bounded (the last few minutes, not the last hour) with graceful degradation beyond that.
+- **Last-Event-ID plus client tracking (chosen).** Every SSE message carries the comment id as its event id. On an auto-reconnect the browser resends the last one it saw in the `Last-Event-ID` header, and the server replays what came after before resuming the live stream. The client also stores that id, so it can ask for catch-up explicitly (`GET …?cursor={last}&pageSize=100`) and show "you missed 47 comments". The hash on `liveVideoId` sends a reconnect back to the same server, but after a server failure, deploy or rebalance it lands on another, so replay reads from a [shared Redis cache](../patterns/caching/distributed-cache.md) of recent comments, keyed by `liveVideoId`, that any server can serve. Comment ids sort in creation order, so a cursor means everything after this id. Replayed and live comments can arrive on both paths at once, so the client dedupes by comment id: receiving the same comment twice is a no-op, which keeps the merge [idempotent](../patterns/messaging/idempotency.md). Replay is bounded to the last few minutes, sized as window x comments/sec x bytes per comment: 5 minutes at 100/s is 30,000 comments, about 9 MB at 300 bytes. Beyond that window the client loads the latest comments from the history endpoint.
+- **Gap detection on a live connection.** Catch-up also runs without a reconnect. The server sends a periodic heartbeat event carrying the latest comment id; if the client has not seen that id, it calls the cursor catch-up. This recovers comments Redis pub/sub dropped.
 
 ```mermaid caption="How does a viewer who drops and reconnects recover missed comments without gaps or duplicates?"
 sequenceDiagram
@@ -211,6 +212,10 @@ sequenceDiagram
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
 
+**Exposed to**
+
+- [Hot Partition](../hazards/hot-partition.md) — one mega-stream's comments and connections overload the server that owns its video's channel
+
 **Demonstrates**
 
 - [Publish-Subscribe](../patterns/messaging/pubsub.md) — the Comment Management Service publishes each comment onto a partitioned bus that messaging servers subscribe to per video
@@ -220,5 +225,6 @@ sequenceDiagram
 - [CDN](../patterns/distributed/routing/cdn.md) — mega-streams snapshot recent comments to the edge every second and clients poll the content delivery network (CDN) instead of holding a live push connection
 - [Distributed Cache](../patterns/caching/distributed-cache.md) — recent comments live in a shared Redis cache so any messaging server can replay them when a reconnecting viewer lands elsewhere
 - [Idempotency](../patterns/messaging/idempotency.md) — on reconnect the same comment can arrive via both server-sent events (SSE) replay and the live stream, so the client dedupes by comment id
+- [Server-Sent Events](../patterns/messaging/server-sent-events.md) — one-way comment stream over plain HTTP with Last-Event-ID reconnect, chosen over WebSocket for a read-heavy, write-light viewer
 
 <!-- relationships:end -->
