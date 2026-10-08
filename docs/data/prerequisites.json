@@ -601,7 +601,7 @@
       "definition": "Single entry point that routes to backing services",
       "route": "/patterns/distributed/routing/api-gateway.html",
       "requires": [],
-      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session", "service-discovery", "a2a"]
+      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session", "service-discovery", "a2a", "global-traffic-and-ingress"]
     },
     {
       "id": "bff",
@@ -2348,6 +2348,14 @@
       "related": ["trie"]
     },
     {
+      "id": "metrics-monitoring",
+      "label": "Metrics & Monitoring",
+      "definition": "Ingest five million metric points a second, serve dashboards over weeks of history, and fire alerts within a minute",
+      "route": "/designs/metrics-monitoring.html",
+      "requires": [],
+      "related": ["observability"]
+    },
+    {
       "id": "parking-lot",
       "label": "Parking Lot",
       "definition": "Assign a compatible spot, issue a ticket, and price the stay — an object-oriented design about where each piece of state belongs",
@@ -2386,6 +2394,126 @@
       "route": "/themes/service-boundaries.html",
       "requires": [],
       "related": ["conways-law"]
+    },
+    {
+      "id": "cap-theorem",
+      "label": "CAP Theorem",
+      "definition": "When the network splits, you choose consistency or availability — never both",
+      "route": "/themes/cap-theorem.html",
+      "requires": [],
+      "related": ["data-platform"]
+    },
+    {
+      "id": "consistency-and-replication",
+      "label": "Consistency & Replication",
+      "definition": "Keeping copies of data in agreement across nodes",
+      "route": "/themes/consistency-and-replication.html",
+      "requires": [],
+      "related": ["data-platform"]
+    },
+    {
+      "id": "long-running-tasks",
+      "label": "Long-Running Tasks",
+      "definition": "Moving slow work off the request path onto durable queues and workers",
+      "route": "/themes/long-running-tasks.html",
+      "requires": [],
+      "related": ["workload-composition"]
+    },
+    {
+      "id": "spike-handling",
+      "label": "Handling Spikes",
+      "definition": "Absorb, shed, or scale when traffic suddenly surges",
+      "route": "/themes/spike-handling.html",
+      "requires": [],
+      "related": ["securing-availability"]
+    },
+    {
+      "id": "cloud-native",
+      "label": "Cloud Native",
+      "definition": "What the platform provides once your workload is packaged the way it expects",
+      "route": "/themes/cloud-native.html",
+      "requires": [],
+      "related": ["twelve-factor", "data-platform"]
+    },
+    {
+      "id": "twelve-factor",
+      "label": "Twelve-Factor",
+      "definition": "What a platform requires of an application before it can run it for you",
+      "route": "/themes/twelve-factor.html",
+      "requires": [],
+      "related": ["cloud-native", "health-modeling"]
+    },
+    {
+      "id": "observability",
+      "label": "Observability",
+      "definition": "Knowing what a running system is actually doing",
+      "route": "/themes/observability.html",
+      "requires": [],
+      "related": ["metrics-monitoring"]
+    },
+    {
+      "id": "continuous-delivery",
+      "label": "Continuous Delivery",
+      "definition": "Shipping each service on its own schedule, safely and often",
+      "route": "/themes/continuous-delivery.html",
+      "requires": [],
+      "related": ["operating-a-live-system"]
+    },
+    {
+      "id": "workload-composition",
+      "label": "Workload Composition",
+      "definition": "Splitting a workload into parts that scale alone, with a write path that does not hold the caller for the store commit",
+      "route": "/themes/workload-composition.html",
+      "requires": [],
+      "related": ["long-running-tasks"]
+    },
+    {
+      "id": "global-traffic-and-ingress",
+      "label": "Global Traffic & Ingress",
+      "definition": "Getting every request to a healthy region, and screening it on the way in",
+      "route": "/themes/global-traffic-and-ingress.html",
+      "requires": [],
+      "related": ["health-modeling", "api-gateway"]
+    },
+    {
+      "id": "data-platform",
+      "label": "Data Platform",
+      "definition": "Choosing and configuring the stores that hold state when the compute is disposable",
+      "route": "/themes/data-platform.html",
+      "requires": [],
+      "related": ["cloud-native", "consistency-and-replication", "cap-theorem"]
+    },
+    {
+      "id": "health-modeling",
+      "label": "Health Modeling",
+      "definition": "Turning a wall of metrics into one answer a router and an operator can act on",
+      "route": "/themes/health-modeling.html",
+      "requires": [],
+      "related": ["global-traffic-and-ingress", "continuous-validation", "twelve-factor"]
+    },
+    {
+      "id": "continuous-validation",
+      "label": "Continuous Validation",
+      "definition": "Proving a release is safe before it takes traffic, and while it does",
+      "route": "/themes/continuous-validation.html",
+      "requires": [],
+      "related": ["health-modeling"]
+    },
+    {
+      "id": "securing-availability",
+      "label": "Securing Availability",
+      "definition": "The security controls you adopt because a compromise or an expiry is an outage",
+      "route": "/themes/securing-availability.html",
+      "requires": [],
+      "related": ["operating-a-live-system", "spike-handling"]
+    },
+    {
+      "id": "operating-a-live-system",
+      "label": "Operating a Live System",
+      "definition": "The changes a running system needs, made without a hand on the box",
+      "route": "/themes/operating-a-live-system.html",
+      "requires": [],
+      "related": ["continuous-delivery", "securing-availability"]
     },
     {
       "id": "dry",

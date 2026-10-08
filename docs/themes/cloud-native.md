@@ -15,30 +15,30 @@ The platform side of the bargain: package a workload as an immutable image, decl
 ## The question
 <!--meta block=description-->
 
-Cloud native is used to mean everything, so read it here as one bargain: you package the workload a set way and give up control of where it runs, and the platform takes over placement, restart, scaling and service-to-service traffic. That is worth a great deal when instances are interchangeable and load moves, and much less for three long-lived services on fixed capacity. The application owes the platform its half, covered in [Twelve-Factor](twelve-factor.md).
+Read cloud native here as one bargain: you package the workload a set way and give up control of where it runs, and the platform takes over placement, restart, scaling and service-to-service traffic. That is worth a great deal when instances are interchangeable and load moves, and much less for a few long-lived services on fixed capacity. The application owes the platform its half, covered in [Twelve-Factor](twelve-factor.md).
 
 ## Explained
 <!--meta block=explain-->
 
 Going cloud native means you package your service as a standard image ([containerization](../patterns/distributed/coordination/containerization.md)) and let a platform ([container orchestration](../patterns/distributed/coordination/container-orchestration.md)) decide where it runs, when it restarts and how many copies exist ([autoscaling](../patterns/distributed/routing/autoscaling.md)). In return you stop steering those decisions yourself. Adopt it where copies of your service are interchangeable, load moves during the day, and one artifact must run in several environments. Skip it for three long-lived services on fixed capacity, where all you add is a scheduler (the part that places processes on machines) between you and a process that was running fine.
 
-- **Settings as code.** A health check too strict turns a slow start into a restart loop, so review and roll back platform settings like code.
-- **A platform to run.** The platform is itself a system, so buy it managed until your workload justifies a team.
+- **Settings as code.** A strict health check turns a slow start into a restart loop, so review and roll back platform settings like code.
+- **A platform to run.** Even a managed platform leaves you upgrades, node capacity and add-ons; run your own scheduler only when scale justifies a team.
 - **Lock-in below the image.** Add-ons, traffic rules and identity bindings do not move between providers, so know what you would rewrite.
-- **Invisible decisions.** Record which copy was killed and why the count changed, or an outage has no cause you can find.
+- **Invisible decisions.** Log every kill and scale change with its reason, or an outage has no cause you can find.
 
-**Example.** A service needs 20 s to warm its cache after each start. The platform checks health every 5 s from second 5 and restarts the copy after 3 failed checks. The checks fail at 5, 10 and 15 s, so the copy is killed at 15 s, 5 s before it is ready, and then starts again: a restart loop that looks like an application outage. Delaying the first check to 30 s ends the loop. The cost is that a copy which freezes during startup goes unnoticed for those 30 s. You only find the cause because the platform logs each kill with its reason.
+**Example.** A service needs 20 s to warm its cache after each start. The platform checks health every 5 s from second 5 and restarts the copy after 3 failed checks. The checks fail at 5, 10 and 15 s, so the copy is killed at 15 s, 5 s before it is ready, and then starts again: a restart loop that looks like an application outage. A separate startup check that holds the liveness check off until the copy is ready ends the loop; a fixed first-check delay of 30 s also works but leaves a copy that freezes during startup unnoticed for those 30 s. You only find the cause because the platform logs each kill with its reason.
 
 ## The tradespace
 <!--meta block=tradespace-->
 
-The first axis is control against operations. Every capability here is one you no longer implement and no longer fully steer. The scheduler decides where a process runs and when to kill it, the autoscaler decides how many there are, the mesh decides how a call is retried. Each is better than the version you would have written, and each fails in ways your own code never could.
+Control against operations. You no longer implement or fully steer these: the scheduler decides where a process runs, the autoscaler how many there are, the mesh how a call is retried. Each is usually better than a version a small team would write, if the workload fits the platform's model, and each fails in ways your own code never could. Mesh retries stacked on application retries multiply load on a failing dependency.
 
-The second is the size of the substrate. A scheduler, a registry, a mesh control plane and their telemetry are themselves systems that must be run, upgraded and debugged. Below a certain scale that substrate costs more than the workload it hosts, which is the honest reason a small service on a managed platform is often the better answer.
+The size of the substrate. A scheduler, a registry, a mesh control plane and their telemetry must be run, upgraded and debugged. Below the scale where one team can run them beside the product they cost more than the workload, so a small service often belongs on a managed platform. There is no fixed threshold; weigh the people it takes to run the platform against the people building the product.
 
-The third is where the failure now lives. Platform behaviour becomes application behaviour: a liveness probe that is fractionally too aggressive turns a slow start into a restart loop, and an autoscaler tuned on the wrong signal amplifies a load spike instead of absorbing it. These are configuration bugs that present as application outages.
+Where the failure lives. Platform behaviour becomes application behaviour: the explain example shows a probe turning a slow start into a restart loop. An autoscaler on the wrong signal, such as CPU while a queue grows, adds capacity late, because new copies need time to start and warm up, and slow scale-down makes the count oscillate.
 
-The fourth is portability. The image and the process model travel; the operators, the mesh policy, the ingress and the identity binding do not. Adopting the platform is cheap and leaving it is not, so the useful question is not whether you are locked in but which layer you would have to rewrite. State is the part that cannot be disposable, and [Data Platform](./data-platform.md) covers choosing the stores that hold it.
+Portability. The image and the process model travel; the operators, mesh policy, ingress and identity binding do not. Adopting is cheap and leaving is not, by an amount that depends on how many layers you adopted; ask which you would rewrite. State cannot be disposable: volumes tie to a zone and a stable identity, so a reschedule is slow and a node drain becomes a data event. [Data Platform](./data-platform.md) covers the stores that hold it.
 
 ## The tour
 <!--meta block=tour-->
@@ -49,27 +49,27 @@ The fourth is portability. The image and the process model travel; the operators
 
 ### [Containerization](../patterns/distributed/coordination/containerization.md) {#tour-containerization}
 
-Nothing else on this page is available until the workload is one immutable, self-describing artifact. The image is the contract: build once, run the same bytes in every environment, and stop shipping the difference between them.
+Most of this page assumes the workload is one immutable, self-describing artifact. The image is the contract: build once, run the same bytes in every environment, and stop shipping the difference between them.
 
 ### [Container Orchestration](../patterns/distributed/coordination/container-orchestration.md) {#tour-container-orchestration}
 
-You declare the desired state and a control loop makes reality match it — placement, restart, rollout, capacity. This is where you hand over the decisions, and where a misjudged probe becomes an outage you did not write.
+You declare the desired state and a control loop makes reality match it: placement, restart, rollout, capacity. This is where you hand over the decisions, and where a misjudged probe becomes an outage you did not write.
 
 ### [Autoscaling](../patterns/distributed/routing/autoscaling.md) {#tour-autoscaling}
 
-The first capability that pays for the whole arrangement, and the one most often pointed at the wrong signal. Scaling on the metric that reflects queued work rather than on the one that is easy to read is most of the skill.
+Often the first capability to repay the move, and the one most often pointed at the wrong signal. Scale on the metric that reflects queued work, such as queue depth or lag per copy, not the one that is easy to read, and set the target from a load test of one copy's throughput.
 
 ### [Sidecar](../patterns/distributed/routing/sidecar.md) {#tour-sidecar}
 
-Once a workload is a scheduled unit, a second process can share its lifecycle and take over the concerns that used to be a library in every language you run — with its own resource cost, per instance.
+Once a workload is a scheduled unit, a second process can share its lifecycle and take over concerns that used to be a library in every language you run. Each copy pays for it in CPU and memory; measure one sidecar in staging and multiply by the copy count.
 
 ### [Service Mesh](../patterns/distributed/routing/service-mesh.md) {#tour-service-mesh}
 
-The sidecar idea applied uniformly: retries, timeouts, mutual authentication and traffic shifting become configuration rather than code. It has the biggest payoff and the heaviest cost on this list, and it earns its keep only across many services.
+The sidecar idea applied uniformly: retries, timeouts, mutual authentication and traffic shifting become configuration rather than code. It has the biggest payoff and the heaviest cost on this list, since every call gains a hop and every copy a sidecar, so it earns its keep across many services in several languages.
 
 ### [Deployment Stamp](../patterns/distributed/routing/deployment-stamp.md) {#tour-deployment-stamp}
 
-Where it ends up at scale: the unit of growth stops being an instance and becomes a complete copy of the platform and its workloads, replicated per region or per tenant group.
+At scale the unit of growth stops being an instance and becomes a complete copy of the platform and its workloads, replicated per region or per tenant group.
 
 <!-- tour:end -->
 
@@ -79,12 +79,12 @@ Where it ends up at scale: the unit of growth stops being an instance and become
 | If you need… | Signal | Reach for |
 | --- | --- | --- |
 | The same artifact to run identically everywhere | "It works on staging" | [Containerization](../patterns/distributed/coordination/containerization.md) |
-| Something to place, restart and roll out for you | Deploys are a runbook | [Container Orchestration](../patterns/distributed/coordination/container-orchestration.md) |
+| Something to place, restart and roll out for you | Deploys take a checklist and a person | [Container Orchestration](../patterns/distributed/coordination/container-orchestration.md) |
 | Capacity to follow demand rather than a forecast | Provisioned for the peak, idle at the trough | [Autoscaling](../patterns/distributed/routing/autoscaling.md) |
-| One cross-cutting concern beside a workload you cannot change | Legacy or polyglot service | [Sidecar](../patterns/distributed/routing/sidecar.md) |
-| Retries, timeouts and mutual Transport Layer Security (TLS) across many services at once | The same library in four languages | [Service Mesh](../patterns/distributed/routing/service-mesh.md) |
-| To grow by region or tenant group rather than by instance | One deployment is at its ceiling | [Deployment Stamp](../patterns/distributed/routing/deployment-stamp.md) |
-| None of this, because there are three services on fixed capacity | The substrate costs more than the workload | A managed platform, and no scheduler of your own |
+| One cross-cutting concern beside a workload you cannot change | Legacy or polyglot service, one concern | [Sidecar](../patterns/distributed/routing/sidecar.md) |
+| Retries, timeouts and mutual Transport Layer Security (TLS) across many services at once | The same concern coded in four languages across dozens of services | [Service Mesh](../patterns/distributed/routing/service-mesh.md) |
+| To grow by region or tenant group rather than by instance | One deployment cannot grow further | [Deployment Stamp](../patterns/distributed/routing/deployment-stamp.md) |
+| None of this, because there are three services on fixed capacity | Running the platform costs more than the workload, and no team can own it | A managed platform, and no scheduler of your own |
 
 ## Related areas
 <!--meta block=siblings-->
@@ -93,3 +93,17 @@ Where it ends up at scale: the unit of growth stops being an instance and become
 - [Workload Composition](./workload-composition.md) — What the pieces are and how they are bundled, before the platform is asked to run them.
 - [Scale Units and Stamps](./scale-units-and-stamps.md) — Where the replicated-copy idea at the end of the tour is argued properly.
 - [Operating a Live System](./operating-a-live-system.md) — What is left for you to run once the platform has taken over placement and restart.
+
+## How it relates
+<!--meta block=relationships-->
+
+<!-- relationships:start -->
+
+<!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Twelve-Factor](./twelve-factor.md) — The platform's half of the bargain; twelve-factor is what the application owes it.
+- [Data Platform](./data-platform.md) — State is the part the platform cannot make disposable; data-platform covers the stores that hold it.
+
+<!-- relationships:end -->

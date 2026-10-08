@@ -14701,6 +14701,97 @@
       "note_b": "Copy-on-write readers never take the mutex; only writers do, around clone-and-publish"
     },
     {
+      "a": "cloud-native",
+      "verb": "combines-with",
+      "b": "twelve-factor",
+      "note_a": "The platform's half of the bargain; twelve-factor is what the application owes it.",
+      "note_b": "Its properties pay off only on a platform that takes over placement and scaling."
+    },
+    {
+      "a": "cloud-native",
+      "verb": "combines-with",
+      "b": "data-platform",
+      "note_a": "State is the part the platform cannot make disposable; data-platform covers the stores that hold it.",
+      "note_b": "Its stores sit beneath the interchangeable-instance platform this theme describes."
+    },
+    {
+      "a": "consistency-and-replication",
+      "verb": "combines-with",
+      "b": "data-platform",
+      "note_a": "The store and write-region choice that sets which agreement mechanics apply.",
+      "note_b": "Which stores exist and where writes land; how copies agree and what each level costs is there."
+    },
+    {
+      "a": "cap-theorem",
+      "verb": "combines-with",
+      "b": "data-platform",
+      "note_a": "Where the CAP trade lands in a store layout.",
+      "note_b": "The write-region choice is the trade CAP states."
+    },
+    {
+      "a": "global-traffic-and-ingress",
+      "verb": "combines-with",
+      "b": "health-modeling",
+      "note_a": "A router that acts on the verdict turns a regional failure into a routing event.",
+      "note_b": "Supplies the verdict a router acts on, and the rule for failing open when every region reads failing."
+    },
+    {
+      "a": "continuous-validation",
+      "verb": "combines-with",
+      "b": "health-modeling",
+      "note_a": "Supplies the verdict a fault injection is checked against.",
+      "note_b": "Injecting a fault shows whether the model would have noticed."
+    },
+    {
+      "a": "api-gateway",
+      "verb": "combines-with",
+      "b": "global-traffic-and-ingress",
+      "note_a": "This theme says when to keep one front door, and how to keep it unbypassable.",
+      "note_b": "Choose one entry point, an API gateway, when every request must be screened the same way."
+    },
+    {
+      "a": "metrics-monitoring",
+      "verb": "combines-with",
+      "b": "observability",
+      "note_a": "The case study's metrics are one of the three records this theme joins.",
+      "note_b": "Metrics are the cheap, pre-aggregated record; the case study works through ingesting and alerting on them."
+    },
+    {
+      "a": "continuous-delivery",
+      "verb": "combines-with",
+      "b": "operating-a-live-system",
+      "note_a": "Routine operations reuse this delivery path.",
+      "note_b": "Hand-run changes go through the same automated path as a release."
+    },
+    {
+      "a": "operating-a-live-system",
+      "verb": "combines-with",
+      "b": "securing-availability",
+      "note_a": "The shared long-lived key that fails everything at once is the one this theme's short-lived credentials replace.",
+      "note_b": "Rotation and certificate renewal are the scheduled work that stops the expiry outage this theme warns about."
+    },
+    {
+      "a": "securing-availability",
+      "verb": "combines-with",
+      "b": "spike-handling",
+      "note_a": "A flood is a flood whether hostile or a launch: Gatekeeper and Intercepting Validator reject work at the edge for both.",
+      "note_b": "Edge rejection of hostile floods reuses the screening controls this theme covers."
+    },
+    {
+      "a": "health-modeling",
+      "verb": "combines-with",
+      "b": "twelve-factor",
+      "note_a": "Its per-instance readiness signal is the endpoint this page's verdict is read through.",
+      "note_b": "The health endpoint's over-check and under-check judgement is argued at system scale there."
+    },
+    {
+      "a": "long-running-tasks",
+      "verb": "combines-with",
+      "b": "workload-composition",
+      "note_a": "Supplies the buffer-and-worker split this page follows through to the client.",
+      "note_b": "Hands the buffered write on to progress reporting and result retrieval."
+    },
+    {
       "a": "fault-injection",
       "verb": "combines-with",
       "b": "service-mesh",

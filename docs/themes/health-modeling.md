@@ -21,22 +21,23 @@ A well-instrumented system emits thousands of numbers and still cannot say wheth
 
 A health model is a written rule that turns thousands of metrics into one answer per user-facing flow, such as healthy, degraded or failing, and rolls those up into one verdict for the whole system. Without it, a wall of green tiles and an alert that processor use is at 80% tell nobody whether users are being served. With it, a router can pull a failing region out of rotation on its own, and an alert on the root verdict means users are affected. The trade that decides the design is fast against stable. A short window and a tight threshold catch a real failure in seconds but flip on a blip, and a flipping verdict is worse than a slow one because traffic bounces between regions. A longer window needs several bad readings in a row. Choose stable when moving traffic is expensive.
 
-- **Slow detection.** A longer window serves errors for its whole length, so size it by what a needless move costs.
-- **Probe load.** Every edge location probes the verdict, so compute it on a timer and serve it from memory for a few seconds.
+- **Slow detection.** A longer window serves errors until enough bad checks confirm, so size it by what a needless move costs.
+- **Probe load.** Every edge location probes, so compute the verdict on a timer and serve it from memory; the cache age adds detection delay.
 - **Lost evidence.** Evidence disappears with disposable machines, so write telemetry somewhere that outlives them.
+- **Flapping.** A short window flips on a blip and bounces traffic between regions, so add hysteresis.
 
-**Example.** A checkout flow is checked every 20 s. It turns failing when 3 checks in a row show more than 10% errors, and healthy again after 3 clean ones. At 1,000 requests a second, a 20 s blip with 40% errors changes nothing. A real outage with 100% errors is called after 60 s, and about 60,000 requests fail before the router drains the region. Flipping on the first bad check would cut that to 20,000, but the blip would also move the region's 1,000 requests a second onto its neighbours for nothing. Pick the window by what a needless move costs.
+**Example.** A checkout flow is checked every 20 s. It turns failing when 3 checks in a row show more than 10% errors, and healthy again after 3 clean ones, so a drained region also stays out for 60 s. At 1,000 requests a second, a 20 s blip with 40% errors changes nothing. A real outage with 100% errors is called after 60 s, and at least 60,000 requests fail, plus the router's drain time. Flipping on the first bad check would cut that to 20,000, but a blip would then move the region's 1,000 requests a second onto its neighbours for nothing. If a needless move costs more than that 40,000-request gap, keep the window.
 
 ## The tradespace
 <!--meta block=tradespace-->
 
-The first trade is between a verdict that is easy to trust and one that is easy to explain. A model that checks a few dependencies is cheap, fast and occasionally wrong in both directions — it says healthy while a feature nobody probed is broken, and it says unhealthy when one non-critical check times out. A model that considers every measure is accurate and slow, and when it turns red nobody can say which of the forty inputs did it.
+The first trade is between a verdict that is easy to trust and one that is easy to explain. A model that checks a few dependencies is cheap and fast but wrong both ways: healthy while an unprobed feature is broken, unhealthy when one non-critical check times out. A model that considers every measure tends to be slower and harder to explain, and when it turns red nobody can say which of the forty inputs did it.
 
-The second is between reacting quickly and reacting stably. A short evaluation window and a tight threshold detect a real failure in seconds, and they also flip on a blip — and a flipping verdict is worse than a slow one, because traffic moves back and forth and neither destination settles. Longer windows and hysteresis buy stability at the cost of serving errors for the length of the window.
+The second is between reacting quickly and reacting stably. A short window and a tight threshold detect a real failure in seconds but flip on a blip, and a flipping verdict is worse than a slow one, because traffic moves back and forth. Longer windows and hysteresis buy stability at the cost of serving errors for the window. Rolling flows up into one verdict is a trade too: taking the worst flow pages people over a non-critical one, while counting only critical flows can hide a failing one.
 
-The third is what the verdict is allowed to depend on. Checking a dependency directly gives a definitive answer and makes that dependency's slowness part of your health, so a store that is merely slow can report you as down. Inferring health from the traffic you are already serving costs nothing extra and says nothing at all when traffic is low — which is exactly when a synthetic check earns its place.
+The third is what the verdict may depend on. Checking a dependency directly gives a definitive answer but makes its slowness yours, so a merely slow store can report you as down. If every region checks the same shared dependency, one failure marks all of them failing, so check only what the region owns, and let the router fail open when every region reads failing. Inferring health from live traffic costs nothing extra but says nothing when traffic is low, which is when a synthetic check earns its place.
 
-**A verdict is only useful if something acts on it automatically; anything a human has to interpret is a dashboard, not a model.**
+**A verdict nothing acts on automatically is a dashboard, not a model.**
 
 ## The tour
 <!--meta block=tour-->
@@ -47,11 +48,11 @@ The third is what the verdict is allowed to depend on. Checking a dependency dir
 
 ### [Health Endpoint Monitoring](../patterns/distributed/resilience/health-endpoint.md) {#tour-health-endpoint}
 
-The model's output has to be reachable, and this is where it surfaces. An endpoint that reports the rolled-up verdict rather than merely that the process is alive is what turns the model from a dashboard into a control: the router reads it, and an unhealthy region stops receiving traffic without anybody being paged.
+The model's output has to be reachable, and this is where it surfaces. An endpoint that reports the rolled-up verdict rather than merely that the process is alive is what turns the model from a dashboard into a control: the router reads it, and an unhealthy region stops receiving traffic without anybody having to act first, though a page can still follow.
 
 ### [In-Process Cache](../patterns/caching/in-process-cache.md) {#tour-in-process-cache}
 
-Every edge location of a global router probes independently, so an endpoint that checks its dependencies on each request generates far more load than the traffic it is protecting. Computing the verdict on a timer and serving it from memory for a few seconds costs a little detection delay and removes the whole problem.
+Every edge location of a global router probes independently, so an endpoint that checks its dependencies on each request can generate more probe load than real traffic when many edge locations probe a low-traffic service. Computing the verdict on a timer and serving it from memory for a few seconds costs a little detection delay and caps the load at one evaluation per tick.
 
 ### [Circuit Breaker](../patterns/distributed/resilience/circuit-breaker.md) {#tour-circuit-breaker}
 
@@ -63,7 +64,7 @@ The model says a flow is degraded; the trace says which hop in that flow spent t
 
 ### [Wire Tap](../patterns/messaging/wire-tap.md) {#tour-wire-tap}
 
-Health of an asynchronous path is invisible from either end — the producer only knows it published, and the consumer only knows what it received. Copying messages to an inspection point gives the model evidence about the part of the flow that has no request to measure.
+Health of an asynchronous path is invisible from either end: the producer only knows it published, and the consumer only knows what it received. Copying messages to an inspection point gives the model evidence about the part of the flow that has no request to measure.
 
 ### [Secure Logger](../patterns/security/secure-logger.md) {#tour-secure-logger}
 
@@ -90,3 +91,18 @@ A model is only as good as what it is allowed to record, and the usual reason fo
 - [Global Traffic & Ingress](./global-traffic-and-ingress.md) — The main consumer of the verdict — a router that acts on it turns a regional failure into a routing event.
 - [Continuous Validation](./continuous-validation.md) — Injecting a fault is how you find out the model would actually have noticed.
 - [Resilience](./resilience.md) — The mechanisms whose state the model reads, and whose engagement it should make visible.
+
+## How it relates
+<!--meta block=relationships-->
+
+<!-- relationships:start -->
+
+<!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Global Traffic & Ingress](./global-traffic-and-ingress.md) — Supplies the verdict a router acts on, and the rule for failing open when every region reads failing.
+- [Continuous Validation](./continuous-validation.md) — Injecting a fault shows whether the model would have noticed.
+- [Twelve-Factor](./twelve-factor.md) — Its per-instance readiness signal is the endpoint this page's verdict is read through.
+
+<!-- relationships:end -->
