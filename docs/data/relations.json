@@ -14573,6 +14573,20 @@
       "b": "unique-id-generation",
       "note_a": "Claimed counter blocks, a keyed permutation and base62 give collision-free codes with no check; hashing and random codes are the rejected alternatives.",
       "note_b": "Bitly shows it end to end: blocks of 1000 ids, permuted, then encoded as seven characters."
+    },
+    {
+      "a": "design-distributed-cache",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "One viral key's traffic lands on the single node that owns it; key#N copies and a client-side count-min sketch find and spread it.",
+      "note_b": "A sharded cache places each key on one node, so one hot key still saturates that node."
+    },
+    {
+      "a": "design-distributed-cache",
+      "verb": "exposed-to",
+      "b": "cache-stampede",
+      "note_a": "A hot key's expiry sends every reader to the origin at once; jittered TTLs and a set-if-absent refill lock turn it into one query.",
+      "note_b": "A shared cache in front of a database turns each hot-key expiry into a herd of misses."
     }
   ],
   "group_order": {

@@ -74,11 +74,11 @@ The arithmetic settles one question: how many machines, and what decides it. Two
 
 - By storage: a 32&nbsp;GB-RAM instance leaves roughly 24&nbsp;GB usable once process and OS overhead are subtracted; 1024&nbsp;GB ÷ 24&nbsp;GB ≈ 43, rounded up for headroom to **~50 nodes**. → NFR: scale.
 - By throughput: take ~20,000 req/s as what one node sustains before latency degrades (assumed — it moves with value size and instance type); 100,000 ÷ 20,000 = 5 as a floor, padded for spikes and in-flight failures to **~8 nodes**. → NFR: scale.
-- The binding constraint is memory, and by six times. Fifty nodes serve 100k req/s at **~2k req/s each**, an eighth of what a node can do — so "add nodes for throughput" is the wrong instinct here, and CPU headroom is something this design already owns. → NFR: scale.
+- The binding constraint is memory, and by six times. Fifty nodes serve 100k req/s at **~2k req/s each**, a tenth of what a node can do — so "add nodes for throughput" is the wrong instinct here, and CPU headroom is something this design already owns. → NFR: scale.
 - Replication factor: keeping one copy of every shard doubles the memory bill to **~100 nodes, 2&nbsp;TB of RAM**. It is the single largest cost decision on the page, and it buys availability rather than capacity. → NFR: availability.
 - Network: 100k req/s × ~1&nbsp;KB average value ≈ **100&nbsp;MB/s ≈ 0.8&nbsp;Gbit/s** across the fleet, which is nothing. One node at 20k req/s of 10&nbsp;KB values is **200&nbsp;MB/s ≈ 1.6&nbsp;Gbit/s**, which saturates a card long before the CPU notices — value size, not request rate, decides whether the network binds. → NFR: latency.
 - Hit-ratio economics: at 100k req/s, a 95% hit ratio leaves **5k misses/s** on the source of truth and 90% leaves **10k/s**. Five points of hit ratio doubles the load on the database this cache exists to protect, so memory is bought in hit-ratio units, not gigabytes. → NFR: scale.
-- Bookkeeping: 1&nbsp;TB at ~1&nbsp;KB values is **~1 billion entries**, each carrying a hash slot, two list pointers and an expiry — assume several tens of bytes, so **roughly a tenth of the fleet's RAM** is overhead before the allocator's own rounding. Small values make this ratio much worse, which is why a cache of 50-byte counters is a different sizing exercise. → NFR: scale.
+- Bookkeeping: 1&nbsp;TB at ~1&nbsp;KB values is **~1 billion entries**, each carrying a hash slot, two list pointers and an expiry — assume 50 to 100 bytes, so **5 to 10 percent of the fleet's RAM** is overhead before the allocator's own rounding. Small values make this ratio much worse, which is why a cache of 50-byte counters is a different sizing exercise. → NFR: scale.
 - Rebalance cost: adding one node to a 50-node ring moves about 1/51 of the keyspace ≈ **20&nbsp;GB**, which arrives as misses refilled from the source of truth rather than as a copy between nodes — a temporary 2% dent in the hit ratio, not an outage. → NFR: scale.
 
 **Verdict per candidate:**
@@ -96,7 +96,7 @@ The arithmetic settles one question: how many machines, and what decides it. Two
 - Quorum writes or consensus — **rejected**: it prices a strong-consistency guarantee that is explicitly out of scope, in latency the budget cannot pay. → NFR: latency.
 - Sampled approximate LRU under a memory ceiling — **adopted**: exact LRU makes every read a write to a shared list, which is a lock in the hot path (dive 3). → FR: eviction; NFR: latency.
 - Lazy expiry plus sampled active expiry — **adopted**: reads catch what they touch and a background pass catches what nobody touches. A full periodic sweep — **rejected**: scanning a billion keys to reclaim a few thousand. → FR: TTL.
-- Dedicated hot-key tier — **deferred**: uniform sharding holds while traffic follows keys; the trigger is one shard's request rate running several times the fleet median (dive 4). → NFR: scale.
+- Dedicated hot-key tier — **deferred**: uniform sharding holds while traffic follows keys; the trigger is one shard's request rate running several times the fleet median (dive 4). Until then, NFR 5 is met by hand: copy the one named key under `key#1…key#3`, found by the client-side count-min sketch (both in dive 4). → NFR: scale.
 - Near-cache inside the client process — **deferred**: it removes the network entirely for a tiny hot set, and adds a second staleness window nobody can invalidate; the trigger is a hot set small enough to fit in an application's heap. → NFR: latency.
 - Cross-region replication — **rejected**: a remote cache is refilled from a local source of truth more cheaply than it is shipped over a wide area network (WAN), and a stale cross-region copy is the worst of both. → NFR: availability.
 
@@ -131,6 +131,10 @@ DELETE /{key}
 POST /mget                              # one round trip, many keys
 { "keys": ["a", "b", "c"] }
 → 200 { "a": "…", "c": "…" }         # absent keys simply missing
+
+POST /{key}?if_absent=true              # set-if-absent
+{ "value": "…", "ttl_seconds": 30 }
+→ 200 OK if set, 409 Conflict if the key already exists   # the single-flight lock of dive 4
 ```
 
 A miss and a stored empty value must be different answers. Collapsing them is the classic way a cache turns into an outage: the caller cannot tell "not cached" from "cached as nothing", so it either re-queries the database for every legitimately empty result or caches a null and never notices the real value arriving. The distinction is also what makes negative caching possible — storing "this key does not exist" for a short TTL, the cheapest defence against a scan of keys that will never hit.
@@ -250,7 +254,7 @@ sequenceDiagram
 **A cache is a fixed amount of memory pretending to be an unbounded map, and the eviction policy is where the pretence is maintained — cheaply, or on the hot path.** The textbook LRU is exact: every read moves an entry to the head of a shared list. That is a write on every read, and under concurrency a write to shared structure is a lock.
 
 - **Exact LRU.** Correct ordering, O(1) per operation, and a single mutable list every reader must touch. On one thread it is perfect; across cores it turns the read path into a contention point for the sake of an ordering nobody inspects.
-- **Sampled approximate LRU (chosen).** Do not maintain a global order at all: on eviction, sample a handful of candidate keys and drop the one with the oldest access stamp. The result is almost the same victim for a fraction of the bookkeeping, which is why Redis approximates LRU rather than implementing it exactly. The cost is admitted: occasionally a slightly-less-cold entry is evicted, and nobody can tell.
+- **Sampled approximate LRU (chosen).** Do not maintain a global order at all: on eviction, sample a handful of candidate keys and drop the one with the oldest access stamp. The result is almost the same victim for a fraction of the bookkeeping, which is why Redis approximates LRU rather than implementing it exactly. The cost is admitted: occasionally a slightly-less-cold entry is evicted, and replaying your own traffic against exact LRU shows how much the hit ratio differs.
 - **Frequency-based eviction.** LRU has one bad day — a scan. Reading a million keys once evicts the entire working set in favour of data nobody will ask for again, and a frequency-based policy resists it by preferring entries that have been popular rather than recent. Worth naming as the swap to make when the workload is scan-heavy; LRU is the right default for read-mostly traffic with a stable hot set.
 
 Then there is the memory the cache does not think it is using. An allocator that carves memory into fixed size classes — memcached's slabs being the clearest example — can hold free space in the wrong class, so a workload whose value sizes drift strands memory it cannot reuse without a restart. Per-entry overhead compounds the same way: at ~1&nbsp;KB values the tenth of RAM spent on hash slots, list pointers and expiries is a rounding error, and at 50-byte values it is most of the machine. Set the ceiling on resident memory rather than on the sum of stored values, and leave room above it — a cache whose memory the operating system reclaims does not degrade, it stops.
@@ -263,7 +267,7 @@ Expiry is the other half of the budget, and it needs both mechanisms. Lazy expir
 
 - **Hot reads — spread the copies, not the node.** Vertically scaling the owning node buys a little and wastes the other 49. Fanning out works: read replicas of that shard, a separate tier for known-hot keys, or — simplest — keeping several copies of the value under names built from the key (`key#1…key#3`) so readers pick one at random and the load divides by three. The general read-side story is the [Scaling Reads](../themes/scaling-reads.md) theme.
 - **Hot writes — coalesce before you split.** Copies must converge, so splitting a hot write across suffixes means reconciling on read. [Batching](../patterns/concurrency/batching.md) at the client is the cheaper first move: fold a thousand increments a second into one flush and the shard sees one write instead of a thousand, at the cost of a flush interval's worth of staleness. See [Scaling Writes](../themes/scaling-writes.md).
-- **Stampede on expiry.** A hot key's TTL is a scheduled outage: the moment it expires, every request for it misses at once and they all go to the source of truth — a [stampede](../hazards/cache-stampede.md) whose size is the key's popularity. Jitter TTLs so hot keys do not expire together, and let one client claim the refill with a set-if-absent lock while the others wait or serve the previous value; the origin then sees one query per expiry rather than thousands.
+- **Stampede on expiry.** A hot key's TTL is a scheduled outage: the moment it expires, every request for it misses at once and they all go to the source of truth — a [stampede](../hazards/cache-stampede.md) whose size is the key's popularity. Jitter TTLs so hot keys do not expire together, and let one client claim the refill with a set-if-absent lock while the others wait or serve the previous value; the origin then sees one query per expiry rather than thousands. Set the lock's TTL longer than the origin's slowest refill so a crashed holder frees the key, and give waiters a timeout after which they serve the previous value or read through.
 - **Detection before mitigation.** None of the above can be applied to a key nobody has identified, and exact per-key counters at 100k req/s cost more than the traffic they measure. Sample the request stream or keep an approximate frequency structure such as a [count-min sketch](../patterns/distributed/coordination/count-min-sketch.md) on the client, which names the heavy hitters in fixed memory and is wrong only in the direction of over-counting.
 
 Every one of these is a special case bolted onto an otherwise uniform scheme, and that is the honest summary: uniform sharding is simple everywhere and wrong in one place, and the fix is per-key machinery to maintain, monitor and eventually retire when the key goes cold. Take the simplicity, know the exception, and keep the detection running so the exception is found by a dashboard rather than by a pager.
@@ -313,7 +317,7 @@ Two tail-latency sources deserve naming because an average hides both. A node th
 
 - **Resizing is cheap by construction.** The ring moves one arc when a node joins or leaves — ~20&nbsp;GB of refill, not a fleet-wide remap (see dive 1).
 - **Routing costs no round trip.** The client computes the owner locally, so a cache hit is one hop and one memory lookup (see dive 6).
-- **Every operation is O(1).** Get, set, delete and eviction are all constant-time on the node, so latency does not drift as the cache fills.
+- **Lookups are O(1).** Get, set and delete are constant-time on the node, and eviction costs a fixed sample size (dive 3), so latency does not drift as the cache fills.
 - **A node's death is a trickle, not a herd.** The replica serves everything that shipped, so the source of truth never sees a shard's worth of misses at once (see dive 2).
 - Sizing is settled by one estimate — memory — and the request capacity comes free with it.
 - The only agreed-on state is the member list, so the fleet coordinates kilobytes rather than terabytes.
@@ -324,7 +328,7 @@ Two tail-latency sources deserve naming because an average hides both. A node th
 - **A failover loses the writes that had not shipped.** The same window resurrects deletes that had not shipped, so a deleted key can come back with a full TTL (see dive 2).
 - **Replication doubles the memory bill.** Availability here is bought with RAM — ~100 nodes instead of ~50 — and RAM is the whole cost of the system.
 - **Nothing survives a restart.** A node that comes back is empty, and its share of traffic goes to the source of truth until the working set refills.
-- **The hit ratio is a cliff, not a slope.** Five points of it doubles the load on the database the cache exists to protect (named in Right-sizing).
+- **The hit ratio is a cliff, not a slope.** From 95% to 90% doubles origin load because the miss rate is small; the effect is a ratio, not a threshold (see Right-sizing).
 - Approximate LRU occasionally evicts an entry a stricter policy would have kept, and a scan can still flush the hot set (see dive 3).
 - More moving parts to operate: the ring, replication lag, the janitor's CPU and the memory ceiling all misbehave under load in different ways.
 - A near-cache in the client would be the fastest layer and the one no invalidation can reach, which is why it stays deferred (see dive 5).
@@ -361,6 +365,11 @@ Two tail-latency sources deserve naming because an average hides both. A node th
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Hot Key](../hazards/hot-key.md) — One viral key's traffic lands on the single node that owns it; key#N copies and a client-side count-min sketch find and spread it.
+- [Cache Stampede](../hazards/cache-stampede.md) — A hot key's expiry sends every reader to the origin at once; jittered TTLs and a set-if-absent refill lock turn it into one query.
 
 **Demonstrates**
 
