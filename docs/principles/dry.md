@@ -83,8 +83,8 @@ So wait for the knowledge to actually repeat — a common heuristic is to tolera
 **Combines with**
 
 - [Vertical Slice](../patterns/architecture/vertical-slice.md) — The maxim a slice layout relaxes on purpose, and the judgement it hands back to the team
-- [Rule of Three](./rule-of-three.md) — The wait avoids merging two things that only look alike
 - [Atomic Design](../patterns/frontend/atomic-design.md) — Atomic design applies this to user interface (UI) parts, with a shared name for each tier
+- [Rule of Three](./rule-of-three.md) — The wait avoids merging two things that only look alike
 
 **Prevents**
 

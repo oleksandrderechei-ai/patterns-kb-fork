@@ -11489,13 +11489,6 @@
       "note_b": "Tangled flow between modules is what low cohesion and high coupling produce"
     },
     {
-      "a": "dry",
-      "verb": "combines-with",
-      "b": "rule-of-three",
-      "note_a": "The wait avoids merging two things that only look alike",
-      "note_b": "Says when to remove duplication: on the third copy, not the second"
-    },
-    {
       "a": "rule-of-three",
       "verb": "combines-with",
       "b": "yagni",
@@ -14314,6 +14307,27 @@
       "b": "high-cohesion-low-coupling",
       "note_a": "A small, well-cut module is easier to keep hidden behind its interface.",
       "note_b": "Hiding internals keeps a narrow interface narrow, so coupling stays low."
+    },
+    {
+      "a": "intercepting-validator",
+      "verb": "combines-with",
+      "b": "make-illegal-states-unrepresentable",
+      "note_a": "Once input passes, the strict type keeps every later function from re-checking it.",
+      "note_b": "Parses raw input into the strict type at the edge; it rejects what the type cannot rule out."
+    },
+    {
+      "a": "convention-over-configuration",
+      "verb": "combines-with",
+      "b": "hyrums-law",
+      "note_a": "A default users rely on becomes a contract, so changing it breaks them.",
+      "note_b": "Defaults are observable behaviour too, so a convention is a dependency to keep stable."
+    },
+    {
+      "a": "dry",
+      "verb": "combines-with",
+      "b": "rule-of-three",
+      "note_a": "The wait avoids merging two things that only look alike",
+      "note_b": "Says when to remove duplication: on the third copy for look-alike code, at the second for one fact kept in sync."
     }
   ],
   "group_order": {
