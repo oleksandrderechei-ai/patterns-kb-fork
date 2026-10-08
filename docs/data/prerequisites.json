@@ -537,7 +537,7 @@
       "definition": "Caps how long a call may take before giving up",
       "route": "/patterns/distributed/resilience/timeout-deadline.html",
       "requires": [],
-      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request", "heartbeat", "bulkhead", "scatter-gather"]
+      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request", "heartbeat", "bulkhead", "scatter-gather", "load-shedding"]
     },
     {
       "id": "hedged-request",
@@ -577,7 +577,7 @@
       "definition": "Rejects work early once the server is past what it can serve",
       "route": "/patterns/distributed/resilience/load-shedding.html",
       "requires": [],
-      "related": ["rate-limiter", "load-leveling", "bulkhead", "backpressure", "retry-backoff", "autoscaling", "request-coalescing", "design-for-operations", "build-for-business", "feature-flag", "fallback", "leaky-bucket", "circuit-breaker"]
+      "related": ["rate-limiter", "load-leveling", "bulkhead", "backpressure", "retry-backoff", "autoscaling", "request-coalescing", "design-for-operations", "build-for-business", "feature-flag", "fallback", "leaky-bucket", "circuit-breaker", "timeout-deadline"]
     },
     {
       "id": "fault-injection",

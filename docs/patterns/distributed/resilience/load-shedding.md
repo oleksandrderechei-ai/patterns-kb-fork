@@ -21,7 +21,7 @@ A service that accepts everything offered fails by getting slower: queues grow, 
 ## Explained
 <!--meta block=explain-->
 
-Load shedding measures how busy you are right now and, past a set level, refuses some new work at once and cheaply, so the work you accept still finishes in time. Without it, queues grow, each request waits longer, retries add load, and nobody is served. Measure how full you are, not how many requests came, for example calls in progress, queue length or latency above target. When the level is crossed, return 503 (service unavailable) with a retry-after header before any expensive work starts, and choose who loses by priority, so checkout survives and a bulk export is refused. Choose it over a queue when the caller is waiting for an answer, since a queue past capacity only adds delay and a fast no beats a slow maybe.
+Load shedding refuses some new work at once and cheaply once the service passes a set level of busyness, so the work you accept still finishes in time. Without it, queues grow, each request waits longer, retries add load, and nobody is served. Measure how full you are, not how many requests came, for example calls in progress, queue length or latency above target. When the level is crossed, return 503 (service unavailable) with a retry-after header before any expensive work starts, and choose who loses by priority, so checkout survives and a bulk export is refused. Choose it over a queue when the caller is waiting for an answer, because a queue past capacity only adds delay.
 
 - **Refusals are failures.** Count them and set the level so it fires only on real overload.
 - **Instant retries.** A caller that retries at once turns a refusal into more load, so require backoff in your clients.
@@ -32,7 +32,7 @@ Load shedding measures how busy you are right now and, past a set level, refuses
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="How does a server past capacity keep serving anyone? Step 2 happens before step 3 commits anything, so a refusal at step 4 costs almost nothing — and step 6 is what keeps the threshold tracking reality instead of a guess."
+```mermaid caption="How does a server past capacity keep serving anyone? Step 2 happens before step 3 commits anything, so a refusal at step 4 costs almost nothing. Step 6 keeps the threshold tracking reality instead of a guess."
 flowchart LR
     C["Callers"] -->|"1 request arrives"| AD["Admission check"]
     subgraph gate["Decided before any resource is committed"]
@@ -46,7 +46,7 @@ flowchart LR
 
 The subgraph is the boundary that makes the pattern work. Once a request holds a thread, a connection or a database slot, refusing it has already spent the thing that was scarce — so the decision has to sit in front of the pool rather than inside it.
 
-```mermaid caption="Priority is what turns shedding from a blunt instrument into a useful one. The same saturation refuses the export and admits the checkout, so the traffic worth least pays for the traffic worth most."
+```mermaid caption="Priority decides who is refused. The same saturation refuses the export and admits the checkout."
 sequenceDiagram
     participant Lo as Bulk caller
     participant Hi as Checkout caller
@@ -66,10 +66,11 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Concurrency-limited admission** — Cap the number of requests in flight and refuse anything beyond it. The signal needs no tuning against traffic shape because it measures the scarce resource itself rather than a proxy for it — this is the version worth trying first.
+- **Concurrency-limited admission** — Cap requests in flight and refuse anything beyond the cap. It measures the scarce resource itself, so it needs no tuning against traffic shape, but the cap must be set from measured capacity and revisited. Try it first when the cost of work is roughly even.
 - **Priority shedding** — Requests carry a class assigned at the edge and the threshold applies per class, so bulk work is refused well before interactive work is. It needs a classification everyone agrees on and callers who declare it honestly, and it is what makes shedding a product decision rather than a technical one.
 - **[Deadline](./timeout-deadline.md)-aware shedding** — Each request carries the time it has left, and anything whose remaining budget is smaller than the current queue wait is dropped on arrival — the caller would have abandoned it anyway. It discards precisely the work that was already worthless, and it is worth nothing unless deadlines are propagated end to end.
 - **Adaptive thresholds** — The limit is inferred rather than configured, by watching throughput against concurrency and settling near the point where more concurrency stops buying more throughput. It survives dependency slowdowns and hardware changes that a constant does not, at the cost of a control loop that can oscillate.
+- **Bounded queue wait** — Keep a short queue and drop entries older than a wait cap, serving newest first under load, because the oldest are the likeliest to have been abandoned. It suits work a caller waits on, and it fails if the cap exceeds the client timeout.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -85,7 +86,7 @@ sequenceDiagram
 <!--meta polarity=con-->
 
 - **Refusals are real failures for real users**, and they count against availability even when shedding was the right call.
-- **Threshold is only as good as its signal** — on the wrong one it sheds while idle or accepts while drowning.
+- **Threshold is only as good as its signal**, so on the wrong one it sheds while idle or accepts while drowning.
 - **A caller that retries immediately** turns a refusal into more load, so it works only if the client honours the backoff.
 - **It is local to an instance**, so a hot shard can be shedding hard while the fleet average looks healthy and nothing scales out.
 
@@ -109,15 +110,16 @@ sequenceDiagram
 ## Code sketch
 <!--meta block=sketch-->
 
-```typescript summary="TypeScript — concurrency-limited admission with two priority classes"
+```typescript summary="TypeScript — concurrency-limited admission with three priority classes"
 /* The decision is made before the handler runs, so a refusal costs one
  * comparison instead of a thread, a connection and a database slot. */
+// Each limit is about capacity (requests per second) times target latency in seconds.
 const INTERACTIVE_LIMIT = 50;     // what this instance can hold in flight
 const BULK_LIMIT = 35;            // bulk traffic is refused earlier
 
 let inFlight = 0;
 
-function admit(priority: "interactive" | "bulk"): boolean {
+function admit(priority: "interactive" | "bulk" | "critical"): boolean {
   const ceiling = priority === "bulk" ? BULK_LIMIT : INTERACTIVE_LIMIT;
   if (inFlight >= ceiling) return false;
   inFlight++;
@@ -126,11 +128,14 @@ function admit(priority: "interactive" | "bulk"): boolean {
 
 export async function handle(req: Request, run: () => Promise<Response>) {
   const priority = classify(req);
+  if (priority === "critical") return run(); // health checks and auth are exempt and never shed
   if (!admit(priority)) {
     shedRate.inc({ priority });                 // count sheds separately from errors
     return new Response("overloaded", {
       status: 503,
-      headers: { "Retry-After": "5" },          // tell the caller to back off
+      headers: {
+        "Retry-After": String(5 + Math.floor(Math.random() * 5)), // jittered so shed clients do not return together
+      },
     });
   }
   try {
@@ -139,7 +144,6 @@ export async function handle(req: Request, run: () => Promise<Response>) {
     inFlight--;                                 // release on failure too, or the limit leaks
   }
 }
-
 ```
 
 ## In the wild
@@ -155,11 +159,11 @@ export async function handle(req: Request, run: () => Promise<Response>) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Shed trigger** — The signal that starts rejection: in-flight request limit, queue wait time, CPU or memory use, or event-loop lag. Queue wait and concurrency track overload sooner than CPU does.
-- **Fixed or adaptive limit** — A hand-set concurrency cap against one that adjusts from observed latency. A fixed cap goes stale as the service or its dependencies change.
+- **Shed trigger** — The signal that starts rejection: in-flight request limit, queue wait time, CPU or memory use, or event-loop lag. Queue wait and concurrency usually track overload sooner than CPU does, except when CPU is the scarce resource.
+- **Fixed or adaptive limit** — A hand-set concurrency cap against one that adjusts from observed latency. A fixed cap goes stale as the service or its dependencies change. Set the cap from a load test: about peak sustainable throughput times latency at that load (Little's law), with bulk at a fraction of it, and re-measure after each dependency change.
 - **What to drop first** — By priority class, by cost, or newest against oldest. Drop low-priority and already-late work first, or you spend capacity on answers nobody waits for.
-- **Rejection response** — A fast error such as 429 or 503, with a retry-after hint if clients honour it. A slow rejection costs the capacity you were trying to protect.
-- **Recovery margin** — The gap between the level that starts shedding and the one that stops it. A zero gap makes the shedder flap.
+- **Rejection response** — A fast error such as 429 or 503, with a retry-after hint if clients honour it. A slow rejection costs the capacity you were trying to protect. Use 503 for self-protection and keep 429 for a per-client quota. Set Retry-After from observed recovery time and add jitter, so shed clients do not all return together.
+- **Recovery margin** — The gap between the level that starts shedding and the one that stops it. For signals such as CPU or queue wait, a zero gap makes the shedder flap; a plain in-flight cap needs no gap.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -174,9 +178,10 @@ export async function handle(req: Request, run: () => Promise<Response>) {
 
 - **Shedding starts too late** — The queue is already deep, admitted requests outlive client timeouts, and the server finishes work nobody reads.
 - **Critical traffic shed equally** — Health checks, auth or payments are rejected with the rest. You see a restart loop or failed logins during the overload.
-- **Retry amplification** — Rejected clients retry at once, and the load that caused the shedding grows. You see offered load rise after the first rejections.
+- **Retry amplification** — Rejected clients retry at once, and the load that caused the shedding grows into a \[retry storm\](../../../hazards/retry-storm.md). You see offered load rise after the first rejections. Balancer retries can send a refused request to another saturated instance, so 503s appear on every instance.
 - **Flapping at the threshold** — The service alternates between accepting and shedding every few seconds, so users see random failures.
 - **Expensive rejection** — The service parses, authenticates and logs before it rejects, so shedding does not free the capacity it should.
+- **Shed counted as unhealthy** — A balancer or health check treats 503s from a shedding instance as failures and ejects it, and the rest take its load. You see instances leave rotation as load peaks; keep shed responses out of outlier detection (Envoy ejects a host after `consecutive_5xx`, default 5) and out of health state.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -216,6 +221,7 @@ export async function handle(req: Request, run: () => Promise<Response>) {
 - [Design for Operations](../../../principles/design-for-operations.md) — Shedding is a designed response to overload rather than an improvisation
 - [Build for the Needs of the Business](../../../principles/build-for-business.md) — What to drop first is decided before the incident, not during it
 - [Feature Flag](../routing/feature-flag.md) — The operator can drop optional work by flipping it off
+- [Timeout / Deadline](./timeout-deadline.md) — Deadline-aware shedding drops a request whose remaining budget is below the queue wait, which needs deadlines propagated end to end.
 
 **Alternative to**
 

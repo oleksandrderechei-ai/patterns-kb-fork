@@ -14727,6 +14727,13 @@
       "b": "unbounded-queue",
       "note_a": "A queue capped at C items refuses when full, so the backlog cannot grow without limit.",
       "note_b": "A leaky bucket caps its queue at capacity C and refuses when full, so memory stays flat."
+    },
+    {
+      "a": "load-shedding",
+      "verb": "combines-with",
+      "b": "timeout-deadline",
+      "note_a": "Deadline-aware shedding drops a request whose remaining budget is below the queue wait, which needs deadlines propagated end to end.",
+      "note_b": "A propagated deadline lets a server refuse work the caller has already abandoned."
     }
   ],
   "group_order": {

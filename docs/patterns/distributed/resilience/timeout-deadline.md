@@ -226,6 +226,7 @@ await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
 - [Hedged Request](./hedged-request.md) — A hedge turns a slow call into a fast one before the timeout turns it into an error.
 - [Bulkhead](./bulkhead.md) — Bounds how long a call holds its compartment's permit
 - [Scatter-Gather](../../messaging/scatter-gather.md) — A fan-out call needs one deadline for the whole gather, not one per recipient.
+- [Load Shedding](./load-shedding.md) — A propagated deadline lets a server refuse work the caller has already abandoned.
 
 **Alternative to**
 
