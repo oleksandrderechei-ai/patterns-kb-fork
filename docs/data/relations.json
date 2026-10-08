@@ -14342,6 +14342,34 @@
       "b": "rule-of-three",
       "note_a": "The wait avoids merging two things that only look alike",
       "note_b": "Says when to remove duplication: on the third copy for look-alike code, at the second for one fact kept in sync."
+    },
+    {
+      "a": "sharding",
+      "verb": "combines-with",
+      "b": "minimize-coordination",
+      "note_a": "A key that spreads writes across shards removes the agreement between them",
+      "note_b": "Each shard owns its keys, so writes on different shards never ask each other for agreement"
+    },
+    {
+      "a": "lease",
+      "verb": "combines-with",
+      "b": "minimize-coordination",
+      "note_a": "Expiry removes the need to contact a dead holder; pair it with a fencing token",
+      "note_b": "Exclusivity that expires frees itself when the holder dies, with no talk to the holder"
+    },
+    {
+      "a": "redundancy",
+      "verb": "combines-with",
+      "b": "scale-out",
+      "note_a": "Adding instances is the usual way to get the spare capacity",
+      "note_b": "More instances only count as spares if any one can vanish unnoticed"
+    },
+    {
+      "a": "sticky-session",
+      "verb": "alternative-to",
+      "b": "scale-out",
+      "note_a": "Affinity trades free instance replacement for session locality",
+      "note_b": "Pinning a client to one backend restores the machine dependence scale-out removes"
     }
   ],
   "group_order": {

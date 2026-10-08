@@ -673,7 +673,7 @@
       "definition": "Pins each client to one backend for the life of its session",
       "route": "/patterns/distributed/routing/sticky-session.html",
       "requires": [],
-      "related": ["stateless-service", "websocket", "api-gateway", "consistent-hashing"]
+      "related": ["stateless-service", "websocket", "api-gateway", "consistent-hashing", "scale-out"]
     },
     {
       "id": "blue-green-deployment",
@@ -785,7 +785,7 @@
       "definition": "Splits data across nodes by a partition key",
       "route": "/patterns/distributed/routing/sharding.html",
       "requires": [],
-      "related": ["replication", "mapreduce", "geohash", "vertical-partitioning", "functional-partitioning", "redundancy", "scale-out", "partition-around-limits", "index-table", "relational-databases", "unique-id-generation", "consistent-hashing", "multi-tenancy"]
+      "related": ["replication", "mapreduce", "geohash", "vertical-partitioning", "functional-partitioning", "redundancy", "scale-out", "partition-around-limits", "index-table", "relational-databases", "unique-id-generation", "consistent-hashing", "multi-tenancy", "minimize-coordination"]
     },
     {
       "id": "cdn",
@@ -993,7 +993,7 @@
       "definition": "A grant of a resource for a fixed time that the holder must renew; if it stops renewing, the grant lapses by itself and the resource is free to give away.",
       "route": "/patterns/distributed/coordination/lease.html",
       "requires": [],
-      "related": ["heartbeat", "leader-election", "pessimistic-locking", "fencing-token", "distributed-lock"]
+      "related": ["heartbeat", "leader-election", "pessimistic-locking", "fencing-token", "distributed-lock", "minimize-coordination"]
     },
     {
       "id": "fencing-token",
@@ -2561,7 +2561,7 @@
       "definition": "Two of everything, failing independently, with a rule for who decides",
       "route": "/principles/redundancy.html",
       "requires": [],
-      "related": ["replication", "sharding", "load-balancer", "quorum-consensus", "leader-election", "stateless-service", "self-healing", "failure-mode-analysis", "build-for-business", "regions", "defense-in-depth", "bulkhead"]
+      "related": ["replication", "sharding", "load-balancer", "quorum-consensus", "leader-election", "stateless-service", "self-healing", "failure-mode-analysis", "build-for-business", "regions", "defense-in-depth", "bulkhead", "scale-out"]
     },
     {
       "id": "failure-mode-analysis",
@@ -2577,7 +2577,7 @@
       "definition": "Work that needs no agreement is the only work that scales",
       "route": "/principles/minimize-coordination.html",
       "requires": [],
-      "related": ["distributed-lock", "leader-election", "saga", "outbox", "optimistic-concurrency-control", "idempotency", "event-sourcing", "cqrs", "scale-out", "fallacies-of-distributed-computing"]
+      "related": ["distributed-lock", "leader-election", "saga", "outbox", "optimistic-concurrency-control", "idempotency", "event-sourcing", "cqrs", "scale-out", "fallacies-of-distributed-computing", "sharding", "lease"]
     },
     {
       "id": "scale-out",
@@ -2585,7 +2585,7 @@
       "definition": "Grow by adding machines, and never depend on any one of them",
       "route": "/principles/scale-out.html",
       "requires": ["stateless-service"],
-      "related": ["load-balancer", "autoscaling", "competing-consumers", "sharding", "minimize-coordination", "partition-around-limits", "build-for-business"]
+      "related": ["load-balancer", "autoscaling", "competing-consumers", "sharding", "minimize-coordination", "partition-around-limits", "build-for-business", "redundancy", "sticky-session"]
     },
     {
       "id": "partition-around-limits",

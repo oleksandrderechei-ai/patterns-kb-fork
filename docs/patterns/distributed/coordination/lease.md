@@ -223,6 +223,7 @@ class Lease {
 - [Leader Election](./leader-election.md) — A leader holds its role as a lease and steps down when it cannot renew.
 - [Fencing Token](./fencing-token.md) — A lease alone cannot stop a paused holder, so a token checked at the resource closes the gap.
 - [Distributed Lock](./distributed-lock.md) — A lock built on a lease adds a shared store and a named holder.
+- [Minimize Coordination](../../../principles/minimize-coordination.md) — Expiry removes the need to contact a dead holder; pair it with a fencing token
 
 **Alternative to**
 

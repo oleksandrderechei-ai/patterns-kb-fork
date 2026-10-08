@@ -210,6 +210,7 @@ async function ordersFor(userId: string) {
 - [Unique ID Generation](../coordination/unique-id-generation.md) — The partition key is often carved out of the identifier itself
 - [Consistent Hashing](./consistent-hashing.md) — Consistent hashing is how shards are placed
 - [Multi-Tenancy](./multi-tenancy.md) — The tenant id is a natural shard key.
+- [Minimize Coordination](../../../principles/minimize-coordination.md) — A key that spreads writes across shards removes the agreement between them
 
 **Alternative to**
 

@@ -199,6 +199,7 @@ class StickyBalancer {
 **Alternative to**
 
 - [Stateless Service](./stateless-service.md) — When a service cannot be made stateless, pin each client to the node that holds its state.
+- [Design to Scale Out](../../../principles/scale-out.md) — Affinity trades free instance replacement for session locality
 
 **Variant of**
 
