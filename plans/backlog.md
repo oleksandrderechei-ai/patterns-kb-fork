@@ -86,6 +86,30 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     channel handover cost, a spinlock threshold;
   - `kb.mjs explain` drops the period after a cost's bold lead when the lead is passed
     without one; the writer could add it, as the page shape expects.
+- From the kb-improve run on the ten remaining Resilience patterns (its pull request lists
+  every dropped finding):
+  - a decide row in `observability` that routes "which hop of one request took the time"
+    to `distributed-tracing`; today the row reaches only `correlation-identifier`;
+  - a retitle of `design-rate-limiter`, whose title matches the `rate-limiter` pattern's
+    and reads as a self-reference in its relationships;
+  - a sourcing pass for lines dropped as "needs a source": starting tail-sampling and
+    queue sizes (`distributed-tracing`), named fault tools and a stateful-fault con
+    (`fault-injection`), an idempotency-key rule and alert thresholds (`hedged-request`),
+    signal thresholds and a cost-weighted variation (`leaky-bucket`), a shed-rate alert
+    window (`load-shedding`), retention and map-size caps (`request-coalescing`), a pool
+    fill-time bound (`timeout-deadline`), a fill-level alert (`token-bucket`);
+  - edges drafted but over the cap: `distributed-tracing` to `secure-logger`,
+    `hedged-request` to `load-shedding` (alternative-to) and `circuit-breaker`; a
+    `hedged-request` to `metastable-failure` note that says "prevents" while the text says
+    it only avoids adding load; and the leaky-bucket edge on `rate-limiter`, typed
+    combines-with where `token-bucket` is has-variant;
+  - variations a senior reader expects, held back by the cap: parent-based sampling and
+    clock-skew and tail-sampling cons (`distributed-tracing`), hedge-on-fast-error and a
+    stale-replica con (`hedged-request`), a partitioned queue (`load-leveling`),
+    server-side deadline enforcement (`timeout-deadline`), the sum of per-key capacities
+    as the real burst (`token-bucket`);
+  - a second pass for the plan lines dropped as over the cap of 8, mostly wording,
+    em-dash and one-claim-per-item splits.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 
