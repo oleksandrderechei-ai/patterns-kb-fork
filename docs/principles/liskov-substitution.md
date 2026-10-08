@@ -31,22 +31,24 @@ The Liskov substitution principle says code written against a base type must sta
 ## Why it helps
 <!--meta block=rationale-->
 
-Polymorphism is a promise to the caller: hold a reference to the base type and you never need to know which concrete thing is behind it. LSP is what keeps that promise keepable. Break it — a subtype that throws where the base returns, or narrows the inputs it will accept — and every caller has to start asking which subtype it really holds, which is exactly the `instanceof` checking that polymorphism was meant to abolish.
+Polymorphism is a promise to the caller: hold a reference to the base type and you should not need to know which concrete type is behind it. LSP is what keeps that promise. Break it, with a subtype that throws where the base returns or narrows the inputs it will accept, and callers start asking which subtype they hold: the `instanceof` checks polymorphism was meant to remove.
 
-The canonical breach is `Square extends Rectangle`: a rectangle promises that setting width leaves height alone, but a square cannot keep both true, so code correct for every rectangle turns wrong for this one “kind” of rectangle. Honour the contract and substitution is safe; violate it and inheritance becomes a trap laid for the caller.
+The canonical breach is `Square extends Rectangle`: a rectangle promises that setting width leaves height alone, but a square cannot keep both true, so code correct for every rectangle turns wrong for this kind of rectangle. With immutable sides there is no breach; the mutators cause it.
 
 ## Applying it
 <!--meta block=applying-->
 
 Treat the base type's contract as law for every subtype:
 
-- Accept at least what the base accepts (no stronger preconditions) and guarantee at least what it guarantees (no weaker postconditions).
+- Accept at least what the base accepts: a subtype that rejects a negative input the base took has a stronger precondition, and breaks every caller that passes one.
 - Never override a method to throw “not supported” for behaviour the base type promises — that is a contract the subtype cannot honour.
 - Preserve invariants: a subtype may add state, but must not put an object into a configuration the base type forbids.
 - Respect the base type's history: a subtype may not let an object change in ways the base ruled out over its lifetime. A mutable subclass of an immutable type never reaches an illegal state, yet still breaks a caller who was promised the value would not move after construction.
 - Prefer is-substitutable-for over is-a. A square is-a rectangle in English, yet is not substitutable for one under a mutable-sides contract — so it is not a subtype.
+- Review tells: an instanceof or type check on a base-typed value, an override with an empty body, an override that throws where the base returns, or an override that adds a guard on its inputs. Run the base type's tests against each subtype; a failing subtype is not a subtype.
+- Guarantee at least what the base guarantees: no weaker postconditions, and no exception types the base does not declare. Parameter types may widen and return types may narrow, never the reverse.
 
-The check: could a caller written against the base type, knowing nothing of this subclass, still be correct? If not, the hierarchy is lying.
+The check: could a caller written against the base type, knowing nothing of this subclass, still be correct? If not, the subtype breaks the contract.
 
 ## In code
 <!--meta block=sketch-->
@@ -58,9 +60,10 @@ class Square extends Rectangle {
   setWidth(n: number) { this.w = this.h = n; }   // surprise: height moves too
   setHeight(n: number) { this.w = this.h = n; }
 }
-// A caller sets 5 x 4 and expects area 20; for a Square it gets 16.
+function resize(r: Rectangle) { r.setWidth(5); r.setHeight(4); return r.area(); } // 20 for Rectangle, 16 for Square
 
 // After: no inheritance; both honour one small contract.
+// readonly sides remove the breach; with mutable sides, inheriting is what breaks.
 interface Shape { area(): number }
 class Rect implements Shape { constructor(readonly w: number, readonly h: number) {} area() { return this.w * this.h; } }
 class Sq implements Shape { constructor(readonly side: number) {} area() { return this.side ** 2; } }
@@ -71,7 +74,7 @@ class Sq implements Shape { constructor(readonly side: number) {} area() { retur
 
 LSP is a rule about correctness, so it is hard to over-apply on its own terms — the trap is upstream, in reaching for inheritance at all when the is-a does not truly hold. Once you have committed to a hierarchy, the effort to satisfy substitutability can drive you to contort it — split types, no-op overrides, ever more abstract base classes — to prop up a relationship that was never really there.
 
-When the contract keeps fighting you, that is the design telling you the subtype relationship is wrong, not that you need a cleverer hierarchy. Composition, or a separate type that shares an interface rather than a base class, is usually the honest answer. Do not inherit merely to reuse code; inherit only when the subtype genuinely is the base type everywhere the base type is used.
+When the contract keeps fighting you, the design is telling you the subtype relationship is wrong. Composition, or a separate type that shares an interface rather than a base class, is usually the honest answer.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -86,5 +89,7 @@ When the contract keeps fighting you, that is the design telling you the subtype
 - [Composition over Inheritance](./composition-over-inheritance.md) — When a subtype cannot honour the contract, hold the collaborator instead of inheriting from it
 - [Decorator](../patterns/gof/structural/decorator.md) — A wrapper is only safe if it honours the contract of what it wraps, so callers cannot tell the two apart
 - [Null Object](../patterns/gof/extra/null-object.md) — A stand-in must keep the base contract, so callers behave correctly whether the real object or the empty one is behind it
+- [Template Method](../patterns/gof/behavioral/template-method.md) — Each overridden step must keep the base contract or the fixed outline breaks.
+- [Interface Segregation Principle](./interface-segregation.md) — A subtype that must throw on inherited methods shows the interface is too wide; split it by caller role.
 
 <!-- relationships:end -->

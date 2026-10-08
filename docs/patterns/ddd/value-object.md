@@ -184,6 +184,7 @@ a === b;     // false: different objects, and that's fine
 - [Encapsulation](../../principles/encapsulation.md) — Its constructor check is encapsulation at the smallest useful scale
 - [Specification](../enterprise/specification.md) — A rule object is a value object that answers one question.
 - [Make Illegal States Unrepresentable](../../principles/make-illegal-states-unrepresentable.md) — A value object checks its rules once, at construction, so every instance is valid
+- [Law of Demeter](../../principles/law-of-demeter.md) — A value object returned from a forwarding method keeps callers from reaching into the object that produced it.
 
 **Part of**
 

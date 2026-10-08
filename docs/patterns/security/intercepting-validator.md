@@ -202,6 +202,7 @@ function handleSignup(raw: unknown) {
 - [Quarantine](./quarantine.md) — Validates data crossing the wire; quarantine validates code crossing into the build
 - [Defense in Depth](../../principles/defense-in-depth.md) — Edge validation is one layer, and does not excuse the service behind it.
 - [Authorization Enforcer (RBAC)](./authorization-enforcer.md) — Once input is valid, the authorization enforcer decides what that caller may do with it.
+- [Make Illegal States Unrepresentable](../../principles/make-illegal-states-unrepresentable.md) — Once input passes, the strict type keeps every later function from re-checking it.
 
 **Implemented by**
 

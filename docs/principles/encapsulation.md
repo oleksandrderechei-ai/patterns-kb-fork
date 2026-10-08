@@ -24,16 +24,16 @@ Hide state behind operations. An object keeps its data private and publishes ver
 Encapsulation means an object keeps its data private and offers operations named for what the domain does, so every change goes through code that can refuse it. A rule that spans several fields then has one owner, instead of being rechecked, or forgotten, by every caller. The same idea at module level is information hiding: publish the interface and hide the decisions most likely to change, so the storage can change without a caller changing. Choose it over public fields when an object has rules to protect, and have the constructor refuse to build an invalid object. Hand out read-only views of collections, since a list given out by reference lets anyone add an item the owner would reject. Do not apply it to a data-transfer object, whose whole job is to carry fields across a boundary.
 
 - **Ceremony leaves state as reachable as before.** A getter and setter for every field protects nothing. Name operations after domain actions like cancel().
-- **Guarding mutable state takes effort.** Prefer immutability where you can: nothing can change, so nothing needs guarding.
+- **Guarding mutable state takes effort.** Every mutator must enforce the rule. Prefer immutability: after a checked constructor nothing can break the rule.
 
 **Example.** An Order has a public list of items and a public total. One screen adds an item without updating the total, another sets a negative quantity, and an invoice shows 80 dollars for a 100-dollar basket. The team makes the fields private, builds an Order only with at least one item, and exposes addItem(sku, qty) and cancel(). addItem rejects a quantity of 0 or less and recomputes the total, and items() returns a read-only view. The rule now has one owner, so a bug in it can live in one place. The cost is that the JSON mapper needs a constructor to build Orders, so the team keeps a plain OrderDto with public fields for the API response.
 
 ## Why it helps
 <!--meta block=rationale-->
 
-A rule that lives outside the data it governs has to be repeated by everyone who touches that data, and the fifth caller is the one that forgets. Put the rule where the state is and there is nowhere to forget it: the illegal transition has no code path, so it is not a bug you have to find.
+A rule that lives outside the data it governs has to be repeated by everyone who touches that data, and the fifth caller is the one that forgets. Put the rule where the state is and outside the owner there is nowhere to forget it, and a bug in the rule can live only in the owner's code.
 
-The second payoff is freedom to change. When callers depend only on operations, the storage representation is a private decision — a field becomes a computed value, two fields collapse into one, a list becomes a map, and no caller notices. Exposed state inverts that: every field is a published contract, so the cheapest internal change turns into a survey of call sites.
+The second payoff is freedom to change. When callers depend only on operations, the storage representation is a private decision: a field becomes a computed value, two fields collapse into one, a list becomes a map, and no caller notices. Exposed state inverts that: every field is a published contract, so the cheapest internal change turns into a survey of the call sites that read the field.
 
 ## Applying it
 <!--meta block=applying-->
@@ -42,10 +42,33 @@ Move the rule to the state, then close the door behind it:
 
 - Name operations after what the domain does — `cancel()`, `applyDiscount()` — rather than exposing a setter per field.
 - Validate in the constructor, so there is no window in which a half-built object exists.
-- Return read-only views of collections, and add or remove through operations that can enforce the rule.
+- Return read-only views of collections, and add or remove through operations that can enforce the rule. A view tracks the owner's later changes and does not protect mutable elements; copy it when the caller keeps it, or make the elements immutable.
 - Ask objects to act instead of extracting their state to act on it — a caller that reads three fields to make a decision is making a decision that belonged to the owner.
 - Where a whole cluster of objects shares one rule, give the cluster a single entry point, which is what an [aggregate](../patterns/ddd/aggregate.md) is.
-- Reach for immutability where you can: with no mutating operation there is no invariant to protect, which is the strongest form of this principle and the cheapest to reason about.
+- Reach for immutability where you can: with no mutating operation, the constructor check is the only guard the invariant needs, and the cheapest to reason about.
+- In review, flag a public mutable field, a getter that returns an internal collection, a setter that assigns with no check, and a caller that reads several fields to branch.
+
+## In code
+<!--meta block=sketch-->
+
+```typescript summary="TypeScript — a caller pushes an item and leaves the total stale, then the Order owns both"
+type Item = { sku: string; qty: number; price: number };
+
+// Before: fields are public, so any caller can break the rule.
+class Order { items: Item[] = []; total = 0; }
+order.items.push({ sku: "A1", qty: 2, price: 500 });  // total is now wrong
+
+// After: one owner for the rule; total is computed, so it cannot drift.
+class Order {
+  #items: Item[] = [];
+  addItem(item: Item) {
+    if (item.qty <= 0) throw new Error(`qty must be positive, got ${item.qty}`);
+    this.#items.push(item);
+  }
+  items(): readonly Item[] { return this.#items; }  // a read-only view, not a copy
+  total(): number { return this.#items.reduce((s, i) => s + i.qty * i.price, 0); }
+}
+```
 
 ## Taken too far
 <!--meta block=overreach-->
@@ -71,6 +94,8 @@ Two real costs to weigh rather than deny. Serialization and mapping tooling gene
 - [Command-Query Separation](./command-query-separation.md) — Queries expose state safely while commands guard how it changes.
 - [Hyrum's Law](./hyrums-law.md) — Hiding internals leaves less for callers to depend on
 - [Make Illegal States Unrepresentable](./make-illegal-states-unrepresentable.md) — Hiding the fields behind checked construction keeps every instance valid
+- [DTO](../patterns/enterprise/dto.md) — The carrier it exempts: a DTO is a bag of fields crossing a boundary, so decide which types own state and which only carry it.
+- [High Cohesion, Low Coupling](./high-cohesion-low-coupling.md) — A small, well-cut module is easier to keep hidden behind its interface.
 
 **Prevents**
 

@@ -85,8 +85,8 @@ For the query-shaped cases, stop returning the domain type. A read built for a s
 - [Encapsulation](../principles/encapsulation.md) — A type that cannot be constructed invalid cannot be partially populated
 - [DTO](../patterns/enterprise/dto.md) — A purpose-shaped carrier per context beats one wide type with an unknown contract
 - [CQRS](../patterns/architecture/cqrs.md) — Separating the read model from the write model removes the pressure that widened the type
-- [Interface Segregation Principle](../principles/interface-segregation.md) — The coupling here runs through one wide shared type rather than a shared interface
 - [Make Illegal States Unrepresentable](../principles/make-illegal-states-unrepresentable.md) — A type that cannot be built incomplete cannot be partially populated
+- [Interface Segregation Principle](../principles/interface-segregation.md) — The coupling here runs through one wide shared type rather than a shared interface
 
 **Threatens**
 

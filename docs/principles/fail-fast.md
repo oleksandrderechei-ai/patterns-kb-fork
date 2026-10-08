@@ -29,9 +29,9 @@ Fail fast means you detect a broken assumption at the first point you can and re
 ## Why it helps
 <!--meta block=rationale-->
 
-What a defect costs is set by how far it travels before anyone notices. Caught at the boundary, a malformed order is one rejected request naming the offending field; carried inward, the same order becomes a half-written row, a wrong total, and a support ticket next week whose stack trace points at code that did nothing wrong. The debugging then starts from the symptom and works backwards through everything the bad value touched.
+What a defect costs is set by how far it travels before anyone notices. Caught at the boundary, a malformed order is one rejected request naming the offending field; carried inward, the same order becomes a wrong total and a support ticket next week that blames the wrong code. The debugging then starts from the symptom and works backwards through everything the bad value touched.
 
-Stopping early also makes the checks worth something. Where a system halts on the first violated assumption, a clean run is evidence that the invariants held on that path. Where it limps on, silence means nothing: you cannot tell a run with no problems from a run whose problems were swallowed, so every later diagnosis has to begin by reconstructing what the state was supposed to be.
+Stopping early also makes the checks worth something. Where a system halts on the first violated assumption, a clean run shows the checked invariants held on that path; unchecked ones stay unknown. Where it limps on, silence means nothing: you cannot tell a run with no problems from a run whose problems were swallowed, so every later diagnosis has to begin by reconstructing what the state was supposed to be.
 
 ## Applying it
 <!--meta block=applying-->
@@ -40,21 +40,54 @@ Push each check as early as the information allows:
 
 - Validate at the boundary and reject with the specifics — the field, the value, what was expected. Everything inside is then entitled to assume the input is well-formed, which is what makes that assumption safe to write.
 - Check configuration and dependencies at start-up rather than on first use. A process that cannot possibly serve traffic should fail its readiness check, not accept a request and discover the missing secret halfway through it.
-- Parse once into a type, then rely on it. If the type can express “non-empty”, “positive” or “already validated”, an illegal value stops existing past the boundary instead of being re-checked — or not — at every call site.
-- Assert the invariants you would otherwise write as a comment. An assertion that fires in a test run costs a minute; the same violation reaching production costs whatever the corrupted data touched before anyone looked.
+- Parse once into a type, then rely on it. If the type can express “non-empty”, “positive” or “already validated” and cannot be built without the check, an illegal value stops existing past the boundary instead of being re-checked, or not, at every call site.
+- Assert the invariants you would otherwise write as a comment. Assertions that fire in tests are cheap, but some runtimes can strip them in production, so use an explicit check that throws for input and invariants that matter; the same violation reaching production costs whatever the corrupted data touched before anyone looked.
 - Never swallow an error to keep going. If the work genuinely must continue, the failed item goes somewhere visible — a dead-letter queue, a quarantine table, a counter with an alert — so the failure is bounded rather than erased.
 - At the process boundary, prefer restarting to repairing. A supervisor bringing the process back into a known-good state is more predictable than code trying to mend state it cannot inspect, provided callers retry and the work is idempotent — which is the part that actually costs you design effort.
+- Spot a breach in review: a catch that logs and carries on, a default filling a required field, a null returned for an error, a validation re-run at each call site. Each hides the fault until something distant breaks.
 
 The ladder is worth walking in order: compile time is cheaper than start-up, start-up is cheaper than the request boundary, and the boundary is cheaper than production. Move every check to the highest rung it can honestly sit on.
+
+## In code
+<!--meta block=sketch-->
+
+```typescript summary="TypeScript — a payment record parsed into a positive amount at read time, bad ones parked with id and value"
+type Cents = number & { readonly __brand: "Cents" };
+
+class BadRecord extends Error {
+  constructor(
+    readonly id: string,
+    readonly field: string,
+    readonly value: unknown,
+    readonly expected: string,
+  ) {
+    super(`record ${id}: ${field}=${String(value)}, expected ${expected}`);
+  }
+}
+
+// The only way to get a Cents; the check cannot be skipped.
+export function parseCents(id: string, raw: unknown): Cents {
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) {
+    throw new BadRecord(id, "amount", raw, "positive integer cents");
+  }
+  return raw as Cents;
+}
+
+// One bad record fails alone; the rest of the batch goes through.
+for (const rec of records) {
+  try { total += parseCents(rec.id, rec.amount); }
+  catch (e) { if (e instanceof BadRecord) deadLetter.insert(e); else throw e; }
+}
+```
 
 ## Taken too far
 <!--meta block=overreach-->
 
-Failing fast means noticing early, not giving up early. Applied to things that are merely late or briefly unavailable — a timeout, a rate limit, a rolling restart — it turns a blip into an outage, and it does so everywhere at once, because every instance sees the same signal in the same second. The question that separates the two is whether retrying the identical input could succeed: if it could, back off and retry; if it could not, stop now.
+Failing fast means noticing early, not giving up early. Applied to things that are merely late or briefly unavailable — a timeout, a rate limit, a rolling restart — it turns a blip into an outage, and it does so everywhere at once, because instances that share a dependency and a trigger tend to fail together. The question that separates the two is whether retrying the identical input could succeed: if it could, back off and retry; if it could not, stop now.
 
 Granularity is the other trap. One malformed record should fail its own processing, not the batch of a million behind it, so put the failure boundary around the smallest unit that can fail on its own, park the bad unit where someone will see it, and let the rest through. The same care applies to input you do not control: a check that halts the process is a good thing in a test harness and a denial-of-service lever on a public endpoint, where the right move is to reject the request rather than to abort the server.
 
-Underneath both traps is a trade you should price per path: failing fast buys diagnosability with availability, and that is only a good deal where a rejected request is cheaper than a wrong one. A ledger entry that does not balance should stop everything; a missing profile thumbnail should not take down the page that would otherwise have rendered. The same service can honestly do both, and deciding which paths get which is design work rather than a matter of discipline.
+Price the trade per path: failing fast buys diagnosability with availability, and that is only a good deal where a rejected request is cheaper than a wrong one. A ledger entry that does not balance should stop everything; a missing profile thumbnail should not take down the page that would otherwise have rendered. The same service can honestly do both, and deciding which paths get which is design work rather than a matter of discipline.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -71,6 +104,8 @@ Underneath both traps is a trade you should price per path: failing fast buys di
 - [Dead Letter Channel](../patterns/messaging/dead-letter-channel.md) — Park the poison record so one row fails alone
 - [Design for Self-Healing](./self-healing.md) — Failing fast is the detection half; healing is what happens next
 - [Make Illegal States Unrepresentable](./make-illegal-states-unrepresentable.md) — Checks at run time and stops at once, for what a type cannot rule out
+- [Retry with Backoff](../patterns/distributed/resilience/retry-backoff.md) — Retry the blip, fail fast on the fault that cannot clear.
+- [Idempotency](../patterns/messaging/idempotency.md) — Restart-on-fault is only safe if the rerun does no harm.
 
 **Alternative to**
 

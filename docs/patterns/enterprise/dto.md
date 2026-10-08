@@ -198,6 +198,7 @@ app.get("/users/:id", async (req, res) => {
 - [REPR](../architecture/repr.md) — A per-operation request and response pair is where these earn their keep
 - [Interface Segregation Principle](../../principles/interface-segregation.md) — A data transfer object (DTO) is segregation applied to data: each caller sees only the fields its role uses
 - [Immutability](../functional/immutability.md) — A record DTO with readonly fields set once at construction cannot drift after it is built
+- [Encapsulation](../../principles/encapsulation.md) — Encapsulation says which types should not be DTOs: those with rules to protect.
 
 **Often confused with**
 
