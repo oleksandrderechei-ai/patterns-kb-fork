@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-07",
+  "updated": "2026-10-08",
   "note": "Every typed edge between two pages, once: a verb on one page and its inverse on the other are one record. The single source: gen-relations (make gen) splices every page's relationships block (the marked block <!-- relationships:start --> … <!-- relationships:end -->) from it through tools/src/lib/render-relations.ts, the relations gate holds every edge closed and paired, and gen-prerequisites builds docs/data/prerequisites.json from it. node scripts/kb.mjs link and unlink write whole records; an edit by hand is fine too, then run make gen. A record is {a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b?, maps_label_a?, maps_label_b?}: `verb` is read from a's side and b reads its inverse (the verbs and their inverses are docs/data/content-model.json's; of a pair, the verb listed first there is the one written, and a symmetric verb is its own inverse). note_* is that side's note as markdown inline text, its links relative to that side's own page; group_* is a custom group heading, present only when it is not the verb's label; maps_* names the element on that side's page the edge maps to (a capability's mapping row, a comparison's matrix row), and maps_label_* is that row's first cell as plain text: row ids are positional, so the relations gate fails a pin whose row no longer reads its label (kb.mjs link --maps writes both). A page lists its sides in record order inside each group; group_order pins a page's group order where it is not the default (verb labels in the content model's order, then custom headings). Edit this file, never the rendered block; an edge whose other side is missing is a finding.",
   "relations": [
     {
@@ -14636,6 +14636,20 @@
       "b": "race-condition",
       "note_a": "Two hall-call dispatches can claim the same idle car, and step() can mutate a car's stop set while addRequest writes to it.",
       "note_b": "An elevator controller handling concurrent hall calls can double-assign an idle car or corrupt a car's stop set mid-tick."
+    },
+    {
+      "a": "design-rate-limiter",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "The base allow is check-then-act: two threads of one client both read one token and both pass until the bucket is locked.",
+      "note_b": "The Rate Limiter design shows this race in a token bucket and fixes it with a per-bucket lock."
+    },
+    {
+      "a": "design-rate-limiter",
+      "verb": "exposed-to",
+      "b": "resource-leak",
+      "note_a": "A bucket or log is kept for every clientId that ever called, so the maps grow until idle keys are evicted.",
+      "note_b": "The Rate Limiter design leaks one bucket per client id until idle keys are evicted."
     }
   ],
   "group_order": {

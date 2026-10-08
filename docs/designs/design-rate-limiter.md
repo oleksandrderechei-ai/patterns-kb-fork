@@ -48,7 +48,7 @@ Out of scope: distributed limiting across servers (Redis, coordination), dynamic
 
 - **Extensibility** — a new algorithm should drop in without touching the orchestrator or existing limiters.
 - **Isolation** — each client's state is independent; one caller can never spend another's quota.
-- **Honest retry** — a denied caller learns exactly how many milliseconds to wait, never too early.
+- **Honest retry** — a denied caller learns the smallest whole number of milliseconds after which this request would pass, rounded up and never early, measured on a monotonic clock.
 - **Evolvability** — thread safety, live config changes, and bounded memory should slot in later without a rewrite.
 
 ## Core entities
@@ -87,7 +87,7 @@ class RateLimiter:
 ## How the system is built
 <!--meta block=architecture-->
 
-At startup the `RateLimiter` walks the config list, asks the factory to build one limiter per endpoint, and stores them in a map keyed by endpoint — plus one limiter built from the default config. Every limiter is created eagerly; there are only dozens to hundreds of endpoints, so lazy, first-request construction would add locking for no measurable gain. On each call, `allow` looks up the endpoint's limiter, falls back to the default on a miss, and delegates with `clientId` as the key. The important structural fact is that each limiter owns its own per-key state map — Token Bucket keeps a bucket per client, Sliding Window Log keeps a timestamp queue per client — so the orchestrator never touches algorithm state.
+At startup the `RateLimiter` walks the config list, asks the factory to build one limiter per endpoint, and stores them in a map keyed by endpoint — plus one limiter built from the default config. Every limiter is created eagerly; there are only dozens to hundreds of endpoints, so lazy, first-request construction would add locking for no measurable gain. On each call, `allow` looks up the endpoint's limiter, falls back to the default on a miss, and delegates with `clientId` as the key. All unmapped endpoints therefore share one default limiter, so one client's calls to every unconfigured endpoint draw from a single bucket. The important structural fact is that each limiter owns its own per-key state map — Token Bucket keeps a bucket per client, Sliding Window Log keeps a timestamp queue per client — so the orchestrator never touches algorithm state.
 
 ~~~mermaid caption="The orchestrator resolves an endpoint to a limiter; the factory hides construction; each algorithm keeps its own per-client state behind the shared `Limiter` interface."
 classDiagram
@@ -161,7 +161,7 @@ flowchart TB
 
 ### 3 · Lazy refill and the retry-time math (Token Bucket)
 
-[Token Bucket](../patterns/distributed/resilience/token-bucket.md) is the workhorse: each client holds a bucket that refills at a steady rate and drains one token per request, permitting bursts up to `capacity` while bounding the average rate. The subtlety is when refill happens. Rather than a background thread topping up every bucket on a timer — which would scan even idle clients — refill is computed on demand from elapsed time at request time. A first-time client's bucket starts full, so it gets an immediate burst. On denial the limiter reports exactly how long to wait: the tokens still needed, divided by the refill rate, rounded up so the client never retries a hair too early. This is the [lazy](../patterns/gof/extra/lazy-initialization.md) instinct applied to state, not objects — do the work only when a request forces it.
+[Token Bucket](../patterns/distributed/resilience/token-bucket.md) is the workhorse: each client holds a bucket that refills at a steady rate and drains one token per request, permitting bursts up to `capacity` while bounding the average rate. The subtlety is when refill happens. Rather than a background thread topping up every bucket on a timer — which would scan even idle clients — refill is computed on demand from elapsed time at request time. A first-time client's bucket starts full, so it gets an immediate burst. Read a monotonic clock and clamp elapsed to at least 0, so a clock that steps backwards cannot drain tokens. On denial the limiter reports exactly how long to wait: the tokens still needed, divided by the refill rate, rounded up so the client never retries a hair too early. This is the [lazy](../patterns/gof/extra/lazy-initialization.md) instinct applied to state, not objects — do the work only when a request forces it.
 
 ```python summary="TokenBucketLimiter.allow — refill, then decide"
 def allow(self, key: str) -> RateLimitResult:
@@ -208,10 +208,6 @@ def allow(self, key: str) -> RateLimitResult:
     return RateLimitResult(allowed, remaining, retry)   # built outside the lock
 ```
 
-### 5 · Bounded memory and live config changes
-
-Every unique `clientId` that ever calls leaves a bucket or log behind, and the maps grow forever — a latent [resource leak](../hazards/resource-leak.md) that becomes an out-of-memory risk at millions of clients. Eviction closes it: track last-access per key and let a background sweep drop entries idle past a threshold, cap the map with an LRU (least recently used), or (in a distributed variant) let Redis key TTLs (times to live) do it. An evicted client's next request simply looks like a first-timer — acceptable, since it had gone quiet. The other evolution is live config: the blunt option rebuilds every limiter and atomically swaps the map, which is simple but resets all per-key state — fine when raising limits, dangerous when lowering them to stop an abuser who then gets a clean slate. The careful option adds `updateConfig` to the interface so each limiter mutates its own parameters in place and clamps existing state to the new capacity, preserving continuity; switching an endpoint's algorithm outright still requires a full replacement, since the two states are incompatible.
-
 ```mermaid caption="Why do two requests for the same client over-admit — and why does locking the bucket, not the whole limiter, fix it? Different clients never contend; only same-key calls serialise."
 sequenceDiagram
     autonumber
@@ -231,6 +227,10 @@ sequenceDiagram
     end
 ```
 
+### 5 · Bounded memory and live config changes
+
+Every unique `clientId` that ever calls leaves a bucket or log behind, and the maps grow forever — a latent [resource leak](../hazards/resource-leak.md) that becomes an out-of-memory risk at millions of clients. Eviction closes it: track last-access per key and let a background sweep drop entries idle past a threshold, cap the map with an LRU (least recently used), or (in a distributed variant) let Redis key TTLs (times to live) do it. An evicted client's next request simply looks like a first-timer — acceptable, since it had gone quiet. That holds only if the idle threshold is at least capacity divided by refill rate (1000 / 10 = 100 s for /search); a shorter threshold, or an LRU cap that evicts an active client, hands that client a full burst. Remove an entry only under that bucket's lock, or mark it dead so get-or-create retries; otherwise a thread spends tokens on an orphan bucket. The other evolution is live config: the blunt option rebuilds every limiter and atomically swaps the map, which is simple but resets all per-key state — fine when raising limits, dangerous when lowering them to stop an abuser who then gets a clean slate. The careful option adds `updateConfig` to the interface so each limiter mutates its own parameters in place and clamps existing state to the new capacity, preserving continuity; switching an endpoint's algorithm outright still requires a full replacement, since the two states are incompatible.
+
 ## Limitations & trade-offs
 <!--meta block=tradeoffs-->
 
@@ -238,7 +238,7 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - A new algorithm is one class plus one factory case; the orchestrator and existing limiters never change.
-- Each limiter owns its own per-key state, so clients are fully isolated and the algorithms share no accidental coupling.
+- Each limiter owns its own per-key state, so one client's counters never touch another's and the algorithms share no accidental coupling; the per-key map itself must be concurrent (con-3).
 - On-demand, elapsed-time refill needs no [sweeper](../patterns/distributed/coordination/sweeper.md) thread and does no work for idle clients.
 - An immutable result carries allow/deny plus an exact retry hint, so every caller gets a self-describing answer.
 
@@ -263,6 +263,11 @@ sequenceDiagram
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Race Condition](../hazards/race-condition.md) — The base allow is check-then-act: two threads of one client both read one token and both pass until the bucket is locked.
+- [Resource Leak](../hazards/resource-leak.md) — A bucket or log is kept for every clientId that ever called, so the maps grow until idle keys are evicted.
 
 **Demonstrates**
 

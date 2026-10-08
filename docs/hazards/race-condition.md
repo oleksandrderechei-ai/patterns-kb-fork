@@ -107,5 +107,6 @@ Pick the lightest mechanism the contention allows: optimistic when conflicts are
 - [Distributed Rate Limiter](../designs/distributed-rate-limiter.md) — Two gateways reading the same last token both admit; a shard-side script closes the window.
 - [Parking Lot](../designs/parking-lot.md) — A check-then-act on a shared set: two entrances claim one parking bay.
 - [Elevator](../designs/elevator.md) — An elevator controller handling concurrent hall calls can double-assign an idle car or corrupt a car's stop set mid-tick.
+- [Rate Limiter](../designs/design-rate-limiter.md) — The Rate Limiter design shows this race in a token bucket and fixes it with a per-bucket lock.
 
 <!-- relationships:end -->
