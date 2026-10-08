@@ -889,7 +889,7 @@
       },
       "health-modeling": {
         "role": "Keep the probe from becoming the load",
-        "tour": "Every edge location of a global router probes independently, so an endpoint that checks its dependencies on each request generates far more load than the traffic it is protecting. Computing the verdict on a timer and serving it from memory for a few seconds costs a little detection delay and removes the whole problem.",
+        "tour": "Every edge location of a global router probes independently, so an endpoint that checks its dependencies on each request can generate more probe load than real traffic when many edge locations probe a low-traffic service. Computing the verdict on a timer and serving it from memory for a few seconds costs a little detection delay and caps the load at one evaluation per tick.",
         "fluency": "Keep health probes from becoming the load"
       }
     },
@@ -1070,7 +1070,7 @@
     "/patterns/distributed/coordination/container-orchestration.html": {
       "cloud-native": {
         "role": "Who decides where it runs and when it restarts",
-        "tour": "You declare the desired state and a control loop makes reality match it — placement, restart, rollout, capacity. This is where you hand over the decisions, and where a misjudged probe becomes an outage you did not write.",
+        "tour": "You declare the desired state and a control loop makes reality match it: placement, restart, rollout, capacity. This is where you hand over the decisions, and where a misjudged probe becomes an outage you did not write.",
         "fluency": "Who decides where it runs and when it restarts"
       },
       "continuous-delivery": {
@@ -1082,7 +1082,7 @@
     "/patterns/distributed/coordination/containerization.html": {
       "cloud-native": {
         "role": "The unit the platform can actually schedule",
-        "tour": "Nothing else on this page is available until the workload is one immutable, self-describing artifact. The image is the contract: build once, run the same bytes in every environment, and stop shipping the difference between them.",
+        "tour": "Most of this page assumes the workload is one immutable, self-describing artifact. The image is the contract: build once, run the same bytes in every environment, and stop shipping the difference between them.",
         "fluency": "The unit the platform can actually schedule"
       }
     },
@@ -1198,7 +1198,7 @@
       },
       "data-platform": {
         "role": "Detect the conflicting write rather than lock",
-        "tour": "When two writers touch the same record, a version check turns a silent overwrite into a detected conflict the application can resolve. It is the alternative to accepting whatever the store's default resolution policy would have discarded on your behalf.",
+        "tour": "When two writers touch the same record, a version check turns a silent overwrite into a detected conflict the application can resolve.",
         "fluency": "Detect the conflict the store would have discarded"
       }
     },
@@ -1221,7 +1221,7 @@
       },
       "data-platform": {
         "role": "Make the write and its announcement atomic",
-        "tour": "The store and the broker are separate systems with no shared transaction, so publishing before the commit can announce something that gets rolled back, and publishing after it can lose the announcement entirely. Writing the message into the same transaction as the data, and relaying it afterwards, is what closes that gap.",
+        "tour": "The store and the broker are separate systems with no shared transaction, so publishing before the commit can announce something that gets rolled back, and publishing after it can lose the announcement entirely. Writing the message into the same transaction as the data, and relaying it afterwards, is what closes that gap. The relay can resend, so the consumer must be idempotent.",
         "fluency": "Close the gap between the store and the broker"
       }
     },
@@ -1277,7 +1277,7 @@
       },
       "data-platform": {
         "role": "Put the data where every region can reach it",
-        "tour": "The store outlives the compute, so it has to survive the loss of any one place the compute runs. Copies in every region make reads local and a regional failure survivable, and they are what force the decision about where writes are accepted — the choice this whole theme circles.",
+        "tour": "The store outlives the compute, so it has to survive the loss of any one place the compute runs. Copies in every region make reads local and a regional failure survivable, and they are what force the decision about where writes are accepted.",
         "fluency": "Where the copies live, and who is allowed to write"
       }
     },
@@ -1470,7 +1470,7 @@
       },
       "health-modeling": {
         "role": "Publish the verdict where a router can read it",
-        "tour": "The model's output has to be reachable, and this is where it surfaces. An endpoint that reports the rolled-up verdict rather than merely that the process is alive is what turns the model from a dashboard into a control: the router reads it, and an unhealthy region stops receiving traffic without anybody being paged.",
+        "tour": "The model's output has to be reachable, and this is where it surfaces. An endpoint that reports the rolled-up verdict rather than merely that the process is alive is what turns the model from a dashboard into a control: the router reads it, and an unhealthy region stops receiving traffic without anybody having to act first, though a page can still follow.",
         "fluency": "Publish the rolled-up verdict where a router reads it"
       },
       "operating-a-live-system": {
@@ -1595,7 +1595,7 @@
     "/patterns/distributed/routing/autoscaling.html": {
       "cloud-native": {
         "role": "Capacity that follows demand instead of a plan",
-        "tour": "The first capability that pays for the whole arrangement, and the one most often pointed at the wrong signal. Scaling on the metric that reflects queued work rather than on the one that is easy to read is most of the skill.",
+        "tour": "Often the first capability to repay the move, and the one most often pointed at the wrong signal. Scale on the metric that reflects queued work, such as queue depth or lag per copy, not the one that is easy to read, and set the target from a load test of one copy's throughput.",
         "fluency": "Capacity that follows demand instead of a plan"
       },
       "spike-handling": {
@@ -1703,7 +1703,7 @@
       },
       "global-traffic-and-ingress": {
         "role": "Serve what never needed to reach a region",
-        "tour": "Static assets answered at the edge never become regional load at all, and cached content keeps a page usable when the origin behind it is struggling. It is the cheapest capacity in the system, and the reason a partial outage often looks like a slow page rather than a broken one.",
+        "tour": "Static assets answered from the edge cache never reach a region; misses and expired entries still do, and stale content keeps a page usable only until it expires.",
         "fluency": "Answer at the edge so no region is touched at all",
         "heading": "Content Delivery Network"
       }
@@ -1733,7 +1733,7 @@
     "/patterns/distributed/routing/deployment-stamp.html": {
       "cloud-native": {
         "role": "The whole arrangement, replicated as a unit",
-        "tour": "Where it ends up at scale: the unit of growth stops being an instance and becomes a complete copy of the platform and its workloads, replicated per region or per tenant group.",
+        "tour": "At scale the unit of growth stops being an instance and becomes a complete copy of the platform and its workloads, replicated per region or per tenant group.",
         "fluency": "The whole arrangement, replicated as a unit"
       },
       "scale-units-and-stamps": {
@@ -1774,7 +1774,7 @@
       },
       "global-traffic-and-ingress": {
         "role": "Screen requests before they reach the application",
-        "tour": "Malicious and malformed requests are cheapest to reject at the edge, before they consume a connection, a thread or a database call anywhere behind it. Putting the check in front of the regions means it runs once and protects all of them, and it is what makes the entry point worth concentrating on.",
+        "tour": "Malicious and malformed requests are cheapest to reject at the edge, before they consume a connection, a thread or a database call anywhere behind it. Putting the check in front of the regions means it runs once and protects all of them, provided every backend refuses requests that skipped it.",
         "fluency": "Screen once at the edge, for every region behind it"
       },
       "securing-availability": {
@@ -1843,7 +1843,7 @@
     "/patterns/distributed/routing/service-mesh.html": {
       "cloud-native": {
         "role": "Traffic policy moved out of the application",
-        "tour": "The sidecar idea applied uniformly: retries, timeouts, mutual authentication and traffic shifting become configuration rather than code. It has the biggest payoff and the heaviest cost on this list, and it earns its keep only across many services.",
+        "tour": "The sidecar idea applied uniformly: retries, timeouts, mutual authentication and traffic shifting become configuration rather than code. It has the biggest payoff and the heaviest cost on this list, since every call gains a hop and every copy a sidecar, so it earns its keep across many services in several languages.",
         "fluency": "Traffic policy moved out of the application"
       },
       "microservices-design": {
@@ -1897,7 +1897,7 @@
     "/patterns/distributed/routing/sidecar.html": {
       "cloud-native": {
         "role": "Cross-cutting concerns as a neighbouring process",
-        "tour": "Once a workload is a scheduled unit, a second process can share its lifecycle and take over the concerns that used to be a library in every language you run — with its own resource cost, per instance.",
+        "tour": "Once a workload is a scheduled unit, a second process can share its lifecycle and take over concerns that used to be a library in every language you run. Each copy pays for it in CPU and memory; measure one sidecar in staging and multiply by the copy count.",
         "fluency": "Cross-cutting concerns as a neighbouring process"
       }
     },
@@ -2211,7 +2211,7 @@
       },
       "data-platform": {
         "role": "Survive delivery happening twice",
-        "tour": "Brokers deliver at least once by design, so a handler that writes must produce the same result on a replay. The usual guard is a record of what has already been processed, checked inside the same transaction as the write it protects.",
+        "tour": "Most brokers deliver at least once by default, so a handler that writes must produce the same result on a replay. The usual guard is a record of what has already been processed, checked inside the same transaction as the write it protects.",
         "fluency": "At-least-once delivery makes it mandatory, not optional"
       }
     },
@@ -2264,7 +2264,7 @@
       },
       "health-modeling": {
         "role": "Watch a channel without touching it",
-        "tour": "Health of an asynchronous path is invisible from either end — the producer only knows it published, and the consumer only knows what it received. Copying messages to an inspection point gives the model evidence about the part of the flow that has no request to measure.",
+        "tour": "Health of an asynchronous path is invisible from either end: the producer only knows it published, and the consumer only knows what it received. Copying messages to an inspection point gives the model evidence about the part of the flow that has no request to measure.",
         "fluency": "Evidence from a path that has no request to measure"
       }
     },

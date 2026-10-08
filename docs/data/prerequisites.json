@@ -601,7 +601,7 @@
       "definition": "Single entry point that routes to backing services",
       "route": "/patterns/distributed/routing/api-gateway.html",
       "requires": [],
-      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session", "service-discovery", "a2a"]
+      "related": ["rate-limiter", "load-balancer", "authentication-enforcer", "gatekeeper", "strangler-fig", "reverse-proxy", "ambassador", "intercepting-validator", "micro-frontends", "api-routing", "service-mesh", "federated-identity", "pagination", "managed-services", "microservices", "mcp", "context-map", "front-controller", "sticky-session", "service-discovery", "a2a", "global-traffic-and-ingress"]
     },
     {
       "id": "bff",
@@ -2386,6 +2386,70 @@
       "route": "/themes/service-boundaries.html",
       "requires": [],
       "related": ["conways-law"]
+    },
+    {
+      "id": "cap-theorem",
+      "label": "CAP Theorem",
+      "definition": "When the network splits, you choose consistency or availability — never both",
+      "route": "/themes/cap-theorem.html",
+      "requires": [],
+      "related": ["data-platform"]
+    },
+    {
+      "id": "consistency-and-replication",
+      "label": "Consistency & Replication",
+      "definition": "Keeping copies of data in agreement across nodes",
+      "route": "/themes/consistency-and-replication.html",
+      "requires": [],
+      "related": ["data-platform"]
+    },
+    {
+      "id": "cloud-native",
+      "label": "Cloud Native",
+      "definition": "What the platform provides once your workload is packaged the way it expects",
+      "route": "/themes/cloud-native.html",
+      "requires": [],
+      "related": ["twelve-factor", "data-platform"]
+    },
+    {
+      "id": "twelve-factor",
+      "label": "Twelve-Factor",
+      "definition": "What a platform requires of an application before it can run it for you",
+      "route": "/themes/twelve-factor.html",
+      "requires": [],
+      "related": ["cloud-native"]
+    },
+    {
+      "id": "global-traffic-and-ingress",
+      "label": "Global Traffic & Ingress",
+      "definition": "Getting every request to a healthy region, and screening it on the way in",
+      "route": "/themes/global-traffic-and-ingress.html",
+      "requires": [],
+      "related": ["health-modeling", "api-gateway"]
+    },
+    {
+      "id": "data-platform",
+      "label": "Data Platform",
+      "definition": "Choosing and configuring the stores that hold state when the compute is disposable",
+      "route": "/themes/data-platform.html",
+      "requires": [],
+      "related": ["cloud-native", "consistency-and-replication", "cap-theorem"]
+    },
+    {
+      "id": "health-modeling",
+      "label": "Health Modeling",
+      "definition": "Turning a wall of metrics into one answer a router and an operator can act on",
+      "route": "/themes/health-modeling.html",
+      "requires": [],
+      "related": ["global-traffic-and-ingress", "continuous-validation"]
+    },
+    {
+      "id": "continuous-validation",
+      "label": "Continuous Validation",
+      "definition": "Proving a release is safe before it takes traffic, and while it does",
+      "route": "/themes/continuous-validation.html",
+      "requires": [],
+      "related": ["health-modeling"]
     },
     {
       "id": "dry",

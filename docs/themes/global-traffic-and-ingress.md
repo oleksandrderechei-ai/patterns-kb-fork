@@ -19,23 +19,21 @@ Once a system runs in several regions, deciding where a request goes is a reliab
 ## Explained
 <!--meta block=explain-->
 
-Global traffic routing sends each request to a region that is working right now, and makes one entry point the only way in so that checks on requests cannot be skipped. The router asks each region whether it is healthy, continuously, and stops sending traffic to one that answers badly, so a regional outage becomes a routing change rather than an incident. The choice that matters is how fast to react. A strict, frequent check removes a region at its first stumble, but a blip then shifts its load onto the other regions. A forgiving, rare check leaves users on a broken region until the interval runs out. Choose one entry point, an [API gateway](../patterns/distributed/routing/api-gateway.md), over several when you need every request screened the same way. Make the health check test only what a request needs, since a check of every dependency becomes load of its own (see [health endpoint](../patterns/distributed/resilience/health-endpoint.md)).
+Global traffic routing sends each request to a region that is working right now, and makes one entry point the only way in so that checks on requests cannot be skipped. The router asks each region whether it is healthy, continuously, and stops sending traffic to one that answers badly, so once the check trips, a regional outage becomes a routing change rather than an incident. The choice that matters is how fast to react. A strict, frequent check removes a region at its first stumble, but a blip then shifts its load onto the other regions. A forgiving, rare check leaves users on a broken region until the interval runs out. Choose one entry point, an [API gateway](../patterns/distributed/routing/api-gateway.md) (one front door for all API calls), over several when you need every request screened the same way. Make the health check test only what a request needs, since a check of every dependency becomes load of its own (see [health endpoint](../patterns/distributed/resilience/health-endpoint.md)).
 
-- **Total failure.** The entry point's failure is total, so spend on its availability and review its rules like production code.
-- **Bypass.** A leaked backend address gives an unscreened route, so have each backend reject anything that did not come through the front door.
+- **Total failure.** Nothing behind a failed entry point is reachable, so weigh several entry points or DNS-level failover and review its rules like production code.
+- **Bypass.** A leaked backend address skips screening, so make the reverse proxy refuse calls that skipped the front door, and test with a direct call.
 
-**Example.** Three regions each take 1,000 requests a second and can hold 1,500. The router checks each every 10 s and removes a region after 3 failures. If region A dies, 30 s pass before removal and about 30,000 requests fail. Then A's 1,000 requests split 500 each to B and C, which now sit at exactly 1,500. Removing after 1 failure cuts the loss to about 10,000 requests. But a one-off blip would then also push the neighbours to their limit. Neither setting is free: you trade failed requests against needless shifts.
+**Example.** Three regions each take 1,000 requests a second and can hold 1,500. The router checks each every 10 s and removes a region after 3 failures. If region A dies, 30 s pass before removal and about 30,000 requests fail. Then A's 1,000 requests split 500 each to B and C, which now sit at exactly 1,500. Removing after 1 failure cuts the loss to about 10,000 requests. But a one-off blip would then also push the neighbours to their limit. Those counts are a floor: if the router steers by DNS, resolvers that cached A's address keep sending some users there after removal. Any retry or growth then overloads B and C, so size for losing one region.
 
 ## The tradespace
 <!--meta block=tradespace-->
 
-The first tension is between reacting fast and reacting correctly. Probe often and with a strict threshold, and a region leaves rotation the moment it stumbles — including when the stumble was a blip, and the traffic you shifted away lands on neighbours that now carry it too. Probe rarely and forgivingly, and users meet a broken region for as long as the interval lasts.
+The first tension is between reacting fast and reacting correctly. Probe often with a strict threshold and a region stops receiving traffic the moment it stumbles, blip included, and the traffic shifted away lands on neighbours that now carry it too. Probe rarely and forgivingly, and users meet a broken region for as long as the interval lasts. Readmit only after as many passes as removed it, or the region flaps; if every region fails, keep routing to them rather than nowhere.
 
-The second is between concentrating and spreading. One entry point makes every guarantee enforceable and makes failover a single decision, and it is also the component whose failure nothing behind it can survive. Spreading the decision — several entry points, or resolution-level failover — removes that single point and gives up the ability to say that every request was screened the same way.
+The second is between concentrating and spreading. One entry point makes screening enforceable, but only while backends reject traffic that skipped it, and makes failover a single decision; it is also the component whose failure nothing behind it can survive. Spreading the decision, through several entry points or DNS-level failover (which lags by resolver caching), removes that single point and gives up the ability to say every request was screened the same way.
 
-A third runs underneath both: how much the edge should do. Caching, compression and screening at the edge cut work and latency for the whole fleet, and each one is behaviour that now lives somewhere the application team does not deploy. Every capability moved to the edge makes the edge more load-bearing, which raises the cost of the outage the first tension already told you to expect.
-
-**The entry point is where availability is won and where it is concentrated — the same property, read twice.**
+A third runs underneath both: how much the edge should do. Caching, compression and screening at the edge cut work and latency for the whole fleet, and each one is behaviour that now lives somewhere the application team does not deploy. So the more the edge does, the more it is depended on, and the worse its outage.
 
 ## The tour
 <!--meta block=tour-->
@@ -54,11 +52,11 @@ The decision itself, taken globally rather than within a rack: spread requests a
 
 ### [Gatekeeper](../patterns/distributed/routing/gatekeeper.md) {#tour-gatekeeper}
 
-Malicious and malformed requests are cheapest to reject at the edge, before they consume a connection, a thread or a database call anywhere behind it. Putting the check in front of the regions means it runs once and protects all of them, and it is what makes the entry point worth concentrating on.
+Malicious and malformed requests are cheapest to reject at the edge, before they consume a connection, a thread or a database call anywhere behind it. Putting the check in front of the regions means it runs once and protects all of them, provided every backend refuses requests that skipped it.
 
 ### [Content Delivery Network](../patterns/distributed/routing/cdn.md) {#tour-cdn}
 
-Static assets answered at the edge never become regional load at all, and cached content keeps a page usable when the origin behind it is struggling. It is the cheapest capacity in the system, and the reason a partial outage often looks like a slow page rather than a broken one.
+Static assets answered from the edge cache never reach a region; misses and expired entries still do, and stale content keeps a page usable only until it expires.
 
 ### [Reverse Proxy](../patterns/distributed/routing/reverse-proxy.md) {#tour-reverse-proxy}
 
@@ -94,3 +92,17 @@ Sometimes the routing decision must not be made freshly on every request: a user
 - [Health Modeling](./health-modeling.md) — What "healthy" should mean in the answer the probe returns, and how that answer is assembled.
 - [Securing Availability](./securing-availability.md) — The screening the entry point performs, and why bypassing it is the failure that matters most.
 - [Performance](./performance.md) — Balancing, caching and edge delivery read as latency work as much as availability work.
+
+## How it relates
+<!--meta block=relationships-->
+
+<!-- relationships:start -->
+
+<!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Health Modeling](./health-modeling.md) — A router that acts on the verdict turns a regional failure into a routing event.
+- [API Gateway](../patterns/distributed/routing/api-gateway.md) — Choose one entry point, an API gateway, when every request must be screened the same way.
+
+<!-- relationships:end -->

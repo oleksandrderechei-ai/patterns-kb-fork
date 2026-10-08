@@ -14706,6 +14706,55 @@
       "b": "mutex",
       "note_a": "A mutex around clone-and-publish keeps two writers from discarding each other's copy; readers never take it",
       "note_b": "Copy-on-write readers never take the mutex; only writers do, around clone-and-publish"
+    },
+    {
+      "a": "cloud-native",
+      "verb": "combines-with",
+      "b": "twelve-factor",
+      "note_a": "The platform's half of the bargain; twelve-factor is what the application owes it.",
+      "note_b": "Its properties pay off only on a platform that takes over placement and scaling."
+    },
+    {
+      "a": "cloud-native",
+      "verb": "combines-with",
+      "b": "data-platform",
+      "note_a": "State is the part the platform cannot make disposable; data-platform covers the stores that hold it.",
+      "note_b": "Its stores sit beneath the interchangeable-instance platform this theme describes."
+    },
+    {
+      "a": "consistency-and-replication",
+      "verb": "combines-with",
+      "b": "data-platform",
+      "note_a": "The store and write-region choice that sets which agreement mechanics apply.",
+      "note_b": "Which stores exist and where writes land; how copies agree and what each level costs is there."
+    },
+    {
+      "a": "cap-theorem",
+      "verb": "combines-with",
+      "b": "data-platform",
+      "note_a": "Where the CAP trade lands in a store layout.",
+      "note_b": "The write-region choice is the trade CAP states."
+    },
+    {
+      "a": "global-traffic-and-ingress",
+      "verb": "combines-with",
+      "b": "health-modeling",
+      "note_a": "A router that acts on the verdict turns a regional failure into a routing event.",
+      "note_b": "Supplies the verdict a router acts on, and the rule for failing open when every region reads failing."
+    },
+    {
+      "a": "continuous-validation",
+      "verb": "combines-with",
+      "b": "health-modeling",
+      "note_a": "Supplies the verdict a fault injection is checked against.",
+      "note_b": "Injecting a fault shows whether the model would have noticed."
+    },
+    {
+      "a": "api-gateway",
+      "verb": "combines-with",
+      "b": "global-traffic-and-ingress",
+      "note_a": "This theme says when to keep one front door, and how to keep it unbypassable.",
+      "note_b": "Choose one entry point, an API gateway, when every request must be screened the same way."
     }
   ],
   "group_order": {
