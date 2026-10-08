@@ -1689,7 +1689,7 @@
       "definition": "Defined only by its attributes, no identity",
       "route": "/patterns/ddd/value-object.html",
       "requires": [],
-      "related": ["immutability", "dto", "entity", "lens-optics", "encapsulation", "specification", "make-illegal-states-unrepresentable"]
+      "related": ["immutability", "dto", "entity", "lens-optics", "encapsulation", "specification", "make-illegal-states-unrepresentable", "law-of-demeter"]
     },
     {
       "id": "aggregate",
@@ -2473,7 +2473,7 @@
       "definition": "A method should talk only to its immediate collaborators, never reach through them",
       "route": "/principles/law-of-demeter.html",
       "requires": [],
-      "related": ["encapsulation", "facade", "aggregate", "high-cohesion-low-coupling"]
+      "related": ["encapsulation", "facade", "aggregate", "high-cohesion-low-coupling", "value-object"]
     },
     {
       "id": "separation-of-concerns",

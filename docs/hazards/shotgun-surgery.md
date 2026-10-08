@@ -80,6 +80,7 @@ Then put up a guard so the scatter does not return. A short list of which module
 - [High Cohesion, Low Coupling](../principles/high-cohesion-low-coupling.md) — One change spread across many modules shows low cohesion
 - [Specification](../patterns/enterprise/specification.md) — A named specification gathers a rule copied into the report, the job and the screen into one object
 - [Atomic Design](../patterns/frontend/atomic-design.md) — Shared atoms and molecules put a repeated UI part in one file, so one change lands once
+- [Separation of Concerns](../principles/separation-of-concerns.md) — Concerns kept apart stop a single change fanning out across files.
 
 **Threatens**
 

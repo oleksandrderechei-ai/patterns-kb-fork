@@ -14272,6 +14272,20 @@
       "b": "yagni",
       "note_a": "Invert only across a seam with more than one possible other side.",
       "note_b": "An abstraction over something that never varies is speculative code."
+    },
+    {
+      "a": "value-object",
+      "verb": "combines-with",
+      "b": "law-of-demeter",
+      "note_a": "A value object returned from a forwarding method keeps callers from reaching into the object that produced it.",
+      "note_b": "Hands callers a small immutable answer, such as a city or Money, instead of the nested object behind it."
+    },
+    {
+      "a": "separation-of-concerns",
+      "verb": "prevents-hazard",
+      "b": "shotgun-surgery",
+      "note_a": "Each concern in one place means a change to it is one edit.",
+      "note_b": "Concerns kept apart stop a single change fanning out across files."
     }
   ],
   "group_order": {
