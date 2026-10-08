@@ -14769,6 +14769,13 @@
       "b": "retry-storm",
       "note_a": "A deadline shared by every retry caps one caller's total attempts; it does not spread callers apart, so pair it with jittered backoff.",
       "note_b": "A caller's retries stop at its deadline, but callers that expire together still retry together."
+    },
+    {
+      "a": "token-bucket",
+      "verb": "prevents-hazard",
+      "b": "noisy-neighbour",
+      "note_a": "A per-key bucket caps what one tenant can take, so a burst spends that tenant's own tokens.",
+      "note_b": "A per-key token bucket gives each tenant a bounded burst."
     }
   ],
   "group_order": {

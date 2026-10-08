@@ -96,6 +96,7 @@ Attribution is the first diagnostic step, partitioning the first containment ste
 - [Resource Organisation](../capabilities/resources.md) — Separate accounts or projects, with their own quotas, is the structural fix.
 - [Container Orchestration](../patterns/distributed/coordination/container-orchestration.md) — Declared limits and placement stop one heavy workload eating a host's shared capacity
 - [Multi-Tenancy](../patterns/distributed/routing/multi-tenancy.md) — Isolation models and per-tenant quotas contain a noisy tenant.
+- [Token Bucket](../patterns/distributed/resilience/token-bucket.md) — A per-key token bucket gives each tenant a bounded burst.
 
 **Threatens**
 
