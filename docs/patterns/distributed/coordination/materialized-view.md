@@ -240,7 +240,6 @@ async function rebuild(
 - [LeetCode](../../../designs/leetcode.md) — an expensive scan-group-sort query is replaced by a precomputed read model maintained on write
 - [Payment System](../../../designs/payment-system.md) — one stream feeding many independently-optimized read models is the pattern working at scale
 - [Persona Identification & Sanction Check (V2)](../../../designs/persona-identification-v2.md) — a projection that commits with its source, rebuilt rather than migrated when the read model changes
-- [CamelCamelCamel](../../../designs/camelcamelcamel.md) — A scheduled rebuild turns an expensive aggregation into a cheap keyed read, at the price of staleness
 - [Persona Identification & Sanction Check](../../../designs/persona-identification.md) — Current state kept as a computed row beside an append-only history, not a second write path
 
 **Implemented by**

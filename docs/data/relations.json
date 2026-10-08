@@ -2820,13 +2820,6 @@
     {
       "a": "camelcamelcamel",
       "verb": "demonstrates",
-      "b": "change-data-capture",
-      "note_a": "database triggers on price inserts emit change events automatically, so no collection service has to remember to publish",
-      "note_b": "turning price-table writes into a stream of change events is change data capture (CDC) producing events from the log rather than from application code"
-    },
-    {
-      "a": "camelcamelcamel",
-      "verb": "demonstrates",
       "b": "eda",
       "note_a": "notifications flip from a two-hour polling scan to reacting to each price-change event the instant it lands",
       "note_b": "replacing full-table poll scans with per-event who-cares reaction is the event-driven shift that meets the sub-hour alert service level agreement (SLA)"
@@ -9284,13 +9277,6 @@
       "note_b": "Immutable mappings let three cache tiers stack with no consistency argument at each boundary"
     },
     {
-      "a": "camelcamelcamel",
-      "verb": "demonstrates",
-      "b": "materialized-view",
-      "note_a": "A nightly job precomputes daily, weekly and monthly price summaries so the chart reads a few dozen rows",
-      "note_b": "A scheduled rebuild turns an expensive aggregation into a cheap keyed read, at the price of staleness"
-    },
-    {
       "a": "chatgpt",
       "verb": "demonstrates",
       "b": "message-queue",
@@ -14538,6 +14524,13 @@
       "b": "hot-partition",
       "note_a": "one mega-stream's comments and connections overload the server that owns its video's channel",
       "note_b": "a live-comment design that hashes on liveVideoId concentrates one viral stream on one server"
+    },
+    {
+      "a": "camelcamelcamel",
+      "verb": "demonstrates",
+      "b": "change-data-capture",
+      "note_a": "the database's write-ahead log is read for each price insert and published as a change event, so no collection service has to remember to publish",
+      "note_b": "CamelCamelCamel streams price-row inserts from its Postgres log to a Kafka topic that drives price-drop alerts"
     }
   ],
   "group_order": {

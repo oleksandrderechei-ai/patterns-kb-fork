@@ -47,7 +47,7 @@ Out of scope: product search and discovery, cross-retailer price comparison, and
 - **Availability over consistency** — eventual consistency for price data is acceptable; the read and alert paths must stay up.
 - **Scale** — ~500M products tracked; a ~1M-user extension feeding data.
 - **Latency** — price-history chart queries under 500&nbsp;ms.
-- **Freshness of alerts** — a price drop reaches the subscriber within 1&nbsp;hour of the change.
+- **Freshness of alerts** — a price drop reaches the subscriber within 1&nbsp;hour of being reported or crawled; products no one views rely on the backstop crawler (see Coverage in the tradeoffs).
 - **Politeness** — stay inside Amazon's ~1 req/sec/IP limit while serving millions of users.
 
 ## Right-sizing
@@ -139,8 +139,8 @@ With a million reporters, some fraction will be mistaken, glitching, or maliciou
 
 The naïve notifier is a cron every two hours that scans the Price table for recent changes, then joins against subscriptions. It misses the 1-hour SLA (service-level agreement) and its full scans get heavier as the data grows. The reframe is to stop asking "what changed in the last two hours?" and instead react to "who cares about this change?" the instant it lands — an [event-driven](../patterns/architecture/eda.md) pipeline.
 
-- **Change data capture.** Database triggers fire on price inserts and publish the change — product id, old price, new price — automatically. [CDC](../patterns/distributed/coordination/change-data-capture.md) means no collection service has to remember to emit an event; the log is the source.
-- **Dual writes.** Collection services write the DB and publish the event in one step. More control — you can drop insignificant fluctuations or batch a rapid flurry before publishing, and skip trigger overhead — at the cost of writing the emit logic yourself.
+- **Change data capture.** [CDC](../patterns/distributed/coordination/change-data-capture.md) reads the database's write-ahead log and publishes each price insert as a change event (product id, old price, new price). No trigger runs on the write path, and no collection service has to remember to emit an event; the log is the source.
+- **Dual writes.** Collection services write the DB and publish the event in one step. More control — you can drop insignificant fluctuations or batch a rapid flurry before publishing, and skip trigger overhead — at the cost of writing the emit logic yourself. The two writes are not atomic: a crash between them drops the event, and a retry can duplicate it. A transactional outbox table closes the gap.
 
 Either way, price-change events land on a Kafka topic that notification consumers subscribe to — [publish/subscribe](../patterns/messaging/pubsub.md) that decouples collection from alerting. A consumer looks up only the subscriptions for that one product and emails the ones whose threshold is now met. Per-event lookups replace full-table scans, and because most products rarely move, event volume stays modest even at billions of rows.
 
@@ -182,7 +182,7 @@ flowchart TB
 ### What it buys
 <!--meta polarity=pro-->
 
-- A million browsers become the collection fleet, naturally weighted to the products people actually watch — no crawler army, and the rate limit stops being the bottleneck.
+- A million browsers become the collection fleet, weighted to the products people actually watch, with no crawler army; verification and backstop crawls still share the ~1 req/sec/IP budget.
 - Event-driven delivery via CDC and Kafka replaces full-table polling scans with per-change lookups, comfortably inside the 1-hour alert SLA.
 - Time-series partitioning and on-demand bucket aggregation keep chart queries under 500&nbsp;ms even over billions of price rows.
 
@@ -191,7 +191,7 @@ flowchart TB
 
 - Coverage is uneven — niche, low-traffic products the extension rarely sees go stale, and brand-new items lag until someone views them.
 - Trust-but-verify alerts on unverified data first, so a bad report can fire a false alert in the minutes before a verification crawl corrects it.
-- Availability is chosen over consistency: price data is eventually consistent, and charts may trail the true price by minutes to a day depending on the read path.
+- Availability is chosen over consistency: price data is eventually consistent, and charts trail the true price by the reporting and verification delay; niche products trail until someone views them.
 
 ## What's expected at each level
 <!--meta block=levels-->
@@ -211,10 +211,9 @@ flowchart TB
 
 - [API Gateway](../patterns/distributed/routing/api-gateway.md) — a single gateway fronts every client request, authenticating, rate-limiting, and routing chart reads, subscriptions and price reports to the right service
 - [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) — Amazon caps scraping near one request per second per Internet Protocol (IP), so the crawler and reporting boundary are throttled and the whole design is built to stay polite
-- [Change Data Capture](../patterns/distributed/coordination/change-data-capture.md) — database triggers on price inserts emit change events automatically, so no collection service has to remember to publish
 - [Event-Driven Architecture](../patterns/architecture/eda.md) — notifications flip from a two-hour polling scan to reacting to each price-change event the instant it lands
 - [Publish-Subscribe](../patterns/messaging/pubsub.md) — price-change events land on a Kafka topic that notification consumers subscribe to, decoupling collection from alerting
 - [Separation of Concerns](../principles/separation-of-concerns.md) — collection, history reads, subscriptions and notification each become their own service because their scaling profiles diverge
-- [Materialized View](../patterns/distributed/coordination/materialized-view.md) — A nightly job precomputes daily, weekly and monthly price summaries so the chart reads a few dozen rows
+- [Change Data Capture](../patterns/distributed/coordination/change-data-capture.md) — the database's write-ahead log is read for each price insert and published as a change event, so no collection service has to remember to publish
 
 <!-- relationships:end -->
