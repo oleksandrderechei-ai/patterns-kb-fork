@@ -218,4 +218,8 @@ class IdGenerator {
 
 - [Clock Skew](../../../hazards/clock-skew.md) — A backwards or disagreeing clock can repeat or misorder an id, so the generator must refuse or wait.
 
+**Demonstrated by**
+
+- [Bitly](../../../designs/bitly.md) — Bitly shows it end to end: blocks of 1000 ids, permuted, then encoded as seven characters.
+
 <!-- relationships:end -->

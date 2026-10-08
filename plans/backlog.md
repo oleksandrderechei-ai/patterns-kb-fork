@@ -49,6 +49,26 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     `failover`), each an unlink then link;
   - an owner call on whether a hazard's mitigation block may hold list items, which
     agent-consumer readers asked for on several pages so a citation can name one fix.
+- From the kb-improve run on the Foundational case studies (its pull request lists every
+  dropped finding):
+  - a sourcing pass for the 35 plan lines dropped as "needs a source": a Redis-call timeout
+    and per-route fail-open (`distributed-rate-limiter`), vnode counts and a hot-key
+    threshold (`design-distributed-cache`), sketch width and precompute cadence (`top-k`),
+    a `robots.txt` refresh interval and links per page for URL-dedup sizing
+    (`web-crawler`), a cardinality cap and lateness window (`metrics-monitoring`), alias
+    rules and a negative-cache TTL (`bitly`);
+  - a citation for Mercator's "up to 70%" DNS share (`web-crawler`) and for "Stripe uses
+    this shape" (`distributed-rate-limiter`), or softer wording;
+  - decide rows that never reach these designs: `observability` to `metrics-monitoring`,
+    and `spike-handling`'s Rate Limiter row to `distributed-rate-limiter`;
+  - edges drafted but over the cap: `bitly` to `request-coalescing` and `refresh-ahead`,
+    `distributed-rate-limiter` to `fail-fast` and `sliding-window`, `top-k` to
+    `request-coalescing`; and the `logging-service` to `monitor-object` note, which still
+    says a slow file cannot block the console;
+  - a page for the SCAN and LOOK scheduling algorithms, which `elevator` names but cannot
+    link;
+  - a second pass for the 96 plan lines dropped as over the cap of 8, mostly wording and
+    one-claim-per-item splits.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 

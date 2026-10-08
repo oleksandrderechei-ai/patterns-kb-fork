@@ -25,7 +25,7 @@ A Connect Four model splits the rules by what they depend on: a game object enfo
 
 - **Winner beside state.** A winner stored beside the state still allows won-with-no-winner, so check that pair in the one method that changes state.
 - **Opaque rejection.** A shared -1 cannot say which rule broke, so return a small result type once callers must react per reason.
-- **Rescanning.** Rescanning on every move costs nothing on 42 cells; add a per-column height index only when the board grows.
+- **Rescanning.** Rescanning on every move is trivial on 42 cells; add a per-column height index only when the board grows.
 
 **Example.** Yellow drops into column 3, which already holds 6 discs. The board answers -1, the game leaves every cell and the turn untouched, and Yellow tries again. Later Red drops into column 4 and the disc lands in row 2. The board counts matching discs from that cell along 4 directions, each way, using one helper that takes a step like (1,1); it finds 4 on a diagonal, and the game sets its state to won and records Red.
 
@@ -80,6 +80,8 @@ class Board:
     isFull()                      -> bool
     getCell(row, column)          -> DiscColor?
 ```
+
+`makeMove` returns false and changes nothing when the game is over, it is the wrong player's turn, or the column is full.
 
 ## How the system is built
 <!--meta block=architecture-->
@@ -142,13 +144,13 @@ The state a Game must expose is exactly one of three values: in progress, won, o
 
 - **Three booleans, eight worlds.** Three flags encode 2³ = 8 combinations for a domain that has 3 legal states. `isOver=false, hasWinner=true` (won but not over?) and `isOver=true, isDraw=true, hasWinner=true` (a win and a draw?) are both writable, and each one has to be kept consistent by hand on every move. The type system is now working against you.
 - **One enum, three states (chosen).** A single `GameState` collapses those eight ghosts to three real states; the field holds exactly one, and "won and drawn at once" simply cannot be expressed. Adding `PAUSED` or `ABANDONED` later is one new enum value, not another boolean and a fresh round of coordination logic everywhere. This is the design leaning on [Keep It Simple, Stupid (KISS)](../principles/kiss.md) and, more sharply, on [making illegal states unrepresentable](../principles/make-illegal-states-unrepresentable.md).
-- **The honest gap.** `winner` is still a separate nullable field, so `state=WON` with `winner=null` remains technically writable. Languages with tagged unions — Rust, Swift, Kotlin sealed classes, TypeScript discriminated unions — can fold the winner into the `WON` case and close it; Java, Python, C#, and Go cannot do it cleanly, so a plain enum plus a nullable winner is the pragmatic call. Naming the ideal shows depth without over-building the real thing.
+- **The honest gap.** `winner` is still a separate nullable field, so `state=WON` with `winner=null` remains technically writable. Languages with tagged unions — Rust, Swift, Kotlin sealed classes, TypeScript discriminated unions — can fold the winner into the `WON` case and close it; languages without them keep a plain enum plus a nullable winner.
 
 ### 2 · One win-check, four directions — not four checkers
 
 Win detection is where the design most invites over-engineering. From the cell just played, the board must look for four in a row along four axes: horizontal, vertical, and the two diagonals.
 
-- **Four checker classes.** The over-built answer is a `WinChecker` interface with a `HorizontalWinChecker`, a `VerticalWinChecker`, and two diagonal classes, looped over inside `checkWin` — a [Strategy](../patterns/gof/behavioral/strategy.md) arrangement. But all four bodies are the identical "count contiguous discs both ways"; only a pair of step values differs. That is parameterisable data masquerading as polymorphism, and Connect Four's win geometry is fixed forever, so the extension point guards a requirement that will never change — a textbook [You Aren't Gonna Need It (YAGNI)](../principles/yagni.md) violation and a misapplied Strategy.
+- **Four checker classes.** The over-built answer is a `WinChecker` interface with a `HorizontalWinChecker`, a `VerticalWinChecker`, and two diagonal classes, looped over inside `checkWin` — a [Strategy](../patterns/gof/behavioral/strategy.md) arrangement. But all four bodies are the identical "count contiguous discs both ways"; only a pair of step values differs. That is data written as [Strategy](../patterns/gof/behavioral/strategy.md) classes. The rules fix the win geometry, so the extension point guards a change this page does not need ([YAGNI](../principles/yagni.md)); a five-in-a-row variant changes one threshold, not the class list.
 - **Directions as data (chosen).** The unified version treats the four axes as vectors — `(0,1)`, `(1,0)`, `(1,1)`, `(-1,1)` — and reuses one `countInDirection(row, col, dr, dc, color)` helper for each vector and its opposite. Four lines of loop replace four classes. A fix to the counting logic lands once instead of four times, and extending to "five in a row" or a larger board is a one-method change. This is [Don't Repeat Yourself (DRY)](../principles/dry.md) doing real work: one behaviour, expressed once, driven by different parameters.
 
 ```mermaid caption="How does one helper cover four axes? Each vector is counted forward and backward from the cell just played, and four or more in a row on any axis wins."
@@ -167,7 +169,7 @@ flowchart TB
 
 The three classes only earn their keep if every rule has an obvious home.
 
-- **Board owns grid rules.** Bounds checking, the lowest-free-row scan, the full-board test, and win detection all live on Board, because they depend only on the grid — not on turns or players. `placeDisc` does its own validation and returns `-1` for an illegal column rather than making Game pre-check with `canPlace`, so grid validation stays in one place.
+- **Board owns grid rules.** Bounds checking, the lowest-free-row scan, the full-board test, and win detection all live on Board, because they depend only on the grid — not on turns or players. `placeDisc` does its own validation and returns `-1` for an illegal column rather than making Game pre-check with `canPlace`, so grid validation stays in one place. `canPlace` is a read-only query for callers such as a UI or a bot; `makeMove` does not call it.
 - **Game owns game rules.** Turn order, the state transitions, and rejecting a move out of turn or after the end live on Game. `makeMove` is the single mutating method and validates in a fixed order — game not over, then correct player, then a legal landing — before anything changes. This split is [separation of concerns](../principles/separation-of-concerns.md) and the [single-responsibility principle](../principles/single-responsibility.md) made concrete: two reasons to change — grid geometry versus game flow — live in two classes.
 - **Player owns nothing but data.** A name and a colour, two getters, no logic — deliberately a [value object](../patterns/ddd/value-object.md), so identity and decision-making stay separate. Making Player an interface with Human and Bot subclasses would add abstraction a pure data holder cannot justify (a human "does" nothing), which is exactly why the bot opponent below is a separate collaborator instead.
 
@@ -199,8 +201,8 @@ sequenceDiagram
 
 Because the rules sit behind `makeMove` and the grid math behind Board, each common follow-up touches a small, predictable place — the design is [open for extension](../principles/open-closed.md) without modifying the core.
 
-- **Board size.** `rows` and `cols` are already the only dimensions the placement and win logic reference; promote them to constructor parameters and an arbitrary board just works.
-- **Undo.** Every move flows through `makeMove`, so a `moveHistory` stack of small `Move` value objects — `(player, row, col)` — lives naturally on Game; undo pops one, clears that cell on Board, and rewinds the turn. It reads like a lightweight [command](../patterns/gof/behavioral/command.md) history and needs no change to how a move is made.
+- **Board size.** `rows` and `cols` are already the only dimensions the placement and win logic reference; promote them to constructor parameters and placement follows; the win length of 4 and the four vectors also need checking against the new size.
+- **Undo.** Every move flows through `makeMove`, so a `moveHistory` stack of small `Move` value objects — `(player, row, col)` — lives naturally on Game; undo pops one, clears that cell on Board, and rewinds the turn. It reads like a lightweight [command](../patterns/gof/behavioral/command.md) history and needs no change to how a move is made. Board needs a `clearCell(row, column)` method, and undo resets state to `IN_PROGRESS` and winner to null when the popped move ended the game.
 - **A computer opponent.** The rules do not move at all: a `BotEngine` inspects the board and returns a column, and Game sees an ordinary `makeMove(currentPlayer, column)`. Choosing a separate collaborator over a `BotPlayer` subclass keeps Player pure and favours [composition over inheritance](../principles/composition-over-inheritance.md) — the bot is a decision layer bolted beside the game, not woven into it.
 
 ~~~mermaid caption="What states can a game hold, and how does each end? The three real values of `GameState` — the eight boolean worlds collapse to these, and \"won and drawn at once\" has no state to occupy."
@@ -229,6 +231,7 @@ stateDiagram-v2
 - The enum closes all five illegal boolean combinations, but not every bad state: `state=WON` with a null winner lives on the separate winner field and stays representable in languages without tagged unions.
 - `placeDisc` signals every illegal move with the same `-1` sentinel, so a full column and an out-of-bounds column are indistinguishable and callers must remember to check.
 - `checkWin` rescans from the placed cell and `placeDisc` rescans the column each move — trivial for forty-two cells, but a `heights[]` index would be needed if the board grew large.
+- `makeMove` returns a bare bool, so a caller cannot tell a wrong turn, a finished game or a full column apart; a result type fixes this once callers must react per reason.
 
 ## What's expected at each level
 <!--meta block=levels-->

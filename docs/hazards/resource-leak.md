@@ -84,5 +84,6 @@ Then bound the wait. Add an acquisition timeout so a caller that cannot get a re
 - [Lease](../patterns/distributed/coordination/lease.md) — A holder that never releases keeps the grant until the lease expires
 - [Big Compute](../patterns/architecture/big-compute.md) — Burst pools are the case where a leak costs most.
 - [Iterator](../patterns/gof/behavioral/iterator.md) — An abandoned lazy iterator keeps its handle open until it is closed.
+- [Rate Limiter](../designs/design-rate-limiter.md) — The Rate Limiter design leaks one bucket per client id until idle keys are evicted.
 
 <!-- relationships:end -->

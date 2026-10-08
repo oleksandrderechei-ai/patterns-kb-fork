@@ -248,5 +248,6 @@ class BoundedChannel<T> {
 - [ChatGPT](../../designs/chatgpt.md) — rejecting overload rather than letting latency and queue depth grow without limit is backpressure applied at system scale
 - [Persona Identification & Sanction Check](../../designs/persona-identification.md) — the accept path is coupled to the drain rate: refusing a know your customer (KYC) flow costs the client a retry they can see, accepting it costs them a flow invisible for hours
 - [Persona Identification & Sanction Check (V2)](../../designs/persona-identification-v2.md) — refusal published as a contract term, on the argument that an accepted flow buried in a backlog is a worse failure than a rejected one
+- [Metrics & Monitoring](../../designs/metrics-monitoring.md) — A metrics pipeline picks dropping over catching up when a backlog will not drain.
 
 <!-- relationships:end -->

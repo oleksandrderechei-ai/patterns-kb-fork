@@ -89,5 +89,8 @@ Find hot keys with per-key read counters or sampled access logs, and compare eac
 - [Instagram](../designs/instagram.md) — A design where one celebrity post concentrates fan-out load on one key.
 - [Ad Click Aggregator](../designs/ad-click-aggregator.md) — A design where one ad draws most clicks and overloads one stream shard.
 - [Facebook News Feed](../designs/fb-news-feed.md) — A design where one viral post concentrates reads on one cache key.
+- [Distributed Rate Limiter](../designs/distributed-rate-limiter.md) — A rate limiter's own shard becomes the hot key, so adding shards does not raise one client's ceiling.
+- [Distributed Cache](../designs/design-distributed-cache.md) — A sharded cache places each key on one node, so one hot key still saturates that node.
+- [Top-K](../designs/top-k.md) — A skewed view stream concentrates writes on a few video counters.
 
 <!-- relationships:end -->

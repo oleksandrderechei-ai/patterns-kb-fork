@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-07",
+  "updated": "2026-10-08",
   "note": "Every typed edge between two pages, once: a verb on one page and its inverse on the other are one record. The single source: gen-relations (make gen) splices every page's relationships block (the marked block <!-- relationships:start --> … <!-- relationships:end -->) from it through tools/src/lib/render-relations.ts, the relations gate holds every edge closed and paired, and gen-prerequisites builds docs/data/prerequisites.json from it. node scripts/kb.mjs link and unlink write whole records; an edit by hand is fine too, then run make gen. A record is {a, verb, b, note_a, note_b, group_a?, group_b?, maps_a?, maps_b?, maps_label_a?, maps_label_b?}: `verb` is read from a's side and b reads its inverse (the verbs and their inverses are docs/data/content-model.json's; of a pair, the verb listed first there is the one written, and a symmetric verb is its own inverse). note_* is that side's note as markdown inline text, its links relative to that side's own page; group_* is a custom group heading, present only when it is not the verb's label; maps_* names the element on that side's page the edge maps to (a capability's mapping row, a comparison's matrix row), and maps_label_* is that row's first cell as plain text: row ids are positional, so the relations gate fails a pin whose row no longer reads its label (kb.mjs link --maps writes both). A page lists its sides in record order inside each group; group_order pins a page's group order where it is not the default (verb labels in the content model's order, then custom headings). Edit this file, never the rendered block; an edge whose other side is missing is a finding.",
   "relations": [
     {
@@ -1299,13 +1299,6 @@
       "b": "value-object",
       "note_a": "Request is immutable and compared by (floor, type), so PICKUP_UP and PICKUP_DOWN at one floor are distinct stops",
       "note_b": "a small read-only, content-compared object whose equality semantics the entire direction-aware stopping algorithm depends on"
-    },
-    {
-      "a": "parking-lot",
-      "verb": "demonstrates",
-      "b": "rw-lock",
-      "note_a": "Fine-grained locking lets entrances search concurrently and claim a spot exclusively",
-      "note_b": "Parking Lot uses a read-write lock to let many entrances search while claiming is exclusive"
     },
     {
       "a": "parking-lot",
@@ -14552,6 +14545,125 @@
       "b": "deadlock",
       "note_a": "Per-seat locking needs sorted lock acquisition, or two multi-seat bookings can wait on each other.",
       "note_b": "A seat-booking design where finer-grained per-seat locks bring the risk."
+    },
+    {
+      "a": "distributed-rate-limiter",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "The HMGET-then-HSET gap over-admits; one Lua script folds the check and the write into one atomic step.",
+      "note_b": "Two gateways reading the same last token both admit; a shard-side script closes the window."
+    },
+    {
+      "a": "distributed-rate-limiter",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "One client at tens of thousands of requests a second saturates a single shard; header-aware client throttling and a blocklist contain it.",
+      "note_b": "A rate limiter's own shard becomes the hot key, so adding shards does not raise one client's ceiling."
+    },
+    {
+      "a": "bitly",
+      "verb": "demonstrates",
+      "b": "unique-id-generation",
+      "note_a": "Claimed counter blocks, a keyed permutation and base62 give collision-free codes with no check; hashing and random codes are the rejected alternatives.",
+      "note_b": "Bitly shows it end to end: blocks of 1000 ids, permuted, then encoded as seven characters."
+    },
+    {
+      "a": "design-distributed-cache",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "One viral key's traffic lands on the single node that owns it; key#N copies and a client-side count-min sketch find and spread it.",
+      "note_b": "A sharded cache places each key on one node, so one hot key still saturates that node."
+    },
+    {
+      "a": "design-distributed-cache",
+      "verb": "exposed-to",
+      "b": "cache-stampede",
+      "note_a": "A hot key's expiry sends every reader to the origin at once; jittered TTLs and a set-if-absent refill lock turn it into one query.",
+      "note_b": "A shared cache in front of a database turns each hot-key expiry into a herd of misses."
+    },
+    {
+      "a": "top-k",
+      "verb": "exposed-to",
+      "b": "cache-stampede",
+      "note_a": "When a window's cached ranking expires, every request falls through to the store at once; a precompute job refreshes it ahead of expiry.",
+      "note_b": "A top-K ranking read by millions shows the cold-miss pile-up when its one cached entry expires."
+    },
+    {
+      "a": "top-k",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "A few viral videos take most views, so the writer that owns their counters cannot keep up; batching in the stream job absorbs them.",
+      "note_b": "A skewed view stream concentrates writes on a few video counters."
+    },
+    {
+      "a": "web-crawler",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "When a per-domain rate-limit window resets, every waiting fetcher can retry in lockstep, so per-fetcher jitter spreads the retries.",
+      "note_b": "A crawler's per-domain rate limit releases all waiting fetchers at once when its window resets."
+    },
+    {
+      "a": "metrics-monitoring",
+      "verb": "demonstrates",
+      "b": "backpressure",
+      "note_a": "A multi-minute backlog forces a drop-versus-catch-up choice; the queue only drains with spare headroom, so monitoring prefers dropping.",
+      "note_b": "A metrics pipeline picks dropping over catching up when a backlog will not drain."
+    },
+    {
+      "a": "metrics-monitoring",
+      "verb": "exposed-to",
+      "b": "metastable-failure",
+      "note_a": "A queue backlog after an outage keeps ingestion behind unless spare headroom or dropping is policy.",
+      "note_b": "A metrics pipeline whose backlog never drains stays behind long after the outage that caused it."
+    },
+    {
+      "a": "parking-lot",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "Two gates scan the same spot free, both add it and both issue a ticket until find-and-claim is one locked step.",
+      "note_b": "A check-then-act on a shared set: two entrances claim one parking bay."
+    },
+    {
+      "a": "parking-lot",
+      "verb": "demonstrates",
+      "b": "rw-lock",
+      "note_a": "Named as the next step when one coarse lock contends; the page ships a plain lock.",
+      "note_b": "Parking Lot names a read-write lock as the step after one coarse lock: many entrances search while claiming stays exclusive."
+    },
+    {
+      "a": "elevator",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "Two hall-call dispatches can claim the same idle car, and step() can mutate a car's stop set while addRequest writes to it.",
+      "note_b": "An elevator controller handling concurrent hall calls can double-assign an idle car or corrupt a car's stop set mid-tick."
+    },
+    {
+      "a": "design-rate-limiter",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "The base allow is check-then-act: two threads of one client both read one token and both pass until the bucket is locked.",
+      "note_b": "The Rate Limiter design shows this race in a token bucket and fixes it with a per-bucket lock."
+    },
+    {
+      "a": "design-rate-limiter",
+      "verb": "exposed-to",
+      "b": "resource-leak",
+      "note_a": "A bucket or log is kept for every clientId that ever called, so the maps grow until idle keys are evicted.",
+      "note_b": "The Rate Limiter design leaks one bucket per client id until idle keys are evicted."
+    },
+    {
+      "a": "file-system",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "create is a check-then-act race: two threads both see a name free and one silently overwrites the other, corrupting the shared tree.",
+      "note_b": "The file system's create path is a worked case: both threads find the name free and both add it."
+    },
+    {
+      "a": "file-system",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "move holds two folder locks, so two moves in opposite directions wait on each other until locks are taken in a fixed order.",
+      "note_b": "Moving between two folders under per-folder locks is a worked case."
     }
   ],
   "group_order": {

@@ -24,7 +24,7 @@ A crawler fetches a page, extracts its text, finds the outbound links and repeat
 A web crawler splits the work into two stages joined by [queues](../patterns/messaging/message-queue.md): fetchers download a page and store its HTML in blob storage, and parsers read the HTML back, keep the text and send the links they find to the list of URLs still to visit. A failure then loses one URL, not a whole unit of work, and queue messages carry only an id, never the HTML. Choose separate stages over one process that does everything, because the fetch is the flakiest step and a failed message simply reappears for another worker. Do the arithmetic first: 10 billion pages in 5 days is about 23,000 pages a second, and you should load-test the machine count because it rests on an assumed utilisation. Limit each domain to about 1 request a second with an atomic claim, and add random jitter so waiting fetchers do not all retry when a window resets.
 
 - **Name lookups.** Across millions of domains, domain-name lookups, not bandwidth, become the bottleneck. Cache lookups in each fetcher and use several resolvers.
-- **Crawler traps.** Endless link chains never finish. Cap link depth, and hash content so duplicate pages are skipped.
+- **Crawler traps.** Endless link chains never finish. Cap depth and normalise URLs; a content hash skips only exact duplicates, not pages that differ per visit.
 - **Skipped pages.** A probabilistic seen-set (\[Bloom filter\](../patterns/distributed/coordination/bloom-filter.md)) saves memory but occasionally skips a page you never fetched. Size it for a low error rate.
 
 **Example.** The crawl needs 10 billion pages in 5 days, 432,000 seconds, about 23,000 pages a second. A 200 Gbps machine could pull 200 / 8 / 2 MB = 12,500 pages a second; at 30% real utilisation that is 3,750. One machine needs 10 billion / 3,750, about 31 days; 8 machines need about 3.9 days. A fetcher that dies mid-download never deletes its message, so it reappears for another worker. After 5 failed receives it moves to a dead-letter queue and the site is marked offline.
@@ -59,7 +59,7 @@ Out of scope: defending against malicious actors, cost/budget limits, and legal 
 
 **What one machine does.** A network-optimised instance (~200&nbsp;Gbps — AWS `c6in.32xlarge` or `c7gn.16xlarge`) can in theory pull 200&nbsp;Gbps ÷ 8 bits ÷ 2&nbsp;MB ≈ **12,500 pages/sec**. Real utilisation is far lower — call it 30% once DNS, server latency, politeness waits and retries are paid — so ≈ **3,750 pages/sec** per machine.
 
-**Machine count.** One machine needs 10B ÷ 3,750 ≈ 2.7M&nbsp;s ≈ **31 days**; run **eight** in parallel and it drops to ≈ 3.9 days, comfortably inside the window. The math is assumption-laden — its value is the reasoning, and a real deployment would load-test.
+**Machine count.** One machine needs 10B ÷ 3,750 ≈ 2.7M&nbsp;s ≈ **31 days**; run **eight** in parallel and it drops to ≈ 3.9 days, comfortably inside the window. The math is assumption-laden — its value is the reasoning, and a real deployment would load-test. Politeness caps coverage: at 1 request a second a single domain yields at most about 432,000 pages in 5 days (432,000 s x 1), so the plan needs at least 23,000 domains in flight at once and very large sites will not be crawled in full.
 
 **Storage.** Raw HTML at ~30&nbsp;KB × 10B ≈ **300&nbsp;TB**; the extracted text is a fraction of that. Both land in blob storage — never in the queue or the database.
 
@@ -86,6 +86,9 @@ output: text blobs in object storage, indexed by the Metadata DB
 
 # fetch stage — one URL pulled from the frontier
 def fetch(url):
+    rules = robots.rules(domain(url))     # fetched once per domain, kept on the Domain row
+    if disallowed(url, rules): return ack(url)
+    if not redis.set(domain(url), 1, nx=True, ttl=rules.crawl_delay): return defer(url)  # lost the claim: ChangeMessageVisibility
     ip   = dns.resolve(host(url))
     html = http_get(url, ip)
     ref  = blob.put(html)                 # raw HTML to blob storage
@@ -95,10 +98,11 @@ def fetch(url):
 # parse stage — parser workers
 def extract(id):
     html        = blob.get(db.html_ref(id))
+    if db.seen_hash(hash(html)): return   # content dedup before the parse
     text, links = parse(html)
     blob.put(text)
     for l in links:                       # after URL + content dedup
-        frontier.enqueue(l)
+        frontier.enqueue(l, depth=depth(id) + 1)   # dropped past the depth cap
 ```
 
 ## How the system is built
@@ -134,11 +138,11 @@ Fetches will fail, so retry with backoff. An in-memory timer is the naïve answe
 
 ### 2 · Being a polite guest
 
-Two obligations. First, `robots.txt`: fetch it once per domain, parse its `Disallow` paths and any `Crawl-delay`, and store the rules plus a last-crawl timestamp on the Domain row. On dequeue, if the URL is disallowed, acknowledge it and move on; if the crawl-delay hasn't elapsed, don't crawl — defer the message with `ChangeMessageVisibility` (SQS's `DelaySeconds` only applies to newly-sent messages, so for an in-flight one the visibility timeout is the deferral knob). `Crawl-delay` isn't part of the official protocol and some big crawlers ignore it, but respecting it is good etiquette.
+Two obligations. First, `robots.txt`: fetch it once per domain, parse its `Disallow` paths and any `Crawl-delay`, and store the rules plus a last-crawl timestamp on the Domain row. On dequeue, if the URL is disallowed, acknowledge it and move on; if the crawl-delay hasn't elapsed, don't crawl — defer the message with `ChangeMessageVisibility` (SQS's `DelaySeconds` only applies to newly-sent messages, so for an in-flight one the visibility timeout is the deferral knob). `Crawl-delay` isn't part of the official protocol and some big crawlers ignore it, but respecting it is good etiquette. A deferral is another receive, so it raises `ApproximateReceiveCount`: set `maxReceiveCount` above the deferrals a busy domain should see, or count only failed fetches toward the cap, or a polite URL reaches the dead-letter queue and the site is marked offline.
 
 Second, cap the request rate per domain — the industry rule of thumb is ~1 request/second/domain, aggregated across every fetcher. A central store (Redis) tracks per-domain request counts in a sliding window, and each fetcher checks before it hits the origin: a distributed [rate limiter](../patterns/distributed/resilience/rate-limiter.md). This doesn't throttle aggregate throughput because the crawl spans millions of domains at once — the limit is per-domain, and there are millions of domains in flight.
 
-The subtle bug is a race: several fetchers can read the same stale last-crawl time simultaneously and all conclude it's their turn — a classic check-then-act. Fix it with an atomic per-domain claim before crawling: `Redis SET domain NX` with a TTL (time to live) equal to the crawl delay, a lightweight [distributed lock](../patterns/distributed/coordination/distributed-lock.md). Whoever wins the key crawls; the losers defer their message. And when a rate-limit window resets, every waiting fetcher can retry in lockstep — a [thundering herd](../hazards/thundering-herd.md) — so add per-fetcher jitter to spread the retries out.
+The subtle bug is a race: several fetchers can read the same stale last-crawl time simultaneously and all conclude it's their turn — a classic check-then-act. Fix it with an atomic per-domain claim before crawling: `Redis SET domain NX` with a TTL (time to live) equal to the crawl delay, a lightweight [distributed lock](../patterns/distributed/coordination/distributed-lock.md). Whoever wins the key crawls; the losers defer their message. And when a rate-limit window resets, every waiting fetcher can retry in lockstep — a [thundering herd](../hazards/thundering-herd.md) — so add per-fetcher jitter to spread the retries out. The atomic claim alone holds a domain to one fetch per crawl delay; the sliding-window counter is the alternative way to enforce the limit, not an addition, and matters for rates above 1 request a second.
 
 The per-domain claim is what closes the check-then-act race:
 
@@ -184,14 +188,14 @@ stateDiagram-v2
 <!--meta polarity=pro-->
 
 - Pipelined stages isolate the fragile fetch — a crash retries one URL, not the whole unit of work, and each stage scales independently.
-- Politeness and rate limits are enforced centrally, so the crawl fans across millions of domains without getting any single site to block it.
+- Politeness and rate limits are enforced centrally, so the crawl fans across millions of domains and a well-behaved fetcher is unlikely to be blocked by any single site.
 - A managed queue supplies backoff (visibility timeout) and a failure cap (dead-letter queue) almost for free, and URL + content dedup keeps the 5-day budget realistic.
 
 ### What it gives up
 <!--meta polarity=con-->
 
 - The throughput plan rests on assumption-laden estimates (30% utilisation, 2&nbsp;MB/page); the real numbers need load testing.
-- Content-hash dedup and Bloom filters risk false positives — a page never actually crawled can be silently skipped.
+- Bloom-filter dedup risks false positives, so a page never actually crawled can be silently skipped; an indexed content-hash column is exact but costs a lookup per page.
 - Blunt heuristics leak: treating `robots.txt` as a one-time download leaves rules stale, and offline-after-5-retries plus a fixed max depth can drop legitimately reachable pages.
 
 ## What's expected at each level
@@ -207,6 +211,10 @@ stateDiagram-v2
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Thundering Herd](../hazards/thundering-herd.md) — When a per-domain rate-limit window resets, every waiting fetcher can retry in lockstep, so per-fetcher jitter spreads the retries.
 
 **Demonstrates**
 

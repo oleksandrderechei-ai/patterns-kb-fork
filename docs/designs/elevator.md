@@ -21,14 +21,14 @@ An elevator control system takes hall calls, which carry a direction, and destin
 ## Explained
 <!--meta block=explain-->
 
-An elevator controller gives each car its own sweep: it keeps moving one way, stops for every rider going that way, and reverses only when nothing is left ahead, while a separate rule picks which car answers a hall call. Choose the sweep over going to the nearest stop when riders trust the up and down indicator more than they value the shortest trip, because it cuts reversals, not floors. Keep dispatch a swappable rule ([Strategy](../patterns/gof/behavioral/strategy.md)) rather than part of the car, for example one rule that shortens waits in a busy tower and another that saves energy overnight.
+An elevator controller gives each car its own sweep: it keeps moving one way, stops for every rider going that way, and reverses only when nothing is left ahead, while a separate rule picks which car answers a hall call. Choose the sweep over going to the nearest stop when riders trust the up and down indicator more than they value the shortest trip: it reverses less than first-come order, but ties nearest-stop on reversals and can cost a floor more. Keep dispatch a swappable rule ([Strategy](../patterns/gof/behavioral/strategy.md)) rather than part of the car, for example one rule that shortens waits in a busy tower and another that saves energy overnight.
 
-- **Missed pass.** A rider who presses just behind the sweep waits a full pass. If that hurts, change the dispatch rule, not the car.
+- **Missed pass.** A rider who presses just behind the sweep waits a full pass. If that hurts, let the dispatch rule send another car.
 - **Wrong car.** A rule trusting only direction and position can pick a car that reverses first. Ask whether its queued stops reach the floor.
 - **Ties.** Set order is not stable, so state a rule such as the lower floor, or the simulation will not repeat exactly.
-- **Parallel calls.** Hand hall calls over through a queue read once per tick: one tick of delay at most, where a lock slows every call.
+- **Parallel calls.** Hand hall calls over through a queue read once per tick: one tick of delay, where a lock makes calls wait on step().
 
-**Example.** A car at floor 5 holds stops 8, 3 and 7. First-come order goes 5 to 8, to 3, to 7: 3 + 5 + 4 = 12 floors and two reversals. Nearest-stop goes 3, 7, 8: 2 + 4 + 1 = 7 floors but dives down first. The sweep goes 7, 8, then reverses to 3: 2 + 1 + 5 = 8 floors and one reversal. It travels one floor more than nearest-stop, and a rider who presses down at 6 just after the car passes waits for the full pass.
+**Example.** A car at floor 5 holds stops 8, 3 and 7. First-come order goes 5 to 8, to 3, to 7: 3 + 5 + 4 = 12 floors and two reversals. Nearest-stop goes 3, 7, 8: 2 + 4 + 1 = 7 floors and one reversal, but dives down first. The sweep goes 7, 8, then reverses to 3: 2 + 1 + 5 = 8 floors and one reversal. It beats first-come order on reversals, ties nearest-stop on them and travels one floor more, and a rider who presses down at 6 just after the car passes waits for the full pass.
 
 ## Requirements
 <!--meta block=requirements-->
@@ -39,7 +39,7 @@ An elevator controller gives each car its own sweep: it keeps moving one way, st
 1. Three cars serve floors 0–9; a hall call from any floor names a direction, and the system decides which car answers.
 2. Riders inside a car select one or more destination floors, which carry no direction.
 3. Time advances in discrete steps — one `step()` moves every car by one tick.
-4. Handle many concurrent pickup requests spread across floors.
+4. Accept many pickup requests spread across floors within a tick; truly concurrent calls are an extension (nfr-5).
 5. Reject a request for a non-existent floor (return `false`); a request for the floor a car already sits on is a no-op.
 
 Out of scope, named explicitly: weight and capacity limits, door open/close mechanics, emergency stop, dynamic floor/car reconfiguration, and any UI or rendering.
@@ -50,7 +50,7 @@ Out of scope, named explicitly: weight and capacity limits, door open/close mech
 - **Efficient movement** — a car sweeps through its stops rather than bouncing back and forth.
 - **Direction-correct pickups** — a car heading up must not scoop a rider who pressed down.
 - **Determinism** — the same inputs produce the same trace, so the simulation is testable and no hash-set iteration order leaks in.
-- **Encapsulation** — one public entry point; a car's movement rules stay inside the car.
+- **Encapsulation** — one entry point for hall calls (requestElevator), destinations going to a car's addRequest; a car's movement rules stay inside the car.
 - **Evolvability** — express cars, request cancellation, and truly concurrent hall calls should slot in without a rewrite.
 
 ## Core entities
@@ -86,7 +86,7 @@ class Elevator:
 ## How the system is built
 <!--meta block=architecture-->
 
-Two classes carry the weight. The **controller** is a thin, near-stateless coordinator: on a hall call it validates the floor, picks the best car, and hands that car a `Request`; on `step()` it simply forwards the tick to each car and stays out of the way. Each **Elevator** is a self-contained state machine over its direction and its set of stops — all the movement logic lives here, so the controller never needs to know how a car moves. Each class thus has one reason to change — the controller for dispatch policy, the car for movement — a clean [single-responsibility](../principles/single-responsibility.md) split, and that [separation of concerns](../principles/separation-of-concerns.md) is what lets the two evolve independently. The small `Request` value in the middle is what makes a car stop only for riders travelling its way.
+Two classes carry the weight. The **controller** is a thin, near-stateless coordinator: on a hall call it validates the floor, picks the best car, and hands that car a `Request`; on `step()` it simply forwards the tick to each car and stays out of the way. Each **Elevator** is a self-contained state machine over its direction and its set of stops — all the movement logic lives here, so the controller never needs to know how a car moves. Each class has one reason to change ([single responsibility](../principles/single-responsibility.md)) — the controller for dispatch policy, the car for movement — a [separation of concerns](../principles/separation-of-concerns.md), though dispatch reads each car's floor, direction and queued stops, so a change to that state can touch the dispatch rule. The small `Request` value in the middle is what makes a car stop only for riders travelling its way.
 
 ```mermaid caption="The controller coordinates and dispatches; each car owns its own movement as a direction state machine; a Request is an immutable (floor, type) value."
 classDiagram
@@ -147,7 +147,7 @@ Three algorithms, tested on the same set of stops — 8, 3, 7 — with the car a
 
 - **First in, first out (FIFO).** Serve stops in arrival order: 5&nbsp;→&nbsp;8&nbsp;→&nbsp;3&nbsp;→&nbsp;7, which is 12 floors of travel and two reversals. A rider at floor 7 watches the car climb to 8, plunge all the way to 3, then return. Feels random and unfair.
 - **Nearest stop.** Always head to the closest queued stop: 5&nbsp;→&nbsp;3&nbsp;→&nbsp;7&nbsp;→&nbsp;8, only 7 floors — but it still reverses needlessly, diving down to 3 before sweeping the 7 and 8 it was already positioned for.
-- **SCAN (chosen).** Keep going one direction, serving every matching stop, and reverse only when nothing remains ahead — the same "elevator algorithm" used for disk-arm scheduling. Going up from 5: 7, 8, reverse, 3 — 8 floors and a single reversal. It travels a floor further than nearest-stop but changes direction far less, and a waiting rider always sees the car approaching rather than fleeing.
+- **SCAN (chosen).** Keep going one direction, serving every matching stop, and reverse only when nothing remains ahead — the same "elevator algorithm" used for disk-arm scheduling. Going up from 5: 7, 8, reverse, 3 — 8 floors and a single reversal. It travels a floor further than nearest-stop and reverses no more often than it does here, but a rider on the car's way sees it approach rather than flee, except at a stop it reaches only after reversing. Strictly this is the LOOK variant: classic SCAN runs to the last floor before reversing, and this car reverses when nothing remains ahead.
 
 SCAN lives entirely inside `Elevator.step()`, driven by `direction` as an explicit three-value [state machine](../patterns/gof/behavioral/state.md). One tick is five cases: no requests → go `IDLE`; `IDLE` with work → pick a direction toward the nearest stop (ties broken by the lower floor, because a `HashSet`'s iteration order is not stable and the simulation must be deterministic); at a matching stop → remove those requests and `return` without moving (a car never moves on the tick it stops — forgetting that `return` is the classic bug); nothing ahead → flip direction and `return`; otherwise advance one floor. A subtlety worth naming: stopping is direction-aware, but travelling is not — `hasRequestsAhead` steers the car toward any stop, even one it will only serve after reversing. And there are no floor-0 or floor-9 boundary checks: once no stop remains ahead the reverse case fires on its own, so hardcoding "if floor == 9 then go down" is an anti-pattern that misfires the instant a stop is added at floor 9.
 
@@ -156,7 +156,7 @@ SCAN lives entirely inside `Elevator.step()`, driven by `direction` as an explic
 Dispatch lives in the controller's `selectBestElevator`, and there is a ladder of answers:
 
 - **Nearest car, ignoring direction.** Thirty seconds to write and fine under light traffic, but it will send the closest car even when it is heading away — the rider watches the nearest car recede and wait for it to come back.
-- **Direction-aware (chosen for the interview).** Three priorities in order: a car already moving the right way and positioned to reach the floor; else the nearest idle car; else the nearest car of any kind. A known gap remains — a car going up whose highest stop is below the requested floor still looks like a match though it will reverse first. The honest fix inspects the car's queue (`hasRequestsAtOrBeyond`) to confirm its committed stops actually carry it to or past the floor; worth flagging even when there is no time to code it.
+- **Direction-aware (chosen for the interview).** Three priorities in order: a car already moving the right way and positioned to reach the floor (an up-bound car at or below the call floor, a down-bound car at or above it); else the nearest idle car; else the nearest car of any kind; equal distances go to the lower car index, as the lower-floor rule does inside a car. A known gap remains — a car going up whose highest stop is below the requested floor still looks like a match though it will reverse first. The fix inspects the car's queue (`hasRequestsAtOrBeyond`) to confirm its committed stops actually carry it to or past the floor; flag it even if you skip the code.
 
 Whichever rule you land on, `selectBestElevator` sits behind a fixed signature — which is exactly a [strategy](../patterns/gof/behavioral/strategy.md): a wait-time-minimizing policy for a busy office tower and an energy-saving policy for a quiet overnight building are swappable without touching a line of movement code. The controller also keeps no queue of unassigned requests; a hall call is assigned immediately. Holding pending requests for cars to pull from is the more general design, but it only earns its keep once "what if every car is busy?" is a real requirement — deferring it is a [You Aren't Gonna Need It (YAGNI)](../principles/yagni.md) call. In the same spirit, `requestElevator` and `addRequest` both read like "add a request," yet forcing them under one shared `IRequestHandler` interface would invent polymorphism that is not there: the controller is not a kind of car, and no code ever needs to treat them interchangeably.
 
@@ -198,7 +198,7 @@ stateDiagram-v2
 ### What it buys
 <!--meta polarity=pro-->
 
-- Direction-correct pickups and thrash-free travel: the Request value plus the single-direction sweep mean a car never scoops a rider going the wrong way and rarely reverses.
+- Direction-correct pickups and thrash-free travel: the Request value plus the single-direction sweep mean a car never scoops a rider going the wrong way and reverses only when nothing remains ahead: once on the 8, 3, 7 example, against two for first-come order and one for nearest-stop.
 - Movement and dispatch are separately ownable and separately testable — the car is a self-contained state machine, the dispatch rule a swappable strategy.
 - A deterministic simulation: the explicit IDLE state and the lowest-floor tiebreak make every run reproducible from the same inputs.
 
@@ -222,6 +222,10 @@ stateDiagram-v2
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Race Condition](../hazards/race-condition.md) — Two hall-call dispatches can claim the same idle car, and step() can mutate a car's stop set while addRequest writes to it.
 
 **Demonstrates**
 

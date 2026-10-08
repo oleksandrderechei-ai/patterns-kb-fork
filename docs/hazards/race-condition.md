@@ -104,5 +104,10 @@ Pick the lightest mechanism the contention allows: optimistic when conflicts are
 - [Lazy Initialization](../patterns/gof/extra/lazy-initialization.md) — Two first callers both run the factory, so the value is built twice
 - [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) — Rate Limiter's check-then-count is a check-then-act race when its counter is shared
 - [Inventory Management](../designs/inventory-management.md) — the inventory transfer shows the check-then-act race and its lock fix
+- [Distributed Rate Limiter](../designs/distributed-rate-limiter.md) — Two gateways reading the same last token both admit; a shard-side script closes the window.
+- [Parking Lot](../designs/parking-lot.md) — A check-then-act on a shared set: two entrances claim one parking bay.
+- [Elevator](../designs/elevator.md) — An elevator controller handling concurrent hall calls can double-assign an idle car or corrupt a car's stop set mid-tick.
+- [Rate Limiter](../designs/design-rate-limiter.md) — The Rate Limiter design shows this race in a token bucket and fixes it with a per-bucket lock.
+- [File System](../designs/file-system.md) — The file system's create path is a worked case: both threads find the name free and both add it.
 
 <!-- relationships:end -->
