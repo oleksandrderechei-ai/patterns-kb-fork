@@ -35,7 +35,17 @@
  * deletes the script chunks no page loads. The markdown adds roughly the size
  * of docs/ to dist.
  *
- * It reads every page and checks its `kb:area` and `kb:owner` meta
+ * The machine files of the retrieval contract come with it (site-records.ts):
+ * for each page of the knowledge base a record beside the built page
+ * (`/a/b.html` gets `/a/b.json`), `graph.json`, the schemas under `schema/`,
+ * `llms.txt` and `llms-full.txt`, and the manifest entry of every page gains
+ * `id`, `kind`, `band`, `group` and `record`, null on a page outside the
+ * knowledge base. They are the bytes `kb.mjs` prints for the same page. A tree
+ * with no content model holds no knowledge base, so none of those files is
+ * written there.
+ *
+ * It reads every page and checks its `kb:area` and `kb:owner` meta, builds every
+ * record and checks that every page of the knowledge base has built HTML,
  * before it writes anything (offline-C4): a half-transformed site is worse than
  * none. A second run changes no byte.
  *
@@ -64,10 +74,12 @@ import {
   VOID,
   type Span,
 } from '../lib/built-page.js';
+import { CONTRACTS, SCHEMA_BASES, schemaUrl } from '../contract/contract.js';
 import { main, type GateContext, type GateSpec } from '../lib/gate.js';
 import { fromPageTree, placedPages, type Structure } from '../lib/site-routes.js';
 import { publicRoot, readStructure, toPublic } from './site-output.js';
 import { NOT_FOUND_ROUTE, standaloneNotFound } from './site-not-found.js';
+import { indexFieldsOf, readContract, writeContract } from './site-records.js';
 
 /** The page facts every built page must carry in its head (offline-C4). */
 export const REQUIRED_META = ['kb:area', 'kb:owner'];
@@ -848,9 +860,19 @@ export interface IndexEntry {
   /** Added after the spec's field list (fields are added, never renamed): what search ranks by. */
   aliases: string[];
   solves: string[];
+  /**
+   * Added after the spec's field list, with `kind`, `band`, `group` and `record`: the page's id when it is a
+   * page of the knowledge base, null on any other page. The five are always there (kb-index-1.json).
+   */
+  id: string | null;
+  kind: string | null;
+  band: string | null;
+  group: string | null;
+  /** The address of the page's record, `/a/b.json`; null on a page outside the knowledge base. */
+  record: string | null;
+  headings: Heading[];
   /** Added after the spec's field list: the route's markdown source, `/a/b.md`; absent on a page with none. */
   markdown?: string;
-  headings: Heading[];
 }
 
 /** Home first, then by area in the structure file's order, then by route. */
@@ -1022,10 +1044,23 @@ export const spec: GateSpec = {
     }
 
     const pages: PageRead[] = [];
+    const built = new Set<string>();
     for (const file of files) {
       const route = `/${path.relative(DIST, file).split(path.sep).join('/')}`;
+      built.add(route);
       const read = readPage(file, route, readFileSync(file, 'utf8'), (what) => ctx.fail(`${shown}${route}`, what));
       if (read !== null) pages.push(read);
+    }
+
+    // The retrieval contract's files are built here, in memory: a page of the
+    // knowledge base that has no record, or no HTML to sit beside, refuses the
+    // pass like a page with no facts does.
+    const { contract, findings: refused } = readContract(ctx.root);
+    for (const f of refused) ctx.fail(f.file, f.what);
+    for (const page of contract?.pages ?? []) {
+      if (!built.has(page.route)) {
+        ctx.fail(`${shown}${page.route}`, `no HTML was built for this page of the knowledge base (${page.source}) — its record would sit beside nothing`);
+      }
     }
     if (ctx.findings > 0) return '';
 
@@ -1049,6 +1084,7 @@ export const spec: GateSpec = {
       return name;
     };
 
+    const kbPages = new Map((contract?.pages ?? []).map((p) => [p.route, p]));
     const root = publicRoot();
     for (const page of pages) {
       const depth = page.route.split('/').length - 2;
@@ -1097,6 +1133,7 @@ export const spec: GateSpec = {
         tags: page.tags,
         aliases: page.aliases,
         solves: page.solves,
+        ...indexFieldsOf(kbPages.get(page.route)),
         headings: headings(html, knowledgeRegion(html)),
       });
     }
@@ -1123,12 +1160,18 @@ export const spec: GateSpec = {
     };
     index.sort(manifestOrder(rank));
 
+    if (contract !== null) writeContract(DIST, contract);
+
     // The manifest: every built page's route, title and facts, and its
     // heading outline — never its text. The pages are the text, and a copy
     // here would be a second thing to keep true (two-layers-C6).
     writeFileSync(
       path.join(DIST, 'index.json'),
-      `${JSON.stringify({ generator: 'tools/src/site/site-portable.ts', pages: index }, null, 2)}\n`,
+      `${JSON.stringify(
+        { $schema: schemaUrl(SCHEMA_BASES.index), contract: CONTRACTS.index, generator: 'tools/src/site/site-portable.ts', pages: index },
+        null,
+        2,
+      )}\n`,
     );
 
     for (const name of readdirSync(DIST)) {
@@ -1143,7 +1186,9 @@ export const spec: GateSpec = {
     if (ctx.flags.has('--quiet')) return '';
     const pruned = orphans.length > 0 ? `; pruned ${orphans.length} unreferenced chunk(s)` : '';
     const md = `; copied ${sources.copied.length} markdown source(s)`;
-    return `[${ctx.name}] ${index.length} page(s) made portable${md}; wrote index.json${pruned}`;
+    const machine =
+      contract === null ? '' : `, ${contract.pages.length} record(s), graph.json, llms.txt, llms-full.txt and ${contract.schemas.length} schema(s)`;
+    return `[${ctx.name}] ${index.length} page(s) made portable${md}; wrote index.json${machine}${pruned}`;
   },
 };
 

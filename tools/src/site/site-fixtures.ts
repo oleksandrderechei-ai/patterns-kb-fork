@@ -6,6 +6,9 @@
  * the same to every step that meets it.
  */
 
+import { SCHEMA_DIR } from '../contract/contract.js';
+import { Corpus } from '../kb/corpus.js';
+import { writeRecordFixture } from '../lib/fixtures.js';
 import type { Structure } from '../lib/site-routes.js';
 import type { Sandbox } from '../lib/sandbox.js';
 import { NOSCRIPT_STYLE } from '../lib/site-noise.js';
@@ -221,6 +224,67 @@ export function builtSite(sb: Sandbox, dist = 'site/dist'): void {
       sb.write(`${dist}${route.replace(/\.html$/, '.md')}`, sb.read(row.source));
     }
   }
+}
+
+/** One page as Astro hands it to the post-build passes: root-absolute links, no article block, the head's facts. */
+export interface RawPage {
+  readonly route: string;
+  readonly title: string;
+  readonly description: string;
+  readonly area: string;
+  readonly owner: string;
+  /** The page has a markdown source beside it, so its head links it (Head.astro). */
+  readonly markdown: boolean;
+  /** The page is a page of the knowledge base, so its head links its record (Head.astro). */
+  readonly record: boolean;
+}
+
+/** `rawPage`'s two discovery links, as Head.astro writes them before the pass makes them relative. */
+export function rawAlternates(route: string, which: { readonly markdown: boolean; readonly record: boolean }): string[] {
+  const at = (ext: string): string => route.replace(/\.html$/, ext);
+  return [
+    ...(which.markdown ? [`<link rel="alternate" type="text/markdown" href="${at('.md')}">`] : []),
+    ...(which.record ? [`<link rel="alternate" type="application/json" href="${at('.json')}">`] : []),
+  ];
+}
+
+/** The markup of a page before the post-build passes: what the passes read, with the skip link and the region they expect. */
+export function rawPage(p: RawPage): string {
+  return [
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+    `<title>${p.title} | KB</title>`,
+    `<meta name="description" content="${p.description}">`,
+    `<meta name="kb:area" content="${p.area}"><meta name="kb:owner" content="${p.owner}">`,
+    ...rawAlternates(p.route, p),
+    `<script type="application/ld+json" data-kb="page">{"headline":"${p.title}"}</script>`,
+    '</head><body><a class="sl-skip-link" href="#_top">Skip to content</a>',
+    `<div data-page-head><h1 id="_top">${p.title}</h1></div>`,
+    `<div class="sl-markdown-content" data-kb-region><p>${p.description}</p></div>`,
+    '</body></html>',
+    '',
+  ].join('\n');
+}
+
+/**
+ * The knowledge-base fixture tree of the page record (`writeRecordFixture`),
+ * with the schemas the repo publishes, and a raw page for each of its pages:
+ * the twelve pages of the knowledge base, a reference page that has a
+ * markdown source and no record, and the home page, which has neither. Run
+ * the post-build pass over it and the search payload pass after it, and it is
+ * a built site.
+ */
+export function rawKbSite(sb: Sandbox, dist = 'site/dist'): void {
+  writeRecordFixture(sb.dir);
+  sb.write('docs/data/glossary.json', GLOSSARY_JSON);
+  sb.copyRepo(SCHEMA_DIR);
+  const corpus = new Corpus(sb.dir);
+  const owner = 'Test Owner';
+  for (const page of corpus.listing) {
+    const meta = corpus.meta(page.slug);
+    sb.write(`${dist}${page.route}`, rawPage({ route: page.route, title: meta.title, description: meta.essence, area: page.area, owner, markdown: true, record: true }));
+  }
+  sb.write(`${dist}/reference/notes.html`, rawPage({ route: '/reference/notes.html', title: 'Notes', description: 'Not a page of any kind', area: 'reference', owner, markdown: true, record: false }));
+  sb.write(`${dist}/index.html`, rawPage({ route: '/index.html', title: 'KB', description: 'The home page', area: 'patterns', owner, markdown: false, record: false }));
 }
 
 /** Upstream script files the real build loads, as the fixture names them; each is a classic script. */

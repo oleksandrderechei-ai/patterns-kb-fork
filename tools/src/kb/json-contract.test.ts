@@ -33,9 +33,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { CLI_OUTPUT_SCHEMAS, CONTRACTS, contractSchemas, SCHEMA_BASES, schemaDir, schemaUrl } from '../contract/contract.js';
 import { writeKbFixture, writeRecordFixture } from '../lib/fixtures.js';
-import { formatFinding, type SchemaSet } from '../lib/json-schema.js';
+import { formatFinding, readSchemaDir, type JsonSchema, type SchemaSet } from '../lib/json-schema.js';
 import { fingerprint } from '../lib/kb-record.js';
 import { makeSandbox, REPO_ROOT, type Sandbox } from '../lib/sandbox.js';
+import { keyOrderProblemsOf } from '../lib/schema-order.js';
 
 import { main, run } from './cli.js';
 import { Corpus, KIND_SEQ } from './corpus.js';
@@ -187,42 +188,12 @@ async function runAt(dir: string | Corpus, ...argv: string[]): Promise<Ran> {
 }
 
 /**
- * Where an object's keys are printed in another order than the schema lists its
- * properties. The schema is written in the order each command prints, so a
- * reader of the file sees the output's order, and a key the code moves without
- * the schema moving is a finding. `defs` are the definitions a `$ref` names, of
- * the file the schema is in. A value no `anyOf` branch fits in order reports
- * the first branch; a node a `oneOf` discriminates by its `type` is read
- * against the branch that names its type.
+ * The schema files as written, for the key-order check (tools/src/lib/schema-order.ts):
+ * the schema is written in the order each command prints, so a reader of the file
+ * sees the output's order, and a key the code moves without the schema moving is a
+ * finding. Read on first use.
  */
-function keyOrderProblems(value: unknown, node: SchemaNode, at = '', defs: Readonly<Record<string, SchemaNode>> = defsOf(cliSchema())): string[] {
-  const named = (n: SchemaNode): SchemaNode => (n.$ref === undefined ? n : (defs[n.$ref.slice('#/$defs/'.length)] as SchemaNode));
-  const schema = named(node);
-  if (schema.oneOf !== undefined) {
-    const type = typeof value === 'object' && value !== null ? (value as { type?: unknown }).type : undefined;
-    const branch = schema.oneOf.find((b) => named(b).properties?.['type']?.const === type) ?? schema.oneOf.find((b) => named(b).oneOf !== undefined);
-    return branch === undefined ? [] : keyOrderProblems(value, branch, at, defs);
-  }
-  if (schema.anyOf !== undefined) {
-    const tries = schema.anyOf.map((branch) => keyOrderProblems(value, branch, at, defs));
-    return tries.some((t) => t.length === 0) ? [] : (tries[0] as string[]);
-  }
-  if (Array.isArray(value)) {
-    const item = schema.items;
-    return item === undefined ? [] : value.flatMap((v: unknown, i) => keyOrderProblems(v, item, `${at}/${String(i)}`, defs));
-  }
-  if (typeof value !== 'object' || value === null) return [];
-  const listed = Object.keys(schema.properties ?? {});
-  const printed = Object.keys(value).filter((k) => listed.includes(k));
-  const expected = listed.filter((k) => k in value);
-  const problems = printed.join() === expected.join() ? [] : [`${at === '' ? '/' : at}: printed ${printed.join(', ')} where the schema lists ${expected.join(', ')}`];
-  const each = typeof schema.additionalProperties === 'object' ? schema.additionalProperties : undefined;
-  for (const [key, child] of Object.entries(value)) {
-    const sub = schema.properties?.[key] ?? each;
-    if (sub !== undefined) problems.push(...keyOrderProblems(child, sub, `${at}/${key}`, defs));
-  }
-  return problems;
-}
+let written: JsonSchema[] | undefined;
 
 /**
  * The key-order problems of `output`, what `command` printed, against the
@@ -230,10 +201,8 @@ function keyOrderProblems(value: unknown, node: SchemaNode, at = '', defs: Reado
  * record's or the graph's own file.
  */
 function orderProblemsOf(command: string, output: unknown): string[] {
-  const id = CLI_OUTPUT_SCHEMAS[command] as string;
-  const [url, definition] = id.split('#/$defs/');
-  const file = schemaFile(path.posix.basename(url as string, '.json'));
-  return keyOrderProblems(output, definition === undefined ? file : { $ref: `#/$defs/${definition}` }, '', defsOf(file));
+  written ??= readSchemaDir(schemaDir(REPO_ROOT));
+  return keyOrderProblemsOf(written, CLI_OUTPUT_SCHEMAS[command] as string, output);
 }
 
 /**

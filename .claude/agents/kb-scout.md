@@ -57,7 +57,9 @@ exists to save:
 - **Governing theme** — the decide-row taken (quoted short) and the rows rejected,
   with why in a phrase each.
 - **Candidates** — 3–7 pattern ids, each: one-line why it is relevant + a stable-id
-  cite (`patterns/…/outbox.md#usage` or a `#tradeoffs-con-N` anchor).
+  cite (`patterns/…/outbox.md#usage` or a `#tradeoffs-con-N` anchor). When the caller will
+  pin the brief in a document, end each cite with `@<fp>`, the `now.fp` that
+  `node scripts/kb.mjs resolve <id>#<el> --json` prints.
 - **Hazards surfaced** — id + one phrase each, or "none".
 
 ## Boundaries

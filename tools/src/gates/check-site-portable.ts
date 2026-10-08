@@ -26,6 +26,23 @@
  *      `.md` ships — the "View source" link opens it from disk. A built row
  *      with no source file is a finding too.
  *
+ *   8. in a tree that holds the knowledge base (it has a content model), the
+ *      files of the retrieval contract are the ones the repo builds: each page
+ *      of the knowledge base has its record, `<route minus .html>.json`, byte
+ *      for byte the text `kb.mjs record <id>` prints, and no other `.json`
+ *      ships but `index.json`, `graph.json`, the schemas and the records the
+ *      index lists; `graph.json` is what `kb.mjs graph` prints; `schema/` holds
+ *      a byte copy of each file under tools/src/contract/schema/ and nothing
+ *      more; `index.json` holds the closed form of kb-index-1 and its `id`,
+ *      `kind`, `band`, `group` and `record` say what the records say; `llms.txt`
+ *      is what the build writes from the pages and every link in it opens a
+ *      file; `llms-full.txt` is the markdown of every page after its marker
+ *      line; and each page's head links, by `<link rel="alternate">`, the
+ *      markdown and the record beside it, and no other file of either kind.
+ *      Every expected file is built from the repo root by site-records.ts, the
+ *      builder the post-build pass writes with, so what is judged is what a
+ *      reader of the built site is told.
+ *
  * Every finding names its file from the repository root, whatever form
  * `--dist` was given in (contract-C5).
  *
@@ -39,13 +56,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { contractSchemas, SCHEMA_BASES, SCHEMA_DIR, schemaUrl } from '../contract/contract.js';
 import { attrValue, metaContent, parseAttrs, tags } from '../lib/built-page.js';
 import { main, type GateContext, type GateSpec } from '../lib/gate.js';
+import { formatFinding } from '../lib/json-schema.js';
 import { decodeHeadings, type WireHeading } from '../lib/search-score.js';
 import { findInDir, PAYLOAD_FILE_NAME } from '../lib/asset-names.js';
 import { fromPageTree, isHubRoute, placedPages } from '../lib/site-routes.js';
 import { markdownRoute } from '../site/site-portable.js';
 import { DIST, readStructure } from '../site/site-output.js';
+import { indexFieldsOf, readContract, recordAddress, type Contract } from '../site/site-records.js';
 import { readLinks } from './check-site-links.js';
 
 /** The two files the post-build passes write beside the pages; the payload's name may carry a hash. */
@@ -105,6 +125,12 @@ export function lineIndex(html: string): (offset: number) => number {
   };
 }
 
+/** A `<link rel="alternate">` of a page's head: the kind of file it says it is, and where it points as written. */
+export interface Alternate {
+  readonly type: string;
+  readonly href: string;
+}
+
 /** What one page's start tags say about portability and keyboard reach, read once. */
 export interface TagRead {
   readonly rootAbsolute: TagHit[];
@@ -113,6 +139,8 @@ export interface TagRead {
   readonly injectedModule: boolean;
   /** Starlight's skip link, its href a fragment. */
   readonly skipLink: boolean;
+  /** Every `<link rel="alternate">`, in page order. */
+  readonly alternates: Alternate[];
 }
 
 /**
@@ -121,10 +149,13 @@ export interface TagRead {
  */
 export function readTags(html: string): TagRead {
   const lineAt = lineIndex(html);
-  const out = { rootAbsolute: [] as TagHit[], positiveTabindex: [] as TagHit[], injectedModule: false, skipLink: false };
+  const out = { rootAbsolute: [] as TagHit[], positiveTabindex: [] as TagHit[], injectedModule: false, skipLink: false, alternates: [] as Alternate[] };
   for (const t of tags(html)) {
     if (t.closing) continue;
     const attrs = parseAttrs(t.source);
+    if (t.name === 'link' && (attrValue(attrs, 'rel') ?? '').toLowerCase().split(/\s+/).includes('alternate')) {
+      out.alternates.push({ type: attrValue(attrs, 'type') ?? '', href: attrValue(attrs, 'href') ?? '' });
+    }
     for (const name of LINK_ATTRS) {
       const v = attrValue(attrs, name);
       if (v !== undefined && ROOT_ABSOLUTE.test(v)) out.rootAbsolute.push({ line: lineAt(t.start), what: `${name}="${v}"` });
@@ -156,6 +187,137 @@ function filesEnding(dir: string, ext: string): string[] {
 const htmlFiles = (dir: string): string[] => filesEnding(dir, '.html');
 const markdownFiles = (dir: string): string[] => filesEnding(dir, '.md');
 
+/** How many ways one document may break its schema before the rest are counted in one finding. */
+export const SCHEMA_FINDINGS_SHOWN = 5;
+
+/** The two kinds of file a page's head links beside it. */
+export const DISCOVERY_TYPES: readonly string[] = ['text/markdown', 'application/json'];
+
+/** What check 8 reads of the built site besides the files themselves. */
+export interface ContractView {
+  /** The built site, absolute. */
+  readonly dist: string;
+  /** A path in the built site as a finding names it, from the repository root. */
+  readonly shown: (file: string) => string;
+  /** Each built page's `<link rel="alternate">`, by route. */
+  readonly discovery: ReadonlyMap<string, readonly Alternate[]>;
+  /** The markdown routes the page tree owns (check 7), `/a/b.md`. */
+  readonly markdown: ReadonlySet<string>;
+}
+
+/** A JSON file's value, or what is wrong with it. */
+function readJson(file: string): { readonly value: unknown } | { readonly problem: string } {
+  try {
+    return { value: JSON.parse(fs.readFileSync(file, 'utf8')) as unknown };
+  } catch (e) {
+    return { problem: (e as Error).message };
+  }
+}
+
+/**
+ * Check 8: the files of the retrieval contract against what the repo builds
+ * for them (the header lists what each must be). `contract` is that build.
+ */
+export function checkContract(ctx: GateContext, contract: Contract, view: ContractView): void {
+  const { dist, shown } = view;
+  const at = (rel: string): string => path.join(dist, rel);
+
+  /** One file the pass writes, held to the bytes the repo builds for it. */
+  const holds = (rel: string, want: string | Buffer, from: string): void => {
+    if (!fs.existsSync(at(rel))) ctx.fail(shown(at(rel)), 'is missing — site-portable writes it; run make site-build');
+    else if (!fs.readFileSync(at(rel)).equals(typeof want === 'string' ? Buffer.from(want) : want)) ctx.fail(shown(at(rel)), `differs from ${from} — run make site-build`);
+  };
+
+  // The index holds its schema, and says of each page what the page's record says.
+  const indexAt = at('index.json');
+  const index = readJson(indexAt);
+  let entries: readonly Record<string, unknown>[] | null = null;
+  if ('problem' in index) {
+    ctx.fail(shown(indexAt), `is not valid JSON — ${index.problem}`);
+  } else {
+    const schemas = contractSchemas(ctx.root, { closed: true });
+    const id = schemaUrl(SCHEMA_BASES.index);
+    if (!schemas.ids.includes(id)) {
+      ctx.fail(`${SCHEMA_DIR}/${SCHEMA_BASES.index}.json`, 'is missing — index.json is held to it');
+    } else {
+      const problems = schemas.validate(id, index.value).map(formatFinding);
+      for (const problem of problems.slice(0, SCHEMA_FINDINGS_SHOWN)) ctx.fail(shown(indexAt), `breaks ${SCHEMA_BASES.index}: ${problem}`);
+      if (problems.length > SCHEMA_FINDINGS_SHOWN) ctx.fail(shown(indexAt), `breaks ${SCHEMA_BASES.index} in ${problems.length - SCHEMA_FINDINGS_SHOWN} more place(s)`);
+      // Only a document that holds its schema is read for its pages.
+      if (problems.length === 0) entries = (index.value as { pages: Record<string, unknown>[] }).pages;
+    }
+  }
+  const kb = new Set(contract.pages.map((p) => p.route));
+  if (entries !== null) {
+    const byRoute = new Map(entries.map((e) => [e['route'], e]));
+    for (const page of contract.pages) {
+      const entry = byRoute.get(page.route);
+      if (entry === undefined) {
+        ctx.fail(shown(indexAt), `has no entry for ${page.route}, a page of the knowledge base`);
+        continue;
+      }
+      for (const [key, want] of Object.entries(indexFieldsOf(page))) {
+        if (entry[key] !== want) ctx.fail(shown(indexAt), `${page.route}: ${key} is ${JSON.stringify(entry[key])}, the page's record says ${JSON.stringify(want)}`);
+      }
+    }
+    for (const entry of entries) {
+      const named = Object.keys(indexFieldsOf(undefined)).filter((key) => entry[key] !== null);
+      if (!kb.has(entry['route'] as string) && named.length > 0) ctx.fail(shown(indexAt), `${entry['route'] as string}: names ${named.join(', ')}, but it is no page of the knowledge base`);
+    }
+  }
+
+  // Every record, the graph and the schemas are what the repo builds, and no other file of their kinds ships.
+  for (const page of contract.pages) holds(page.record.slice(1), page.json, `what \`kb.mjs record ${page.id}\` prints`);
+  holds('graph.json', contract.graph, 'what `kb.mjs graph` prints');
+  for (const schema of contract.schemas) holds(`schema/${schema.name}`, schema.bytes, `${SCHEMA_DIR}/${schema.name}`);
+  if (entries !== null) {
+    const listed = new Set(entries.flatMap((e) => (typeof e['record'] === 'string' ? [e['record']] : [])));
+    for (const file of filesEnding(dist, '.json')) {
+      const rel = `/${path.relative(dist, file).split(path.sep).join('/')}`;
+      if (rel === '/index.json' || rel === '/graph.json' || rel.startsWith('/schema/') || listed.has(rel)) continue;
+      ctx.fail(shown(file), 'is a JSON file no entry of index.json lists as its record — only a page of the knowledge base ships one');
+    }
+  }
+  const published = new Set(contract.schemas.map((s) => s.name));
+  for (const name of fs.existsSync(at('schema')) ? fs.readdirSync(at('schema')).sort() : []) {
+    if (!published.has(name)) ctx.fail(shown(at(`schema/${name}`)), `is no file of ${SCHEMA_DIR} — only those are published`);
+  }
+
+  // The text files: llms.txt as built, with every link in it opening a file, and llms-full.txt as built.
+  holds('llms.txt', contract.llms, 'what site-records.ts builds from the pages');
+  holds('llms-full.txt', contract.llmsFull, 'the markdown of every page, each after its marker line');
+  if (fs.existsSync(at('llms.txt'))) {
+    const seen = new Set<string>();
+    for (const m of fs.readFileSync(at('llms.txt'), 'utf8').matchAll(/\]\(([^)\s]+)\)/g)) {
+      const target = m[1] as string;
+      if (seen.has(target)) continue;
+      seen.add(target);
+      if (!fs.existsSync(at(target))) ctx.fail(shown(at('llms.txt')), `links ${target}, and no such file was built`);
+    }
+  }
+
+  // Each page's head links the files beside it, and only those.
+  const want = (route: string): (readonly [string, string])[] => [
+    ...(view.markdown.has(markdownRoute(route)) ? [['text/markdown', markdownRoute(route)] as const] : []),
+    ...(kb.has(route) ? [['application/json', recordAddress(route)] as const] : []),
+  ];
+  const key = (link: readonly [string, string]): string => `${link[0]} ${link[1]}`;
+  for (const [route, alternates] of view.discovery) {
+    const wanted = want(route);
+    const found = alternates
+      .filter((a) => DISCOVERY_TYPES.includes(a.type))
+      .map((a) => [a.type, path.posix.join(path.posix.dirname(route), a.href)] as const);
+    const wantedKeys = new Set(wanted.map(key));
+    const foundKeys = new Set(found.map(key));
+    for (const link of wanted) {
+      if (!foundKeys.has(key(link))) ctx.fail(shown(at(route.slice(1))), `its head has no <link rel="alternate" type="${link[0]}"> to ${link[1]} — site/src/components/Head/Head.astro writes it`);
+    }
+    for (const link of found) {
+      if (!wantedKeys.has(key(link))) ctx.fail(shown(at(route.slice(1))), `its head links ${link[1]} as ${link[0]}, and that is no file of this page`);
+    }
+  }
+}
+
 export const spec: GateSpec = {
   name: 'site-portable',
   usage: 'usage: check-site-portable [--dist <dir>]',
@@ -180,10 +342,13 @@ export const spec: GateSpec = {
     const payloadPath = findInDir(abs, PAYLOAD_FILE_NAME) ?? path.join(abs, 'search-index.js');
     const payloadAt = shown(payloadPath);
 
+    // What each page's head links beside it, kept for check 8.
+    const discovery = new Map<string, readonly Alternate[]>();
     for (const file of pages) {
       const rel = shown(file);
       const html = fs.readFileSync(file, 'utf8');
       const read = readTags(html);
+      discovery.set(`/${path.relative(abs, file).split(path.sep).join('/')}`, read.alternates);
       for (const hit of read.rootAbsolute) {
         ctx.fail(rel, `root-absolute reference ${hit.what} — the post-build pass makes links relative; run make site-build`, hit.line);
       }
@@ -259,7 +424,16 @@ export const spec: GateSpec = {
       }
     }
 
-    return `[site-portable] ${pages.length} pages portable, indexed, anchored and keyboard-reachable; ${INDEX_FILES.join(' and ')} present; ${expected.size} markdown sources match docs/`;
+    // A tree with no content model holds no knowledge base: check 8 has nothing to hold the files to.
+    const { contract, findings: refused } = readContract(ctx.root);
+    for (const f of refused) ctx.fail(f.file, f.what);
+    if (contract !== null) checkContract(ctx, contract, { dist: abs, shown, discovery, markdown: expected });
+    const machine =
+      contract === null
+        ? ''
+        : `; ${contract.pages.length} records, graph.json, llms.txt, llms-full.txt and ${contract.schemas.length} schemas match the knowledge base`;
+
+    return `[site-portable] ${pages.length} pages portable, indexed, anchored and keyboard-reachable; ${INDEX_FILES.join(' and ')} present; ${expected.size} markdown sources match docs/${machine}`;
   },
 };
 

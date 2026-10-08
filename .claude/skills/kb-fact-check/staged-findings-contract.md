@@ -11,9 +11,13 @@ source files, and you write **staged findings JSON** — nothing else. HARD RULE
   matches against this) and `<sid>.raw.txt` (readable). Wikipedia is sid `wikipedia`.
   A missing sources dir or missing sid = that coverage does not exist → `source-weak`, never
   a stretch.
-- Read KB pages ONLY via `node scripts/kb.mjs get <id> --json` (or `--block <name> --json`),
-  never the page file itself — `docs/**.md`, or the HTML `make site-build` writes (a read-only grep
-  of the docs/ markdown is allowed solely to confirm exact text).
+- Read KB pages ONLY via `node scripts/kb.mjs record <id>` (or `record <id> --block <name>`),
+  the page as data. The `text` of its nodes is the ground truth G2 checks a `kb.quote` against,
+  so copy a quote from there. `node scripts/kb.mjs get <id> --json` (or `--block <name> --json`)
+  shows the same page as prose and is fine to skim, but a quote copied from it can differ from
+  the record's words. Never read the page file itself — `docs/**.md`, or the HTML
+  `make site-build` writes (a read-only grep of the docs/ markdown is allowed solely to confirm
+  exact text).
 - Source tiers are in `tmp/kb-fact-check/index.json` under `entries.<id>.alt[].tier`
   (wikipedia is tier 2 unless the article IS the pattern's origin). Only sources with
   `status: "ok"` exist on disk.
@@ -59,8 +63,10 @@ fid prefixes: wild `-w`, production `-p`, prose `-s`.
   VERIFY EVERY QUOTE mechanically before writing it:
   `node -e 'const fs=require("fs");const n=s=>s.replace(/\s+/g," ").trim().toLowerCase();console.log(n(fs.readFileSync(process.argv[1],"utf8")).includes(n(process.argv[2])))' <norm.txt> "<quote>"`
 - **G2 anchor-or-drop** — `kb.block` must be a real block on the page and `kb.quote` a verbatim
-  substring of that block's text (same normalization). Use element ids (e.g.
-  `production-knob-2`) as `anchor` when the block shows them; else the block name.
+  substring of that block's joined text (same normalization): every `text` and `code` string of
+  the block's nodes in the record, in page order, one space between (`eval-check.mjs` defines it
+  above `joinedText`). `anchor` is an element id of the record, a key of its `anchors` (e.g.
+  `production-knob-2`), that sits inside `kb.block`; else the block name itself.
 - **G3 prove-the-absence** — any `missing-*` dimension needs
   `kb.absenceEvidence: {blocksSearched: [≥3 block names], termsAbsent: […], findQuery: "…"}`
   and every term genuinely absent from the WHOLE page.

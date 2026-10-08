@@ -8,11 +8,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { parse } from 'parse5';
 
+import { SCHEMA_DIR } from '../contract/contract.js';
+import { Corpus } from '../kb/corpus.js';
+import { graphOf, recordOf } from '../kb/record.js';
+import { serialize } from '../lib/kb-record.js';
 import { expectFail, expectMisuse, expectPass, makeSandbox, type Sandbox } from '../lib/sandbox.js';
 import { spec as searchSpec } from './gen-search-index.js';
-import { GLOSSARY_JSON } from './site-fixtures.js';
+import { GLOSSARY_JSON, rawKbSite } from './site-fixtures.js';
+import { readSchemas } from './site-records.js';
 import {
   STARLIGHT_CHROME,
+  type IndexEntry,
   manifestOrder,
   dataAttrs,
   dropEmptyStyles,
@@ -325,9 +331,9 @@ describe('the pass end to end', () => {
     expect(sb.read('site/dist/guides/one.html')).toContain('href="../index.html"');
 
     expect(sb.exists('site/dist/index.json')).toBe(true);
-    // The llms.txt pair is deliberately not written — see site-portable.ts.
-    expect(sb.exists('site/dist/llms.txt')).toBe(false);
-    expect(sb.exists('site/dist/llms-full.txt')).toBe(false);
+    // This tree has no content model, so it holds no knowledge base and no file of the contract is written.
+    for (const file of ['llms.txt', 'llms-full.txt', 'graph.json', 'schema']) expect(sb.exists(`site/dist/${file}`), file).toBe(false);
+    expect(r.out).not.toContain('record(s)');
   });
 
   it('reduces 404.html to a page that links no file of the site, with absolute links under the root, and leaves every other page alone', async () => {
@@ -710,9 +716,16 @@ describe('manifest-O1', () => {
 
     expect([...sb.snapshot().keys()].filter((f) => /^site\/dist\/[^/]+\.json$/.test(f))).toEqual(['site/dist/index.json']);
     const manifest = JSON.parse(sb.read('site/dist/index.json')) as Record<string, unknown>;
-    expect(Object.keys(manifest)).toEqual(['generator', 'pages']);
+    // The schema and the contract first, as in every document of the contract.
+    expect(Object.keys(manifest)).toEqual(['$schema', 'contract', 'generator', 'pages']);
+    expect(manifest).toMatchObject({ $schema: 'https://odere-pro.github.io/patterns-kb/schema/kb-index-1.json', contract: 'kb-index/1' });
     const pages = manifest['pages'] as { route: string; title: string; headings: { id: string; text: string }[] }[];
     expect(pages.map((p) => p.route)).toEqual(['/index.html', '/guides/one.html']);
+    // Every entry has the five knowledge-base fields, null here: this tree holds no knowledge base.
+    for (const p of pages) {
+      expect(Object.keys(p)).toEqual(['route', 'title', 'description', 'area', 'owner', 'status', 'tags', 'aliases', 'solves', 'id', 'kind', 'band', 'group', 'record', 'headings']);
+      expect(p).toMatchObject({ id: null, kind: null, band: null, group: null, record: null });
+    }
     expect(pages[0]?.title).toBe('The home headline');
     expect(pages[0]?.headings.map((h) => ({ id: h.id, text: h.text }))).toEqual([
       { id: 'start', text: 'Start here' },
@@ -879,7 +892,23 @@ describe('the pass — the edges', () => {
 
 describe('manifestOrder', () => {
   it('puts home first, then area order, then route — and calls two equal entries equal', () => {
-    const e = (route: string, area: string) => ({ route, area, title: '', description: '', owner: '', status: '', tags: [], aliases: [], solves: [], headings: [] });
+    const e = (route: string, area: string): IndexEntry => ({
+      route,
+      area,
+      title: '',
+      description: '',
+      owner: '',
+      status: '',
+      tags: [],
+      aliases: [],
+      solves: [],
+      id: null,
+      kind: null,
+      band: null,
+      group: null,
+      record: null,
+      headings: [],
+    });
     const rank = (a: string): number => (a === 'first' ? 0 : 1);
     const order = manifestOrder(rank);
     const sorted = [e('/z.html', 'first'), e('/b.html', 'second'), e('/index.html', 'second'), e('/a.html', 'second')].sort(order);
@@ -1125,5 +1154,113 @@ describe('the pass ships the markdown', () => {
     const r = await sb.run(spec);
     expectFail(r, 'site/dist/guides/one.html: its source docs/guides/one.md is not in the repository');
     expect(sb.exists('site/dist/index.json')).toBe(false);
+  });
+});
+
+describe('the pass ships the contract files', () => {
+  let sb: Sandbox;
+  beforeEach(() => {
+    sb = makeSandbox();
+    rawKbSite(sb);
+  });
+  afterEach(() => sb.cleanup());
+
+  const BREAKER = 'docs/patterns/distributed/resilience/breaker.md';
+  const manifest = (): { pages: Record<string, unknown>[] } => JSON.parse(sb.read('site/dist/index.json')) as { pages: Record<string, unknown>[] };
+
+  it('writes a record beside each page of the knowledge base, the bytes kb.mjs prints, and says how many in its summary', async () => {
+    const r = await sb.run(spec);
+    expectPass(r);
+    expect(r.out).toBe(
+      '[site-pass] 14 page(s) made portable; copied 13 markdown source(s); wrote index.json, 12 record(s), graph.json, llms.txt, llms-full.txt and 4 schema(s)',
+    );
+    const corpus = new Corpus(sb.dir);
+    for (const page of corpus.listing) {
+      expect(sb.read(`site/dist${page.route.replace(/\.html$/, '.json')}`), page.slug).toBe(serialize(recordOf(corpus, page.slug)));
+    }
+    expect(sb.read('site/dist/graph.json')).toBe(serialize(graphOf(corpus)));
+    // Not a page of the knowledge base: no record, though its markdown ships.
+    expect(sb.exists('site/dist/reference/notes.json')).toBe(false);
+    expect(sb.exists('site/dist/reference/notes.md')).toBe(true);
+    expect(sb.exists('site/dist/index.md')).toBe(false);
+  });
+
+  it('copies each schema whole under schema/, and writes llms.txt and llms-full.txt from the same pages', async () => {
+    expectPass(await sb.run(spec));
+    for (const schema of readSchemas(sb.dir)) expect(sb.read(`site/dist/schema/${schema.name}`), schema.name).toBe(sb.read(`${SCHEMA_DIR}/${schema.name}`));
+    const llms = sb.read('site/dist/llms.txt');
+    expect(llms.split('\n')[0]).toBe('# Patterns KB');
+    // Every link of llms.txt names a file the pass wrote, from the site root.
+    for (const m of llms.matchAll(/\]\(([^)]+)\)/g)) expect(sb.exists(`site/dist/${m[1] as string}`), m[1]).toBe(true);
+    const full = sb.read('site/dist/llms-full.txt');
+    expect(full.startsWith('<!-- kb:page id=breaker route=/patterns/distributed/resilience/breaker.html -->\n---\n')).toBe(true);
+    expect(full).toContain(sb.read(BREAKER));
+  });
+
+  it('gives each entry of the manifest its id, kind, band, group and record, and null in all five on a page outside the knowledge base', async () => {
+    expectPass(await sb.run(spec));
+    const byRoute = new Map(manifest().pages.map((p) => [p['route'], p]));
+    expect(byRoute.get('/patterns/distributed/resilience/breaker.html')).toMatchObject({
+      id: 'breaker',
+      kind: 'pattern',
+      band: 'distributed',
+      group: 'distributed-resilience',
+      record: '/patterns/distributed/resilience/breaker.json',
+      markdown: '/patterns/distributed/resilience/breaker.md',
+    });
+    expect(byRoute.get('/themes/loop.html')).toMatchObject({ id: 'loop', kind: 'theme', band: 'theme', group: 'theme' });
+    for (const route of ['/reference/notes.html', '/index.html']) {
+      expect(byRoute.get(route), route).toMatchObject({ id: null, kind: null, band: null, group: null, record: null });
+    }
+    for (const p of manifest().pages) {
+      const keys = Object.keys(p);
+      expect(keys.slice(0, 15), p['route'] as string).toEqual(['route', 'title', 'description', 'area', 'owner', 'status', 'tags', 'aliases', 'solves', 'id', 'kind', 'band', 'group', 'record', 'headings']);
+      // A record the manifest names is a file, and a page with none names no file.
+      if (p['record'] !== null) expect(sb.exists(`site/dist${p['record'] as string}`), p['record'] as string).toBe(true);
+    }
+  });
+
+  it('makes the discovery links of every page relative like the rest, so each opens the file beside it', async () => {
+    expectPass(await sb.run(spec));
+    const html = sb.read('site/dist/patterns/distributed/resilience/breaker.html');
+    expect(html).toContain('<link rel="alternate" type="text/markdown" href="../../../patterns/distributed/resilience/breaker.md">');
+    expect(html).toContain('<link rel="alternate" type="application/json" href="../../../patterns/distributed/resilience/breaker.json">');
+    expect(sb.read('site/dist/reference/notes.html')).not.toContain('application/json');
+    expect(sb.read('site/dist/index.html')).not.toContain('rel="alternate"');
+  });
+
+  it('writes the same bytes a second time', async () => {
+    expectPass(await sb.run(spec));
+    const once = sb.snapshot();
+    expectPass(await sb.run(spec));
+    expect(sb.snapshot()).toEqual(once);
+  });
+
+  it('refuses a page of the knowledge base that has no built page, naming it and its markdown, and writes nothing', async () => {
+    sb.rm('site/dist/themes/steady.html');
+    const before = sb.snapshot();
+    const r = await sb.run(spec);
+    expectFail(r);
+    expect(r.err).toBe(
+      '[site-pass] FAIL site/dist/themes/steady.html: no HTML was built for this page of the knowledge base (docs/themes/steady.md) — its record would sit beside nothing',
+    );
+    expect(sb.snapshot()).toEqual(before);
+  });
+
+  it('refuses a page whose record cannot be built, naming its markdown, and writes nothing', async () => {
+    sb.write(BREAKER, sb.read(BREAKER).replace('<!-- relationships:end -->', ''));
+    const before = sb.snapshot();
+    const r = await sb.run(spec);
+    expectFail(r);
+    expect(r.err).toBe(`[site-pass] FAIL ${BREAKER}: its record cannot be built: breaker: the region "relationships" is never closed`);
+    expect(sb.snapshot()).toEqual(before);
+  });
+
+  it('says a page it could not read is that, and not that no HTML was built for it', async () => {
+    const file = 'site/dist/patterns/messaging/queue.html';
+    sb.write(file, sb.read(file).replace('<meta name="kb:area" content="messaging">', ''));
+    const r = await sb.run(spec);
+    expectFail(r, `${file}: missing page facts: kb:area`);
+    expect(r.err).not.toContain('no HTML was built');
   });
 });

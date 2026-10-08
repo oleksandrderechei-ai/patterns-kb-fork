@@ -3,9 +3,12 @@
 The repo's programs: the check gates (`src/gates/`), the generators (`src/gen/`), the site
 build's steps (`src/site/`), their shared library (`src/lib/`, with the markdown
 [dialect](src/lib/dialect.md) the pages are written in), the driver behind `make validate`
-(`src/run-gates.ts`), kb.mjs over `docs/` (`src/kb/`, launched by `scripts/kb.mjs`) and the
+(`src/run-gates.ts`), kb.mjs over `docs/` (`src/kb/`, launched by `scripts/kb.mjs`), the
+retrieval contract (`src/contract/`: the published JSON Schemas and the contract names; a
+schema only gains keys within its major version, anything else is a new major) and the
 reader's flows over the built site (`e2e/`, Playwright, run by `make site-e2e`). It is
-the npm workspace the root installs with `make install`; nothing here ships with the site.
+the npm workspace the root installs with `make install`; nothing else here ships with the
+site.
 
 ```bash
 make tools-test            # the vitest suite with coverage; one file: add T=<name>

@@ -21,12 +21,13 @@ KB_ROOT=<tree> node scripts/kb.mjs ls                         # another tree
   `make install` and exits 2.
 - **kb.mjs exits 0 when done, 1 when the KB refuses a well-formed call (fix the content), 2
   when the call is malformed (fix the command).** An empty result is done. An unknown id or
-  block, a `validate` that finds problems and a writer that refuses the content are 1. An
-  unknown command or flag, a flag with no value (`-n` for `--n` included), a missing id,
-  query or required flag, and a value of the wrong form (JSON that does not parse or has the
-  wrong shape, `--favourite` not true or false, `--order` not a whole number) are 2. A
-  failed call says why on stderr and prints nothing on stdout, except `validate --json`,
-  whose findings are the answer.
+  block, a `validate` that finds problems, a `resolve` that finds a citation not ok and a
+  writer that refuses the content are 1. An unknown command or flag, a flag with no value
+  (`-n` for `--n` included), a missing id, query or required flag, and a value of the wrong
+  form (JSON that does not parse or has the wrong shape, `--favourite` not true or false,
+  `--order` not a whole number) are 2. A failed call says why on stderr and prints nothing
+  on stdout, except `validate --json` and `resolve`, whose findings are the answer: they
+  print it and still exit 1.
 - **`KB_ROOT` points kb.mjs at another tree**, as the tests do.
 - **A new kb.mjs command is one entry in `tools/src/kb/spec.ts`**, with its handler in
   `cli.ts` or `write.ts` and a test beside it.

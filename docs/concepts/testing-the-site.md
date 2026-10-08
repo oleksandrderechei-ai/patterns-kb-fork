@@ -91,7 +91,7 @@ below are the same commands one at a time.
 ### The gates over the source
 
 `make validate` runs every registered gate over `docs/`, the data files, the tools and the
-harness, the ones the gate registry lists under `make validate` (38 as of this edit), in about
+harness, the ones the gate registry lists under `make validate` (40 as of this edit), in about
 two and a half minutes. It ends `✓ <n> gates, no findings` or with
 one block per red gate: the finding, a `repro:` command, a `fix:` line and a `more:` link to
 its section in [Triage a red gate](../reference/triage.md). It never runs a site gate, since
@@ -335,12 +335,14 @@ node scripts/kb.mjs validate circuit-breaker
 make gen && make validate
 ```
 
-`node scripts/kb.mjs` alone prints every command. The first four above only read. `set`,
-`wild`, `production`, `explain`, `level`, `link`, `unlink` and `new` are the writers, as in
-[Edit a page](#edit-a-page); anything else on a page is a hand edit
-under the page rules in `.claude/rules/markdown-authoring.md`. `make gen` rebuilds every
-generated block and reference page, and a second run writes nothing; `make validate` then
-checks the lot. Rebuild the site only when you want to see the page.
+`node scripts/kb.mjs` alone prints every command. The first four above only read, and so
+do `brief`, `backlinks`, `refs`, `ls`, `record` (a page as data), `graph` (the link graph)
+and `resolve` (is a citation still true). `set`, `wild`, `production`, `explain`,
+`link`, `unlink` and `new` are the writers, as in [Edit a page](#edit-a-page); anything
+else on a page is a hand edit under the page rules in
+`.claude/rules/markdown-authoring.md`. `make gen` rebuilds every generated block and
+reference page, and a second run writes nothing; `make validate` then checks the lot.
+Rebuild the site only when you want to see the page.
 
 ## What the tests do not cover
 

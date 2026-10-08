@@ -235,12 +235,18 @@ describe('the build command', () => {
       'patterns/caching.html',
       'patterns/caching/alpha.html',
     ]);
-    const manifest = JSON.parse(sb.read('site/dist/index.json')) as { pages: { route: string }[] };
-    expect(manifest.pages.map((p) => p.route.slice(1)).sort()).toEqual(html);
+    const manifest = JSON.parse(sb.read('site/dist/index.json')) as { pages: Record<string, unknown>[] };
+    expect(manifest.pages.map((p) => (p['route'] as string).slice(1)).sort()).toEqual(html);
+    // The manifest names its schema and carries the five fields of the contract on every entry, null here:
+    // the sandbox tree has no content model, so it holds no knowledge base and ships no record, graph or llms file.
+    expect(Object.keys(manifest)).toEqual(['$schema', 'contract', 'generator', 'pages']);
+    for (const p of manifest.pages) expect(p, String(p['route'])).toMatchObject({ id: null, kind: null, band: null, group: null, record: null });
+    for (const none of ['graph.json', 'llms.txt', 'llms-full.txt', 'schema']) expect(filesUnder(dist).some((f) => f === none || f.startsWith(`${none}/`)), none).toBe(false);
 
     for (const file of html) {
       const page = fs.readFileSync(path.join(dist, file), 'utf8');
       const scripts: { src: string; type: string | undefined }[] = [];
+      const alternates: { type: string | undefined; href: string | undefined }[] = [];
       for (const t of tags(page)) {
         if (t.closing) continue;
         const attrs = parseAttrs(t.source);
@@ -250,6 +256,15 @@ describe('the build command', () => {
         }
         const src = attrValue(attrs, 'src');
         if (t.name === 'script' && src !== undefined) scripts.push({ src, type: attrValue(attrs, 'type') });
+        if (t.name === 'link' && (attrValue(attrs, 'rel') ?? '').split(/\s+/).includes('alternate')) alternates.push({ type: attrValue(attrs, 'type'), href: attrValue(attrs, 'href') });
+      }
+      // A page of the page tree links its markdown, relative to itself, and it is there; no other page links
+      // a file, and no page links a record, since there is none.
+      const own = file === 'patterns/caching/alpha.html' || file === 'hazards/gamma.html';
+      expect(alternates.map((a) => a.type), file).toEqual(own ? ['text/markdown'] : []);
+      if (own) {
+        expect(path.posix.normalize(path.posix.join(path.posix.dirname(file), alternates[0]?.href as string)), file).toBe(file.replace(/\.html$/, '.md'));
+        expect(fs.existsSync(path.join(dist, file.replace(/\.html$/, '.md'))), file).toBe(true);
       }
       const bundle = scripts.filter((s) => BUNDLE_SRC.test(s.src));
       // The not-found page loads no file of the site, so it loads no bundle (site-not-found.ts).

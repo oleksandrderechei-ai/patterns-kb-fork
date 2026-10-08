@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { expectFail, expectMisuse, expectPass, makeSandbox, type Sandbox } from '../lib/sandbox.js';
 import { builtPage, builtSite, BUILT } from '../site/site-fixtures.js';
-import { BUDGETS, biggestField, biggestPart, loadsOf, spec } from './check-site-budget.js';
+import { BUDGETS, biggestField, biggestKey, biggestPart, loadsOf, spec } from './check-site-budget.js';
 
 let sb: Sandbox;
 beforeEach(() => {
@@ -183,7 +183,89 @@ describe('check-site-budget', () => {
   });
 });
 
+describe('the files of the retrieval contract', () => {
+  /** A manifest that names a record for each of `records`, and the small files the build writes beside it. */
+  function withRecords(records: readonly string[]): void {
+    const pages = records.map((record) => ({ route: record.replace(/\.json$/, '.html'), record: `/${record}` }));
+    sb.write('site/dist/index.json', `${JSON.stringify({ pages }, null, 2)}\n`);
+    for (const record of records) sb.write(`site/dist/${record}`, '{"blocks": []}\n');
+    sb.write('site/dist/graph.json', '{"edges": []}\n');
+    sb.write('site/dist/llms.txt', '# Patterns KB\n');
+    sb.write('site/dist/llms-full.txt', '<!-- kb:page id=a route=/a.html -->\n');
+  }
+  const RECORD = 'patterns/caching/alpha.json';
+  /** A document of one key holding `value`. */
+  const doc = (key: string, value: string): string => `${JSON.stringify({ [key]: value })}\n`;
+
+  it('are measured when the manifest names a record, and the summary counts the records', async () => {
+    withRecords([RECORD, 'hazards/gamma.json']);
+    const r = await sb.run(spec);
+    expectPass(r);
+    expect(r.out).toBe('[site-budget] 7 pages, the bundle, the search payload, the manifest, 2 records, the graph and the llms files are inside their budgets');
+  });
+
+  it('are not asked of a site whose manifest names no record', async () => {
+    const r = await sb.run(spec);
+    expectPass(r);
+    expect(r.out).toBe('[site-budget] 7 pages, the bundle, the search payload and the manifest are inside their budgets');
+    expect(sb.exists('site/dist/graph.json')).toBe(false);
+  });
+
+  it('fail a record over its raw or gzipped budget, naming the file, its size and the key that holds most of it', async () => {
+    withRecords([RECORD]);
+    sb.write(`site/dist/${RECORD}`, doc('blocks', flat(BUDGETS.record.raw)));
+    const raw = found(await sb.run(spec));
+    expect(raw).toHaveLength(1);
+    expect(raw[0]).toMatch(/^\[site-budget\] FAIL site\/dist\/patterns\/caching\/alpha\.json: is [\d,]+ bytes, over its budget of 460,000; biggest part: the "blocks" key, [\d,]+ bytes$/);
+    sb.write(`site/dist/${RECORD}`, doc('blocks', denseGz(BUDGETS.record.gzip)));
+    expect(found(await sb.run(spec))[0]).toMatch(/alpha\.json: is [\d,]+ bytes gzipped, over its budget of 75,000; biggest part: the "blocks" key/);
+  });
+
+  it('fail the graph, llms.txt and llms-full.txt over their raw or gzipped budgets', async () => {
+    withRecords([RECORD]);
+    sb.write('site/dist/graph.json', doc('edges', flat(BUDGETS.graph.raw)));
+    expect(found(await sb.run(spec))[0]).toMatch(/site\/dist\/graph\.json: is [\d,]+ bytes, over its budget of 1,955,000; biggest part: the "edges" key/);
+    sb.write('site/dist/graph.json', doc('edges', denseGz(BUDGETS.graph.gzip)));
+    expect(found(await sb.run(spec))[0]).toMatch(/graph\.json: is [\d,]+ bytes gzipped, over its budget of 252,000/);
+    sb.write('site/dist/graph.json', '{"edges": []}\n');
+
+    sb.write('site/dist/llms.txt', flat(BUDGETS.llms.raw + 1));
+    expect(found(await sb.run(spec))[0]).toMatch(/site\/dist\/llms\.txt: is [\d,]+ bytes, over its budget of 69,500; biggest part: one line for each page of the knowledge base$/);
+    sb.write('site/dist/llms.txt', denseGz(BUDGETS.llms.gzip));
+    expect(found(await sb.run(spec))[0]).toMatch(/llms\.txt: is [\d,]+ bytes gzipped, over its budget of 24,700/);
+    sb.write('site/dist/llms.txt', '# Patterns KB\n');
+
+    sb.write('site/dist/llms-full.txt', flat(BUDGETS.llmsFull.raw + 1));
+    expect(found(await sb.run(spec))[0]).toMatch(/site\/dist\/llms-full\.txt: is [\d,]+ bytes, over its budget of 7,570,000; biggest part: the markdown of every page, copied whole$/);
+    sb.write('site/dist/llms-full.txt', denseGz(BUDGETS.llmsFull.gzip));
+    expect(found(await sb.run(spec))[0]).toMatch(/llms-full\.txt: is [\d,]+ bytes gzipped, over its budget of 2,350,000/);
+  });
+
+  it('name each file the manifest or the build should have written and did not', async () => {
+    withRecords([RECORD, 'hazards/gamma.json']);
+    for (const gone of [RECORD, 'graph.json', 'llms.txt', 'llms-full.txt']) sb.rm(`site/dist/${gone}`);
+    const r = await sb.run(spec);
+    expectFail(r);
+    expect(found(r)).toEqual([
+      '[site-budget] FAIL site/dist/graph.json: is missing — the build writes it (make site-build)',
+      '[site-budget] FAIL site/dist/llms.txt: is missing — the build writes it (make site-build)',
+      '[site-budget] FAIL site/dist/llms-full.txt: is missing — the build writes it (make site-build)',
+      '[site-budget] FAIL site/dist/patterns/caching/alpha.json: is missing — the build writes it (make site-build)',
+    ]);
+  });
+
+  it('read no record from a manifest that is not JSON, and ask nothing of the contract then', async () => {
+    sb.write('site/dist/index.json', '{ "pages": [');
+    expectPass(await sb.run(spec));
+  });
+});
+
 describe('the pieces', () => {
+  it('names the biggest key of a document, or says there is none', () => {
+    expect(biggestKey('{"a": "x", "b": "yyyy", "c": [1]}')).toBe('the "b" key, 6 bytes');
+    for (const text of ['{}', 'null', '5', 'not json', '']) expect(biggestKey(text), text).toBe('nothing');
+  });
+
   it('names the biggest part of a page, or says it is text', () => {
     expect(biggestPart('<svg><style>p{}</style></svg>')).toMatch(/^inline diagrams and icons, 29 bytes in 1 svg element\(s\), 18 of them in 1 style block\(s\)$/);
     expect(biggestPart(`<nav>${'x'.repeat(50)}</nav>`)).toBe('navigation, 61 bytes in 1 nav element(s)');

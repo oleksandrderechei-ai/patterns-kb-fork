@@ -440,6 +440,17 @@ describe('kb.gates', () => {
         clean: (s) => searchOracleTree(s, [{ q: 'breaker', top: ['breaker'] }]),
         plant: (s) => searchOracleTree(s, [{ q: 'breaker', top: ['queue'] }]),
       },
+      // The record gate over the kb fixture and the published schemas; the plant leaves a page's marked region open, which the record builder refuses.
+      'kb-record-schema': {
+        clean: (s) => {
+          searchOracleTree(s, [{ q: 'breaker', top: ['breaker'] }]);
+          s.copyRepo('tools/src/contract/schema');
+        },
+        plant: (s) => {
+          const page = 'docs/patterns/distributed/resilience/breaker.md';
+          s.write(page, s.read(page).replace('<!-- relationships:end -->\n', ''));
+        },
+      },
       products: {
         clean: (s) => productsTree(s),
         plant: (s) => productsTree(s, true),
