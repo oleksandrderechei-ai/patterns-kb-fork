@@ -14475,6 +14475,13 @@
       "b": "hot-key",
       "note_a": "A viral ad floods one ad_id partition; mitigated by salting the key for known-hot ads only.",
       "note_b": "A design where one ad draws most clicks and overloads one stream shard."
+    },
+    {
+      "a": "fb-news-feed",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "A viral post's reads land on one postID; the replicated post cache spreads them across replicas.",
+      "note_b": "A design where one viral post concentrates reads on one cache key."
     }
   ],
   "group_order": {
