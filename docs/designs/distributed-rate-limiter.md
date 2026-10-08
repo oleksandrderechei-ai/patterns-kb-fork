@@ -52,9 +52,9 @@ Out of scope: analytics or ad-hoc querying over rate-limit data, and long-term p
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Throughput.** Every request is one check, so the limiter carries the full **1M req/s**. Done naïvely each check is two store operations — read the bucket, write it back — so budget **~2M store ops/second**. That single number drives the whole scaling story.
+**Throughput.** Every request is one check, so the limiter carries the full **1M req/s**. Done naïvely each check is two store operations — read the bucket, write it back — so budget **~2M store ops/second**. The chosen design folds the read and write into one Lua script (one EVAL per check), so the call rate is ~1M/s but each call does more work; size shards from measured EVAL throughput, not the 2-op figure. That single number drives the whole scaling story.
 
-**Store capacity.** A Redis instance handles roughly 100k–200k ops/second on simple operations, which lands each instance at **~50k–100k checks/second** once you count both ops. To absorb 1M checks/second you therefore need on the order of **10 shards** — the reason this design is distributed rather than a single box.
+**Store capacity.** A Redis instance handles roughly 100k–200k ops/second on simple operations, which lands each instance at **~50k–100k checks/second** once you count both ops. To absorb 1M checks/second you therefore need **10 shards** at the best case and ~20 at 50k checks/s, plus headroom for hot shards, failover and peaks — the reason this design is distributed rather than a single box.
 
 **Memory.** Each client's state is tiny: a token count and a last-refill timestamp, call it ~100 bytes with key overhead. Even 100M live clients is only **~10&nbsp;GB**, ~1&nbsp;GB per shard, and idle keys expire themselves. State is cheap; the ops rate is the constraint.
 
@@ -121,10 +121,11 @@ Four algorithms trade accuracy against memory. A **fixed-window counter** — on
 
 ### 2 · One honest count without a race
 
-Sharing bucket state in Redis is the easy half. The trap is the read-modify-write. If a gateway does `HMGET` to read the count, computes the refill in application code, then writes it back, two simultaneous requests for the same client can both read the same starting count, both decide a token is free, and both write — over-admitting when only one slot existed. Wrapping the writes in `MULTI/EXEC` does not save you, because the read that the decision hinges on happened outside the transaction. This is a textbook [race condition](../hazards/race-condition.md) on a distributed counter, and the fix is to widen the atomic boundary to cover the whole sequence: push read, refill-calculation, and write into a single Redis **Lua script** that runs atomically on the shard. Redis's [shared, in-memory store](../patterns/caching/distributed-cache.md) is a good fit here precisely because its single-threaded execution makes such a script indivisible, its ops are sub-millisecond, and an `EXPIRE` on each key reclaims idle buckets for free.
+Sharing bucket state in Redis is the easy half. The trap is the read-modify-write. If a gateway does `HMGET` to read the count, computes the refill in application code, then writes it back, two simultaneous requests for the same client can both read the same starting count, both decide a token is free, and both write — over-admitting when only one slot existed. Wrapping the writes in `MULTI/EXEC` does not save you, because the read that the decision hinges on happened outside the transaction. That gap is a [race condition](../hazards/race-condition.md). The fix is to widen the atomic boundary to cover the whole sequence: push read, refill-calculation, and write into a single Redis **Lua script** that runs atomically on the shard. Redis's [shared, in-memory store](../patterns/caching/distributed-cache.md) is a good fit here precisely because its single-threaded execution makes such a script indivisible, its ops are sub-millisecond, and an `EXPIRE` on each key reclaims idle buckets for free.
 
 ```lua summary="The atomic token-bucket check, as one Lua script"
 -- KEYS[1] = "alice:bucket"; ARGV = now, refill_rate, capacity, cost, ttl
+local now, refill_rate, capacity, cost, ttl = tonumber(ARGV[1]), tonumber(ARGV[2]), tonumber(ARGV[3]), tonumber(ARGV[4]), tonumber(ARGV[5])
 local s      = redis.call('HMGET', KEYS[1], 'tokens', 'last_refill')
 local tokens = tonumber(s[1]) or capacity          -- cold start: full bucket
 local last   = tonumber(s[2]) or now
@@ -138,33 +139,7 @@ redis.call('EXPIRE', KEYS[1], ttl)
 return {1, tokens}                                  -- allow, tokens remaining
 ```
 
-### 3 · Scaling writes to a million a second
-
-One Redis instance tops out near 50k–100k checks/second, an order of magnitude short of the target, so the store has to be sharded. The one non-negotiable is that a given client always lands on the same shard — split a client's state across two shards and neither shard's count means anything. [Consistent hashing](../patterns/distributed/routing/consistent-hashing.md) on the identifier (user ID, IP, or API key) gives exactly that: each client maps to one shard, load spreads evenly, and adding a shard only remaps a slice of keys. In production this is usually [Redis Cluster](../patterns/distributed/routing/sharding.md), which hashes keys across 16,384 slots and places `alice:bucket` on the right node automatically, so the gateways stay dumb routers rather than owning the hash ring. Ten shards at ~100k checks each covers the 1M/s target, and the token-bucket logic itself does not change — only where its state lives.
-
-### 4 · Surviving a shard failure
-
-Sharding turns every shard into a single point of failure for the clients it holds: lose one and those clients go uncovered, and if they retry hard, an unprotected backend can cascade. Two honest answers exist for a check that cannot reach its shard. **Fail-open** admits the request — good when availability of the API matters more than the limit. **Fail-closed** rejects it — chosen here, because a rate-limiter outage tends to coincide with a traffic spike, which is exactly when protection matters most; better to shed some load briefly than to let a viral surge flatten the databases. Prevention beats both: run each shard as a master with [replicas](../patterns/distributed/coordination/replication.md) that sync continuously, and let Redis Cluster auto-promote a replica on failure — typically a 1–2 second gap, not the worst-case tens of seconds. The cost is extra infrastructure and a little replication lag, which eventual consistency here happily tolerates.
-
-A check that cannot reach its shard has to be admitted or rejected, and this design rejects.
-
-```mermaid caption="What happens to a check when its shard is down, and what keeps that window short?"
-flowchart TB
-    GW["Gateway"] -->|"check for client"| Shard["Shard master"]
-    Shard -.->|"fails"| Down{"shard reachable?"}
-    Down -->|"no, fail-closed (chosen)"| Rej["Reject request"]
-    Down -->|"no, fail-open (rejected)"| Adm["Admit request"]
-    Shard -->|"sync continuously"| Rep["Replica"]
-    Rep -->|"auto-promoted, typically 1-2 s"| Shard
-```
-
-### 5 · Shaving the network cost
-
-Every check is a round trip, and the round trip — not the Redis op — is where the milliseconds go. Two optimisations do most of the work. **Connection pooling** keeps a warm set of TCP connections from each gateway to Redis so no request pays the 20–50&nbsp;ms handshake; it is a classic [object pool](../patterns/gof/extra/object-pool.md), and most Redis clients do it for you once tuned to the request volume. **Geographic distribution** is the bigger win: put gateways and their Redis clusters in the same region as the users, so a Tokyo request does not cross an ocean to a Virginia shard. Cross-region consistency gets fuzzier, but eventual consistency is acceptable for rate limiting, and the latency saved is large. Local caching of counts, pipelining, and request batching exist too, but they are rarely worth their staleness risk once pooling and locality are in place.
-
-### 6 · Hot keys, viral content, and abuse
-
-A single client throwing tens of thousands of requests a second at one shard is a [hot key](../hazards/hot-key.md) — sometimes a legitimate analytics pipeline or an over-eager mobile refresh loop, often a bot or a DDoS. Legitimate high-volume clients are handled by encouraging client-side throttling that respects the response headers, letting them batch operations into fewer calls, and offering premium tiers with higher limits on dedicated capacity. Abusive traffic gets a blunter tool: a client that trips its limit repeatedly (say ten times in a minute) is dropped onto a blocklist — cheap to store on a shard and checked only on a cache miss — and outright floods are best absorbed upstream by a DDoS layer such as Cloudflare or AWS Shield before they ever reach the limiter. Legitimate IP sharing (corporate NATs (network address translation), public WiFi) should be planned for up front with generous IP limits that lean on authenticated user limits, rather than patched after a false positive. Finally, limits should be reconfigurable without a redeploy — a launch may need a temporary bump — and a push-based config channel beats polling because a change takes effect in seconds instead of a poll interval later.
+`now` comes from the calling gateway, so clock skew between gateways shifts the refill; keep gateway clocks synced or accept that skew.
 
 ```mermaid caption="Why does an application-side HMGET-then-HSET over-admit under two gateways, and how does one atomic Lua script close the window? The decision must live inside the same indivisible step as the write."
 sequenceDiagram
@@ -186,6 +161,32 @@ sequenceDiagram
     end
 ```
 
+### 3 · Scaling writes to a million a second
+
+One Redis instance tops out near 50k–100k checks/second, an order of magnitude short of the target, so the store has to be sharded. The one non-negotiable is that a given client always lands on the same shard — split a client's state across two shards and neither shard's count means anything. [Consistent hashing](../patterns/distributed/routing/consistent-hashing.md) on the identifier (user ID, IP, or API key) gives exactly that: each client maps to one shard, load spreads evenly, and adding a shard only remaps a slice of keys. In production this is usually [Redis Cluster](../patterns/distributed/routing/sharding.md), which hashes keys across 16,384 slots and places `alice:bucket` on the right node automatically, using a fixed slot table that cluster-aware clients hold and refresh on MOVED redirects; resharding moves slots, not ring arcs. Per the sizing, 10 shards cover 1M checks/s at ~100k each and ~20 at 50k each; add headroom for hot shards and failover, and the token-bucket logic itself does not change — only where its state lives.
+
+### 4 · Surviving a shard failure
+
+Sharding turns every shard into a single point of failure for the clients it holds: lose one and those clients go uncovered, and if they retry hard, an unprotected backend can cascade. There are two options for a check that cannot reach its shard. **Fail-open** admits the request — good when availability of the API matters more than the limit. **Fail-closed** rejects it — chosen here, because a rate-limiter outage tends to coincide with a traffic spike, which is exactly when protection matters most; better to shed some load briefly than to let a viral surge flatten the databases. Prevention beats both: run each shard as a master with [replicas](../patterns/distributed/coordination/replication.md) that sync continuously, and let Redis Cluster auto-promote a replica on failure — a gap of about 1–2 seconds once the cluster node timeout is tuned short; detection waits on that timeout, and writes the replica had not yet received are lost. The cost is extra infrastructure and a little replication lag, which eventual consistency here tolerates.
+
+```mermaid caption="What happens to a check when its shard is down, and what keeps that window short?"
+flowchart TB
+    GW["Gateway"] -->|"check for client"| Shard["Shard master"]
+    Shard -.->|"fails"| Down{"shard reachable?"}
+    Down -->|"no, fail-closed (chosen)"| Rej["Reject request"]
+    Down -->|"no, fail-open (rejected)"| Adm["Admit request"]
+    Shard -->|"sync continuously"| Rep["Replica"]
+    Rep -->|"auto-promoted, typically 1-2 s"| Shard
+```
+
+### 5 · Shaving the network cost
+
+Every check is a round trip, and the round trip — not the Redis op — is where the milliseconds go. Two optimisations do most of the work. **Connection pooling** keeps a warm set of TCP connections from each gateway to Redis so no request pays the 20–50&nbsp;ms handshake; it is a classic [object pool](../patterns/gof/extra/object-pool.md), and most Redis clients do it for you once tuned to the request volume. **Geographic distribution** is the bigger win: put gateways and their Redis clusters in the same region as the users, so a Tokyo request does not cross an ocean to a Virginia shard. Cross-region consistency gets fuzzier, but eventual consistency is acceptable for rate limiting, and the latency saved is large. Local caching of counts, pipelining, and request batching exist too, but they are rarely worth their staleness risk once pooling and locality are in place.
+
+### 6 · Hot keys, viral content, and abuse
+
+A single client throwing tens of thousands of requests a second at one shard is a [hot key](../hazards/hot-key.md) — sometimes a legitimate analytics pipeline or an over-eager mobile refresh loop, often a bot or a DDoS. Legitimate high-volume clients are handled by encouraging client-side throttling that respects the response headers, letting them batch operations into fewer calls, and offering premium tiers with higher limits on dedicated capacity. Abusive traffic gets a blunter tool: a client that trips its limit repeatedly (say ten times in a minute) is dropped onto a blocklist — cheap to store on a shard and checked only on a cache miss — and outright floods are best absorbed upstream by a DDoS layer such as Cloudflare or AWS Shield before they ever reach the limiter. Legitimate IP sharing (corporate NATs (network address translation), public WiFi) should be planned for up front with generous IP limits that lean on authenticated user limits, rather than patched after a false positive. Finally, limits should be reconfigurable without a redeploy — a launch may need a temporary bump — and a push-based config channel beats polling because a change takes effect in seconds instead of a poll interval later.
+
 ## Limitations & trade-offs
 <!--meta block=tradeoffs-->
 
@@ -194,7 +195,7 @@ sequenceDiagram
 
 - An allow/deny verdict in under 10&nbsp;ms with no per-request database call, at 1M req/s across ~10 sharded Redis instances.
 - The token bucket absorbs legitimate bursts while capping the sustained rate, matching how real API traffic actually arrives.
-- The atomic Lua check keeps the global count correct no matter which gateway serves the request, so the limit never leaks under concurrency.
+- The atomic Lua check keeps a client's count correct on its shard whichever gateway serves the request, so concurrent requests cannot both take the last token; cross-region drift and failover state loss still apply.
 
 ### What it gives up
 <!--meta polarity=con-->
@@ -216,6 +217,11 @@ sequenceDiagram
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Race Condition](../hazards/race-condition.md) — The HMGET-then-HSET gap over-admits; one Lua script folds the check and the write into one atomic step.
+- [Hot Key](../hazards/hot-key.md) — One client at tens of thousands of requests a second saturates a single shard; header-aware client throttling and a blocklist contain it.
 
 **Demonstrates**
 

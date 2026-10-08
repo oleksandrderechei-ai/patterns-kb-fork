@@ -14552,6 +14552,20 @@
       "b": "deadlock",
       "note_a": "Per-seat locking needs sorted lock acquisition, or two multi-seat bookings can wait on each other.",
       "note_b": "A seat-booking design where finer-grained per-seat locks bring the risk."
+    },
+    {
+      "a": "distributed-rate-limiter",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "The HMGET-then-HSET gap over-admits; one Lua script folds the check and the write into one atomic step.",
+      "note_b": "Two gateways reading the same last token both admit; a shard-side script closes the window."
+    },
+    {
+      "a": "distributed-rate-limiter",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "One client at tens of thousands of requests a second saturates a single shard; header-aware client throttling and a blocklist contain it.",
+      "note_b": "A rate limiter's own shard becomes the hot key, so adding shards does not raise one client's ceiling."
     }
   ],
   "group_order": {

@@ -104,5 +104,6 @@ Pick the lightest mechanism the contention allows: optimistic when conflicts are
 - [Lazy Initialization](../patterns/gof/extra/lazy-initialization.md) — Two first callers both run the factory, so the value is built twice
 - [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) — Rate Limiter's check-then-count is a check-then-act race when its counter is shared
 - [Inventory Management](../designs/inventory-management.md) — the inventory transfer shows the check-then-act race and its lock fix
+- [Distributed Rate Limiter](../designs/distributed-rate-limiter.md) — Two gateways reading the same last token both admit; a shard-side script closes the window.
 
 <!-- relationships:end -->
