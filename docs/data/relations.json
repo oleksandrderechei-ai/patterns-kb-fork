@@ -14741,6 +14741,20 @@
       "b": "dead-letter-channel",
       "note_a": "Parks a message that keeps failing so it cannot block the queue behind it.",
       "note_b": "A leveling queue's redelivery loop ends here once a message reaches its attempt cap."
+    },
+    {
+      "a": "rate-limiter",
+      "verb": "combines-with",
+      "b": "retry-backoff",
+      "note_a": "A 429 with a retry-after hint tells clients when to retry.",
+      "note_b": "Backoff spaces retries so they do not hit the limiter's refusal again."
+    },
+    {
+      "a": "circuit-breaker",
+      "verb": "often-confused-with",
+      "b": "rate-limiter",
+      "note_a": "A breaker stops calls to a failing dependency; a limiter caps a caller's rate.",
+      "note_b": "A limiter caps calls that would succeed; a breaker stops calls that would fail."
     }
   ],
   "group_order": {

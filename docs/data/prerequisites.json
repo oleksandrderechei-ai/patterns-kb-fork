@@ -473,7 +473,7 @@
       "definition": "Stops calling a service that's already failing",
       "route": "/patterns/distributed/resilience/circuit-breaker.html",
       "requires": ["timeout-deadline"],
-      "related": ["retry-backoff", "bulkhead", "health-endpoint", "fail-fast", "service-mesh", "self-healing", "fault-injection", "messaging-bridge", "service-discovery", "fallback", "load-shedding"]
+      "related": ["retry-backoff", "bulkhead", "health-endpoint", "fail-fast", "service-mesh", "self-healing", "fault-injection", "messaging-bridge", "service-discovery", "fallback", "load-shedding", "rate-limiter"]
     },
     {
       "id": "fallback",
@@ -489,7 +489,7 @@
       "definition": "Retries transient failures with a growing delay",
       "route": "/patterns/distributed/resilience/retry-backoff.html",
       "requires": ["idempotency", "timeout-deadline"],
-      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control", "websocket", "fail-fast", "fallacies-of-distributed-computing"]
+      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control", "websocket", "fail-fast", "fallacies-of-distributed-computing", "rate-limiter"]
     },
     {
       "id": "bulkhead",
@@ -529,7 +529,7 @@
       "definition": "Caps how many requests a client can make in a window",
       "route": "/patterns/distributed/resilience/rate-limiter.html",
       "requires": [],
-      "related": ["bulkhead", "backpressure", "load-leveling", "load-shedding", "api-gateway", "pagination", "partition-around-limits", "priority-queue", "sliding-window", "leaky-bucket", "multi-tenancy"]
+      "related": ["bulkhead", "backpressure", "load-leveling", "load-shedding", "api-gateway", "pagination", "partition-around-limits", "priority-queue", "sliding-window", "leaky-bucket", "multi-tenancy", "retry-backoff", "circuit-breaker"]
     },
     {
       "id": "timeout-deadline",
