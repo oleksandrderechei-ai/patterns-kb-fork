@@ -14706,6 +14706,20 @@
       "b": "mutex",
       "note_a": "A mutex around clone-and-publish keeps two writers from discarding each other's copy; readers never take it",
       "note_b": "Copy-on-write readers never take the mutex; only writers do, around clone-and-publish"
+    },
+    {
+      "a": "fault-injection",
+      "verb": "combines-with",
+      "b": "service-mesh",
+      "note_a": "A mesh proxy adds latency or errors for the experiment, so no application code needs a fault switch.",
+      "note_b": "The mesh is one place to apply an injected fault, and it reaches only traffic that goes through the mesh."
+    },
+    {
+      "a": "fallback",
+      "verb": "combines-with",
+      "b": "fault-injection",
+      "note_a": "A fallback is unproven until a fault forces it to run.",
+      "note_b": "Injecting the dependency failure is the only way the fallback runs under load before an incident."
     }
   ],
   "group_order": {
