@@ -14720,6 +14720,13 @@
       "b": "fault-injection",
       "note_a": "A fallback is unproven until a fault forces it to run.",
       "note_b": "Injecting the dependency failure is the only way the fallback runs under load before an incident."
+    },
+    {
+      "a": "leaky-bucket",
+      "verb": "prevents-hazard",
+      "b": "unbounded-queue",
+      "note_a": "A queue capped at C items refuses when full, so the backlog cannot grow without limit.",
+      "note_b": "A leaky bucket caps its queue at capacity C and refuses when full, so memory stays flat."
     }
   ],
   "group_order": {

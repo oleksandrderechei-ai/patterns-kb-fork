@@ -81,6 +81,7 @@ A bounded queue also gives **backpressure**, at the price of blocked producers o
 - [Ring Buffer](../patterns/concurrency/ring-buffer.md) — A ring buffer is one way to bound the queue
 - [Semaphore](../patterns/concurrency/semaphore.md) — Fixed permits cap in-flight work when there's no queue object to bound
 - [Load Shedding](../patterns/distributed/resilience/load-shedding.md) — Refusing work past a limit keeps the queue shallow.
+- [Leaky Bucket](../patterns/distributed/resilience/leaky-bucket.md) — A leaky bucket caps its queue at capacity C and refuses when full, so memory stays flat.
 
 **Threatens**
 
