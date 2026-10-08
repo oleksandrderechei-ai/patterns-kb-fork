@@ -1,0 +1,315 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "queue",
+  "title": "Queue",
+  "description": "The queue page",
+  "kind": "pattern",
+  "band": "messaging",
+  "group": "messaging",
+  "area": "messaging",
+  "areaChain": [
+    {
+      "id": "patterns",
+      "label": "patterns"
+    },
+    {
+      "id": "messaging",
+      "label": "messaging"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "messaging"
+  ],
+  "aliases": [],
+  "solves": [],
+  "favourite": false,
+  "route": "/patterns/messaging/queue.html",
+  "markdown": "/patterns/messaging/queue.md",
+  "source": {
+    "path": "docs/patterns/messaging/queue.md",
+    "sha256": "101b019a22f5e1741c9155718b47460daa5c1f1e705ecb6b98fdd45c2144b38b"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Holds work.",
+      "md": "Holds work."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "What it is",
+        "md": "What it is"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "6f2bc903",
+          "text": "Work waits in line.",
+          "md": "Work waits in line."
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "89ffdb84",
+          "text": "Backpressure. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Backpressure. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "structure",
+      "name": "structure",
+      "heading": {
+        "text": "How it works",
+        "md": "How it works"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "structure-p-1",
+          "fp": "73a3e8a8",
+          "text": "In, then out.",
+          "md": "In, then out."
+        }
+      ]
+    },
+    {
+      "id": "variations",
+      "name": "variations",
+      "heading": {
+        "text": "Variations",
+        "md": "Variations"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "variations-item-1",
+              "fp": "daa97a50",
+              "text": "FIFO — In order.",
+              "md": "**FIFO** — In order.",
+              "lead": "FIFO",
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tradeoffs",
+      "name": "tradeoffs",
+      "heading": {
+        "text": "Trade-offs",
+        "md": "Trade-offs"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "pro",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Pros",
+            "md": "Pros"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "tradeoffs-pro-1",
+                  "fp": "ea888046",
+                  "text": "Smooths bursts.",
+                  "md": "Smooths bursts.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "usage",
+      "name": "usage",
+      "heading": {
+        "text": "When to use it",
+        "md": "When to use it"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "when",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Reach for it when",
+            "md": "Reach for it when"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "usage-when-1",
+                  "fp": "195b538b",
+                  "text": "Load is bursty.",
+                  "md": "Load is bursty.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sketch",
+      "name": "sketch",
+      "heading": {
+        "text": "Code sketch",
+        "md": "Code sketch"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "code",
+          "id": "sketch-variant-1",
+          "fp": "0166a44d",
+          "lang": null,
+          "code": "queue.push(job);"
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": null,
+      "content": []
+    }
+  ],
+  "relations": [],
+  "themes": [
+    {
+      "id": "loop",
+      "title": "Loop",
+      "route": "/themes/loop.html",
+      "role": {
+        "text": "Holds the work",
+        "md": "Holds the work"
+      }
+    }
+  ],
+  "tour": [],
+  "prerequisites": {
+    "requires": [],
+    "related": []
+  },
+  "links": [],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "structure": "/blocks/2",
+    "structure-p-1": "/blocks/2/content/0",
+    "variations": "/blocks/3",
+    "variations-item-1": "/blocks/3/content/0/items/0",
+    "tradeoffs": "/blocks/4",
+    "tradeoffs-pro-1": "/blocks/4/content/0/content/0/items/0",
+    "usage": "/blocks/5",
+    "usage-when-1": "/blocks/5/content/0/content/0/items/0",
+    "sketch": "/blocks/6",
+    "sketch-variant-1": "/blocks/6/content/0",
+    "relationships": "/blocks/7"
+  }
+}

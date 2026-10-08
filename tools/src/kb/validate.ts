@@ -21,6 +21,11 @@
  *
  * The corpus-wide rules (every edge paired, every tag on three pages) are the
  * gates' work, not this lint's.
+ *
+ * Every problem is first a Finding — the page, the rule id when the rule has
+ * one, the line when the problem has one, and the words — and the one-line
+ * string `validate` prints is made from it by `findingText`, so the two never
+ * drift apart.
  */
 
 import fs from 'node:fs';
@@ -37,6 +42,24 @@ import { sidesOf } from '../lib/render-relations.js';
 import { readJsonFile, type ContentModel, type Corpus, type Page } from './corpus.js';
 import { parsePage, stripFrontmatter, type PageDoc } from './page.js';
 import { tagListProblems, tagRules, type TagRules } from './tags.js';
+
+/** One thing wrong with a page. */
+export interface Finding {
+  readonly page: string;
+  /** The rule id the message is filed under (`KB-014`), or null for a check that has none. */
+  readonly rule: string | null;
+  /** The line of the page's file, or null when the finding is about the page as a whole. */
+  readonly line: number | null;
+  readonly message: string;
+}
+
+/**
+ * A finding as the one line `validate` prints: `page: line 12: KB-014 words`,
+ * the line and the rule id each there when the finding has them.
+ */
+export function findingText(f: Finding): string {
+  return `${f.page}: ${f.line === null ? '' : `line ${String(f.line)}: `}${f.rule === null ? '' : `${f.rule} `}${f.message}`;
+}
 
 /** The longest description, in characters: where a search result cuts it off (frontmatter-C4). */
 export const DESCRIPTION_MAX = 160;
@@ -85,21 +108,21 @@ export function shapeRatchets(root: string): Ratchets {
 let ratchetCache: { text: string; ratchets: Ratchets } | undefined;
 
 /** KB-014, KB-015 and KB-016 problems of the explain, description and selfcheck blocks, less what the page's ratchet entries excuse. */
-function shapeMessages(doc: PageDoc, kind: string, source: string, ratchets: Ratchets): string[] {
-  const out: string[] = [];
+function shapeMessages(doc: PageDoc, kind: string, source: string, ratchets: Ratchets): { rule: string; message: string }[] {
+  const out: { rule: string; message: string }[] = [];
   const explain = doc.blocks.find((x) => x.name === 'explain');
   if (explain !== undefined) {
     for (const p of explainProblems(explain.nodes, { costsRequired: kind === COSTS_KIND })) {
-      if (p.ratchet === null || !ratchets.excuses(p.ratchet, source)) out.push(`KB-014 ${p.message}`);
+      if (p.ratchet === null || !ratchets.excuses(p.ratchet, source)) out.push({ rule: 'KB-014', message: p.message });
     }
   }
   const description = doc.blocks.find((x) => x.name === 'description');
   if (description !== undefined) {
-    for (const p of descriptionProblems(description.nodes)) if (!ratchets.excuses('description', source, p.words)) out.push(`KB-015 ${p.message}`);
+    for (const p of descriptionProblems(description.nodes)) if (!ratchets.excuses('description', source, p.words)) out.push({ rule: 'KB-015', message: p.message });
   }
   const selfcheck = doc.blocks.find((x) => x.name === 'selfcheck');
   if (selfcheck !== undefined) {
-    for (const p of selfcheckProblems(selfcheck.nodes)) out.push(`KB-016 ${p.message}`);
+    for (const p of selfcheckProblems(selfcheck.nodes)) out.push({ rule: 'KB-016', message: p.message });
   }
   return out;
 }
@@ -137,21 +160,22 @@ function solvesLengthProblem(v: FmValue | undefined): string | null {
 }
 
 /**
- * Every problem on one page. `page` is its structure row; `fm` its
+ * Every finding on one page. `page` is its structure row; `fm` its
  * frontmatter, lists split; `doc` its parse, when the caller already has it.
  */
-export function pageProblems(
+export function pageFindings(
   corpus: Corpus,
   page: Page,
   fm: Readonly<Record<string, FmValue>>,
   text: string,
   rules: TagRules,
   doc: PageDoc = parsePage(text),
-): string[] {
-  const out: string[] = [];
-  const p = (m: string): void => {
-    out.push(`${page.slug}: ${m}`);
+): Finding[] {
+  const out: Finding[] = [];
+  const add = (rule: string | null, line: number | null, message: string): void => {
+    out.push({ page: page.slug, rule, line, message });
   };
+  const p = (m: string): void => add(null, null, m);
   const s = (k: string): string => (typeof fm[k] === 'string' ? (fm[k] as string) : '');
   if (s('title').trim() === '') p('frontmatter has no title');
   if (s('description').trim() === '') p('frontmatter has no description');
@@ -172,11 +196,11 @@ export function pageProblems(
   // Body lines count from the file's first line: add the frontmatter's.
   const fmLines = text.split('\n').length - stripFrontmatter(text).split('\n').length;
   // parsePage hands kb-attrs the source, so every problem carries its line.
-  for (const pr of doc.problems) p(`line ${(pr.line as number) + fmLines}: ${pr.message}`);
+  for (const pr of doc.problems) add(null, (pr.line as number) + fmLines, pr.message);
 
   const kind = corpus.model.kinds.find((k) => k.id === page.kind) as { blocks: readonly string[]; optional: readonly string[] };
   for (const m of blockProblems(doc.blocks.map((b) => b.name), kind.blocks, kind.optional)) p(m);
-  for (const m of shapeMessages(doc, page.kind, page.source, shapeRatchets(corpus.root))) p(m);
+  for (const m of shapeMessages(doc, page.kind, page.source, shapeRatchets(corpus.root))) add(m.rule, null, m.message);
   for (const m of sketchProblems(doc, corpus.model.sketchLangs, corpus.model.sketchOnly, page.kind, page.area)) p(m);
 
   let sides: ReturnType<typeof sidesOf> = [];
@@ -192,11 +216,21 @@ export function pageProblems(
   return out;
 }
 
+/** `pageFindings`, each as the one line `validate` prints. */
+export function pageProblems(corpus: Corpus, page: Page, fm: Readonly<Record<string, FmValue>>, text: string, rules: TagRules, doc?: PageDoc): string[] {
+  return pageFindings(corpus, page, fm, text, rules, doc).map(findingText);
+}
+
 /**
  * Validate pages by their structure rows, their frontmatter read through the
  * corpus (one spawn for all of them) and each parsed by `docOf`.
  */
-export function validatePages(corpus: Corpus, pages: readonly Page[], docOf: (p: Page) => PageDoc = (p) => parsePage(corpus.text(p.slug))): string[] {
+export function validateFindings(corpus: Corpus, pages: readonly Page[], docOf: (p: Page) => PageDoc = (p) => parsePage(corpus.text(p.slug))): Finding[] {
   const rules = tagRules(readJsonFile(corpus.root, 'docs/data/tags.json')['terms']);
-  return pages.flatMap((page) => pageProblems(corpus, page, corpus.frontmatter(page.slug), corpus.text(page.slug), rules, docOf(page)));
+  return pages.flatMap((page) => pageFindings(corpus, page, corpus.frontmatter(page.slug), corpus.text(page.slug), rules, docOf(page)));
+}
+
+/** `validateFindings`, each as the one line `validate` prints. */
+export function validatePages(corpus: Corpus, pages: readonly Page[], docOf?: (p: Page) => PageDoc): string[] {
+  return validateFindings(corpus, pages, docOf).map(findingText);
 }

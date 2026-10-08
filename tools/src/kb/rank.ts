@@ -66,7 +66,8 @@ export interface RankInput {
 
 /** Score `q` against `nodes`, best first: the shared scorer over the catalog's facts. */
 export function rank({ nodes, q, syn, bodyOf, categoriesOf, tagLabels = {}, limit }: RankInput): Scored[] {
-  // search.mjs's `limit ? out.slice(0, limit) : out`: no limit, 0 or NaN (`--n abc`) keeps every hit.
+  // No limit, 0 or NaN keeps every hit. kb.mjs never passes 0 or NaN: its `--n` must be a whole number of 1 or more
+  // (`limitOf` in tools/src/kb/cli.ts), so only another caller of `rank` reaches this branch.
   const keepAll = limit === undefined || limit === 0 || Number.isNaN(limit);
   return rankItems(nodes, {
     q,

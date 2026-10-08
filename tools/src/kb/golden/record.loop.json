@@ -1,0 +1,284 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "loop",
+  "title": "Loop",
+  "description": "The loop page",
+  "kind": "theme",
+  "band": "theme",
+  "group": "theme",
+  "area": "designs-mid",
+  "areaChain": [
+    {
+      "id": "designs",
+      "label": "designs"
+    },
+    {
+      "id": "designs-mid",
+      "label": "designs-mid"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "resilience",
+    "latency"
+  ],
+  "aliases": [],
+  "solves": [],
+  "favourite": false,
+  "route": "/themes/loop.html",
+  "markdown": "/themes/loop.md",
+  "source": {
+    "path": "docs/themes/loop.md",
+    "sha256": "713c38b7c26d59c895ce98d643a37ad4ceb7814ddd4c7bbe65a15e7ebccb3f99"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "A theme filed in a designs tier.",
+      "md": "A theme filed in a designs tier."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "The question",
+        "md": "The question"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "e420b51e",
+          "text": "What loops?",
+          "md": "What loops?"
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "46845204",
+          "text": "Three. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Three. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "tradespace",
+      "name": "tradespace",
+      "heading": {
+        "text": "The trade-space",
+        "md": "The trade-space"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "tradespace-p-1",
+          "fp": "7f06df54",
+          "text": "Speed against care.",
+          "md": "Speed against care."
+        }
+      ]
+    },
+    {
+      "id": "tour",
+      "name": "tour",
+      "heading": {
+        "text": "Patterns that implement the choice",
+        "md": "Patterns that implement the choice"
+      },
+      "generated": "tour",
+      "content": [
+        {
+          "type": "heading",
+          "id": "tour-queue",
+          "fp": "00b109cf",
+          "depth": 3,
+          "text": "Queue",
+          "md": "[Queue](../patterns/messaging/queue.md)"
+        },
+        {
+          "type": "paragraph",
+          "id": "tour-p-1",
+          "fp": "5f9e1f31",
+          "text": "It holds the loop's work.",
+          "md": "It holds the loop's work."
+        }
+      ]
+    },
+    {
+      "id": "decide",
+      "name": "decide",
+      "heading": {
+        "text": "When to reach for what",
+        "md": "When to reach for what"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "table",
+          "id": null,
+          "fp": null,
+          "align": [
+            null,
+            null
+          ],
+          "header": [
+            {
+              "text": "If you need…",
+              "md": "If you need…"
+            },
+            {
+              "text": "Reach for",
+              "md": "Reach for"
+            }
+          ],
+          "rows": [
+            {
+              "id": "decide-row-1",
+              "fp": "6d075e49",
+              "cells": [
+                {
+                  "text": "Hold work",
+                  "md": "Hold work"
+                },
+                {
+                  "text": "Queue",
+                  "md": "Queue"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "siblings",
+      "name": "siblings",
+      "heading": {
+        "text": "Related areas",
+        "md": "Related areas"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "siblings-item-1",
+              "fp": "fabe1ff8",
+              "text": "Steady — The first theme.",
+              "md": "[Steady](./steady.md) — The first theme.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [],
+  "themes": [],
+  "tour": [
+    {
+      "id": "queue",
+      "title": "Queue",
+      "route": "/patterns/messaging/queue.html",
+      "role": {
+        "text": "Holds the work",
+        "md": "Holds the work"
+      }
+    }
+  ],
+  "prerequisites": {
+    "requires": [],
+    "related": []
+  },
+  "links": [
+    {
+      "block": "siblings",
+      "from": "siblings-item-1",
+      "via": "text",
+      "text": "Steady",
+      "href": "./steady.md",
+      "to": "steady",
+      "fragment": null
+    }
+  ],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "tradespace": "/blocks/2",
+    "tradespace-p-1": "/blocks/2/content/0",
+    "tour": "/blocks/3",
+    "tour-queue": "/blocks/3/content/0",
+    "tour-p-1": "/blocks/3/content/1",
+    "decide": "/blocks/4",
+    "decide-row-1": "/blocks/4/content/0/rows/0",
+    "siblings": "/blocks/5",
+    "siblings-item-1": "/blocks/5/content/0/items/0"
+  }
+}

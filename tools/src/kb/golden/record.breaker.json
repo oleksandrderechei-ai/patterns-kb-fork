@@ -1,0 +1,967 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "breaker",
+  "title": "Breaker",
+  "description": "The breaker page",
+  "kind": "pattern",
+  "band": "distributed",
+  "group": "distributed-resilience",
+  "area": "distributed-resilience",
+  "areaChain": [
+    {
+      "id": "patterns",
+      "label": "patterns"
+    },
+    {
+      "id": "distributed",
+      "label": "distributed"
+    },
+    {
+      "id": "distributed-resilience",
+      "label": "distributed-resilience"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "resilience",
+    "latency"
+  ],
+  "aliases": [
+    "CB",
+    "fuse"
+  ],
+  "solves": [
+    "my threads hang on a dead dependency",
+    "one failing call, and the whole service falls"
+  ],
+  "favourite": true,
+  "route": "/patterns/distributed/resilience/breaker.html",
+  "markdown": "/patterns/distributed/resilience/breaker.md",
+  "source": {
+    "path": "docs/patterns/distributed/resilience/breaker.md",
+    "sha256": "471e78e11675e71e9081850ccc8650e1657ea6c013f5414fbb6182848a91135e"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Stops calling a failing thing — so callers fail fast.",
+      "md": "Stops calling a failing thing — so callers **fail fast**."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "What it is",
+        "md": "What it is"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "5d39818a",
+          "text": "A dependency stops answering and your threads wait. See Retry, the storm, itself, a site and a file. Deeper detail for seniors. Retry, once more: again and the queue.",
+          "md": "A dependency stops answering and your threads wait. See [Retry](./retry.md), [the storm](../../../hazards/storm.md#cost), [itself](./breaker.md), [a site](https://example.com) and [a file](./notes.txt). Deeper detail for seniors. Retry, once more: [again](./retry.md) and [the queue](../../messaging/queue.md)."
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "9ba7612e",
+          "text": "Tune it against a slow dependency. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Tune it against a slow dependency. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "structure",
+      "name": "structure",
+      "heading": {
+        "text": "How it works",
+        "md": "How it works"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "figure",
+          "id": "structure-fig-1",
+          "fp": "de100749",
+          "lang": "mermaid",
+          "caption": {
+            "text": "How does the gate stop calls?",
+            "md": "How does the `gate` stop calls?"
+          },
+          "wide": false,
+          "code": "flowchart LR\n  A --> B\n  click B \"/patterns/distributed/resilience/retry.html\"\n  click A \"/patterns/nowhere.html\""
+        },
+        {
+          "type": "figure",
+          "id": "structure-fig-2",
+          "fp": "9f6e9ff6",
+          "lang": "mermaid",
+          "caption": {
+            "text": "The states.",
+            "md": "The states."
+          },
+          "wide": false,
+          "code": "stateDiagram-v2\n  [*] --> Closed"
+        }
+      ]
+    },
+    {
+      "id": "variations",
+      "name": "variations",
+      "heading": {
+        "text": "Variations",
+        "md": "Variations"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "variations-item-1",
+              "fp": "54b438f7",
+              "text": "Count-based — Trip after N failures.",
+              "md": "**Count-based** — Trip after N failures.",
+              "lead": "Count-based",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "variations-item-2",
+              "fp": "5ed20d1a",
+              "text": "Retry guarded — Wraps a retry.",
+              "md": "**[Retry](./retry.md) guarded** — Wraps a retry.",
+              "lead": "Retry guarded",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "variations-item-3",
+              "fp": "74a4855c",
+              "text": "A plain variation with no name.",
+              "md": "A plain variation with no name.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tradeoffs",
+      "name": "tradeoffs",
+      "heading": {
+        "text": "Trade-offs",
+        "md": "Trade-offs"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "pro",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Pros",
+            "md": "Pros"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "tradeoffs-pro-1",
+                  "fp": "790841cb",
+                  "text": "Fails fast.",
+                  "md": "Fails fast.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                },
+                {
+                  "id": "tradeoffs-pro-2",
+                  "fp": "c2b460e7",
+                  "text": "Frees threads.",
+                  "md": "Frees threads.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "con",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Cons",
+            "md": "Cons"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "tradeoffs-con-1",
+                  "fp": "6ebaca06",
+                  "text": "Another thing to tune.",
+                  "md": "Another thing to tune.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "usage",
+      "name": "usage",
+      "heading": {
+        "text": "When to use it",
+        "md": "When to use it"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "when",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Reach for it when",
+            "md": "Reach for it when"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "usage-when-1",
+                  "fp": "71bd42e2",
+                  "text": "You call a remote service.",
+                  "md": "You call a remote service.",
+                  "lead": null,
+                  "checked": null,
+                  "content": [
+                    {
+                      "type": "list",
+                      "id": null,
+                      "fp": null,
+                      "ordered": false,
+                      "start": null,
+                      "items": [
+                        {
+                          "id": null,
+                          "fp": null,
+                          "text": "Nested detail one.",
+                          "md": "Nested detail one.",
+                          "lead": null,
+                          "checked": null,
+                          "content": []
+                        },
+                        {
+                          "id": null,
+                          "fp": null,
+                          "text": "Nested detail two.",
+                          "md": "Nested detail two.",
+                          "lead": null,
+                          "checked": null,
+                          "content": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "usage-when-2",
+                  "fp": "fa42cd6d",
+                  "text": "The call holds a thread.",
+                  "md": "The call holds a thread.",
+                  "lead": null,
+                  "checked": null,
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "id": "usage-p-1",
+                      "fp": "d7fa1b7f",
+                      "text": "It holds a socket too.",
+                      "md": "It holds a socket too."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "avoid",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Avoid when",
+            "md": "Avoid when"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "usage-avoid-1",
+                  "fp": "4fdcb547",
+                  "text": "The call is local.",
+                  "md": "The call is local.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "usage-p-2",
+          "fp": "76d37749",
+          "text": "A trailing smell paragraph.",
+          "md": "A trailing smell paragraph."
+        }
+      ]
+    },
+    {
+      "id": "sketch",
+      "name": "sketch",
+      "heading": {
+        "text": "Code sketch",
+        "md": "Code sketch"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "sketch",
+          "id": "sketch-variant-1",
+          "fp": "ab5b9abf",
+          "form": "code",
+          "lang": "typescript",
+          "summary": {
+            "text": "TypeScript — the smallest breaker",
+            "md": "TypeScript — the `smallest` breaker"
+          },
+          "caption": null,
+          "wide": false,
+          "code": "class Breaker {}",
+          "content": []
+        },
+        {
+          "type": "sketch",
+          "id": "sketch-variant-2",
+          "fp": "36585a9e",
+          "form": "code",
+          "lang": "python",
+          "summary": {
+            "text": "Python — shared",
+            "md": "Python — shared"
+          },
+          "caption": null,
+          "wide": false,
+          "code": "class Shared: pass",
+          "content": []
+        }
+      ]
+    },
+    {
+      "id": "wild",
+      "name": "wild",
+      "heading": {
+        "text": "In the wild",
+        "md": "In the wild"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "wild-opossum",
+              "fp": "7e8b5e71",
+              "text": "opossum — The Node breaker: errorThresholdPercentage & more.",
+              "md": "**opossum** — The Node breaker: `errorThresholdPercentage` & more.",
+              "lead": "opossum",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "wild-hystrix",
+              "fp": "388540b4",
+              "text": "Hystrix — The JVM one.",
+              "md": "**[Hystrix](https://github.com/Netflix/Hystrix)** — The JVM one.",
+              "lead": "Hystrix",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "wild-bare",
+              "fp": "6363b78f",
+              "text": "A bare example with no name.",
+              "md": "A bare example with no name.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "production",
+      "name": "production",
+      "heading": {
+        "text": "In production",
+        "md": "In production"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "knob",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Tuning knobs",
+            "md": "Tuning knobs"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "production-knob-1",
+                  "fp": "be51a4bb",
+                  "text": "Failure threshold — The count at which it opens (failureRateThreshold).",
+                  "md": "**Failure threshold** — The count at which it opens (`failureRateThreshold`).",
+                  "lead": "Failure threshold",
+                  "checked": null,
+                  "content": []
+                },
+                {
+                  "id": "production-knob-2",
+                  "fp": "fedcd65f",
+                  "text": "Window — Measured over time.",
+                  "md": "**Window** — Measured over time.",
+                  "lead": "Window",
+                  "checked": null,
+                  "content": []
+                },
+                {
+                  "id": "production-knob-3",
+                  "fp": "d26f38e3",
+                  "text": "A knob with no label.",
+                  "md": "A knob with no label.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "signal",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Signals to watch",
+            "md": "Signals to watch"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "production-signal-1",
+                  "fp": "30ae4bae",
+                  "text": "State — Closed or open.",
+                  "md": "**State** — Closed or open.",
+                  "lead": "State",
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "failure",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Failure modes under load",
+            "md": "Failure modes under load"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "production-failure-1",
+                  "fp": "1ced99f1",
+                  "text": "Flapping — Opens and closes.",
+                  "md": "**Flapping** — Opens and closes.",
+                  "lead": "Flapping",
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "check",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Readiness checklist",
+            "md": "Readiness checklist"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "production-check-1",
+                  "fp": "1013d0d5",
+                  "text": "Every call has a timeout",
+                  "md": "Every call has a timeout",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                },
+                {
+                  "id": "production-check-2",
+                  "fp": "b696e0d2",
+                  "text": "Operators can force it",
+                  "md": "Operators can **force** it",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fluency",
+      "name": "fluency",
+      "heading": {
+        "text": "Where it shows up",
+        "md": "Where it shows up"
+      },
+      "generated": "fluency",
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "fluency-steady",
+              "fp": "68d1a230",
+              "text": "Steady — Stop hammering it.",
+              "md": "[Steady](../../../themes/steady.md) — Stop hammering it.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": "relationships",
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "relationships-p-1",
+          "fp": "f440a5eb",
+          "text": "Combines with",
+          "md": "**Combines with**"
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": null,
+              "fp": null,
+              "text": "Retry — Retry transient errors",
+              "md": "[Retry](./retry.md) — Retry transient errors",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "relationships-p-2",
+          "fp": "4280084b",
+          "text": "Prevents",
+          "md": "**Prevents**"
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": null,
+              "fp": null,
+              "text": "Storm — Fails fast",
+              "md": "[Storm](../../../hazards/storm.md) — Fails *fast*",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "verb": "combines-with",
+      "label": "Combines with",
+      "inverse": "combines-with",
+      "to": "retry",
+      "title": "Retry",
+      "kind": "pattern",
+      "route": "/patterns/distributed/resilience/retry.html",
+      "note": {
+        "text": "Retry transient errors",
+        "md": "Retry transient errors"
+      },
+      "group": "Combines with",
+      "maps": null,
+      "edge": {
+        "a": "breaker",
+        "verb": "combines-with",
+        "b": "retry"
+      }
+    },
+    {
+      "verb": "prevents-hazard",
+      "label": "Prevents",
+      "inverse": "mitigated-by",
+      "to": "storm",
+      "title": "Storm",
+      "kind": "hazard",
+      "route": "/hazards/storm.html",
+      "note": {
+        "text": "Fails fast",
+        "md": "Fails *fast*"
+      },
+      "group": "Prevents",
+      "maps": null,
+      "edge": {
+        "a": "breaker",
+        "verb": "prevents-hazard",
+        "b": "storm"
+      }
+    }
+  ],
+  "themes": [
+    {
+      "id": "steady",
+      "title": "Steady",
+      "route": "/themes/steady.html",
+      "role": {
+        "text": "Stop hammering it",
+        "md": "Stop hammering it"
+      }
+    }
+  ],
+  "tour": [],
+  "prerequisites": {
+    "requires": [],
+    "related": [
+      "retry"
+    ]
+  },
+  "links": [
+    {
+      "block": "description",
+      "from": "description-p-1",
+      "via": "text",
+      "text": "Retry",
+      "href": "./retry.md",
+      "to": "retry",
+      "fragment": null
+    },
+    {
+      "block": "description",
+      "from": "description-p-1",
+      "via": "text",
+      "text": "the storm",
+      "href": "../../../hazards/storm.md#cost",
+      "to": "storm",
+      "fragment": "cost"
+    },
+    {
+      "block": "description",
+      "from": "description-p-1",
+      "via": "text",
+      "text": "itself",
+      "href": "./breaker.md",
+      "to": "breaker",
+      "fragment": null
+    },
+    {
+      "block": "description",
+      "from": "description-p-1",
+      "via": "text",
+      "text": "a site",
+      "href": "https://example.com",
+      "to": null,
+      "fragment": null
+    },
+    {
+      "block": "description",
+      "from": "description-p-1",
+      "via": "text",
+      "text": "a file",
+      "href": "./notes.txt",
+      "to": null,
+      "fragment": null
+    },
+    {
+      "block": "description",
+      "from": "description-p-1",
+      "via": "text",
+      "text": "again",
+      "href": "./retry.md",
+      "to": "retry",
+      "fragment": null
+    },
+    {
+      "block": "description",
+      "from": "description-p-1",
+      "via": "text",
+      "text": "the queue",
+      "href": "../../messaging/queue.md",
+      "to": "queue",
+      "fragment": null
+    },
+    {
+      "block": "structure",
+      "from": "structure-fig-1",
+      "via": "click",
+      "text": "B",
+      "href": "/patterns/distributed/resilience/retry.html",
+      "to": "retry",
+      "fragment": null
+    },
+    {
+      "block": "structure",
+      "from": "structure-fig-1",
+      "via": "click",
+      "text": "A",
+      "href": "/patterns/nowhere.html",
+      "to": null,
+      "fragment": null
+    },
+    {
+      "block": "variations",
+      "from": "variations-item-2",
+      "via": "text",
+      "text": "Retry",
+      "href": "./retry.md",
+      "to": "retry",
+      "fragment": null
+    },
+    {
+      "block": "wild",
+      "from": "wild-hystrix",
+      "via": "text",
+      "text": "Hystrix",
+      "href": "https://github.com/Netflix/Hystrix",
+      "to": null,
+      "fragment": null
+    }
+  ],
+  "mentions": [
+    "queue"
+  ],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "structure": "/blocks/2",
+    "structure-fig-1": "/blocks/2/content/0",
+    "structure-fig-2": "/blocks/2/content/1",
+    "variations": "/blocks/3",
+    "variations-item-1": "/blocks/3/content/0/items/0",
+    "variations-item-2": "/blocks/3/content/0/items/1",
+    "variations-item-3": "/blocks/3/content/0/items/2",
+    "tradeoffs": "/blocks/4",
+    "tradeoffs-pro-1": "/blocks/4/content/0/content/0/items/0",
+    "tradeoffs-pro-2": "/blocks/4/content/0/content/0/items/1",
+    "tradeoffs-con-1": "/blocks/4/content/1/content/0/items/0",
+    "usage": "/blocks/5",
+    "usage-when-1": "/blocks/5/content/0/content/0/items/0",
+    "usage-when-2": "/blocks/5/content/0/content/0/items/1",
+    "usage-p-1": "/blocks/5/content/0/content/0/items/1/content/0",
+    "usage-avoid-1": "/blocks/5/content/1/content/0/items/0",
+    "usage-p-2": "/blocks/5/content/2",
+    "sketch": "/blocks/6",
+    "sketch-variant-1": "/blocks/6/content/0",
+    "sketch-variant-2": "/blocks/6/content/1",
+    "wild": "/blocks/7",
+    "wild-opossum": "/blocks/7/content/0/items/0",
+    "wild-hystrix": "/blocks/7/content/0/items/1",
+    "wild-bare": "/blocks/7/content/0/items/2",
+    "production": "/blocks/8",
+    "production-knob-1": "/blocks/8/content/0/content/0/items/0",
+    "production-knob-2": "/blocks/8/content/0/content/0/items/1",
+    "production-knob-3": "/blocks/8/content/0/content/0/items/2",
+    "production-signal-1": "/blocks/8/content/1/content/0/items/0",
+    "production-failure-1": "/blocks/8/content/2/content/0/items/0",
+    "production-check-1": "/blocks/8/content/3/content/0/items/0",
+    "production-check-2": "/blocks/8/content/3/content/0/items/1",
+    "fluency": "/blocks/9",
+    "fluency-steady": "/blocks/9/content/0/items/0",
+    "relationships": "/blocks/10",
+    "relationships-p-1": "/blocks/10/content/0",
+    "relationships-p-2": "/blocks/10/content/2"
+  }
+}

@@ -1,13 +1,14 @@
 /**
  * The kb.mjs command surface, as data. The usage text prints from here, so
- * the surface is written down once. `RETIRED` names the commands that are gone
- * and what replaced them.
+ * the surface is written down once, and so does the argument parser: a flag
+ * a command reads but this list leaves out is refused as unknown. `RETIRED`
+ * names the commands that are gone and what replaced them.
  *
  *   name   the subcommand
  *   args   the positional signature
  *   group  "read" (never writes) or "write" (edits a page through a writer)
  *   desc   one sentence
- *   flags  [{ flag, desc? }]
+ *   flags  [{ flag, desc? }], each `--name` first, then what it takes
  *   note   the caveat that stops someone using it wrongly
  */
 
@@ -29,7 +30,7 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
   {
     name: 'find', args: '<query…>', group: 'read',
     desc: 'Search names, essences, aliases, tags and symptoms. The way in from a symptom you can describe but cannot name.',
-    flags: [{ flag: '--tag <t>' }, { flag: '--band <b>' }, { flag: '--kind <k>' }],
+    flags: [{ flag: '--tag <t>' }, { flag: '--band <b>' }, { flag: '--kind <k>' }, { flag: '--n <8>', desc: 'the most matches to print, a whole number of 1 or more' }],
   },
   {
     name: 'get', args: '<id>', group: 'read',
@@ -43,7 +44,7 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
   {
     name: 'brief', args: '<query…>', group: 'read',
     desc: 'One-call scout bundle: the find hits, the governing theme\'s decide table, and the typed neighbours of the top hits.',
-    flags: [{ flag: '--theme <id>' }, { flag: '--tag <t>' }, { flag: '--band <b>' }, { flag: '--kind <k>' }, { flag: '--n <5>' }],
+    flags: [{ flag: '--theme <id>' }, { flag: '--tag <t>' }, { flag: '--band <b>' }, { flag: '--kind <k>' }, { flag: '--n <5>', desc: 'the most matches to print, a whole number of 1 or more' }],
     note: 'Replaces the three to six calls an agent otherwise spends putting exactly this sequence together.',
   },
   {
@@ -71,6 +72,27 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
     name: 'validate', args: '[<id>]', group: 'read',
     desc: 'Structural lint against the page shape. No argument validates every page.',
     flags: [{ flag: '--file <path>' }],
+  },
+  {
+    name: 'record', args: '<id>', group: 'read',
+    desc: 'One page as a record (kb-record/1): every block as typed nodes with element ids and fingerprints, the typed relations, the links and the anchors.',
+    flags: [
+      { flag: '--block <a,b>', desc: 'only these blocks, comma-separated; the record\'s `scope` lists the ones kept' },
+      { flag: '--all', desc: 'every page, one compact record per line in `ls` order (JSON Lines), in place of one id' },
+    ],
+    note: 'Always JSON: --json is accepted and changes nothing. Cite an element as <id>#<element id>@<fp>, with the `fp` the record gives it, and check the citation later with `resolve`.',
+  },
+  {
+    name: 'graph', args: '', group: 'read',
+    desc: 'The whole link graph as one JSON document (kb-graph/1): every page, every typed edge with both sides\' notes, every tour and every prose mention.',
+    flags: [],
+    note: 'Always JSON: --json is accepted and changes nothing.',
+  },
+  {
+    name: 'resolve', args: '<ref…>', group: 'read',
+    desc: 'Check citations: is each <id>#<element>@<fp> still there, moved, changed or gone? Prints one line per ref, or a JSON array with --json.',
+    flags: [],
+    note: 'A ref is <id>#<element id>, with @<fp> to pin the words (a block, <id>#<block name>, takes no pin: its id is its name, so a pin on one is ignored); a docs/…/x.md path, a …/x.html path or a site URL ending in either stands for the id. Each is ok (there, and the words are the cited ones), moved (the words are on another id now), ambiguous, changed or gone. Exit 0 when every ref is ok, and 1 when any is not, with --json too; a ref with no # is exit 2.',
   },
   {
     name: 'set', args: '<id>', group: 'write',
@@ -148,11 +170,46 @@ export const CLI_GLOBAL_FLAGS: readonly CliFlag[] = [
   { flag: '--diagrams', desc: 'keep the mermaid source, omitted by default as noise' },
 ];
 
+/** The name a flag's usage string declares: `--tag <t>` and `--aliases '["CB"]'` are `tag` and `aliases`. */
+export function flagName(flag: string): string {
+  return (flag.split(' ')[0] as string).slice(2);
+}
+
+/**
+ * The flag names a command takes, each once: its own, then the global ones. A
+ * word that is no command takes only the global ones. This is what the
+ * argument parser is handed to refuse every other flag.
+ */
+export function flagsOf(command: string): string[] {
+  const own = CLI_COMMANDS.find((c) => c.name === command)?.flags ?? [];
+  return [...new Set([...own, ...CLI_GLOBAL_FLAGS].map((f) => flagName(f.flag)))];
+}
+
 export const USAGE_HEADER = `kb.mjs — read the knowledge base without reading the pages whole.
 
 The whole corpus is millions of tokens, far more than fits in a context window. This is the way in:
 it reads the markdown under docs/ and the data files beside it, and returns the facts and the
 prose, block by block.`;
+
+/**
+ * What each exit code of a run means, printed at the end of the usage. 1 is a
+ * call that is well formed and that the knowledge base refuses, so the content
+ * is what to fix; 2 is a call that is malformed, so the command is.
+ */
+export const EXIT_CODES = `Exit codes:
+  0  done, including a search that found nothing
+  1  a well-formed call the knowledge base refuses (fix the content): an unknown id or block, a check that found problems, a writer that refused
+  2  a malformed call (fix the command): an unknown command or flag, a flag with no value, a missing id, query or required flag, a value of the wrong form`;
+
+/**
+ * A command's signature as the usage prints it, `kb.mjs find <query…> [--tag <t>] …`,
+ * and as a usage error repeats it: the one function builds both, so a flag added
+ * to the list is in both. `name` must be a command of CLI_COMMANDS.
+ */
+export function usageLine(name: string): string {
+  const c = CLI_COMMANDS.find((x) => x.name === name) as CliCommand;
+  return `kb.mjs ${c.name}${c.args === '' ? '' : ` ${c.args}`}${c.flags.map((f) => ` [${f.flag}]`).join('')}`;
+}
 
 /** The usage text: every command, read ones first. */
 export function usageText(header = ''): string {
@@ -160,7 +217,7 @@ export function usageText(header = ''): string {
   for (const group of ['read', 'write'] as const) {
     out.push(group === 'read' ? 'Reading:' : '\nWriting (authoring goes through here, so the data stays well-formed):');
     for (const c of CLI_COMMANDS.filter((x) => x.group === group)) {
-      out.push(`  kb.mjs ${c.name}${c.args === '' ? '' : ` ${c.args}`}${c.flags.map((f) => ` [${f.flag}]`).join('')}`);
+      out.push(`  ${usageLine(c.name)}`);
       out.push(`      ${c.desc}`);
       for (const f of c.flags) if (f.desc !== undefined) out.push(`      ${f.flag}  ${f.desc}`);
       if (c.note !== undefined) out.push(`      ${c.note}`);
@@ -168,5 +225,6 @@ export function usageText(header = ''): string {
   }
   out.push('');
   for (const f of CLI_GLOBAL_FLAGS) out.push(`  ${f.flag}${' '.repeat(Math.max(1, 12 - f.flag.length))}${f.desc as string}`);
+  out.push('', EXIT_CODES);
   return out.join('\n');
 }

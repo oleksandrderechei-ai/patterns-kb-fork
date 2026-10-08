@@ -2,7 +2,8 @@
  * kb.mjs v2 end to end over the fixture tree (`writeKbFixture` in
  * tools/src/lib/fixtures.ts): every read command, text and --json, the
  * argument rules and the failures, driven in-process through `run`. The real
- * tree is parity.test.ts's.
+ * tree is write-tree.test.ts's, for the writers, and relevance.test.ts's, for
+ * `find`.
  */
 
 import path from 'node:path';
@@ -11,12 +12,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { writeKbFixture } from '../lib/fixtures.js';
+import { writeKbFixture, writeRecordFixture } from '../lib/fixtures.js';
+import { fingerprint, serialize } from '../lib/kb-record.js';
 import { makeSandbox, type Sandbox } from '../lib/sandbox.js';
 
 import { main, quietOnClose, run } from './cli.js';
 import { Corpus } from './corpus.js';
 import { today } from './data.js';
+import { graphOf, recordOf } from './record.js';
+import { CLI_COMMANDS, usageLine, usageText } from './spec.js';
 
 let sb: Sandbox;
 let root: string;
@@ -55,10 +59,39 @@ describe('the surface', () => {
     expect(r.out).not.toContain('register');
   });
 
-  it('prints the usage and exits 1 on a command it does not know', async () => {
-    const r = await kb(root, 'frobnicate');
-    expect(r.code).toBe(1);
-    expect(r.out).toContain('Writing (authoring');
+  it('names a command it does not know in one line on stderr, prints nothing on stdout, and exits 2', async () => {
+    const expected = {
+      code: 2,
+      out: '',
+      err: 'unknown command: frobnicate. The commands are find, get, brief, related, backlinks, refs, ls, validate, record, graph, resolve, set, wild, production, explain, link, unlink, new; kb.mjs with no command prints the usage',
+    };
+    expect(await kb(root, 'frobnicate')).toEqual(expected);
+    expect(await kb(root, 'frobnicate', '--json')).toEqual(expected);
+    expect(await kb(root, '--json', 'frobnicate', 'breaker')).toEqual(expected);
+  });
+
+  it('knows no command by what every object inherits', async () => {
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(await kb(root, name), name).toMatchObject({ code: 2, out: '', err: expect.stringContaining(`unknown command: ${name}.`) });
+    }
+  });
+
+  it('prints the usage, with its exit codes, on stdout with no command, and exits 0', async () => {
+    for (const argv of [[], ['--json'], ['--diagrams']]) {
+      const r = await kb(root, ...argv);
+      expect(r.code).toBe(0);
+      expect(r.err).toBe('');
+      expect(r.out).toContain('Reading:');
+      expect(r.out).toContain('Exit codes:\n  0  done');
+    }
+  });
+
+  it('has a handler for every command its surface lists', async () => {
+    for (const c of CLI_COMMANDS) {
+      const r = await kb(root, c.name, '--no-such-flag');
+      expect(r.err, c.name).toMatch(/^unknown flag --no-such-flag\./);
+      expect(r.code, c.name).toBe(2);
+    }
   });
 
   it('hands a write command to its writer, which refuses a page the converter stamped', async () => {
@@ -92,26 +125,84 @@ describe('the surface', () => {
     }
   });
 
-  it('refuses register and level, which are retired', async () => {
+  it('refuses register and level, which are retired, as misuse', async () => {
     const r = await kb(root, 'register', 'breaker', 'x', 'advanced');
-    expect(r.code).toBe(1);
+    expect(r.code).toBe(2);
     expect(r.err).toContain('register is retired');
-    expect(await kb(root, 'level', 'breaker', 'x', 'advanced')).toEqual({ code: 1, out: '', err: 'reading levels were retired: a page reads at one depth' });
+    expect(await kb(root, 'level', 'breaker', 'x', 'advanced')).toEqual({ code: 2, out: '', err: 'reading levels were retired: a page reads at one depth' });
   });
 
-  it('refuses a --level flag, whatever its value, before anything else', async () => {
-    for (const value of ['guru', 'basic']) {
-      const r = await kb(root, 'get', 'breaker', '--level', value);
-      expect(r).toEqual({ code: 1, out: '', err: '--level is gone: reading levels were retired, a page reads at one depth' });
+  it('refuses a --level flag, whatever its value or none, before anything else', async () => {
+    for (const value of [['guru'], ['basic'], []]) {
+      const r = await kb(root, 'get', 'breaker', '--level', ...value);
+      expect(r).toEqual({ code: 2, out: '', err: '--level is gone: reading levels were retired, a page reads at one depth' });
     }
+    expect((await kb(root, '--level', 'basic')).code).toBe(2);
   });
 
   it('names an unknown id, with the ids that contain it', async () => {
     const r = await kb(root, 'get', 'break');
     expect(r.code).toBe(1);
     expect(r.err).toBe('unknown id: break\ndid you mean: breaker');
-    expect((await kb(root, 'related')).err).toBe('unknown id: (none given)');
     expect((await kb(root, 'get', 'zzz')).err).toBe('unknown id: zzz');
+  });
+
+  it('exits 2, as misuse, on a command that needs an id and is given none', async () => {
+    for (const cmd of ['get', 'related', 'backlinks', 'refs', 'set', 'wild', 'production', 'explain']) {
+      for (const extra of [[], ['--json']]) {
+        expect(await kb(root, cmd, ...extra), cmd).toEqual({ code: 2, out: '', err: 'unknown id: (none given)' });
+      }
+    }
+  });
+
+  it('exits 2 when a writer’s call is malformed: short of a positional or a required flag, or a flag value of the wrong form', async () => {
+    const before = sb.snapshot();
+    for (const argv of [['link'], ['link', 'breaker'], ['link', 'breaker', 'combines-with']]) {
+      const r = await kb(root, ...argv);
+      expect(r.code, argv.join(' ')).toBe(2);
+      expect(r.out).toBe('');
+      expect(r.err).toMatch(/^usage: kb\.mjs link <from> <verb> <to> /);
+    }
+    expect(await kb(root, 'unlink', 'breaker')).toEqual({ code: 2, out: '', err: `usage: ${usageLine('unlink')}` });
+    for (const argv of [['new', '--kind', 'hazard', '--name', 'X'], ['new', 'x', '--kind', 'hazard'], ['new', 'x', '--name', 'X']]) {
+      const r = await kb(root, ...argv);
+      expect(r.code, argv.join(' ')).toBe(2);
+      expect(r.err, argv.join(' ')).toMatch(/^usage: kb\.mjs new <id> --kind /);
+    }
+    expect(await kb(root, 'set', 'quick')).toEqual({ code: 2, out: '', err: 'nothing to set — pass --aliases / --tags / --solves / --favourite / --essence' });
+    // Text that is no JSON, JSON of the wrong shape, a word that is not true or false and a place that is not a number are the wrong form.
+    expect(await kb(root, 'set', 'quick', '--aliases', '[x')).toMatchObject({ code: 2, out: '', err: expect.stringMatching(/^--aliases is not valid JSON: /) });
+    expect(await kb(root, 'set', 'quick', '--aliases', '"x"')).toEqual({ code: 2, out: '', err: '--aliases: must be a JSON array' });
+    expect(await kb(root, 'set', 'quick', '--favourite', 'yes')).toEqual({ code: 2, out: '', err: '--favourite: must be true or false' });
+    expect(await kb(root, 'new', 'x', '--kind', 'hazard', '--name', 'X', '--order', '0')).toEqual({ code: 2, out: '', err: '--order: a place in the area, 1 or more' });
+    for (const argv of [['wild', 'breaker'], ['production', 'breaker'], ['explain', 'breaker', '--text', 'a'], ['explain', 'breaker', '--example', 'b']]) {
+      expect(await kb(root, ...argv), argv.join(' ')).toMatchObject({ code: 2, out: '' });
+    }
+    expect(sb.snapshot()).toEqual(before);
+  });
+
+  it('keeps exit 1 for a well-formed writer call the knowledge base refuses', async () => {
+    const before = sb.snapshot();
+    // A verb that is no verb, a page related to itself, a tag outside the vocabulary and a kind there is none of.
+    const verb = await kb(root, 'link', 'breaker', 'loves', 'queue');
+    expect(verb).toMatchObject({ code: 1, out: '' });
+    expect(verb.err).toMatch(/^usage: kb\.mjs link <from> <verb> <to> /);
+    expect(await kb(root, 'unlink', 'breaker', 'breaker')).toEqual({ code: 1, out: '', err: 'a page cannot relate to itself' });
+    expect(await kb(root, 'set', 'quick', '--tags', '["resilience","nope"]')).toMatchObject({ code: 1, out: '' });
+    expect(await kb(root, 'new', 'x', '--kind', 'widget', '--name', 'X')).toMatchObject({ code: 1, out: '' });
+    expect(sb.snapshot()).toEqual(before);
+  });
+
+  it('throws a crash in a writer rather than reporting it as a usage error', async () => {
+    const broken = makeSandbox();
+    try {
+      writeKbFixture(broken.dir);
+      broken.write('docs/data/content-model.json', '{"kinds": []}');
+      await expect(kb(broken.dir, 'link')).rejects.toThrow(TypeError);
+      await expect(kb(broken.dir, 'link', 'a', 'b', 'c')).rejects.toThrow(TypeError);
+    } finally {
+      broken.cleanup();
+    }
   });
 
   it('rethrows what is not a lookup failure', async () => {
@@ -206,13 +297,45 @@ describe('get', () => {
       path: 'patterns/distributed/resilience/breaker.html',
       source: 'docs/patterns/distributed/resilience/breaker.md',
       relations: [
-        { type: 'combines-with', to: 'retry', label: 'Combines with', note: 'Retry transient errors' },
-        { type: 'prevents-hazard', to: 'storm', label: 'Prevents', note: 'Fails fast' },
+        { type: 'combines-with', verb: 'combines-with', to: 'retry', label: 'Combines with', note: 'Retry transient errors' },
+        { type: 'prevents-hazard', verb: 'prevents-hazard', to: 'storm', label: 'Prevents', note: 'Fails fast' },
       ],
       themes: [{ id: 'steady', name: 'Steady', role: 'Stop hammering it', href: 'themes/steady.html' }],
     });
     expect(j).not.toHaveProperty('level');
     expect(j).not.toHaveProperty('levels');
+  });
+
+  it('adds the page’s metadata after its source, whole page or one block', async () => {
+    const meta = {
+      area: 'distributed-resilience',
+      status: 'stable',
+      owner: 'Test Owner',
+      tags: ['resilience', 'latency'],
+      aliases: ['CB', 'fuse'],
+      solves: ['my threads hang on a dead dependency', 'one failing call, and the whole service falls'],
+      favourite: true,
+      route: '/patterns/distributed/resilience/breaker.html',
+      markdown: '/patterns/distributed/resilience/breaker.md',
+    };
+    for (const argv of [['get', 'breaker'], ['get', 'breaker', '--block', 'usage']]) {
+      const j = await json(...argv);
+      expect(j, argv.join(' ')).toMatchObject(meta);
+      const keys = Object.keys(j);
+      expect(keys.slice(keys.indexOf('source'), keys.indexOf('blocks')), argv.join(' ')).toEqual(['source', ...Object.keys(meta)]);
+    }
+  });
+
+  it('gives a page with none of its optional metadata empty arrays, false and empty strings', async () => {
+    const bare = makeSandbox();
+    try {
+      writeKbFixture(bare.dir);
+      bare.write('docs/principles/quick.md', bare.read('docs/principles/quick.md').replace(/^(owner|status|tags): .*\n/gm, ''));
+      const j = JSON.parse((await kb(bare.dir, 'get', 'quick', '--json')).out) as Record<string, unknown>;
+      expect(j).toMatchObject({ area: 'principles', status: '', owner: '', tags: [], aliases: [], solves: [], favourite: false, route: '/principles/quick.html', markdown: '/principles/quick.md' });
+    } finally {
+      bare.cleanup();
+    }
   });
 
   it('dumps the writer-owned blocks in the writers’ own shape', async () => {
@@ -302,8 +425,17 @@ describe('related', () => {
       quiet.cleanup();
     }
     expect(JSON.parse((await kb(root, 'related', 'retry', '--json')).out)).toEqual([
-      { type: 'combines-with', to: 'breaker', label: 'Combines with', note: 'Trip on sustained errors' },
+      { type: 'combines-with', verb: 'combines-with', to: 'breaker', label: 'Combines with', note: 'Trip on sustained errors' },
     ]);
+  });
+
+  it('puts verb right after its alias type in every row, so a reader of either keeps working', async () => {
+    const rows = JSON.parse((await kb(root, 'related', 'breaker', '--json')).out) as Record<string, string>[];
+    expect(rows.length).toBeGreaterThan(1);
+    for (const r of rows) {
+      expect(Object.keys(r)).toEqual(['type', 'verb', 'to', 'label', 'note']);
+      expect(r['verb']).toBe(r['type']);
+    }
   });
 });
 
@@ -351,13 +483,15 @@ describe('ls and find listings', () => {
     }
   });
 
-  it('treats a find with filters and no query as a listing, and refuses one with neither', async () => {
+  it('treats a find with filters and no query as a listing, and refuses one with neither as misuse', async () => {
     expect((await kb(root, 'find', '--tag', 'messaging')).out).toBe('queue                        The queue page\nqueues                       The queues page\n\n2 entries.');
     expect(JSON.parse((await kb(root, 'find', '--kind', 'hazard', '--json')).out)).toHaveLength(1);
     expect(JSON.parse((await kb(root, 'find', '--band', 'messaging', '--json')).out)).toHaveLength(1);
     const r = await kb(root, 'find');
-    expect(r.code).toBe(1);
-    expect(r.err).toBe('usage: kb.mjs find <query…> [--tag T] [--band B] [--kind K]');
+    expect(r).toEqual({ code: 2, out: '', err: `usage: ${usageLine('find')}` });
+    // It is the signature the full usage prints, so every flag the command takes is in it, --n among them.
+    expect(usageText()).toContain(`\n  ${usageLine('find')}\n`);
+    expect(r.err).toContain('[--n <8>]');
   });
 });
 
@@ -376,14 +510,50 @@ describe('find', () => {
     expect(JSON.parse((await kb(root, 'find', 'the', 'page', '--n', '2', '--json')).out)).toHaveLength(2);
   });
 
-  it('reads --n 0 or an --n that is no number as no cap, as scripts/kb.mjs does', async () => {
+  it('caps find at 8 and brief at 5 when --n is not given, and takes any whole number of 1 or more', async () => {
     const all = JSON.parse((await kb(root, 'find', 'the', 'page', '--n', '100', '--json')).out) as unknown[];
     expect(all.length).toBeGreaterThan(8);
-    for (const n of ['0', 'abc']) {
-      expect(JSON.parse((await kb(root, 'find', 'the', 'page', '--n', n, '--json')).out), n).toHaveLength(all.length);
-      const b = JSON.parse((await kb(root, 'brief', 'the', 'page', '--n', n, '--json')).out) as { matches: unknown[] };
-      expect(b.matches, n).toHaveLength(all.length);
+    expect(JSON.parse((await kb(root, 'find', 'the', 'page', '--json')).out)).toHaveLength(8);
+    expect((JSON.parse((await kb(root, 'brief', 'the', 'page', '--json')).out) as { matches: unknown[] }).matches).toHaveLength(5);
+    expect(JSON.parse((await kb(root, 'find', 'the', 'page', '--n', '1', '--json')).out)).toHaveLength(1);
+    expect(JSON.parse((await kb(root, 'find', 'the', 'page', '--n', '007', '--json')).out)).toHaveLength(7);
+    expect((JSON.parse((await kb(root, 'brief', 'the', 'page', '--n', '100', '--json')).out) as { matches: unknown[] }).matches).toHaveLength(all.length);
+  });
+
+  it('refuses an --n that is not a whole number of 1 or more, as misuse, rather than reading it as no cap', async () => {
+    for (const n of ['0', 'abc', '-1', '2.5', '1e3', '', '+3', ' 3']) {
+      for (const cmd of ['find', 'brief']) {
+        for (const extra of [[], ['--json']]) {
+          expect(await kb(root, cmd, 'the', 'page', '--n', n, ...extra), `${cmd} --n "${n}"`).toEqual({ code: 2, out: '', err: `--n takes a whole number of 1 or more, not "${n}"` });
+        }
+      }
     }
+    // A filter-only listing and a missing query read --n too: a typo there is still a typo.
+    expect((await kb(root, 'find', '--tag', 'messaging', '--n', 'abc')).code).toBe(2);
+    expect((await kb(root, 'brief', '--n', 'abc')).code).toBe(2);
+  });
+
+  it('refuses a flag it does not know, a flag with no value and a single-dash word, naming the fix', async () => {
+    const r = await kb(root, 'find', '--jsno', 'circuit', 'breaker');
+    expect(r).toEqual({ code: 2, out: '', err: 'unknown flag --jsno. This command takes --tag, --band, --kind, --n, --json, --diagrams' });
+    expect(await kb(root, 'find', 'the', 'page', '-n', '3')).toEqual({ code: 2, out: '', err: '-n is not a flag: flags start with two dashes, so write --n' });
+    expect(await kb(root, 'find', 'the', 'page', '--tag')).toEqual({ code: 2, out: '', err: '--tag needs a value' });
+    expect(await kb(root, 'find', 'the', '--tag', '--json')).toEqual({ code: 2, out: '', err: '--tag needs a value' });
+    expect((await kb(root, 'get', 'breaker', '--block')).err).toBe('--block needs a value');
+    expect((await kb(root, 'related', 'breaker', '--block', 'usage')).err).toBe('unknown flag --block. This command takes --json, --diagrams');
+    expect((await kb(root, 'ls', '--tag', 'x')).err).toBe('unknown flag --tag. This command takes --band, --kind, --json, --diagrams');
+  });
+
+  it('refuses the same on a writer, before it reads a page, and leaves the tree as it was', async () => {
+    const before = sb.snapshot();
+    expect(await kb(root, 'set', 'breaker', '--favorite', 'true')).toEqual({
+      code: 2,
+      out: '',
+      err: 'unknown flag --favorite. This command takes --aliases, --tags, --solves, --essence, --favourite, --json, --diagrams',
+    });
+    expect((await kb(root, 'link', 'breaker', 'combines-with', 'queue', '--note')).err).toBe('--note needs a value');
+    expect((await kb(root, 'explain', 'breaker', '--text', 'a', '-example', 'b')).err).toBe('-example is not a flag: flags start with two dashes, so write --example');
+    expect(sb.snapshot()).toEqual(before);
   });
 
   it('says so when nothing matches', async () => {
@@ -393,7 +563,7 @@ describe('find', () => {
   it('searches every line of a page, and refuses a --level flag', async () => {
     const all = JSON.parse((await kb(root, 'find', 'seniors', '--json')).out) as { id: string }[];
     expect(all.map((n) => n.id)).toContain('breaker');
-    expect((await kb(root, 'find', 'seniors', '--level', 'basic')).code).toBe(1);
+    expect((await kb(root, 'find', 'seniors', '--level', 'basic')).code).toBe(2);
   });
 
   it('cuts a long matched line at 150 characters', async () => {
@@ -463,10 +633,43 @@ describe('brief', () => {
     expect(none).not.toContain('## theme:');
   });
 
-  it('refuses a missing query and a theme id that is not a theme; says so when nothing matches', async () => {
-    expect(await kb(root, 'brief')).toEqual({ code: 1, out: '', err: 'usage: kb.mjs brief <query…> [--theme <id>] [--tag T] [--band B] [--kind K] [--n 5]' });
-    expect((await kb(root, 'brief', 'queue', '--theme', 'breaker')).err).toBe('not a theme id: breaker');
-    expect((await kb(root, 'brief', 'zebra', 'unicorn')).out).toBe('no match for "zebra unicorn"');
+  it('refuses a missing query as misuse and a theme id that is not a theme as a failed lookup; says so when nothing matches', async () => {
+    const usage = { code: 2, out: '', err: `usage: ${usageLine('brief')}` };
+    expect(await kb(root, 'brief')).toEqual(usage);
+    expect(await kb(root, 'brief', '--kind', 'pattern', '--json')).toEqual(usage);
+    // The usage is the signature the full usage prints, every flag of the command in it.
+    expect(usageText()).toContain(`\n  ${usageLine('brief')}\n`);
+    expect(usage.err).toContain('[--theme <id>]');
+    expect(usage.err).toContain('[--n <5>]');
+    expect(await kb(root, 'brief', 'queue', '--theme', 'breaker')).toEqual({ code: 1, out: '', err: 'not a theme id: breaker' });
+    expect(await kb(root, 'brief', 'zebra', 'unicorn')).toEqual({ code: 0, out: 'no match for "zebra unicorn"', err: '' });
+  });
+
+  it('keeps its JSON shape when nothing matches: an empty match list, no theme, no neighbours', async () => {
+    expect(await kb(root, 'brief', 'zebra', 'unicorn', '--json')).toEqual({
+      code: 0,
+      out: JSON.stringify({ query: 'zebra unicorn', matches: [], theme: null, related: {} }, null, 2),
+      err: '',
+    });
+    // The query is lower-cased, as it is for a hit.
+    expect((JSON.parse((await kb(root, 'brief', 'ZEBRA', '--json')).out) as { query: string }).query).toBe('zebra');
+    // A filter that leaves nothing to match is the same answer.
+    expect(JSON.parse((await kb(root, 'brief', 'queue', '--tag', 'no-such-tag', '--json')).out)).toMatchObject({ matches: [], theme: null, related: {} });
+  });
+
+  it('resolves an explicit --theme for no match just as it does for a match, in JSON; text says only that nothing matched', async () => {
+    const named = JSON.parse((await kb(root, 'brief', 'zebra', '--theme', 'loop', '--json')).out) as unknown;
+    expect(named).toEqual({ query: 'zebra', matches: [], theme: { id: 'loop', decide: '| If you need… | Reach for |\n| Hold work | Queue |' }, related: {} });
+    expect(await kb(root, 'brief', 'zebra', '--theme', 'breaker', '--json')).toEqual({ code: 1, out: '', err: 'not a theme id: breaker' });
+    expect(await kb(root, 'brief', 'zebra', '--theme', 'loop')).toEqual({ code: 0, out: 'no match for "zebra"', err: '' });
+    expect(await kb(root, 'brief', 'zebra', '--theme', 'breaker')).toEqual({ code: 0, out: 'no match for "zebra"', err: '' });
+  });
+
+  it('puts verb beside type in the neighbours of every hit', async () => {
+    const b = JSON.parse((await kb(root, 'brief', 'dead', 'dependency', 'threads', '--json')).out) as { related: Record<string, Record<string, string>[]> };
+    const rows = Object.values(b.related).flat();
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(Object.keys(r)).toEqual(['type', 'verb', 'to', 'label', 'note']);
   });
 });
 
@@ -475,7 +678,7 @@ describe('backlinks and refs', () => {
     const j = JSON.parse((await kb(root, 'backlinks', 'retry', '--json')).out) as Record<string, unknown>;
     expect(j).toEqual({
       id: 'retry',
-      inbound: [{ from: 'breaker', type: 'combines-with', label: 'Combines with', note: 'Retry transient errors' }],
+      inbound: [{ from: 'breaker', type: 'combines-with', verb: 'combines-with', label: 'Combines with', note: 'Retry transient errors' }],
       mentionedBy: [],
       mentions: [],
     });
@@ -509,8 +712,8 @@ describe('backlinks and refs', () => {
       path: 'patterns/distributed/resilience/breaker.html',
       source: 'docs/patterns/distributed/resilience/breaker.md',
       relations: [
-        { rel: 'combines-with', to: 'retry' },
-        { rel: 'prevents-hazard', to: 'storm' },
+        { rel: 'combines-with', verb: 'combines-with', to: 'retry' },
+        { rel: 'prevents-hazard', verb: 'prevents-hazard', to: 'storm' },
       ],
       members: [],
       fluency: ['steady'],
@@ -581,7 +784,275 @@ describe('validate', () => {
     expect(await kb(root, 'validate', 'breaker')).toEqual({ code: 0, out: 'OK — 1 page(s) structurally valid.', err: '' });
     const r = await kb(root, 'validate', '--file', path.join(root, 'docs/patterns/messaging/queue.md'), '--json');
     expect(r.code).toBe(1);
-    expect(JSON.parse(r.out)).toEqual({ pages: 1, problems: ['queue: tags carries 1 tag(s); a page needs 2-5', 'queue: sketch code does not name its language'] });
+    expect(JSON.parse(r.out)).toEqual({
+      pages: 1,
+      problems: ['queue: tags carries 1 tag(s); a page needs 2-5', 'queue: sketch code does not name its language'],
+      findings: [
+        { page: 'queue', rule: null, line: null, message: 'tags carries 1 tag(s); a page needs 2-5' },
+        { page: 'queue', rule: null, line: null, message: 'sketch code does not name its language' },
+      ],
+    });
+    expect(Object.keys(JSON.parse(r.out) as object)).toEqual(['pages', 'problems', 'findings']);
+  });
+
+  it('prints each finding’s line and rule id in JSON, and the same line it always printed in text', async () => {
+    const odd = makeSandbox();
+    try {
+      writeKbFixture(odd.dir);
+      odd.write('docs/principles/quick.md', odd.read('docs/principles/quick.md').replace('Faults stay near their cause.', 'Faults stay near their cause. {level=advanced}'));
+      const asText = await kb(odd.dir, 'validate', 'quick');
+      const asJson = JSON.parse((await kb(odd.dir, 'validate', 'quick', '--json')).out) as { problems: string[]; findings: { page: string; rule: string | null; line: number | null; message: string }[] };
+      expect(asText.code).toBe(1);
+      expect(asJson.findings).toHaveLength(1);
+      const [f] = asJson.findings;
+      expect(f).toMatchObject({ page: 'quick', rule: null, message: '`level=` is retired; delete it (a literal trailing brace is written \\{)' });
+      expect(typeof f?.line).toBe('number');
+      expect(asJson.problems).toEqual([`quick: line ${String(f?.line)}: ${f?.message as string}`]);
+      expect(asText.err).toBe(`1 problem(s) across 1 page(s):\n  ${asJson.problems[0] as string}`);
+    } finally {
+      odd.cleanup();
+    }
+  });
+});
+
+describe('record, graph and resolve', () => {
+  const BREAKER = 'docs/patterns/distributed/resilience/breaker.md';
+  let rsb: Sandbox;
+  let direct: Corpus;
+  beforeAll(() => {
+    rsb = makeSandbox();
+    writeRecordFixture(rsb.dir);
+    direct = new Corpus(rsb.dir);
+  });
+  afterAll(() => rsb.cleanup());
+
+  /** What the process would write for a call: its lines, each ended by the newline `main` adds. */
+  const bytes = (r: Ran): string => `${r.out}\n`;
+
+  /** A tree of its own with the breaker page edited, for a citation that has stopped being ok. */
+  async function withBreaker(edit: (text: string) => string, ...argv: string[]): Promise<Ran> {
+    const own = makeSandbox();
+    try {
+      writeRecordFixture(own.dir);
+      own.write(BREAKER, edit(own.read(BREAKER)));
+      return await kb(own.dir, ...argv);
+    } finally {
+      own.cleanup();
+    }
+  }
+
+  it('prints a page as a record: JSON, exactly the bytes the site serves, with --json or without it', async () => {
+    const want = serialize(recordOf(direct, 'breaker'));
+    const r = await kb(rsb.dir, 'record', 'breaker');
+    expect(r.code).toBe(0);
+    expect(r.err).toBe('');
+    expect(bytes(r)).toBe(want);
+    expect(want.endsWith('}\n')).toBe(true);
+    expect(bytes(await kb(rsb.dir, 'record', 'breaker', '--json'))).toBe(want);
+    expect(Object.keys(JSON.parse(r.out) as object)[0]).toBe('$schema');
+  });
+
+  it('keeps the blocks named, in page order, whatever order and spacing the list is written in', async () => {
+    const r = await kb(rsb.dir, 'record', 'breaker', '--block', 'usage, tradeoffs');
+    expect(r.code).toBe(0);
+    expect(bytes(r)).toBe(serialize(recordOf(direct, 'breaker', { blocks: ['usage', 'tradeoffs'] })));
+    expect((JSON.parse(r.out) as { scope: string[]; intro: unknown[] }).scope).toEqual(['tradeoffs', 'usage']);
+    expect((JSON.parse(r.out) as { intro: unknown[] }).intro).toEqual([]);
+    expect(bytes(await kb(rsb.dir, 'record', 'breaker', '--block', 'tradeoffs,usage'))).toBe(bytes(r));
+  });
+
+  it('prints every page with --all: one compact record to a line, as many as ls lists, in its order', async () => {
+    const r = await kb(rsb.dir, 'record', '--all');
+    const listed = (JSON.parse((await kb(rsb.dir, 'ls', '--json')).out) as { id: string }[]).map((row) => row.id);
+    const lines = r.out.split('\n');
+    expect(r.code).toBe(0);
+    expect(r.err).toBe('');
+    expect(lines).toHaveLength(listed.length);
+    expect(lines.map((line) => (JSON.parse(line) as { id: string }).id)).toEqual(listed);
+    lines.forEach((line, i) => expect(line).toBe(JSON.stringify(recordOf(direct, listed[i] as string))));
+    // Compact: no indentation, and a record is one line however many blocks it has.
+    expect(r.out).not.toMatch(/\n {2}|^ {2}/);
+    expect(await kb(rsb.dir, 'record', '--all', '--json')).toEqual(r);
+  });
+
+  it.each([
+    ['no id and no --all', ['record'], 'usage: kb.mjs record <id> [--block <a,b>] [--all]'],
+    ['--all and an id', ['record', 'breaker', '--all'], '--all takes no id and no --block. usage: kb.mjs record <id> [--block <a,b>] [--all]'],
+    ['--all and an id before it', ['record', '--all', 'breaker'], '--all takes no id and no --block. usage: kb.mjs record <id> [--block <a,b>] [--all]'],
+    ['--all and --block', ['record', '--all', '--block', 'usage'], '--all takes no id and no --block. usage: kb.mjs record <id> [--block <a,b>] [--all]'],
+    ['a block list with an empty name', ['record', 'breaker', '--block', 'usage,'], '--block takes block names separated by commas, not "usage,"'],
+    ['an empty block list', ['record', 'breaker', '--block', ''], '--block takes block names separated by commas, not ""'],
+    ['--block with no value', ['record', 'breaker', '--block'], '--block needs a value'],
+    ['a flag it does not take', ['record', 'breaker', '--tag', 'x'], 'unknown flag --tag. This command takes --block, --all, --json, --diagrams'],
+  ])('refuses a call with %s as malformed: exit 2, one line on stderr, nothing on stdout', async (_name, argv, message) => {
+    expect(await kb(rsb.dir, ...argv)).toEqual({ code: 2, out: '', err: message });
+  });
+
+  it('refuses an id that is no page, and a block the page lacks, as a lookup that failed: exit 1', async () => {
+    expect(await kb(rsb.dir, 'record', 'nope')).toEqual({ code: 1, out: '', err: 'unknown id: nope' });
+    const r = await kb(rsb.dir, 'record', 'retry', '--block', 'usage,zzz');
+    expect(r).toMatchObject({ code: 1, out: '' });
+    expect(r.err).toBe('no block "zzz" on retry. has: description, explain, structure, variations, tradeoffs, usage, sketch, relationships');
+    // A malformed list is the call's fault and is said first, before the id is looked up.
+    expect(await kb(rsb.dir, 'record', 'nope', '--block', 'a,')).toMatchObject({ code: 2, out: '' });
+  });
+
+  it('refuses a page the record cannot hold: exit 1, and with --all not one record on stdout', async () => {
+    const own = makeSandbox();
+    try {
+      writeRecordFixture(own.dir);
+      const retry = 'docs/patterns/distributed/resilience/retry.md';
+      own.write(retry, own.read(retry).replace('<!-- relationships:end -->', ''));
+      const expected = { code: 1, out: '', err: 'retry: the region "relationships" is never closed' };
+      expect(await kb(own.dir, 'record', 'retry')).toEqual(expected);
+      expect(await kb(own.dir, 'record', '--all')).toEqual(expected);
+      expect((await kb(own.dir, 'record', 'breaker')).code).toBe(0);
+    } finally {
+      own.cleanup();
+    }
+  });
+
+  it('writes the record to the process as the bytes of the record and nothing more', async () => {
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cli.ts');
+    const writes: string[] = [];
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation((s) => {
+      writes.push(String(s));
+      return true;
+    });
+    const before = process.exitCode;
+    const env = process.env['KB_ROOT'];
+    try {
+      process.env['KB_ROOT'] = rsb.dir;
+      main(pathToFileURL(file).href, ['node', file, 'record', 'breaker']);
+      await vi.waitFor(() => expect(writes.length).toBeGreaterThan(0));
+      await vi.waitFor(() => expect(process.exitCode).toBe(0));
+      expect(writes.join('')).toBe(serialize(recordOf(direct, 'breaker')));
+    } finally {
+      if (env === undefined) delete process.env['KB_ROOT'];
+      else process.env['KB_ROOT'] = env;
+      out.mockRestore();
+      process.exitCode = before;
+    }
+  });
+
+  it('prints the graph as JSON, exactly the bytes the site serves as graph.json, and takes no flag of its own', async () => {
+    const want = serialize(graphOf(direct));
+    const r = await kb(rsb.dir, 'graph');
+    expect(r).toMatchObject({ code: 0, err: '' });
+    expect(bytes(r)).toBe(want);
+    expect(bytes(await kb(rsb.dir, 'graph', '--json'))).toBe(want);
+    expect(Object.keys(JSON.parse(r.out) as object)).toEqual(['$schema', 'contract', 'verbs', 'nodes', 'edges', 'tours', 'mentions']);
+    expect(await kb(rsb.dir, 'graph', '--block', 'usage')).toEqual({ code: 2, out: '', err: 'unknown flag --block. This command takes --json, --diagrams' });
+  });
+
+  it('says ok for each citation that holds and exits 0, one line each, in the order given', async () => {
+    const fp = fingerprint('Fails fast.');
+    const r = await kb(rsb.dir, 'resolve', 'breaker#tradeoffs-pro-1', `breaker#tradeoffs-pro-1@${fp}`, 'retry#usage-when-1');
+    expect(r).toEqual({
+      code: 0,
+      out: ['ok        breaker#tradeoffs-pro-1', `ok        breaker#tradeoffs-pro-1@${fp}`, 'ok        retry#usage-when-1'].join('\n'),
+      err: '',
+    });
+  });
+
+  it('says what became of each citation that does not hold, and exits 1 with the answer still on stdout', async () => {
+    const said = fingerprint('Check each value once, at the edge.');
+    const now = fingerprint('Fails fast.');
+    const r = await kb(
+      rsb.dir,
+      'resolve',
+      'breaker#tradeoffs-pro-1@00000000',
+      `boundary#description-p-9@${said}`,
+      'nowhere#x',
+      `breaker#tradeoffs-pro-1@${now}`,
+    );
+    expect(r).toEqual({
+      code: 1,
+      out: [
+        `changed   breaker#tradeoffs-pro-1@00000000 → now @${now}`,
+        `ambiguous boundary#description-p-9@${said}`,
+        'gone      nowhere#x',
+        `ok        breaker#tradeoffs-pro-1@${now}`,
+      ].join('\n'),
+      err: '',
+    });
+  });
+
+  it('ignores a pin on a block, whose id is its name: ok, exit 0, the citation printed as it was given, and no fingerprint in the row', async () => {
+    const r = await kb(rsb.dir, 'resolve', 'breaker#tradeoffs@00000000', 'breaker#usage');
+    expect(r).toEqual({ code: 0, out: ['ok        breaker#tradeoffs@00000000', 'ok        breaker#usage'].join('\n'), err: '' });
+    const j = await kb(rsb.dir, 'resolve', 'breaker#tradeoffs@00000000', '--json');
+    expect(j.code).toBe(0);
+    expect(JSON.parse(j.out)).toEqual([
+      {
+        ref: 'breaker#tradeoffs@00000000',
+        page: 'breaker',
+        id: 'tradeoffs',
+        fp: null,
+        status: 'ok',
+        now: { id: 'tradeoffs', fp: null },
+        pointer: '/blocks/4',
+        block: 'tradeoffs',
+        group: null,
+        text: 'Trade-offs',
+      },
+    ]);
+  });
+
+  it('says where a citation went when its element was renumbered', async () => {
+    const old = fingerprint('Frees threads.');
+    const r = await withBreaker(
+      (t) => t.replace('- Fails fast.\n- Frees threads.', '- Frees threads.\n- Fails fast.'),
+      'resolve',
+      `breaker#tradeoffs-pro-2@${old}`,
+    );
+    expect(r).toEqual({ code: 1, out: `moved     breaker#tradeoffs-pro-2@${old} → tradeoffs-pro-1`, err: '' });
+  });
+
+  it('prints the same answers as a JSON array with --json, and the same exit code', async () => {
+    const old = fingerprint('Frees threads.');
+    const r = await withBreaker(
+      (t) => t.replace('- Fails fast.\n- Frees threads.', '- Frees threads.\n- Fails fast.'),
+      'resolve',
+      `breaker#tradeoffs-pro-2@${old}`,
+      'breaker#tradeoffs-con-1',
+      '--json',
+    );
+    expect(r.code).toBe(1);
+    expect(r.err).toBe('');
+    const rows = JSON.parse(r.out) as Record<string, unknown>[];
+    expect(rows.map((row) => Object.keys(row))).toEqual([
+      ['ref', 'page', 'id', 'fp', 'status', 'now', 'pointer', 'block', 'group', 'text'],
+      ['ref', 'page', 'id', 'fp', 'status', 'now', 'pointer', 'block', 'group', 'text'],
+    ]);
+    expect(rows[0]).toMatchObject({ status: 'moved', now: { id: 'tradeoffs-pro-1', fp: old }, block: 'tradeoffs', group: 'pro', text: 'Frees threads.' });
+    expect(rows[1]).toMatchObject({ status: 'ok', fp: null, group: 'con', text: 'Another thing to tune.' });
+    const ok = await kb(rsb.dir, 'resolve', 'breaker#tradeoffs-pro-1', '--json');
+    expect(ok.code).toBe(0);
+    expect(bytes(ok)).toBe(serialize(JSON.parse(ok.out) as unknown));
+  });
+
+  it('takes a citation written with a docs path, a site path or a site address', async () => {
+    const r = await kb(
+      rsb.dir,
+      'resolve',
+      `${BREAKER}#tradeoffs-pro-1`,
+      '/patterns/distributed/resilience/breaker.html#tradeoffs-pro-1',
+      'https://odere-pro.github.io/patterns-kb/patterns/distributed/resilience/breaker.md#tradeoffs-pro-1',
+    );
+    expect(r.code).toBe(0);
+    expect(r.out.split('\n')).toEqual([`ok        ${BREAKER}#tradeoffs-pro-1`, 'ok        /patterns/distributed/resilience/breaker.html#tradeoffs-pro-1', 'ok        https://odere-pro.github.io/patterns-kb/patterns/distributed/resilience/breaker.md#tradeoffs-pro-1']);
+  });
+
+  it.each([
+    ['no citation', ['resolve'], 'usage: kb.mjs resolve <ref…>'],
+    ['a citation with no #', ['resolve', 'breaker'], 'breaker: not a citation — write <id>#<element>, and @<fp> after it to pin its words'],
+    ['one good citation and one with no #', ['resolve', 'breaker#tradeoffs-pro-1', 'retry'], 'retry: not a citation — write <id>#<element>, and @<fp> after it to pin its words'],
+    ['a pin that is not a fingerprint', ['resolve', 'breaker#tradeoffs-pro-1@xyz'], 'breaker#tradeoffs-pro-1@xyz: the fingerprint after @ is 8 lower-case hex digits'],
+    ['a flag it does not take', ['resolve', 'breaker#x', '--block', 'usage'], 'unknown flag --block. This command takes --json, --diagrams'],
+  ])('refuses a call with %s as malformed: exit 2, one line on stderr, nothing on stdout', async (_name, argv, message) => {
+    expect(await kb(rsb.dir, ...argv)).toEqual({ code: 2, out: '', err: message });
+    expect(await kb(rsb.dir, ...argv, '--json')).toEqual({ code: 2, out: '', err: message });
   });
 });
 
@@ -614,6 +1085,9 @@ describe('main', () => {
       main(url, ['node', file, 'get', 'break']);
       await vi.waitFor(() => expect(said()).toContain('unknown id: break\n'));
       await vi.waitFor(() => expect(process.exitCode).toBe(1));
+      main(url, ['node', file, 'find', '--jsno', 'x']);
+      await vi.waitFor(() => expect(said()).toContain('unknown flag --jsno. This command takes'));
+      await vi.waitFor(() => expect(process.exitCode).toBe(2));
       process.env['KB_ROOT'] = broken.dir;
       main(url, ['node', file, 'ls']);
       await vi.waitFor(() => expect(said()).toMatch(/kb\.mjs: .+/));

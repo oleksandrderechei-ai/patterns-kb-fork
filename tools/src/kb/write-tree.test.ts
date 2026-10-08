@@ -8,8 +8,11 @@
  *                words (and its bytes, where it carries no inline markup the
  *                plain writer cannot), and one KB-014 rejects is refused and
  *                left as it was
- *   the skills   every write invocation the skills and agents type is one v2
- *                parses, and one of each runs on the tree and reads back
+ *   the           every `kb.mjs` command the instructions type — the skills,
+ *   instructions  agents and rules under .claude/, every CLAUDE.md, the README
+ *                 and the concept and reference pages — parses under the
+ *                 argument rules v2 refuses a typo with, and one writer of each
+ *                 kind runs on the tree and reads back
  */
 
 import fs from 'node:fs';
@@ -17,16 +20,18 @@ import path from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { gitFiles } from '../lib/exec.js';
 import { REAL_TREE_TIMEOUT } from '../lib/fixtures.js';
 import { deriveElements, parseKb, type Nodes, type Paragraph } from '../lib/kb-attrs.js';
 import type { RelationsFile } from '../lib/render-relations.js';
 import { makeSandbox, type Sandbox } from '../lib/sandbox.js';
 
+import { parseArgs } from './args.js';
 import { run } from './cli.js';
 import { Corpus, REPO } from './corpus.js';
 import { splitFrontmatter } from './edit.js';
 import { blockNamed, parsePage } from './page.js';
-import { CLI_COMMANDS, CLI_GLOBAL_FLAGS, RETIRED } from './spec.js';
+import { CLI_COMMANDS, flagsOf, RETIRED } from './spec.js';
 
 const TODAY = '2026-09-28';
 let sb: Sandbox;
@@ -122,39 +127,154 @@ describe('the round trip through the block writers', () => {
   );
 });
 
-describe('what the skills and agents type', () => {
-  /** Every write invocation under .claude/: its verb and the flags it names. */
-  function invocations(): { verb: string; flags: string[]; line: string }[] {
-    const out: { verb: string; flags: string[]; line: string }[] = [];
-    const walk = (d: string): void => {
-      for (const e of fs.readdirSync(path.join(REPO, d), { withFileTypes: true })) {
-        const p = `${d}/${e.name}`;
-        // .claude/worktrees holds other checkouts (gitignored); their files are not this tree's.
-        if (e.isDirectory()) {
-          if (p !== '.claude/worktrees') walk(p);
-        } else if (p.endsWith('.md')) {
-          for (const m of fs.readFileSync(path.join(REPO, p), 'utf8').matchAll(/kb\.mjs (set|link|unlink|explain|production|wild|level|new|register)\b([^`\n|)]*)/g)) {
-            out.push({ verb: m[1] as string, flags: [...(m[2] as string).matchAll(/(?<![\w-])--[a-z][a-z-]*/g)].map((f) => f[0]), line: `${p}: ${m[0]}` });
-          }
-        }
+describe('what the instructions type', () => {
+  interface Call {
+    readonly verb: string;
+    /** The arguments after the command, as a shell would split them. */
+    readonly argv: string[];
+    /** Where it sits and what it says, for a failure to name. */
+    readonly line: string;
+  }
+
+  /** Every command kb.mjs has or had: the retired ones are looked for to be refused. */
+  const COMMANDS = [...CLI_COMMANDS.map((c) => c.name), ...Object.keys(RETIRED)];
+  const INVOCATION = new RegExp(`kb\\.mjs (${COMMANDS.join('|')})\\b([^\`\\n|)]*)`, 'g');
+
+  /**
+   * The lines of a file as a reader runs them: a line that ends in `\` runs on
+   * into the next, and the whole is placed at the line it starts on.
+   */
+  function logicalLines(text: string): { no: number; text: string }[] {
+    const out: { no: number; text: string }[] = [];
+    let start = 0;
+    let acc = '';
+    text.split('\n').forEach((l, i) => {
+      if (acc === '') start = i + 1;
+      if (l.endsWith('\\')) {
+        acc += `${l.slice(0, -1)} `;
+        return;
       }
-    };
-    walk('.claude');
+      out.push({ no: start, text: acc + l });
+      acc = '';
+    });
+    if (acc !== '') out.push({ no: start, text: acc });
     return out;
   }
 
-  it('names only commands kb.mjs carries, never a retired one, each with flags it takes', () => {
-    const calls = invocations();
-    expect(calls.length).toBeGreaterThan(30);
-    expect(calls.filter((c) => c.verb in RETIRED).map((c) => c.line)).toEqual([]);
-    const globals = CLI_GLOBAL_FLAGS.map((f) => f.flag);
-    for (const c of calls) {
-      const spec = CLI_COMMANDS.find((x) => x.name === c.verb && x.group === 'write');
-      expect(spec, c.line).toBeDefined();
-      const takes = [...(spec?.flags ?? []).map((f) => f.flag.split(' ')[0] as string), ...globals];
-      for (const f of c.flags) expect(takes, `${c.line}: ${f}`).toContain(f);
+  /**
+   * A command's arguments as a shell splits them, as far as these files need:
+   * a quote groups (one left open runs to the end), `#` at a word's start
+   * begins a comment, and the brackets that mark an optional flag in a usage
+   * line are dropped. A `<placeholder>` is a word like any other.
+   */
+  function words(text: string): string[] {
+    const out: string[] = [];
+    let cur: string | null = null;
+    let quote: string | null = null;
+    for (const ch of text) {
+      if (quote !== null) {
+        if (ch === quote) quote = null;
+        else cur += ch;
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+        cur ??= '';
+      } else if (/\s/.test(ch)) {
+        if (cur !== null) out.push(cur);
+        cur = null;
+      } else if (ch === '#' && cur === null) {
+        break;
+      } else if (ch !== '[' && ch !== ']') {
+        cur = (cur ?? '') + ch;
+      }
     }
+    if (cur !== null) out.push(cur);
+    return out;
+  }
+
+  /**
+   * A line that ends on a flag that takes a value names the flag and leaves the
+   * value out (`kb.mjs set <id> --solves`): it is read with a placeholder
+   * value. A flag with no value anywhere else is still a flag with no value.
+   */
+  function withValue(argv: string[]): string[] {
+    const last = argv[argv.length - 1];
+    return last !== undefined && /^--\S+$/.test(last) && last !== '--json' && last !== '--diagrams' ? [...argv, '<value>'] : argv;
+  }
+
+  /** Every `kb.mjs <command> …` a file's text types. */
+  function callsIn(file: string, text: string): Call[] {
+    return logicalLines(text).flatMap(({ no, text: line }) =>
+      [...line.matchAll(INVOCATION)].map((m) => ({
+        verb: m[1] as string,
+        argv: withValue(words(m[2] as string).filter((w) => w !== '\\')),
+        line: `${file}:${String(no)}: ${m[0].trim()}`,
+      })),
+    );
+  }
+
+  /** The files that tell a reader what to run: all of .claude/, every CLAUDE.md, the README and the concept and reference pages. */
+  function instructionFiles(): string[] {
+    return gitFiles(REPO, ['*.md']).filter(
+      (f) => f.startsWith('.claude/') || f.split('/').pop() === 'CLAUDE.md' || f === 'README.md' || /^docs\/(concepts|reference)\/[^/]+\.md$/.test(f),
+    );
+  }
+
+  /** The refusal the strict parser gives a call, or null when it takes it. */
+  function refusal(c: Call): string | null {
+    try {
+      parseArgs(c.argv, flagsOf(c.verb));
+      return null;
+    } catch (e) {
+      return (e as Error).message;
+    }
+  }
+
+  it('finds the invocations a file types, with their arguments as a shell splits them', () => {
+    const text = [
+      'Run `kb.mjs find "one slow dependency" --kind design --n 3` first.',
+      'node scripts/kb.mjs explain <id> --text "a b" --example \'x "y"\' \\',
+      '  --example-lang <lang> --example-caption "q?"',
+      'kb.mjs brief "<symptom>" [--tag T --band B --kind K --n 5]   # a comment --jsno',
+      'kb.mjs get <id> --block',
+      'kb.mjs get <id> --block usage|tradeoffs',
+      'kb.mjs get reads directly, and not for editing.',
+    ].join('\n');
+    expect(callsIn('f.md', text).map((c) => [c.verb, c.argv])).toEqual([
+      ['find', ['one slow dependency', '--kind', 'design', '--n', '3']],
+      ['explain', ['<id>', '--text', 'a b', '--example', 'x "y"', '--example-lang', '<lang>', '--example-caption', 'q?']],
+      ['brief', ['<symptom>', '--tag', 'T', '--band', 'B', '--kind', 'K', '--n', '5']],
+      ['get', ['<id>', '--block', '<value>']],
+      ['get', ['<id>', '--block', 'usage']],
+      ['get', ['reads', 'directly,', 'and', 'not', 'for', 'editing.']],
+    ]);
+    // A call that runs over lines is placed at the line it starts on.
+    expect(callsIn('f.md', text)[1]?.line).toMatch(/^f\.md:2: kb\.mjs explain <id> --text "a b" /);
+    expect(callsIn('f.md', text)[3]?.line).toMatch(/^f\.md:5: kb\.mjs get <id> --block$/);
   });
+
+  it('refuses what the strict parser refuses: -n, an unknown flag, a flag with no value in the middle, and a retired command’s flags', () => {
+    const calls = callsIn('f.md', ['kb.mjs find "x" -n 3', 'kb.mjs find --jsno x', 'kb.mjs get <id> --block --json', 'kb.mjs get <id> --block usage --json', 'kb.mjs set <id> --solves'].join('\n'));
+    expect(calls.map(refusal)).toEqual([
+      '-n is not a flag: flags start with two dashes, so write --n',
+      'unknown flag --jsno. This command takes --tag, --band, --kind, --n, --json, --diagrams',
+      '--block needs a value',
+      null,
+      null,
+    ]);
+  });
+
+  it(
+    'types only commands kb.mjs carries, never a retired one, and every call parses under the strict argument rules',
+    () => {
+      const files = instructionFiles();
+      expect(files).toEqual(expect.arrayContaining(['CLAUDE.md', 'README.md', 'tools/CLAUDE.md', 'scripts/CLAUDE.md', '.claude/skills/sys-design/SKILL.md', 'docs/concepts/skill-routing.md']));
+      const calls = files.flatMap((f) => callsIn(f, fs.readFileSync(path.join(REPO, f), 'utf8')));
+      expect(calls.length).toBeGreaterThan(300);
+      expect(calls.filter((c) => c.verb in RETIRED).map((c) => c.line)).toEqual([]);
+      expect(calls.flatMap((c) => [refusal(c)].filter((r) => r !== null).map((r) => `${c.line}  →  ${r as string}`))).toEqual([]);
+    },
+    REAL_TREE_TIMEOUT,
+  );
 
   it(
     'runs one of each on the tree, and each reads back through the reader',

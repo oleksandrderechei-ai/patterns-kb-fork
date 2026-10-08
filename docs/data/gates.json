@@ -935,6 +935,11 @@
       "name": "Build the site",
       "anchor": "build-the-site",
       "where": "`site`, before the site gates"
+    },
+    {
+      "name": "Deployed site answers",
+      "anchor": "deployed-site-answers",
+      "where": "`smoke` in `pages.yml`, after the deploy"
     }
   ]
 }

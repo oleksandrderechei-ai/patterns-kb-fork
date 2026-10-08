@@ -1,0 +1,282 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "queues",
+  "title": "Queues",
+  "description": "The queues page",
+  "kind": "capability",
+  "band": "capability",
+  "group": "capability",
+  "area": "capabilities",
+  "areaChain": [
+    {
+      "id": "capabilities",
+      "label": "capabilities"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "messaging",
+    "cloud"
+  ],
+  "aliases": [],
+  "solves": [],
+  "favourite": false,
+  "route": "/capabilities/queues.html",
+  "markdown": "/capabilities/queues.md",
+  "source": {
+    "path": "docs/capabilities/queues.md",
+    "sha256": "db606c3c52faadd683be105616d3b4f5c36ef962704fae970349851758c3b7a5"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Managed queues across clouds.",
+      "md": "Managed queues across clouds."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "What it is",
+        "md": "What it is"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "41b1c2e4",
+          "text": "A queue you rent.",
+          "md": "A queue you rent."
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "a38a60ba",
+          "text": "Mind the lock-in. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Mind the lock-in. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "capabilities",
+      "name": "capabilities",
+      "heading": {
+        "text": "Capabilities",
+        "md": "Capabilities"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "capabilities-item-1",
+              "fp": "80f41f2c",
+              "text": "Point-to-point — One consumer per message.",
+              "md": "**Point-to-point** — One consumer per message.",
+              "lead": "Point-to-point",
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mapping",
+      "name": "mapping",
+      "heading": {
+        "text": "Across the clouds",
+        "md": "Across the clouds"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "table",
+          "id": null,
+          "fp": null,
+          "align": [
+            null,
+            null,
+            null
+          ],
+          "header": [
+            {
+              "text": "Capability",
+              "md": "Capability"
+            },
+            {
+              "text": "AWS",
+              "md": "AWS"
+            },
+            {
+              "text": "Azure",
+              "md": "Azure"
+            }
+          ],
+          "rows": [
+            {
+              "id": "mapping-row-1",
+              "fp": "b396c58e",
+              "cells": [
+                {
+                  "text": "Point-to-point",
+                  "md": "Point-to-point"
+                },
+                {
+                  "text": "Amazon SQS",
+                  "md": "Amazon SQS"
+                },
+                {
+                  "text": "Service Bus",
+                  "md": "Service Bus"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "choosing",
+      "name": "choosing",
+      "heading": {
+        "text": "Choosing",
+        "md": "Choosing"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "choosing-p-1",
+          "fp": "14f25fe1",
+          "text": "Start with the default.",
+          "md": "Start with the default."
+        }
+      ]
+    },
+    {
+      "id": "portability",
+      "name": "portability",
+      "heading": {
+        "text": "Portability",
+        "md": "Portability"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "portability-li-1",
+              "fp": "81cb5377",
+              "text": "Visibility timeout — Named differently.",
+              "md": "**Visibility timeout** — Named differently.",
+              "lead": "Visibility timeout",
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": null,
+      "content": []
+    }
+  ],
+  "relations": [],
+  "themes": [],
+  "tour": [],
+  "prerequisites": {
+    "requires": [],
+    "related": []
+  },
+  "links": [],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "capabilities": "/blocks/2",
+    "capabilities-item-1": "/blocks/2/content/0/items/0",
+    "mapping": "/blocks/3",
+    "mapping-row-1": "/blocks/3/content/0/rows/0",
+    "choosing": "/blocks/4",
+    "choosing-p-1": "/blocks/4/content/0",
+    "portability": "/blocks/5",
+    "portability-li-1": "/blocks/5/content/0/items/0",
+    "relationships": "/blocks/6"
+  }
+}

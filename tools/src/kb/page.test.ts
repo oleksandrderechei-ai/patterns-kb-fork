@@ -34,6 +34,16 @@ describe('parsePage', () => {
     expect(parsePage('---\ntitle: x\n---\n\n# Title\n\nIntro.\n').h1).toBe('Title');
   });
 
+  it('keeps the markdown the tree was parsed from: the page less its frontmatter, which the positions index into', () => {
+    const body = '# Title\n\nIntro with `code`.\n\n## First\n<!--meta block=description-->\n\nA **bold** word.\n';
+    const doc = parsePage(`---\ntitle: x\n---\n${body}`);
+    expect(doc.source).toBe(body);
+    expect(parsePage(body).source).toBe(body);
+    const intro = doc.intro[0] as Paragraph;
+    const at = intro.position as { start: { offset: number }; end: { offset: number } };
+    expect(doc.source.slice(at.start.offset, at.end.offset)).toBe('Intro with `code`.');
+  });
+
   it('splits the blocks by their facts; what sits under a heading with none belongs to no block', () => {
     const doc = parsePage(
       [

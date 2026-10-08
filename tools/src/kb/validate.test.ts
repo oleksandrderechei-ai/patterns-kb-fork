@@ -6,11 +6,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { explainBlock, writeKbFixture } from '../lib/fixtures.js';
+import type { FmValue } from '../lib/frontmatter.js';
 import { makeSandbox, type Sandbox } from '../lib/sandbox.js';
 
 import { Corpus, type Page } from './corpus.js';
+import { parsePage } from './page.js';
 import { tagRules } from './tags.js';
-import { blockProblems, descriptionLengthProblem, pageProblems, shapeRatchets, validatePages } from './validate.js';
+import { blockProblems, descriptionLengthProblem, findingText, pageFindings, pageProblems, shapeRatchets, validateFindings, validatePages } from './validate.js';
 
 let sb: Sandbox;
 let corpus: Corpus;
@@ -204,6 +206,95 @@ describe('pageProblems', () => {
       odd.write('docs/data/relations.json', JSON.stringify({ relations: [{ a: 'quick', verb: 'combines-with', b: 'gone', note_a: '', note_b: '' }] }));
       const d = new Corpus(odd.dir);
       expect(pageProblems(d, d.need('quick'), good, body(PRINCIPLE.join('\n')), TERMS)).toEqual(['quick: relation "combines-with" names no page "gone"']);
+    } finally {
+      odd.cleanup();
+    }
+  });
+});
+
+describe('pageFindings', () => {
+  const full = body(PRINCIPLE.join('\n'));
+  const swap = (index: number, block: string): string => body(PRINCIPLE.map((b, k) => (k === index ? `${block}\n` : b)).join('\n'));
+
+  it('names the page and leaves the rule and the line null for a finding about the page as a whole', () => {
+    expect(pageFindings(corpus, quick(), { ...good, title: '' }, full, TERMS)).toEqual([{ page: 'quick', rule: null, line: null, message: 'frontmatter has no title' }]);
+    expect(pageFindings(corpus, quick(), good, body(PRINCIPLE.slice(0, 5).join('\n')), TERMS)).toEqual([{ page: 'quick', rule: null, line: null, message: 'missing block "relationships"' }]);
+    expect(pageFindings(corpus, quick(), good, full, TERMS)).toEqual([]);
+  });
+
+  it('keys each finding as page, rule, line, message, in that order', () => {
+    const [f] = pageFindings(corpus, quick(), { ...good, title: '' }, full, TERMS);
+    expect(Object.keys(f as object)).toEqual(['page', 'rule', 'line', 'message']);
+  });
+
+  it('files the explain, description and selfcheck problems under KB-014, KB-015 and KB-016, with no line', () => {
+    const head = '## B\n<!--meta block=explain-->\n\n';
+    expect(pageFindings(corpus, quick(), good, swap(1, `${head}**Basic.** b.\n\n**Example.** e.`), TERMS)).toEqual([
+      { page: 'quick', rule: 'KB-014', line: null, message: 'the explanation opens with the bold label "Basic." — write plain prose, the heading says what it is' },
+      { page: 'quick', rule: 'KB-014', line: null, message: 'the explanation is 2 words — it runs 60 to 180, and what it costs goes in the costs list' },
+    ]);
+    const words = Array.from({ length: 81 }, (_, i) => `w${String(i)}`).join(' ');
+    expect(pageFindings(corpus, quick(), good, swap(0, `## A\n<!--meta block=description-->\n\n${words}`), TERMS)).toEqual([
+      { page: 'quick', rule: 'KB-015', line: null, message: 'the description is 81 words — say what the page is for in 80 or fewer' },
+    ]);
+    const withSelfcheck = body([...PRINCIPLE.slice(0, 5), '## S\n<!--meta block=selfcheck-->\n\n> not a question\n', PRINCIPLE[5]].join('\n'));
+    const selfcheck = pageFindings(corpus, quick(), good, withSelfcheck, TERMS);
+    expect(selfcheck.length).toBeGreaterThan(0);
+    for (const f of selfcheck) expect(f).toMatchObject({ page: 'quick', rule: 'KB-016', line: null });
+  });
+
+  it('gives a dialect problem its line in the file and no rule id', () => {
+    const text = body(PRINCIPLE.join('\n').replace('Why.', 'Why. {level=advanced}'));
+    const line = text.split('\n').findIndex((l) => l.includes('{level=advanced}')) + 1;
+    expect(pageFindings(corpus, quick(), good, text, TERMS)).toEqual([
+      { page: 'quick', rule: null, line, message: '`level=` is retired; delete it (a literal trailing brace is written \\{)' },
+    ]);
+  });
+
+  it('parses the page itself when it is not handed its parse', () => {
+    const text = body(PRINCIPLE.join('\n').replace('Why.', 'Why. {level=advanced}'));
+    expect(pageFindings(corpus, quick(), good, text, TERMS)).toEqual(pageFindings(corpus, quick(), good, text, TERMS, parsePage(text)));
+  });
+
+  it('makes the one line pageProblems prints from each finding, for every kind of finding', () => {
+    const bad = body(PRINCIPLE.join('\n').replace('Why.', 'Why. {level=advanced}'));
+    const cases: [Readonly<Record<string, FmValue>>, string][] = [
+      [{ area: 'themes', aliases: 'CB', tags: ['nope'] }, full],
+      [good, bad],
+      [good, swap(1, '## B\n<!--meta block=explain-->\n\n**Basic.** b.\n\n**Example.** e.')],
+    ];
+    for (const [fm, text] of cases) {
+      const findings = pageFindings(corpus, quick(), fm, text, TERMS);
+      expect(findings.length).toBeGreaterThan(0);
+      expect(pageProblems(corpus, quick(), fm, text, TERMS)).toEqual(findings.map(findingText));
+    }
+  });
+});
+
+describe('findingText', () => {
+  it('is the page, then the line, then the rule id, then the words, each part there when the finding has it', () => {
+    const f = { page: 'p', rule: null, line: null, message: 'm' };
+    expect(findingText(f)).toBe('p: m');
+    expect(findingText({ ...f, line: 3 })).toBe('p: line 3: m');
+    expect(findingText({ ...f, rule: 'KB-014' })).toBe('p: KB-014 m');
+    expect(findingText({ ...f, rule: 'KB-014', line: 3 })).toBe('p: line 3: KB-014 m');
+    expect(findingText({ ...f, line: 0 })).toBe('p: line 0: m');
+  });
+});
+
+describe('validateFindings', () => {
+  it('is the findings of every page it is handed, in order, and validatePages is the same as lines', () => {
+    const odd = makeSandbox();
+    try {
+      writeKbFixture(odd.dir);
+      odd.write('docs/data/tags.json', '{}');
+      const c = new Corpus(odd.dir);
+      const pages = [c.need('retry'), c.need('storm')];
+      const findings = validateFindings(c, pages);
+      expect(findings.map((f) => f.page)).toEqual(['retry', 'retry', 'storm', 'storm']);
+      expect(findings[0]).toEqual({ page: 'retry', rule: null, line: null, message: 'tag "resilience" is not in the closed vocabulary' });
+      expect(validatePages(c, pages)).toEqual(findings.map(findingText));
+      expect(validateFindings(c, [])).toEqual([]);
     } finally {
       odd.cleanup();
     }

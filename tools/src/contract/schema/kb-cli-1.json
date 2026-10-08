@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://odere-pro.github.io/patterns-kb/schema/kb-cli-1.json",
+  "title": "kb.mjs read commands: --json output (kb-cli/1)",
+  "description": "The --json output of the kb.mjs read commands, contract kb-cli/1: find, ls, get, brief, related, backlinks, refs, validate and resolve. Each command has one definition under $defs, named for it: check an output against #/$defs/<command>. The two commands that print one document of their own, record and graph, are kb-record-1.json and kb-graph-1.json. Objects are open, so a later release can add a key and stay in kb-cli/1; ignore keys you do not know. Renaming, removing or retyping a key, or changing the order of what a command prints, would be kb-cli/2, published beside this file. On relation rows read `verb`: `type` (and `rel` in refs) repeat it for old readers and are deprecated aliases. A failed call writes one line to stderr and nothing to stdout, so no definition covers an error; validate and resolve exit 1 when they find a problem and still print, since their findings are the answer.",
+  "$defs": {
+    "find": {
+      "description": "`kb.mjs find <query…> [--tag T] [--band B] [--kind K] [--n N] --json`: the pages that match, best first, at most --n of them (8 by default), each with `why`; [] when nothing matches. With a filter and no query words it lists every page the filters keep instead, as catalog rows with no `why`.",
+      "anyOf": [
+        { "type": "array", "items": { "$ref": "#/$defs/findRow" } },
+        { "type": "array", "items": { "$ref": "#/$defs/catalogRow" } }
+      ]
+    },
+    "ls": {
+      "description": "`kb.mjs ls [--band B] [--kind K] --json`: every page the filters keep, or every page without them, in the order of the structure file.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/catalogRow" }
+    },
+    "get": {
+      "description": "`kb.mjs get <id> [--block B] [--diagrams] --json`: one page: its header and metadata, its blocks as text, its typed relations and its themes. With --block, `blocks` holds only that block, and `items` is there only when that block is wild, production or explain.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The page id: its file name without .md, which every other command takes." },
+        "name": { "type": "string", "description": "The page title." },
+        "kind": { "$ref": "#/$defs/pageKind", "description": "The page kind, from the folder it sits in under docs/." },
+        "band": { "type": "string", "description": "For a pattern, the area directly under patterns (gof, distributed, messaging …); for every other kind, the kind itself." },
+        "group": { "type": "string", "description": "For a pattern, its own area (distributed-resilience); for every other kind, the kind itself." },
+        "essence": { "type": "string", "description": "The one-line description from the page's frontmatter." },
+        "path": { "type": "string", "description": "The page's site path with no leading slash, such as patterns/gof/creational/singleton.html." },
+        "source": { "type": "string", "description": "The page's markdown file, relative to the repo root." },
+        "area": { "type": "string", "description": "The area named in the page's frontmatter." },
+        "status": { "type": "string", "description": "The page status from its frontmatter, such as stable." },
+        "owner": { "type": "string", "description": "The page owner from its frontmatter." },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "The page's tags in frontmatter order; [] when it has none." },
+        "aliases": { "type": "array", "items": { "type": "string" }, "description": "Other names the page goes by, in frontmatter order; [] when it has none." },
+        "solves": { "type": "array", "items": { "type": "string" }, "description": "The problems the page solves, each in the words of someone who has it; [] when it lists none." },
+        "favourite": { "type": "boolean", "description": "True when the page is an editorial pick; false otherwise." },
+        "route": { "type": "string", "description": "The page's URL path on the site: a slash, then `path`." },
+        "markdown": { "type": "string", "description": "The URL path of the page's markdown copy: `route` with .md in place of .html." },
+        "blocks": {
+          "type": "object",
+          "description": "The page's blocks as cleaned text, keyed by block name, in page order. Diagram source is left out unless --diagrams is given.",
+          "additionalProperties": { "type": "string" }
+        },
+        "items": {
+          "type": "object",
+          "description": "The wild, production and explain blocks in the shape their writers take back, so one entry can be edited and the lot handed over. Holds only those of the three that `blocks` shows, and the key is absent when `blocks` shows none of them.",
+          "properties": {
+            "wild": { "type": "array", "items": { "$ref": "#/$defs/wildItem" }, "description": "The entries of the wild block, in order." },
+            "production": { "$ref": "#/$defs/productionItems", "description": "The four lists of the production block." },
+            "explain": { "$ref": "#/$defs/explainItems", "description": "The text, costs and example of the explain block." }
+          }
+        },
+        "relations": { "type": "array", "items": { "$ref": "#/$defs/relationRow" }, "description": "The page's typed relations, in the order its relationships block shows them; [] when it has none." },
+        "themes": { "type": "array", "items": { "$ref": "#/$defs/themeRef" }, "description": "The themes whose tour includes the page; [] when it is in none." }
+      },
+      "required": ["id", "name", "kind", "band", "group", "essence", "path", "source", "area", "status", "owner", "tags", "aliases", "solves", "favourite", "route", "markdown", "blocks", "relations", "themes"]
+    },
+    "brief": {
+      "description": "`kb.mjs brief <query…> [--theme ID] [--tag T] [--band B] [--kind K] [--n N] --json`: the `find` hits, the theme that governs them and the typed neighbours of the top hits. A search with no hit keeps all four keys: `matches` is [], `theme` is null unless --theme names one, and `related` is {}.",
+      "type": "object",
+      "properties": {
+        "query": { "type": "string", "description": "The query words, lower-cased and joined by single spaces." },
+        "matches": { "type": "array", "items": { "$ref": "#/$defs/findRow" }, "description": "The pages that match, best first, at most --n of them (5 by default): the rows `find` gives." },
+        "theme": {
+          "type": ["object", "null"],
+          "description": "The theme that governs the matches: the one --theme names, else the top theme hit, else the theme most hits belong to; null when there is none.",
+          "properties": {
+            "id": { "type": "string", "description": "The theme's page id." },
+            "decide": { "type": ["string", "null"], "description": "The text of the theme's decide block; null when the theme has none." }
+          },
+          "required": ["id", "decide"]
+        },
+        "related": {
+          "type": "object",
+          "description": "The typed relations of each of the top three matches that is not a theme, keyed by page id; {} when there are none.",
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/relationRow" } }
+        }
+      },
+      "required": ["query", "matches", "theme", "related"]
+    },
+    "related": {
+      "description": "`kb.mjs related <id> --json`: the page's typed relations, in the order its relationships block shows them; [] when it has none.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/relationRow" }
+    },
+    "backlinks": {
+      "description": "`kb.mjs backlinks <id> --json`: what points at the page: the typed relations that end here, and the pages that link to it in prose with no relation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The page id asked about." },
+        "inbound": { "type": "array", "items": { "$ref": "#/$defs/inboundRow" }, "description": "Every typed relation from another page to this one, by the listing order of the page it starts at." },
+        "mentionedBy": { "type": "array", "items": { "type": "string" }, "description": "Ids of the pages that link to this one in their prose where no relation, theme or tour of theirs already names it, in listing order." },
+        "mentions": { "type": "array", "items": { "type": "string" }, "description": "Ids of the pages this one links to in its own prose where no relation, theme or tour of its own already names them, in order of first mention." }
+      },
+      "required": ["id", "inbound", "mentionedBy", "mentions"]
+    },
+    "refs": {
+      "description": "`kb.mjs refs <id> [--file PATH] --json`: what the page points at, read from the page and the data files as they stand: typed relations, theme members, tour tie-ins, prose links and diagram clicks.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The page id." },
+        "path": { "type": "string", "description": "The page's site path with no leading slash." },
+        "source": { "type": "string", "description": "The page's markdown file, relative to the repo root." },
+        "relations": { "type": "array", "items": { "$ref": "#/$defs/refsRelationRow" }, "description": "The page's typed relations as verb and target, in the order `get` gives them." },
+        "members": { "type": "array", "items": { "$ref": "#/$defs/memberRow" }, "description": "For a theme, the pages of its tour in stage order; [] for every other page." },
+        "fluency": { "type": "array", "items": { "type": "string" }, "description": "Ids of the themes the page's fluency block names, in the block's order." },
+        "proseLinks": { "type": "array", "items": { "type": "string" }, "description": "Ids of the pages the page's prose links to, in order of first mention, leaving out the page itself." },
+        "clicks": { "type": "array", "items": { "type": "string" }, "description": "Ids of the pages its diagrams link to by `click`, in order of first appearance." },
+        "untyped": { "type": "array", "items": { "type": "string" }, "description": "Ids linked in prose or by a click that no typed relation, theme member or fluency theme names." }
+      },
+      "required": ["id", "path", "source", "relations", "members", "fluency", "proseLinks", "clicks", "untyped"]
+    },
+    "validate": {
+      "description": "`kb.mjs validate [<id>] [--file PATH] --json`: the structural check of one page or of every page. The exit code is 1 when there is a problem, and this output is still printed.",
+      "type": "object",
+      "properties": {
+        "pages": { "type": "integer", "minimum": 0, "description": "How many pages were checked." },
+        "problems": { "type": "array", "items": { "type": "string" }, "description": "One line per problem, as the text form prints it: the page, the line, the rule id, then the words." },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" }, "description": "The same problems as records, in the same order: item n of this list is line n of `problems`." }
+      },
+      "required": ["pages", "problems", "findings"]
+    },
+    "resolve": {
+      "description": "`kb.mjs resolve <ref…> --json`: one entry for each citation given, in the order given. A citation is `<id>#<element id>`, with `@<fp>` after the element to pin its words; a docs/…/x.md path, a …/x.html path or a site URL ending in either stands for the id. The exit code is 0 when every entry is ok and 1 when any is not, and this output is still printed. A block is cited as `<id>#<block name>` and takes no pin: its id is its name and does not renumber, so a pin on one is ignored and the entry is ok, with `fp` null.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/resolved" }
+    },
+    "pageKind": {
+      "description": "The seven kinds of page, the values --kind filters on.",
+      "type": "string",
+      "enum": ["pattern", "hazard", "theme", "principle", "design", "capability", "comparison"]
+    },
+    "catalogRow": {
+      "description": "One page in a listing, as `ls` prints it. A key that depends on the page (`favourite`, `aliases`, `tags`, `solves`, `hasExample`, `hasExplain`) is there only when the page has it.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The page id: its file name without .md, which every other command takes." },
+        "name": { "type": "string", "description": "The page title." },
+        "kind": { "$ref": "#/$defs/pageKind", "description": "The page kind, from the folder it sits in under docs/." },
+        "band": { "type": "string", "description": "For a pattern, the area directly under patterns (gof, distributed, messaging …); for every other kind, the kind itself. The value --band filters on." },
+        "essence": { "type": "string", "description": "The one-line description from the page's frontmatter." },
+        "path": { "type": "string", "description": "The page's site path with no leading slash, such as patterns/gof/creational/singleton.html." },
+        "favourite": { "type": "boolean", "const": true, "description": "True when the page is an editorial pick; absent otherwise." },
+        "aliases": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Other names the page goes by; absent when it has none." },
+        "tags": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "The page's tags, the values --tag filters on; absent when it has none." },
+        "solves": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "The problems the page solves, each in the words of someone who has it; absent when it lists none." },
+        "hasExample": { "type": "boolean", "const": true, "description": "True when the page has an example; absent otherwise." },
+        "hasExplain": { "type": "boolean", "const": true, "description": "True when the page has an explain block; absent otherwise." }
+      },
+      "required": ["id", "name", "kind", "band", "essence", "path"]
+    },
+    "findRow": {
+      "description": "One search hit: a catalog row (the same keys, with the same optional ones) with `why` after them.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The page id: its file name without .md, which every other command takes." },
+        "name": { "type": "string", "description": "The page title." },
+        "kind": { "$ref": "#/$defs/pageKind", "description": "The page kind, from the folder it sits in under docs/." },
+        "band": { "type": "string", "description": "For a pattern, the area directly under patterns (gof, distributed, messaging …); for every other kind, the kind itself. The value --band filters on." },
+        "essence": { "type": "string", "description": "The one-line description from the page's frontmatter." },
+        "path": { "type": "string", "description": "The page's site path with no leading slash, such as patterns/gof/creational/singleton.html." },
+        "favourite": { "type": "boolean", "const": true, "description": "True when the page is an editorial pick; absent otherwise." },
+        "aliases": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Other names the page goes by; absent when it has none." },
+        "tags": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "The page's tags, the values --tag filters on; absent when it has none." },
+        "solves": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "The problems the page solves, each in the words of someone who has it; absent when it lists none." },
+        "hasExample": { "type": "boolean", "const": true, "description": "True when the page has an example; absent otherwise." },
+        "hasExplain": { "type": "boolean", "const": true, "description": "True when the page has an explain block; absent otherwise." },
+        "why": { "type": ["string", "null"], "description": "The prose line that shows the match: the first line of the page holding the matched word; null when no line of its prose holds it." }
+      },
+      "required": ["id", "name", "kind", "band", "essence", "path", "why"]
+    },
+    "relationRow": {
+      "description": "One typed relation as its page reads it. `verb` names the relation; `type` repeats it as a deprecated alias.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "description": "Deprecated alias of `verb`, equal to it; read `verb`." },
+        "verb": { "type": "string", "description": "The relation's id as this page reads it, such as combines-with or prevents-hazard." },
+        "to": { "type": "string", "description": "The id of the page at the other end." },
+        "label": { "type": "string", "description": "The verb as the page shows it, such as Combines with." },
+        "note": { "type": "string", "description": "The relation's note as plain text; '' when it has none." }
+      },
+      "required": ["type", "verb", "to", "label", "note"]
+    },
+    "inboundRow": {
+      "description": "One typed relation that ends at the page asked about, as the page it starts at reads it.",
+      "type": "object",
+      "properties": {
+        "from": { "type": "string", "description": "The id of the page the relation starts at." },
+        "type": { "type": "string", "description": "Deprecated alias of `verb`, equal to it; read `verb`." },
+        "verb": { "type": "string", "description": "The relation's id on the side of `from`, such as prevents-hazard." },
+        "label": { "type": "string", "description": "The verb as `from` shows it, such as Prevents." },
+        "note": { "type": "string", "description": "The note on `from`'s side as plain text; '' when it has none." }
+      },
+      "required": ["from", "type", "verb", "label", "note"]
+    },
+    "refsRelationRow": {
+      "description": "One typed relation of the page as verb and target. `verb` names the relation; `rel` repeats it as a deprecated alias.",
+      "type": "object",
+      "properties": {
+        "rel": { "type": "string", "description": "Deprecated alias of `verb`, equal to it; read `verb`." },
+        "verb": { "type": "string", "description": "The relation's id as this page reads it, such as combines-with." },
+        "to": { "type": "string", "description": "The id of the page at the other end." }
+      },
+      "required": ["rel", "verb", "to"]
+    },
+    "memberRow": {
+      "description": "One stop of a theme's tour.",
+      "type": "object",
+      "properties": {
+        "to": { "type": "string", "description": "The id of the page at this stop." },
+        "role": { "type": "string", "description": "The part the page plays in the tour; '' when the tour gives it none." }
+      },
+      "required": ["to", "role"]
+    },
+    "themeRef": {
+      "description": "A theme a page belongs to.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The theme's page id." },
+        "name": { "type": "string", "description": "The theme's title." },
+        "role": { "type": "string", "description": "The part this page plays in the theme's tour; '' when the tour gives it none." },
+        "href": { "type": "string", "description": "The theme's site path with no leading slash." }
+      },
+      "required": ["id", "name", "role", "href"]
+    },
+    "wildItem": {
+      "description": "One entry of the wild block, in the shape `kb.mjs wild --items` takes. Text is rich text: `<code>` for a code span, any other markup HTML-escaped.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The entry's short id, without its wild- prefix." },
+        "name": { "type": "string", "description": "The project or product name as rich text; '' when the entry names none." },
+        "note": { "type": "string", "description": "What it is and how it uses the pattern, as rich text." },
+        "href": { "type": "string", "description": "The link on the name, when the name is a link; absent otherwise." }
+      },
+      "required": ["id", "name", "note"]
+    },
+    "labelledItem": {
+      "description": "One bullet of a production list: a bold label, then its note, both as rich text.",
+      "type": "object",
+      "properties": {
+        "label": { "type": "string", "description": "The bold lead of the bullet as rich text; '' when it has none." },
+        "note": { "type": "string", "description": "The rest of the bullet as rich text." }
+      },
+      "required": ["label", "note"]
+    },
+    "checkItem": {
+      "description": "One line of the production readiness checklist.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "description": "The line as rich text." }
+      },
+      "required": ["text"]
+    },
+    "productionItems": {
+      "description": "The production block in the shape `kb.mjs production` takes: four lists, each [] when the block leaves it out.",
+      "type": "object",
+      "properties": {
+        "knobs": { "type": "array", "items": { "$ref": "#/$defs/labelledItem" }, "description": "The tuning knobs." },
+        "signals": { "type": "array", "items": { "$ref": "#/$defs/labelledItem" }, "description": "The signals to watch." },
+        "failures": { "type": "array", "items": { "$ref": "#/$defs/labelledItem" }, "description": "The failure modes under load." },
+        "checklist": { "type": "array", "items": { "$ref": "#/$defs/checkItem" }, "description": "The readiness checklist." }
+      },
+      "required": ["knobs", "signals", "failures", "checklist"]
+    },
+    "costItem": {
+      "description": "One bullet of an explain block's costs list.",
+      "type": "object",
+      "properties": {
+        "lead": { "type": "string", "description": "The bold lead of the bullet; '' when it has none." },
+        "note": { "type": "string", "description": "The rest of the bullet." }
+      },
+      "required": ["lead", "note"]
+    },
+    "explainItems": {
+      "description": "The explain block in the shape `kb.mjs explain` takes. When the example is a fenced sketch, `exampleLang` is there and `example` is its code.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "description": "The explanation paragraph, links kept as [label](target.md), whitespace collapsed." },
+        "costs": { "type": "array", "items": { "$ref": "#/$defs/costItem" }, "description": "The costs list; absent when the block has none." },
+        "example": { "type": "string", "description": "The example paragraph without its Example. label, or the sketch's code; '' when the block has none." },
+        "exampleLang": { "type": "string", "description": "The language of the sketch, when the example is one; '' when the fence names none; absent otherwise." },
+        "exampleCaption": { "type": "string", "description": "The question the sketch answers, when it has a caption; absent otherwise." }
+      },
+      "required": ["text", "example"]
+    },
+    "finding": {
+      "description": "One problem `validate` found on a page.",
+      "type": "object",
+      "properties": {
+        "page": { "type": "string", "description": "The id of the page the problem is on." },
+        "rule": { "type": ["string", "null"], "description": "The rule id the message is filed under, such as KB-014; null when the check has none." },
+        "line": { "type": ["integer", "null"], "minimum": 1, "description": "The line of the page's file the problem is on; null when it is about the page as a whole." },
+        "message": { "type": "string", "description": "What is wrong, in words." }
+      },
+      "required": ["page", "rule", "line", "message"]
+    },
+    "resolved": {
+      "description": "One citation, checked against the page it names.",
+      "type": "object",
+      "properties": {
+        "ref": { "type": "string", "description": "The citation as it was given." },
+        "page": { "type": "string", "description": "The id of the page the citation names: the file name of the id, path or address given, less .md or .html." },
+        "id": { "type": "string", "description": "The element id cited." },
+        "fp": { "type": ["string", "null"], "pattern": "^[0-9a-f]{8}$", "description": "The fingerprint cited; null when the citation pins none, and when it cites a block, which takes no pin." },
+        "status": { "type": "string", "enum": ["ok", "moved", "ambiguous", "changed", "gone"], "description": "ok: the element is there and says the cited words, or none were cited; a block that is there is always ok, since it takes no pin. moved: the cited words are on exactly one other id, `now`. ambiguous: they are on several ids, and not on the cited one. changed: the element is there and says something else now. gone: the page is unknown, or neither the element nor the words are on it." },
+        "now": {
+          "type": ["object", "null"],
+          "description": "The element the citation stands for now: the cited one when ok or changed, the one the words moved to when moved; null when ambiguous or gone. Pin a citation with the `fp` it gives.",
+          "properties": {
+            "id": { "type": "string", "description": "The element's id now." },
+            "fp": { "type": ["string", "null"], "pattern": "^[0-9a-f]{8}$", "description": "The element's fingerprint now; null on a block, which has none." }
+          },
+          "required": ["id", "fp"]
+        },
+        "pointer": { "type": ["string", "null"], "description": "Where `now` is in the page's record: its anchor, a JSON Pointer; null with `now`." },
+        "block": { "type": ["string", "null"], "description": "The name of the block `now` sits in; null in the intro, and with `now`." },
+        "group": { "type": ["string", "null"], "description": "The polarity or requirement (pro, con, when, avoid, fr, nfr …) of the group `now` sits in; null outside a group, and with `now`." },
+        "text": { "type": ["string", "null"], "description": "What `now` says: its own words as the page shows them; null with `now`." }
+      },
+      "required": ["ref", "page", "id", "fp", "status", "now", "pointer", "block", "group", "text"]
+    }
+  }
+}

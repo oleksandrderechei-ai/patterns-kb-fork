@@ -1,0 +1,349 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "steady",
+  "title": "Steady",
+  "description": "The steady page",
+  "kind": "theme",
+  "band": "theme",
+  "group": "theme",
+  "area": "themes",
+  "areaChain": [
+    {
+      "id": "themes",
+      "label": "themes"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "resilience",
+    "latency"
+  ],
+  "aliases": [],
+  "solves": [],
+  "favourite": false,
+  "route": "/themes/steady.html",
+  "markdown": "/themes/steady.md",
+  "source": {
+    "path": "docs/themes/steady.md",
+    "sha256": "2de232d7f3e35628f9cdfd0ee238f2e75d190ca4c5ee5356e89743d2eb19fced"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Stay up.",
+      "md": "Stay up."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "The question",
+        "md": "The question"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "b825e422",
+          "text": "How do you stay up?",
+          "md": "How do you stay up?"
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "b7e293c0",
+          "text": "Draw isolation lines. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Draw isolation lines. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "tradespace",
+      "name": "tradespace",
+      "heading": {
+        "text": "The trade-space",
+        "md": "The trade-space"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "tradespace-p-1",
+          "fp": "39676802",
+          "text": "Patience against self-preservation.",
+          "md": "Patience against self-preservation."
+        }
+      ]
+    },
+    {
+      "id": "tour",
+      "name": "tour",
+      "heading": {
+        "text": "Patterns that implement the choice",
+        "md": "Patterns that implement the choice"
+      },
+      "generated": "tour",
+      "content": [
+        {
+          "type": "heading",
+          "id": "tour-breaker",
+          "fp": "14dff4be",
+          "depth": 3,
+          "text": "Breaker",
+          "md": "[Breaker](../patterns/distributed/resilience/breaker.md)"
+        },
+        {
+          "type": "paragraph",
+          "id": "tour-p-1",
+          "fp": "68f1b1bc",
+          "text": "Trip open after enough failures.",
+          "md": "Trip open after enough failures."
+        },
+        {
+          "type": "heading",
+          "id": "tour-retry",
+          "fp": "06b29bb3",
+          "depth": 3,
+          "text": "Retry",
+          "md": "[Retry](../patterns/distributed/resilience/retry.md)"
+        },
+        {
+          "type": "paragraph",
+          "id": "tour-p-2",
+          "fp": "907d6ab3",
+          "text": "Try again, briefly.",
+          "md": "Try again, briefly."
+        }
+      ]
+    },
+    {
+      "id": "decide",
+      "name": "decide",
+      "heading": {
+        "text": "When to reach for what",
+        "md": "When to reach for what"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "table",
+          "id": null,
+          "fp": null,
+          "align": [
+            null,
+            null
+          ],
+          "header": [
+            {
+              "text": "If you need…",
+              "md": "If you need…"
+            },
+            {
+              "text": "Reach for",
+              "md": "Reach for"
+            }
+          ],
+          "rows": [
+            {
+              "id": "decide-row-1",
+              "fp": "fd21802f",
+              "cells": [
+                {
+                  "text": "Stop calling a failing thing",
+                  "md": "Stop calling a failing thing"
+                },
+                {
+                  "text": "Breaker",
+                  "md": "[Breaker](../patterns/distributed/resilience/breaker.md)"
+                }
+              ]
+            },
+            {
+              "id": "decide-row-2",
+              "fp": "78edb58a",
+              "cells": [
+                {
+                  "text": "Ride out a blip",
+                  "md": "Ride out a blip"
+                },
+                {
+                  "text": "Retry",
+                  "md": "[Retry](../patterns/distributed/resilience/retry.md)"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "siblings",
+      "name": "siblings",
+      "heading": {
+        "text": "Related areas",
+        "md": "Related areas"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "siblings-item-1",
+              "fp": "a3bce2bc",
+              "text": "Loop — The other theme.",
+              "md": "[Loop](./loop.md) — The other theme.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "siblings-item-2",
+              "fp": "3a43e3d3",
+              "text": "A sibling with no link.",
+              "md": "A sibling with no link.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [],
+  "themes": [],
+  "tour": [
+    {
+      "id": "breaker",
+      "title": "Breaker",
+      "route": "/patterns/distributed/resilience/breaker.html",
+      "role": {
+        "text": "Stop hammering it",
+        "md": "Stop hammering it"
+      }
+    },
+    {
+      "id": "retry",
+      "title": "Retry",
+      "route": "/patterns/distributed/resilience/retry.html",
+      "role": {
+        "text": "Ride out blips",
+        "md": "Ride out blips"
+      }
+    }
+  ],
+  "prerequisites": {
+    "requires": [],
+    "related": []
+  },
+  "links": [
+    {
+      "block": "decide",
+      "from": "decide-row-1",
+      "via": "text",
+      "text": "Breaker",
+      "href": "../patterns/distributed/resilience/breaker.md",
+      "to": "breaker",
+      "fragment": null
+    },
+    {
+      "block": "decide",
+      "from": "decide-row-2",
+      "via": "text",
+      "text": "Retry",
+      "href": "../patterns/distributed/resilience/retry.md",
+      "to": "retry",
+      "fragment": null
+    },
+    {
+      "block": "siblings",
+      "from": "siblings-item-1",
+      "via": "text",
+      "text": "Loop",
+      "href": "./loop.md",
+      "to": "loop",
+      "fragment": null
+    }
+  ],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "tradespace": "/blocks/2",
+    "tradespace-p-1": "/blocks/2/content/0",
+    "tour": "/blocks/3",
+    "tour-breaker": "/blocks/3/content/0",
+    "tour-p-1": "/blocks/3/content/1",
+    "tour-retry": "/blocks/3/content/2",
+    "tour-p-2": "/blocks/3/content/3",
+    "decide": "/blocks/4",
+    "decide-row-1": "/blocks/4/content/0/rows/0",
+    "decide-row-2": "/blocks/4/content/0/rows/1",
+    "siblings": "/blocks/5",
+    "siblings-item-1": "/blocks/5/content/0/items/0",
+    "siblings-item-2": "/blocks/5/content/0/items/1"
+  }
+}

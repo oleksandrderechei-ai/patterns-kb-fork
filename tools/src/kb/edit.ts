@@ -20,7 +20,7 @@ import { KbError } from './corpus.js';
 import { FRONTMATTER } from './page.js';
 
 /** The frontmatter keys in the order the dialect prints them (D-10). */
-export const FM_ORDER = ['title', 'description', 'level', 'area', 'owner', 'tags', 'status', 'aliases', 'solves', 'favourite', 'source'] as const;
+export const FM_ORDER = ['title', 'description', 'area', 'owner', 'tags', 'status', 'aliases', 'solves', 'favourite', 'source'] as const;
 
 /** A frontmatter change: a scalar, an inline list, `true` for a flag, or null to drop the key. */
 export type FmChange = string | readonly string[] | true | null;

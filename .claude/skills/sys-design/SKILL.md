@@ -48,7 +48,7 @@ asks what the ask answered.
 case studies. One call says whether the kata is already answered:
 
 ```
-node scripts/kb.mjs find "<the kata in the user's words>" --kind design -n 3
+node scripts/kb.mjs find "<the kata in the user's words>" --kind design --n 3
 ```
 
 Read the hits' essences. Then choose, and say which you chose:

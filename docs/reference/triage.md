@@ -79,6 +79,7 @@ red run already tells you where to read.
 | [Gate suite (vitest)](#gate-suite-vitest) | `validate` | `make gate G=check-suite` |
 | [Install repo tooling](#install-repo-tooling) | `validate`, before any gate | — |
 | [Build the site](#build-the-site) | `site`, before the site gates | — |
+| [Deployed site answers](#deployed-site-answers) | `smoke` in `pages.yml`, after the deploy | — |
 
 <!-- gates-symptoms:end -->
 
@@ -1303,4 +1304,69 @@ post-build passes). Its own output names the step that failed.
   `npm install` locally and commit the lockfile with the manifest change.
 - **every gate step is skipped** — a setup step failed, and gate steps run only after setup
   succeeded. The first red step in the job is the one to read.
+
+## Deployed site answers
+
+Runs after every deploy, as the `smoke` job of `.github/workflows/pages.yml`
+(`tools/src/site/site-smoke.ts`), and nowhere else: not in `make validate`, not on a pull request.
+It asks the live site a handful of questions (the index, the two published schemas, `llms.txt`,
+one page's record and a path the site lacks) and never crawls. The deploy is done before it
+starts, so a red `smoke` job means the site is live and something it serves is wrong; nothing is
+rolled back. It waits up to eleven minutes for the live `index.json` to be the one the build
+wrote: GitHub Pages lets a CDN keep a file for ten minutes and ignores the query string in its
+cache key, so a copy cached just before a deploy can outlive the deploy by that long, and a
+shorter wait would blame the build for it. In a finding `<root>` is
+the address the deploy reported, such as `https://odere-pro.github.io/patterns-kb/`. Reproduce a
+run from a checkout of the deployed commit with
+`node_modules/.bin/tsx tools/src/site/site-smoke.ts --url <published root> --index-sha <sha256 of site/dist/index.json>`;
+without `--index-sha` it asks once and waits for nothing.
+
+- **`<root>index.json still serves sha256 <a>, not the sha256 <b> the build wrote`** — after the
+  whole wait the host serves another build, so the run stops there: nothing else the host serves
+  can be trusted to be this build's. Re-run the `smoke` job from the run's page, since a CDN can
+  take longer than the wait to take a deploy and a re-run starts a new wait. If it stays red, a
+  later deploy replaced this one (its own `smoke` job is the one to read) or this one never
+  reached the host (read the run's `deploy` job).
+- **`<root>index.json answered HTTP 404, not 200`**, and the same for `llms.txt`, a schema or the
+  record — the host holds no such file. Re-run first, since the host may still be on a build that
+  had none. If it stays red, run `make site-build` and look in `site/dist/`: a file missing there
+  is the build's fault, and the `site-portable` gate names it.
+- **`<root>index.json could not be fetched: fetch failed (<cause>)`** or **`answered HTTP 503, not
+  200`** — the host did not answer: a reset connection, a request past its ten seconds or a
+  server error. The index is asked again for the whole wait and every other address once, so
+  re-run the job; if it repeats, the host is down, which is not the repo's fault.
+- **`<root>index.json is served as "<type>", not application/json`** or **`is not valid JSON`** —
+  the host sent something other than the file. GitHub Pages serves `.json` as `application/json`,
+  so another type means a page or a proxy answered in the file's place: look at what sits in
+  front of Pages (a custom domain, a redirect rule) before the build.
+- **`<root>index.json breaks kb-index-1: <pointer>: <message> (<keyword>)`**, at most five of
+  them, then **`in N more place(s)`** — the index on the host does not hold the published schema.
+  Re-run once to rule out an old build. If it repeats, run `make site-build` and the
+  `site-portable` gate; the pointer says where in the file the fault is.
+- **`<root><record route> breaks kb-record-1: …`** or **`has id "x", but <root>index.json lists
+  the page as "y"`** — the first pattern's record on the host does not hold the schema, or is not
+  the page the index says. An invalid record is the build's fault: run `make site-build`, then
+  the `site-portable` and `kb-record-schema` gates, which hold every record. A valid record with
+  another id means the index and the record came from different builds (re-run), or the index
+  names the wrong file as the record.
+- **`tools/src/contract/schema/<file>.json: differs from the deployed copy at
+  <root>schema/<file>.json`** — the finding gives both sizes and sha256 digests. The deploy
+  served an old build (re-run to rule it out), or the file in the repo was edited and not
+  deployed, or the build did not copy it: run `make site-build` and compare
+  `site/dist/schema/<file>.json` with the repo's file.
+- **`<root>llms.txt is served as "<type>", not as plain text`** or **`is empty`** — a page
+  answered in the file's place, or the build wrote it empty. Same repair as a missing file: run
+  `make site-build` and read `site/dist/llms.txt`.
+- **`<root>__kb_missing__.json answered HTTP 200, not 404`** — the host answers a path the site
+  lacks with a page. GitHub Pages answers a miss with `404.html` and status 404, so a 200 comes
+  from outside the build: the Pages settings (a custom domain or proxy that sends misses to the
+  home page) or a change to `404.html` or the step that builds it. Check that `make site-build`
+  still writes `site/dist/404.html`, and see
+  [hosting the site](../concepts/hosting-the-site.md).
+- **`--url is required`**, **`--index-sha "" is not a sha256: 64 lower-case hex digits`**
+  (exit 2) — the workflow passed an empty value. Read the `build` job's step "Fingerprint the
+  built index" and the `deploy` job's `page_url`.
+- **`tools/src/contract/schema/<file>.json: is missing`** — the checkout holds no copy of a
+  published schema to compare with, so nothing was asked. Restore the file; the contract names
+  the schemas in `tools/src/contract/contract.ts`.
 

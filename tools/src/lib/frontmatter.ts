@@ -118,7 +118,8 @@ export function listOf(value: FmValue | undefined): readonly string[] | null {
  * The most words one `solves` phrase holds (KB-013). A phrase is one problem
  * in one short sentence: the search box prints it as the result's snippet,
  * and a small model reading the list has to take each in at a glance. The
- * shape gate and the kb.mjs writer both hold a phrase to it.
+ * shape gate and `kb.mjs validate` hold a phrase to it; the writer, `kb.mjs
+ * set --solves`, does not, so run `kb.mjs validate` after setting one.
  */
 export const SOLVES_MAX_WORDS = 20;
 

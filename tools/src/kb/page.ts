@@ -28,6 +28,7 @@ import {
   type Root,
   type RootContent,
 } from '../lib/kb-attrs.js';
+import { clicksIn } from '../lib/kb-record.js';
 
 export interface Block {
   readonly name: string;
@@ -39,6 +40,12 @@ export interface Block {
 
 export interface PageDoc {
   readonly tree: Root;
+  /**
+   * The markdown the tree was parsed from: the page less its frontmatter. Every
+   * node's source position is an offset into this text, so a node's own words
+   * are `source.slice(start, end)`.
+   */
+  readonly source: string;
   readonly problems: readonly KbProblem[];
   /** The page's `#` title, or null. */
   readonly h1: string | null;
@@ -63,7 +70,8 @@ export function stripFrontmatter(text: string): string {
 
 /** Parse a page (frontmatter and all) into its blocks. */
 export function parsePage(text: string): PageDoc {
-  const { tree, problems } = parseKb(stripFrontmatter(text));
+  const source = stripFrontmatter(text);
+  const { tree, problems } = parseKb(source);
   const regionOf = new Map<RootContent, string>();
   const blocks: { name: string; heading: string; nodes: RootContent[] }[] = [];
   const intro: RootContent[] = [];
@@ -93,7 +101,7 @@ export function parsePage(text: string): PageDoc {
     if (current !== null) current.nodes.push(node);
     else if (blocks.length === 0) intro.push(node);
   }
-  return { tree, problems, h1, intro, blocks, regionOf };
+  return { tree, source, problems, h1, intro, blocks, regionOf };
 }
 
 /** A node's plain text as scripts/kb.mjs printed it: every whitespace run one space, trimmed. */
@@ -141,13 +149,11 @@ export function proseLinks(doc: PageDoc): string[] {
   return out;
 }
 
-const CLICK = /\bclick\s+[A-Za-z0-9_]+\s+"([^"]+)"/g;
-
 /** Every mermaid `click` target on the page, in document order. */
 export function clickTargets(doc: PageDoc): string[] {
   const out: string[] = [];
   const walk = (n: Nodes): void => {
-    if (n.type === 'code' && n.lang === 'mermaid') for (const m of n.value.matchAll(CLICK)) out.push(m[1] as string);
+    if (n.type === 'code' && n.lang === 'mermaid') for (const click of clicksIn(n.value)) out.push(click.href);
     if ('children' in n) for (const c of n.children as Nodes[]) walk(c);
   };
   walk(doc.tree);
