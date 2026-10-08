@@ -14454,6 +14454,20 @@
       "b": "defense-in-depth",
       "note_a": "Defense in depth asks for this check behind the gateway too",
       "note_b": "An access check inside each service is a layer that stands alone"
+    },
+    {
+      "a": "instagram",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "A 200M-follower account concentrates one post's traffic on a single fan-out job and its cached entries.",
+      "note_b": "A design where one celebrity post concentrates fan-out load on one key."
+    },
+    {
+      "a": "instagram",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "One celebrity post triggers 200M feed writes at once and stalls the queue; the follower threshold is the mitigation.",
+      "note_b": "A design where one celebrity post fires a burst of fan-out writes that arrive together."
     }
   ],
   "group_order": {

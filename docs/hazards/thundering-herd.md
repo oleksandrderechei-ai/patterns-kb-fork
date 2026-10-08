@@ -102,5 +102,6 @@ Size the window from the resource's rate. In the example, 100 at a time with 0.5
 - [Scheduling](../patterns/concurrency/scheduling.md) — Shared schedules such as midnight release the crowd at once
 - [WebSocket](../patterns/messaging/websocket.md) — A deploy or balancer reset makes every dropped socket reconnect in the same instant.
 - [Fan-Out](../patterns/messaging/fan-out.md) — One publish to many branches lands on every consumer at once.
+- [Instagram](../designs/instagram.md) — A design where one celebrity post fires a burst of fan-out writes that arrive together.
 
 <!-- relationships:end -->
