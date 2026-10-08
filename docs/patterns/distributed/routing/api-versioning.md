@@ -226,6 +226,7 @@ res.json(render(customer, pin));
 - [DTO](../../enterprise/dto.md) — The payload shape is what a version actually versions, so the transfer object is where a version lives
 - [Hyrum's Law](../../../principles/hyrums-law.md) — A version policy has to count what callers actually depend on, not only what is documented
 - [Contract Testing](../../testing/contract-testing.md) — Where consumers cannot be enumerated, versioning stands in for per-consumer verification, but a contract test still pins each live version
+- [Postel's Law](../../../principles/postels-law.md) — Negotiating an explicit version replaces sniffing the shape, and lets you later stop accepting the old one.
 
 **Prevents**
 

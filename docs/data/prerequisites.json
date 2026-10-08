@@ -713,7 +713,7 @@
       "definition": "Change a published contract while the callers built on the old one keep working",
       "route": "/patterns/distributed/routing/api-versioning.html",
       "requires": [],
-      "related": ["api-routing", "acl", "dto", "hyrums-law", "contract-testing"]
+      "related": ["api-routing", "acl", "dto", "hyrums-law", "contract-testing", "postels-law"]
     },
     {
       "id": "async-request-reply",
@@ -2497,7 +2497,7 @@
       "definition": "Send strictly to the spec, accept anything you can read unambiguously",
       "route": "/principles/postels-law.html",
       "requires": [],
-      "related": ["acl", "message-translator", "intercepting-validator", "design-for-evolution", "hyrums-law"]
+      "related": ["acl", "message-translator", "intercepting-validator", "design-for-evolution", "hyrums-law", "api-versioning"]
     },
     {
       "id": "command-query-separation",

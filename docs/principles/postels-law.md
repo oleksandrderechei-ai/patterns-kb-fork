@@ -21,20 +21,20 @@ Be conservative in what you do, be liberal in what you accept from others. Jon P
 ## Explained
 <!--meta block=explain-->
 
-Postel's law says be strict in what you send and tolerant of what you receive, so two programs written by people who never talked still work together. Send only the plain form the specification allows, since an unusual but legal encoding still breaks someone's parser. On input, ignore what you do not need, such as an unknown field or an extra header, which lets the other side add features without breaking you. Never guess at what you act on: parse it into a typed value and reject anything ambiguous with a specific error. Choose tolerance over strict rejection when you cannot coordinate with every sender. The rule that holds is to be strict in what you send, strict in what you act on, and liberal only about what you ignore.
+Postel's law says be strict in what you send and tolerant of what you receive, so two programs written by people who never talked still work together. Send only the plain form the specification allows, since an unusual but legal encoding still breaks someone's parser. On input, ignore what you do not need, such as an unknown field or an extra header, which lets the other side add features without breaking you. Never guess at what you act on: parse it into a typed value and reject anything ambiguous with a specific error. Choose tolerance over strict rejection when you cannot coordinate with every sender. Tolerance covers only what you ignore; it never covers repairing a field you use. The rule that holds is to be strict in what you send, strict in what you act on, and liberal only about what you ignore.
 
 - **Delayed cost.** A mistake you quietly accept is one the sender never hears about, and soon you cannot reject it. Count every anomaly you tolerate.
 - **Lost fields.** Dropping unknown fields breaks pass-through, so carry them along when you forward a message.
 - **Format sniffing.** Guessing the version from the content breeds a second specification, so negotiate an explicit version instead.
 
-**Example.** A payments partner sends order events with an extra field, loyalty_tier, that your service never reads. You ignore it and keep working, so the partner can add fields freely. Then they start sending dates as 03/04/2025, which can be read two ways. Guessing would have booked 1,200 orders into the wrong month. Instead you reject those events with an error naming the date field, and a counter of rejected events shows 1,200 on the first day. The partner fixes the format in 2 days. The cost is that those 1,200 orders wait 2 days for a corrected resend.
+**Example.** A payments partner sends order events with an extra field, loyalty_tier, that your service never reads. You ignore it and keep working, so the partner can add fields freely. Then they start sending dates as 03/04/2025, which can be read two ways, while 13/04/2025 parses cleanly. Guessing could book some of those orders into the wrong month. Instead you reject those events with an error naming the date field, and a counter of rejected events shows 1,200 on the first day. The partner fixes the format in 2 days. The cost is that those 1,200 orders wait 2 days for a corrected resend.
 
 ## Why it helps
 <!--meta block=rationale-->
 
-Interoperability fails asymmetrically, and both halves of the rule exploit that. The plain, obvious form of a message is understood by every implementation, including the ones written from a partial reading of the specification — so sending conservatively costs you nothing and removes a whole class of failures at the far end. Accepting liberally removes the mirror class: a part of the message you never read cannot be a reason to fail.
+Interoperability fails asymmetrically, and both halves of the rule exploit that. The plain, obvious form of a message is understood by every implementation, including the ones written from a partial reading of the specification. Sending conservatively therefore costs little and avoids a whole class of failures at the far end. Accepting liberally removes the mirror class: a part of the message you never read cannot be a reason to fail.
 
-It is also what lets a protocol change without a flag day. Across many independent implementations there is no release in which they all upgrade at once, so a change is only deployable if old readers survive new messages. Tolerance for the unrecognised turns one coordinated migration into two independent ones: producers add the field when they are ready, consumers start reading it when they are.
+It is also what lets a protocol change without a flag day (a date when everyone upgrades at once). Across many independent implementations there is no release in which they all upgrade at once, so a change is only deployable if old readers survive new messages. Tolerance for the unrecognised turns one coordinated migration into two independent ones: producers add the field when they are ready, consumers start reading it when they are.
 
 ## Applying it
 <!--meta block=applying-->
@@ -46,9 +46,36 @@ Split the rule at your boundary — strict on the way out, selective on the way 
 - Validate strictly whatever you do consume. Parse it into a domain type at the boundary and reject anything ambiguous with a specific error; liberal acceptance covers the parts you skip, never the parts you act on.
 - Preserve what you pass on. If you read, modify and re-emit a message, carry the unknown fields through — a component that silently strips them makes every future extension undeployable across your hop.
 - Negotiate rather than sniff. An explicit version or capability field turns a guess about what the far end supports into a stated fact, and gives you a way to eventually stop accepting the old shape.
-- Count what you tolerate. A metric per accepted anomaly is what tells you a partner has been sending something wrong for six months, while that is still a bug you can ask them to fix rather than a shape you can never reject.
+- Count what you tolerate. One metric per accepted anomaly shows that a partner has sent something wrong, while you can still ask them to fix it rather than live with a shape you can never reject.
+- Review cues: flag a chain of try-parse attempts over several formats, a catch that substitutes a default for bad input, a strict decoder on a message you only forward, and tolerated input with no counter.
 
-The asymmetry to hold on to: strictness on output has no downside, while tolerance on input has a delayed one. Be as strict as the specification lets you be, and as tolerant as you can be without acting on a guess.
+Strict output costs little when the spec's plain form is what your peers expect; it does mean you never use optional extensions. Tolerance on input has a delayed cost, so be as tolerant as you can be without acting on a guess.
+
+## In code
+<!--meta block=sketch-->
+
+```typescript summary="TypeScript — a parser that guesses the date format, then a typed parse that ignores unknown keys and rejects the ambiguous date"
+// Before: tries formats in turn and defaults on failure; 03/04 is silently read as March.
+export function parseDate(s: string): Date {
+  for (const f of ["MM/DD/YYYY", "DD/MM/YYYY"]) {
+    const d = tryParse(s, f);
+    if (d) return d;
+  }
+  return new Date(); // catch-and-default hides the partner's bug
+}
+
+// After: unknown keys are ignored, the date you act on is checked strictly.
+export function parseOrder(raw: Record<string, unknown>): Order {
+  const date = String(raw.order_date);
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date);
+  if (!m) throw new BadField("order_date", "expected DD/MM/YYYY");
+  if (+m[1] <= 12 && +m[2] <= 12 && m[1] !== m[2]) {
+    metrics.inc("order_date_ambiguous"); // count what you reject or tolerate
+    throw new BadField("order_date", "ambiguous: " + date);
+  }
+  return { date: toDate(m), total: Number(raw.total) }; // loyalty_tier is ignored
+}
+```
 
 ## Taken too far
 <!--meta block=overreach-->
@@ -57,9 +84,7 @@ Endless forgiveness is not kindness. Every mistake you quietly accept is a mista
 
 Liberal acceptance defers a cost rather than removing it. Each deviation you absorb becomes observed behaviour that some client depends on, so the working protocol grows into the union of everything every implementation has ever tolerated while the written specification stops describing the system. That union is unspecified, untested and hard to shrink: the day you tighten the parser you break traffic that works today, which is how a tolerated bug becomes a permanent feature.
 
-The critique of the liberal half is that it trades interoperability today for ossification tomorrow, and the internet has paid that bill in public: extension points that were never exercised became unusable, because intermediaries which had only ever seen the common case rejected anything else, and new protocol versions had to be dressed up as the old ones to get through. The counter-moves are structural rather than attitudinal — exercise every extension point continuously so intolerance surfaces on the first day instead of the tenth year, state in the specification what a receiver must ignore rather than leaving it to each implementer's generosity, and measure how strict your peers actually are so you can tighten deliberately instead of discovering the union during an outage.
-
-The rule that survives all of this is narrower than the original: be strict in what you send, be strict about what you act on, and be liberal only about what you ignore.
+The critique of the liberal half is that it trades interoperability today for ossification tomorrow. Extension points nobody exercises can become unusable, because intermediaries that have only seen the common case may reject anything else. The counter-moves are structural. Exercise every extension point continuously so intolerance surfaces early. State in the specification what a receiver must ignore, rather than leaving it to each implementer's generosity. Then measure how strict your peers actually are, so you can tighten deliberately instead of discovering the union during an outage.
 
 ## How it relates
 <!--meta block=relationships-->
@@ -75,5 +100,6 @@ The rule that survives all of this is narrower than the original: be strict in w
 - [Intercepting Validator](../patterns/security/intercepting-validator.md) — Strict about what you act on, liberal about what you ignore
 - [Design for Evolution](./design-for-evolution.md) — Tolerance at the wire is what makes versioning survivable
 - [Hyrum's Law](./hyrums-law.md) — Accepting loose input creates the very dependencies on quirks that Hyrum's Law predicts
+- [API Versioning](../patterns/distributed/routing/api-versioning.md) — Tolerant readers let a version change roll out additively, but only an explicit version lets you retire the old shape.
 
 <!-- relationships:end -->

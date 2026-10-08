@@ -14293,6 +14293,13 @@
       "b": "encapsulation",
       "note_a": "Encapsulation says which types should not be DTOs: those with rules to protect.",
       "note_b": "The carrier it exempts: a DTO is a bag of fields crossing a boundary, so decide which types own state and which only carry it."
+    },
+    {
+      "a": "api-versioning",
+      "verb": "combines-with",
+      "b": "postels-law",
+      "note_a": "Negotiating an explicit version replaces sniffing the shape, and lets you later stop accepting the old one.",
+      "note_b": "Tolerant readers let a version change roll out additively, but only an explicit version lets you retire the old shape."
     }
   ],
   "group_order": {
