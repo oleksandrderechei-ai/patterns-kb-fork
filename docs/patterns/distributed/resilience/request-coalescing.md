@@ -23,7 +23,7 @@ When a popular cache entry expires, hundreds of requests miss at once and each a
 
 Request coalescing makes callers who ask for the same thing at the same moment share one call, so a burst of identical requests costs the backend one request, not hundreds. The first caller starts the fetch and records it under its key. Everyone who arrives while it runs waits for that result instead of starting their own. The record is removed when the fetch ends, on failure as well as success, or the next caller inherits an error that is not its own. Choose it over a bigger cache or a longer expiry when the damage comes from many identical requests at one instant (a cache stampede), because a cache only helps once the first answer is stored.
 
-- **Shared fate.** Waiters share the first caller's fate, so give the fetch a timeout. A late caller waits out the whole fetch.
+- **Shared fate.** Give the fetch a timeout. A late caller waits only for the rest of the fetch, but a hung fetch holds every waiter.
 - **Key is a safety boundary.** Include tenant, language and permissions in it, or you serve one user another's data.
 - **One process only.** Many copies of your service still make one call each, so share the gate if that is too many.
 
@@ -68,7 +68,7 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **In-process single-flight** — One map per instance from key to in-flight promise, with the check-and-insert guarded as one atomic step and no coordination. It costs nothing to operate and removes duplicate work inside a process, but a fleet of N instances still sends up to N concurrent calls to the origin. This is the default, and it is usually enough.
-- **Cross-process coalescing** — The gate moves to a shared store: whoever wins a short-lived lock does the fetch and publishes the result, and the losers poll or subscribe for it. Origin concurrency falls to one across the whole fleet, at the price of a network round-trip on the happy path and a lock whose holder can die mid-fetch.
+- **Cross-process coalescing** — The gate moves to a shared store: whoever wins a short-lived lock does the fetch and publishes the result, and the losers poll or subscribe for it. Origin concurrency falls to one across the whole fleet, at the price of a network round-trip on every call. Set the lock lease a little above the origin's p99 so a dead holder frees the key, and cap how long losers wait before they fetch for themselves.
 - **Serve-stale-and-refresh** — Waiters are handed the expired value immediately while exactly one refresh runs behind them. Nobody blocks, so head-of-line latency disappears, and the cost is that callers knowingly read data that is a little out of date.
 - **Windowed batching of adjacent keys** — A short window collects different keys and issues one multi-get instead of collapsing identical ones. That is [batching](../../concurrency/batching.md) rather than coalescing — it trades a small fixed latency for far fewer round-trips — and the two compose: collapse the duplicates, then batch what remains.
 
@@ -86,7 +86,7 @@ sequenceDiagram
 <!--meta polarity=con-->
 
 - **Waiters share the leader's fate**: one slow or failed fetch becomes slow or failed for everyone attached to it.
-- **A caller arriving late** waits out the whole in-flight fetch, so its latency is worse than an uncoalesced call would have been.
+- **A caller arriving late** may read data fetched before it asked, and a slow or hung fetch holds it until the fetch ends.
 - **The key is a correctness boundary**. Omit the tenant, the locale or the permission scope and one caller is served another's data.
 - **Deduplication is only as wide as the map**, so on a large fleet the origin still sees roughly one call per instance unless the gate is shared.
 
@@ -106,6 +106,7 @@ sequenceDiagram
 - **The requests are not truly identical** — anything varying by caller, tenant or permission must not share one result.
 - **The work has side effects**. Collapsing two writes into one silently drops the second, which is a correctness bug rather than an optimization.
 - **Every caller needs its own freshest read**, as in a compare-and-set loop that must observe the newest value.
+- **A caller has just written and must read its own write back**, because the joined fetch may have started before the write.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -135,14 +136,25 @@ export function coalesce<T>(load: (key: string) => Promise<T>) {
 const getUser = coalesce(loadUser);
 await Promise.all(Array.from({ length: 800 }, () => getUser("u-42")));
 
+// A caller that times out or aborts leaves; the leader's load keeps running for the rest.
+// Return structuredClone(result) or a frozen value.
+function follow<T>(p: Promise<T>, ms: number, signal?: AbortSignal): Promise<T> {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  const leave = new Promise<never>((_, rej) => {
+    t = setTimeout(() => rej(new Error("follower timeout")), ms);
+    signal?.addEventListener("abort", () => rej(signal.reason), { once: true });
+  });
+  return Promise.race([p, leave]).finally(() => clearTimeout(t));
+}
+
 ```
 
 ## In the wild
 <!--meta block=wild-->
 
-- **Go singleflight** — The `golang.org/x/sync/singleflight` package: `Group.Do` runs one call per key at a time and hands the same result to every concurrent caller of that key. {#wild-go-singleflight}
+- **Go singleflight** — The `golang.org/x/sync/singleflight` package: `Group.Do` runs one call per key at a time and gives every concurrent caller of that key the leader's result and error, plus a shared flag. `Forget` drops a key so the next call starts fresh; `DoChan` returns a channel, so a caller can stop waiting on its own timeout. {#wild-go-singleflight}
 - **Varnish Cache** — Concurrent requests for an object that is being fetched from the backend wait on that single fetch rather than each going to the origin. {#wild-varnish-coalescing}
-- **NGINX proxy cache lock** — With `proxy_cache_lock on`, only one request populates a missing cache element and the others wait for it or time out. {#wild-nginx-cache-lock}
+- **NGINX proxy cache lock** — With `proxy_cache_lock on`, only one request populates a missing cache element and the others wait for it or time out. `proxy_cache_lock_timeout` defaults to 5 s; when it expires, the waiting request goes to the upstream but its response is not cached. {#wild-nginx-cache-lock}
 
 ## In production
 <!--meta block=production-->
@@ -151,17 +163,18 @@ await Promise.all(Array.from({ length: 800 }, () => getUser("u-42")));
 <!--meta polarity=knob-->
 
 - **Coalescing key** — What makes two requests identical: path, parameters, tenant, auth scope. Too loose merges requests that differ; too tight merges nothing.
-- **Follower wait timeout** — How long a waiting caller gives the leader before it makes its own call or fails.
+- **Follower wait timeout** — How long a waiting caller gives the leader before it makes its own call or fails. Start near the leader's p99 latency plus a margin, and let a follower fall back or fail fast rather than wait without bound.
 - **Result retention** — Drop the result at once (pure single-flight) or keep it a short time. Retention turns coalescing into a cache and brings staleness.
 - **Error sharing** — Whether followers receive the leader's failure or retry on their own. Sharing a failure fails everyone together.
 - **Scope** — Within one process, or across a fleet through a lock in a shared cache. Per-process coalescing still sends one call per instance.
+- **Lock lease and poll interval** — For a shared lock, set the lease a little above the leader's p99 so a dead holder frees the key. Too short duplicates the fetch; too long stalls the fleet. Add jitter to waiter polls so they do not wake together.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Coalesce ratio** — Followers served per leader call. Near 1 means the key rarely repeats and the machinery pays nothing.
 - **Backend request rate against client request rate** — The gap between them is the load removed from the origin.
-- **Follower wait time** — The p99 wait against the leader's latency. A follower should wait about as long as the leader took.
+- **Follower wait time** — The p99 wait against the leader's latency. A follower waits no longer than the leader; a longer wait points to a faulty timeout or wake-up path.
 - **In-flight keys** — Count of open leaders. Growth with no matching completions points to stuck calls.
 
 ### Failure modes under load
@@ -207,6 +220,7 @@ await Promise.all(Array.from({ length: 800 }, () => getUser("u-42")));
 - [Batching](../../concurrency/batching.md) — Collapse the duplicates first, then batch the distinct keys that remain
 - [Timeout / Deadline](./timeout-deadline.md) — A bound on the shared call is what stops one hung fetch hanging every waiter
 - [Load Shedding](./load-shedding.md) — Both bound what reaches the origin — one by removing duplicates, the other by refusing excess
+- [Distributed Lock](../coordination/distributed-lock.md) — Cross-process coalescing: the winner of a short-lived lock does the fetch, so the fleet makes one origin call.
 
 **Alternative to**
 

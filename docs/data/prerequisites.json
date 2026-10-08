@@ -569,7 +569,7 @@
       "definition": "Collapses concurrent identical requests into one in-flight call",
       "route": "/patterns/distributed/resilience/request-coalescing.html",
       "requires": [],
-      "related": ["refresh-ahead", "read-through", "batching", "timeout-deadline", "load-shedding", "hedged-request"]
+      "related": ["refresh-ahead", "read-through", "batching", "timeout-deadline", "load-shedding", "hedged-request", "distributed-lock"]
     },
     {
       "id": "load-shedding",
@@ -985,7 +985,7 @@
       "definition": "Hold exclusivity as a lease with a time to live (TTL) that any server can see",
       "route": "/patterns/distributed/coordination/distributed-lock.html",
       "requires": ["conditional-write"],
-      "related": ["minimize-coordination", "leader-election", "quorum-consensus", "sweeper", "sequential-convoy", "pessimistic-locking", "optimistic-concurrency-control", "lease"]
+      "related": ["minimize-coordination", "leader-election", "quorum-consensus", "sweeper", "sequential-convoy", "pessimistic-locking", "optimistic-concurrency-control", "lease", "request-coalescing"]
     },
     {
       "id": "lease",

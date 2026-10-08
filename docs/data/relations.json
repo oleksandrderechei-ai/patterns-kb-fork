@@ -14755,6 +14755,13 @@
       "b": "rate-limiter",
       "note_a": "A breaker stops calls to a failing dependency; a limiter caps a caller's rate.",
       "note_b": "A limiter caps calls that would succeed; a breaker stops calls that would fail."
+    },
+    {
+      "a": "distributed-lock",
+      "verb": "combines-with",
+      "b": "request-coalescing",
+      "note_a": "A lock with an expiry lets one caller per key rebuild a value while the rest wait for it.",
+      "note_b": "Cross-process coalescing: the winner of a short-lived lock does the fetch, so the fleet makes one origin call."
     }
   ],
   "group_order": {
