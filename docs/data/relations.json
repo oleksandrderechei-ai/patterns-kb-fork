@@ -4566,13 +4566,6 @@
       "note_b": "Separating the read model from the write model removes the pressure that widened the type"
     },
     {
-      "a": "interface-segregation",
-      "verb": "prevents-hazard",
-      "b": "partial-object",
-      "note_a": "A wide type shared by unrelated consumers violates it just as a wide interface does",
-      "note_b": "The coupling here runs through one wide shared type rather than a shared interface"
-    },
-    {
       "a": "separation-of-concerns",
       "verb": "prevents-hazard",
       "b": "spaghetti-code",
@@ -14251,6 +14244,34 @@
       "b": "rule-of-three",
       "note_a": "The seam is what you extract once the repeats prove the axis.",
       "note_b": "Wait for the second or third real variant before laying the seam."
+    },
+    {
+      "a": "template-method",
+      "verb": "combines-with",
+      "b": "liskov-substitution",
+      "note_a": "The outline stays correct only if every subclass step is substitutable.",
+      "note_b": "Each overridden step must keep the base contract or the fixed outline breaks."
+    },
+    {
+      "a": "interface-segregation",
+      "verb": "prevents-hazard",
+      "b": "partial-object",
+      "note_a": "Narrow, client-shaped types keep unrelated consumers from sharing one wide type, so no consumer depends on parts it never uses.",
+      "note_b": "The coupling here runs through one wide shared type rather than a shared interface"
+    },
+    {
+      "a": "interface-segregation",
+      "verb": "combines-with",
+      "b": "liskov-substitution",
+      "note_a": "A throwing or empty stub is a subtype that breaks the contract; narrowing the interface removes the stub.",
+      "note_b": "A subtype that must throw on inherited methods shows the interface is too wide; split it by caller role."
+    },
+    {
+      "a": "dependency-inversion",
+      "verb": "combines-with",
+      "b": "yagni",
+      "note_a": "Invert only across a seam with more than one possible other side.",
+      "note_b": "An abstraction over something that never varies is speculative code."
     }
   ],
   "group_order": {

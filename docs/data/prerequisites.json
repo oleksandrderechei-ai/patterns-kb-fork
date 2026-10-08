@@ -177,7 +177,7 @@
       "definition": "Fixes the outline, lets subclasses fill in steps",
       "route": "/patterns/gof/behavioral/template-method.html",
       "requires": [],
-      "related": ["strategy", "render-props", "factory-method", "open-closed"]
+      "related": ["strategy", "render-props", "factory-method", "open-closed", "liskov-substitution"]
     },
     {
       "id": "visitor",
@@ -2401,7 +2401,7 @@
       "definition": "Build capability only when a real present requirement demands it",
       "route": "/principles/yagni.html",
       "requires": [],
-      "related": ["kiss", "managed-services", "build-for-business", "transaction-script", "rule-of-three", "open-closed"]
+      "related": ["kiss", "managed-services", "build-for-business", "transaction-script", "rule-of-three", "open-closed", "dependency-inversion"]
     },
     {
       "id": "least-astonishment",
@@ -2441,7 +2441,7 @@
       "definition": "A subtype must stand in for its base type without breaking the caller",
       "route": "/principles/liskov-substitution.html",
       "requires": [],
-      "related": ["open-closed", "composition-over-inheritance", "decorator", "null-object"]
+      "related": ["open-closed", "composition-over-inheritance", "decorator", "null-object", "template-method", "interface-segregation"]
     },
     {
       "id": "interface-segregation",
@@ -2449,7 +2449,7 @@
       "definition": "Many small, client-specific interfaces beat one fat general-purpose one",
       "route": "/principles/interface-segregation.html",
       "requires": [],
-      "related": ["single-responsibility", "dependency-inversion", "dto", "bff"]
+      "related": ["single-responsibility", "dependency-inversion", "dto", "bff", "liskov-substitution"]
     },
     {
       "id": "dependency-inversion",
@@ -2457,7 +2457,7 @@
       "definition": "High-level policy and low-level detail both depend on an abstraction the policy owns",
       "route": "/principles/dependency-inversion.html",
       "requires": [],
-      "related": ["interface-segregation", "open-closed", "dependency-injection", "hexagonal", "high-cohesion-low-coupling"]
+      "related": ["interface-segregation", "open-closed", "dependency-injection", "hexagonal", "high-cohesion-low-coupling", "yagni"]
     },
     {
       "id": "composition-over-inheritance",

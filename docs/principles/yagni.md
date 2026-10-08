@@ -89,6 +89,7 @@ The distinction that matters is the cost of changing later. Choices that are che
 - [Transaction Script](../patterns/enterprise/transaction-script.md) — Shipping a plain procedure now defers the domain model until the rules actually demand one
 - [Rule of Three](./rule-of-three.md) — Do not build the abstraction until a need shows up, which is when a third copy appears
 - [Open/Closed Principle](./open-closed.md) — Close an axis only once it has varied; YAGNI is the brake on speculative seams.
+- [Dependency Inversion Principle](./dependency-inversion.md) — An abstraction over something that never varies is speculative code.
 
 **Prevents**
 

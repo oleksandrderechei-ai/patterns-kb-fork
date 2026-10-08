@@ -181,6 +181,7 @@ class CsvReport extends ReportBuilder {
 
 - [Factory Method](../creational/factory-method.md) — A step in the template is often a factory method
 - [Open/Closed Principle](../../../principles/open-closed.md) — The invariant skeleton is closed to change; its hooks are the extension points.
+- [Liskov Substitution Principle](../../../principles/liskov-substitution.md) — The outline stays correct only if every subclass step is substitutable.
 
 **Alternative to**
 
