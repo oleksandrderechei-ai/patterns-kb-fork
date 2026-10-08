@@ -26,14 +26,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { readSchemaDir, schemaSet, type SchemaSet } from '../lib/json-schema.js';
+import { PUBLIC_ROOT } from '../site/site-output.js';
 
 /**
- * Where the site is published, ending in `/`. A fixed value on purpose, never
- * read from `SITE_URL`: a fork that deploys elsewhere still writes records and
- * schemas that name the published contract, and every build writes the same
- * bytes.
+ * Where the site is published, ending in `/`: PUBLIC_ROOT, built from the
+ * repository's owner and name like every other address the project names. A
+ * fixed value on purpose, never read from `SITE_URL`: a fork that deploys
+ * elsewhere still writes records and schemas that name the published
+ * contract, and every build writes the same bytes.
  */
-export const PUBLISHED_ROOT = 'https://odere-pro.github.io/patterns-kb/';
+export const PUBLISHED_ROOT = PUBLIC_ROOT;
 
 /**
  * The contract ids, the value of a record's `contract` field among them. The

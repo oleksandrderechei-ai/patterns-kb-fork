@@ -3,21 +3,14 @@
 // hubs' own labels. The hubs come from the page's `area` and the structure
 // file (../../lib/routes.ts), not from its folders: two areas share a folder
 // and three tiers file their pages flat, so a folder names the wrong hub.
+// The JSON-LD breadcrumb is built from the same crumbsOf(), so the two agree.
 // Plain anchors only — the post-build pass makes the hrefs depth-relative, so
 // the trail works from file://. The home page and the not-found page render
 // no trail; the marks page, a tool outside the tree, reads Home › My marks.
-import { NOT_FOUND, routeOf, trailOf } from '../../lib/routes';
+import { crumbsOf, routeOf } from '../../lib/routes';
 
 const { entry } = Astro.locals.starlightRoute;
-const route = routeOf(entry.filePath);
-const crumbs =
-  route === null || route === '/index.html' || route === NOT_FOUND
-    ? []
-    : [
-        { href: '/index.html', label: 'Home' },
-        ...trailOf(entry.data.area, route),
-        { href: null, label: entry.data.title },
-      ];
+const crumbs = crumbsOf(entry.data.area, routeOf(entry.filePath), entry.data.title);
 ---
 
 {

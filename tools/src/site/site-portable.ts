@@ -238,21 +238,52 @@ export function publicUrls(html: string, root: URL): string {
   return out + html.slice(last);
 }
 
+/** What the sitemap takes from a built page: when it last changed, and whether it stays out of search. */
+export interface SitemapFacts {
+  readonly modified: string | null;
+  readonly noindex: boolean;
+}
+
+/** A URL under the published root back to the route it names; the root is the home page. */
+export function routeOfPublic(url: string, root: URL): string | null {
+  if (!url.startsWith(root.href)) return null;
+  const rest = url.slice(root.href.length);
+  return rest === '' ? '/index.html' : `/${rest}`;
+}
+
 /**
  * A sitemap's `<loc>` URLs, moved under the published root and named as the
  * files they are. The sitemap integration writes each page's path without its
  * extension (`…/capabilities/compute`), but every route here is a file
  * (build.format 'file'), so a URL on this origin whose last part has no
  * extension gains `.html`; the root and a folder (a trailing `/`) stay.
+ *
+ * Then each page's `facts`: a page that asks to stay out of search leaves the
+ * sitemap, and a page whose source has a commit date gains a `<lastmod>`, so
+ * a crawler revisits what changed. A URL with no facts keeps its entry as it
+ * is, and a second run changes nothing.
  */
-export function publicSitemap(xml: string, root: URL): string {
+export function publicSitemap(
+  xml: string,
+  root: URL,
+  facts: ReadonlyMap<string, SitemapFacts> = new Map(),
+): string {
   const origin = `${root.origin}/`;
   const asFile = (url: string): string => {
     if (!url.startsWith(origin) || url.endsWith('/')) return url;
     const last = url.slice(url.lastIndexOf('/') + 1);
     return last.includes('.') ? url : `${url}.html`;
   };
-  return xml.replace(/<loc>([^<]*)<\/loc>/g, (_all: string, url: string) => `<loc>${toPublic(asFile(url), root)}</loc>`);
+  const moved = xml.replace(/<loc>([^<]*)<\/loc>/g, (_all: string, url: string) => `<loc>${toPublic(asFile(url), root)}</loc>`);
+  return moved.replace(/<url>([\s\S]*?)<\/url>/g, (whole: string, inner: string) => {
+    const loc = /<loc>([^<]*)<\/loc>/.exec(inner)?.[1];
+    const route = loc === undefined ? null : routeOfPublic(loc, root);
+    const fact = route === null ? undefined : facts.get(route);
+    if (fact === undefined) return whole;
+    if (fact.noindex) return '';
+    if (fact.modified === null || inner.includes('<lastmod>')) return whole;
+    return `<url>${inner.replace('</loc>', `</loc><lastmod>${fact.modified}</lastmod>`)}</url>`;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1091,6 +1122,10 @@ interface PageRead {
   readonly place: PagePlace | null;
   readonly title: string;
   readonly description: string;
+  /** The JSON-LD's `dateModified`: when the page's source last changed, or null when git could not say. */
+  readonly modified: string | null;
+  /** Whether the page's own robots meta keeps it out of search, and so out of the sitemap. */
+  readonly noindex: boolean;
 }
 
 /**
@@ -1138,11 +1173,13 @@ export function readPage(file: string, route: string, html: string, report: (wha
   const place = readPlace(html, problem);
   const blocks = jsonLdBlocks(html);
   let title = '';
+  let modified: string | null = null;
   if (blocks.length > 1) problem(`${blocks.length} JSON-LD blocks — a page carries one`);
   else if (blocks.length === 1) {
     try {
-      const headline = (JSON.parse(blocks[0] as string) as { headline?: unknown }).headline;
-      title = typeof headline === 'string' ? headline : '';
+      const ld = JSON.parse(blocks[0] as string) as { headline?: unknown; dateModified?: unknown };
+      title = typeof ld.headline === 'string' ? ld.headline : '';
+      modified = typeof ld.dateModified === 'string' ? ld.dateModified : null;
     } catch {
       problem('the JSON-LD block is not valid JSON');
     }
@@ -1168,6 +1205,8 @@ export function readPage(file: string, route: string, html: string, report: (wha
     place,
     title,
     description: metaContent(html, 'description') ?? '',
+    modified,
+    noindex: /\bnoindex\b/i.test(metaContent(html, 'robots') ?? ''),
   };
 }
 
@@ -1245,7 +1284,9 @@ export const spec: GateSpec = {
 
     const kbPages = new Map((contract?.pages ?? []).map((p) => [p.route, p]));
     const root = publicRoot();
+    const facts = new Map<string, SitemapFacts>();
     for (const page of pages) {
+      facts.set(page.route, { modified: page.modified, noindex: page.noindex });
       const depth = page.route.split('/').length - 2;
       const prefix = depth === 0 ? './' : '../'.repeat(depth);
 
@@ -1349,7 +1390,7 @@ export const spec: GateSpec = {
       if (!/^sitemap.*\.xml$/.test(name)) continue;
       const file = path.join(DIST, name);
       const xml = readFileSync(file, 'utf8');
-      const moved = publicSitemap(xml, root);
+      const moved = publicSitemap(xml, root, facts);
       if (moved !== xml) writeFileSync(file, moved);
     }
 

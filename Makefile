@@ -1,6 +1,6 @@
-# patterns — a knowledge base of design patterns, written as markdown under docs/ with its
-# single-source data files in docs/data/, checked by the gates in tools/ and built into a
-# static site under site/dist/ by the Astro workspace in site/.
+# Software Design Atlas — a knowledge base of design patterns, written as markdown under docs/
+# with its single-source data files in docs/data/, checked by the gates in tools/ and built
+# into a static site under site/dist/ by the Astro workspace in site/.
 .DEFAULT_GOAL := help
 
 # The stamp lives inside node_modules on purpose: a stamp beside package.json survives

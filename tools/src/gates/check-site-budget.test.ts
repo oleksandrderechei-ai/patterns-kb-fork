@@ -190,7 +190,7 @@ describe('the files of the retrieval contract', () => {
     sb.write('site/dist/index.json', `${JSON.stringify({ pages }, null, 2)}\n`);
     for (const record of records) sb.write(`site/dist/${record}`, '{"blocks": []}\n');
     sb.write('site/dist/graph.json', '{"edges": []}\n');
-    sb.write('site/dist/llms.txt', '# Patterns KB\n');
+    sb.write('site/dist/llms.txt', '# Software Design Atlas\n');
     sb.write('site/dist/llms-full.txt', '<!-- kb:page id=a route=/a.html -->\n');
   }
   const RECORD = 'patterns/caching/alpha.json';
@@ -233,7 +233,7 @@ describe('the files of the retrieval contract', () => {
     expect(found(await sb.run(spec))[0]).toMatch(/site\/dist\/llms\.txt: is [\d,]+ bytes, over its budget of 69,500; biggest part: one line for each page of the knowledge base$/);
     sb.write('site/dist/llms.txt', denseGz(BUDGETS.llms.gzip));
     expect(found(await sb.run(spec))[0]).toMatch(/llms\.txt: is [\d,]+ bytes gzipped, over its budget of 24,700/);
-    sb.write('site/dist/llms.txt', '# Patterns KB\n');
+    sb.write('site/dist/llms.txt', '# Software Design Atlas\n');
 
     sb.write('site/dist/llms-full.txt', flat(BUDGETS.llmsFull.raw + 1));
     expect(found(await sb.run(spec))[0]).toMatch(/site\/dist\/llms-full\.txt: is [\d,]+ bytes, over its budget of 7,570,000; biggest part: the markdown of every page, copied whole$/);

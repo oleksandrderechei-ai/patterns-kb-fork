@@ -1,6 +1,6 @@
 ---
 name: kb-design-review
-description: "Review, critique or grade an existing patterns-kb page or one block of it. Writes findings only. Use when asked to \"review this design page\", \"critique docs/designs/X.md\", \"is this design any good\", \"grade this kata\", or handed a docs path with a review verb. Not for fixes (kb-edit), discussion (kb-discuss) or quizzing (kb-grill-design)."
+description: "Review, critique or grade an existing KB page or one block of it. Writes findings only. Use when asked to \"review this design page\", \"critique docs/designs/X.md\", \"is this design any good\", \"grade this kata\", or handed a docs path with a review verb. Not for fixes (kb-edit), discussion (kb-discuss) or quizzing (kb-grill-design)."
 ---
 
 # Reviewing an existing page

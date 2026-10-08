@@ -2,8 +2,9 @@
   "name": "kb",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
-  "description": "patterns-kb. The npm half is two workspaces: tools/ (check gates, generators, the driver) and site/ (the Astro + Starlight site, built from docs/ into site/dist/).",
+  "description": "Software Design Atlas. The npm half is two workspaces: tools/ (check gates, generators, the driver) and site/ (the Astro + Starlight site, built from docs/ into site/dist/).",
   "engines": {
     "node": ">=22.12"
   },

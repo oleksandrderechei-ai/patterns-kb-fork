@@ -206,7 +206,7 @@ function servedInstead(answer: Answer, fingerprint: string): string | null {
  */
 function rootOf(value: string | undefined): URL {
   if (value === undefined) {
-    throw new UsageError('--url is required: the published root of the site, such as https://odere-pro.github.io/patterns-kb/');
+    throw new UsageError('--url is required: the published root of the site, such as https://odere-pro.github.io/software-design-atlas/');
   }
   let root: URL;
   try {

@@ -1,6 +1,6 @@
 ---
 name: stack-pick
-description: "Compose a technology stack for a task from patterns-kb: split it into needs, find each pattern, follow its \"Implemented by\" edges, read the chosen vendor's column (AWS by default). Use when asked to \"pick a stack\", \"what AWS services for X\" or \"build this on Azure\". Not for one product's alternative (alt-pick) or one pattern (pattern-tech-map)."
+description: "Compose a technology stack for a task from the KB: split it into needs, find each pattern, follow its \"Implemented by\" edges, read the chosen vendor's column (AWS by default). Use when asked to \"pick a stack\", \"what AWS services for X\" or \"build this on Azure\". Not for one product's alternative (alt-pick) or one pattern (pattern-tech-map)."
 ---
 
 # stack-pick — from a task to a vendor's stack

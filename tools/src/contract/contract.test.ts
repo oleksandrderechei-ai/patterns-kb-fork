@@ -95,7 +95,7 @@ describe('the contract names', () => {
   });
 
   it('publishes under one fixed root, which is the root the site is published at by default', () => {
-    expect(PUBLISHED_ROOT).toBe('https://odere-pro.github.io/patterns-kb/');
+    expect(PUBLISHED_ROOT).toBe('https://odere-pro.github.io/software-design-atlas/');
     expect(PUBLISHED_ROOT.endsWith('/')).toBe(true);
     // A schema's `$id` is a URL people pin. Moving the site is then a decision
     // about the contract too, so the two roots are made to disagree loudly.
@@ -103,7 +103,7 @@ describe('the contract names', () => {
   });
 
   it('writes a schema id from a file base name, under schema/ at the published root', () => {
-    expect(schemaUrl('kb-record-1')).toBe('https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json');
+    expect(schemaUrl('kb-record-1')).toBe('https://odere-pro.github.io/software-design-atlas/schema/kb-record-1.json');
     expect(schemaUrl(SCHEMA_BASES.cli)).toBe(`${PUBLISHED_ROOT}schema/kb-cli-1.json`);
   });
 

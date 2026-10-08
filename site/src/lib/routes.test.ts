@@ -11,6 +11,7 @@ import type { Structure } from '../../../tools/src/lib/site-routes';
 import {
   areaLabel,
   areaOfRoute,
+  crumbsOf,
   isHub,
   isMenuOnly,
   isPage,
@@ -102,6 +103,37 @@ describe('trailOf', () => {
 
   it('names each hub by its area label', () => {
     expect(trailOf('caching', null, tiny)[0]?.label).toBe('Patterns');
+  });
+});
+
+describe('crumbsOf', () => {
+  it('reads Home, every hub above the page, then the page with no link', () => {
+    expect(crumbsOf('caching', '/patterns/caching/cache-aside.html', 'Cache-Aside', tiny)).toEqual([
+      { href: '/index.html', label: 'Home' },
+      { href: '/patterns.html', label: 'Patterns' },
+      { href: '/patterns/caching.html', label: 'Caching' },
+      { href: null, label: 'Cache-Aside' },
+    ]);
+  });
+
+  it('gives the home page, the not-found page and a path that is no page no trail', () => {
+    expect(crumbsOf('patterns', '/index.html', 'Home', tiny)).toEqual([]);
+    expect(crumbsOf('patterns', '/404.html', 'Page not found', tiny)).toEqual([]);
+    expect(crumbsOf('patterns', null, 'Nowhere', tiny)).toEqual([]);
+  });
+
+  it('reads Home › My marks for the marks page, a tool outside the tree', () => {
+    expect(crumbsOf('patterns', '/marks.html', 'My marks', tiny)).toEqual([
+      { href: '/index.html', label: 'Home' },
+      { href: null, label: 'My marks' },
+    ]);
+  });
+
+  it('reads the real structure file by default', () => {
+    expect(crumbsOf('distributed-resilience', '/x.html', 'X')[1]).toEqual({
+      href: '/patterns.html',
+      label: 'Patterns',
+    });
   });
 });
 

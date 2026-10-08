@@ -1,5 +1,5 @@
 {
-  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "$schema": "https://odere-pro.github.io/software-design-atlas/schema/kb-record-1.json",
   "contract": "kb-record/1",
   "scope": null,
   "id": "queue",

@@ -1038,10 +1038,10 @@ describe('record, graph and resolve', () => {
       'resolve',
       `${BREAKER}#tradeoffs-pro-1`,
       '/patterns/distributed/resilience/breaker.html#tradeoffs-pro-1',
-      'https://odere-pro.github.io/patterns-kb/patterns/distributed/resilience/breaker.md#tradeoffs-pro-1',
+      'https://odere-pro.github.io/software-design-atlas/patterns/distributed/resilience/breaker.md#tradeoffs-pro-1',
     );
     expect(r.code).toBe(0);
-    expect(r.out.split('\n')).toEqual([`ok        ${BREAKER}#tradeoffs-pro-1`, 'ok        /patterns/distributed/resilience/breaker.html#tradeoffs-pro-1', 'ok        https://odere-pro.github.io/patterns-kb/patterns/distributed/resilience/breaker.md#tradeoffs-pro-1']);
+    expect(r.out.split('\n')).toEqual([`ok        ${BREAKER}#tradeoffs-pro-1`, 'ok        /patterns/distributed/resilience/breaker.html#tradeoffs-pro-1', 'ok        https://odere-pro.github.io/software-design-atlas/patterns/distributed/resilience/breaker.md#tradeoffs-pro-1']);
   });
 
   it.each([

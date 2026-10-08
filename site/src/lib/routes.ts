@@ -74,6 +74,32 @@ export function trailOf(area: string, route: string | null, from: Structure = st
     .filter((c) => c.href !== route);
 }
 
+/** One step of the trail a page shows: a link up, or the page itself, which has no link. */
+export interface TrailStep {
+  href: string | null;
+  label: string;
+}
+
+/**
+ * The trail the breadcrumbs show and the JSON-LD names: Home, every hub above
+ * the page, then the page itself. The home page and the not-found page have
+ * none; the marks page, a tool outside the tree, reads Home › My marks. One
+ * function feeds both, so what a reader sees and what a crawler reads agree.
+ */
+export function crumbsOf(
+  area: string,
+  route: string | null,
+  title: string,
+  from: Structure = structure,
+): TrailStep[] {
+  if (route === null || route === '/index.html' || route === NOT_FOUND) return [];
+  return [
+    { href: '/index.html', label: 'Home' },
+    ...trailOf(area, route, from),
+    { href: null, label: title },
+  ];
+}
+
 /**
  * Up from a page: the hub that holds it — for a hub, the hub above it — or
  * the home page when nothing is above. The home page itself has no up.

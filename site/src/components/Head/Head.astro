@@ -15,7 +15,12 @@
 // gate then proves each file is there. A page of the knowledge base also
 // states where it sits (kb:kind, kb:band, kb:group), read from the same row of
 // the structure file that gives it a record.
+//
+// The JSON-LD's addresses are absolute under the published root, which
+// publicRoot() reads from SITE_URL at build time, the same root the post-build
+// pass moves the canonical link under; the site-seo gate holds the two equal.
 import Default from '@astrojs/starlight/components/Head.astro';
+import { publicRoot } from '../../../../tools/src/site/site-output';
 import {
   alternateLinks,
   alternatesOf,
@@ -24,17 +29,25 @@ import {
   pageMeta,
   placeOfFile,
 } from '../../lib/page-meta';
+import { crumbsOf, routeOf } from '../../lib/routes';
 
-const { entry } = Astro.locals.starlightRoute;
+const { entry, lang } = Astro.locals.starlightRoute;
 const meta = pageMeta(entry);
 const alternates = alternateLinks(alternatesOf(entry.filePath));
 const place = placeOfFile(entry.filePath);
+const route = routeOf(entry.filePath);
+const at = {
+  root: publicRoot().href,
+  route,
+  lang,
+  crumbs: crumbsOf(entry.data.area, route, entry.data.title),
+};
 ---
 
 <Default><slot /></Default>
 {metaTags(meta, place).map(([name, content]) => <meta name={name} content={content} />)}
 {alternates.map(([type, href]) => <link rel="alternate" type={type} href={href} />)}
-<script is:inline type="application/ld+json" data-kb="page" set:html={jsonLdText(meta)} />
+<script is:inline type="application/ld+json" data-kb="page" set:html={jsonLdText(meta, at)} />
 {/*
   The one kb bundle. `is:inline` keeps Astro's script pipeline off it — the
   pipeline only ever emits type="module", which never executes from file://;

@@ -7,13 +7,16 @@ import rehypeMermaid from 'rehype-mermaid';
 
 import { rehypeKbDiagrams, rehypeKbTables, remarkKbSite } from '../tools/src/lib/site-markdown.ts';
 import { linkPage, navOf, placedHubs, placedPages } from '../tools/src/lib/site-routes.ts';
-import { publicRoot } from '../tools/src/site/site-output.ts';
+import { publicRoot, REPO_URL, SITE_NAME, SOCIAL_IMAGE } from '../tools/src/site/site-output.ts';
 
 // The sidebar is not authored here: docs/data/site-structure.json is the one
 // structure source — area order, page order, labels, nesting — shared with the
 // mirror (tools/src/site/gen-site-docs.ts), the hubs (gen-site-hubs.ts) and the
 // post-build passes, and tools/src/lib/site-routes.ts says where each page and
 // hub lands. Edit the JSON, never this list.
+/** The link preview's picture, absolute: a preview fetches it from another site. */
+const socialImage = new URL(SOCIAL_IMAGE.path, publicRoot()).href;
+
 /** @type {import('../tools/src/lib/site-routes.ts').Structure} */
 const structure = JSON.parse(
   readFileSync(new URL('../docs/data/site-structure.json', import.meta.url), 'utf8'),
@@ -74,7 +77,7 @@ function sidebarFromStructure() {
 // inlined chunk (offline output-settings).
 //
 // `site` is the published root's origin only. The site is served under a
-// project path (https://odere-pro.github.io/patterns-kb/), but a base path
+// project path (PUBLIC_ROOT, under the repository's name), but a base path
 // would prefix every route Starlight writes and none this repo's components
 // write; so the build writes absolute URLs from the origin and the post-build
 // pass moves the canonical link, og:url and sitemap under the root
@@ -136,13 +139,28 @@ export default defineConfig({
   },
   integrations: [
     starlight({
-      title: 'Patterns KB',
-      // "Circuit Breaker · Patterns KB", the separator the HTML pages' titles use.
+      title: SITE_NAME,
+      // "Circuit Breaker · Software Design Atlas", the separator the HTML pages'
+      // titles use. site/src/lib/page-title.ts adds the page's kind before it.
       titleDelimiter: '·',
       description:
         'A knowledge base of software design patterns, design case studies, themes, hazards, principles, cloud capabilities and product comparisons.',
       // Pagefind's runtime fetches a search index — impossible from file://.
       pagefind: false,
+      // The picture a link preview shows, absolute under the published root as
+      // a preview needs it, and the icon a phone keeps for a saved page. The
+      // root-relative icon href is made depth-relative by the post-build pass.
+      head: [
+        { tag: 'meta', attrs: { property: 'og:image', content: socialImage } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: String(SOCIAL_IMAGE.width) } },
+        {
+          tag: 'meta',
+          attrs: { property: 'og:image:height', content: String(SOCIAL_IMAGE.height) },
+        },
+        { tag: 'meta', attrs: { property: 'og:image:alt', content: SOCIAL_IMAGE.alt } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: socialImage } },
+        { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
+      ],
       // The not-found page is hand-written in src/content/docs/404.mdx, so it
       // carries the page facts every built page does. GitHub Pages serves the
       // built 404.html for any address the site does not hold.
@@ -216,9 +234,7 @@ export default defineConfig({
         // route data, so the pager's previous and next still walk every page.
         Sidebar: './src/components/Sidebar/Sidebar.astro',
       },
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/odere-pro/patterns-kb' },
-      ],
+      social: [{ icon: 'github', label: 'GitHub', href: REPO_URL }],
       sidebar: sidebarFromStructure(),
     }),
   ],

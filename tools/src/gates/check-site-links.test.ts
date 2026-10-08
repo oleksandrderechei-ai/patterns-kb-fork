@@ -147,7 +147,7 @@ describe('the built-site gate', () => {
   it('reads the repository path a GitHub file link names, and nothing from any other link', () => {
     expect(repoFileOf(`${REPO_BLOB}/docs/a%20b.md?plain=1#top`)).toBe('docs/a b.md');
     expect(repoFileOf(`${REPO_BLOB}/`)).toBe('');
-    expect(repoFileOf('https://github.com/odere-pro/patterns-kb')).toBeNull();
+    expect(repoFileOf('https://github.com/odere-pro/software-design-atlas')).toBeNull();
     expect(repoFileOf('./alpha.html')).toBeNull();
   });
 

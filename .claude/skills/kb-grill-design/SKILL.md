@@ -1,6 +1,6 @@
 ---
 name: kb-grill-design
-description: "Quiz the reader on a patterns-kb case study in batched rounds, graded against the page and its Mid/Senior/Staff+ rubric, ending in a gap list of cited ids. Use when someone says 'grill me on bitly', 'quiz me on this design', 'drill me'. Not for other page kinds (kb-grill-page), new proposals (grill-me) or open talk (kb-discuss)."
+description: "Quiz the reader on a KB case study in batched rounds, graded against the page and its Mid/Senior/Staff+ rubric, ending in a gap list of cited ids. Use when someone says 'grill me on bitly', 'quiz me on this design', 'drill me'. Not for other page kinds (kb-grill-page), new proposals (grill-me) or open talk (kb-discuss)."
 ---
 
 # Grilling a reader on a case study

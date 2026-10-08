@@ -274,6 +274,10 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: node_modules/.bin/tsx tools/src/gates/check-site-budget.ts
 
+      - name: Site search facts
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: node_modules/.bin/tsx tools/src/gates/check-site-seo.ts
+
       - name: Site reader flows
         # The reader's flows in the browser, after every site gate: the served projects start
         # their own static server over site/dist on a loopback port.

@@ -3,7 +3,7 @@
 The Astro + Starlight workspace that builds the knowledge base's site from the pages under
 `docs/` into `dist/`. It holds no page of its own but the home page: `make site-build` mirrors
 `docs/` into `src/content/docs/`, writes the hubs and the map pages there, bundles the client,
-runs Astro and the post-build passes, then the six site gates.
+runs Astro and the post-build passes, then the site gates.
 
 ```bash
 make site-build   # lint, unit tests, the build, then the site gates

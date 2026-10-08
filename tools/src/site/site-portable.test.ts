@@ -15,7 +15,7 @@ import { graphOf, recordOf } from '../kb/record.js';
 import { serialize } from '../lib/kb-record.js';
 import { expectFail, expectMisuse, expectPass, makeSandbox, type Sandbox } from '../lib/sandbox.js';
 import { spec as searchSpec } from './gen-search-index.js';
-import { GLOSSARY_JSON, rawKbSite } from './site-fixtures.js';
+import { builtPage, GLOSSARY_JSON, rawKbSite } from './site-fixtures.js';
 import { readSchemas } from './site-records.js';
 import {
   STARLIGHT_CHROME,
@@ -39,6 +39,7 @@ import {
   publicUrls,
   readPage,
   rewriteLinks,
+  routeOfPublic,
   shieldChrome,
   spec,
   stampRelations,
@@ -217,7 +218,7 @@ describe('rewriteLinks over a diagram', () => {
 });
 
 describe('the published root', () => {
-  const root = new URL('https://odere-pro.github.io/patterns-kb/');
+  const root = new URL('https://odere-pro.github.io/software-design-atlas/');
 
   it('is the project path, and SITE_URL moves it, with or without its end slash', () => {
     expect(publicRoot({}).href).toBe(PUBLIC_ROOT);
@@ -226,10 +227,10 @@ describe('the published root', () => {
   });
 
   it('moves a URL on the origin under the root, once, and leaves every other URL alone', () => {
-    expect(toPublic('https://odere-pro.github.io/patterns/a.html', root)).toBe('https://odere-pro.github.io/patterns-kb/patterns/a.html');
-    expect(toPublic('https://odere-pro.github.io/patterns-kb/patterns/a.html', root)).toBe('https://odere-pro.github.io/patterns-kb/patterns/a.html');
-    expect(toPublic('https://github.com/odere-pro/patterns-kb', root)).toBe('https://github.com/odere-pro/patterns-kb');
-    expect(toPublic('https://odere-pro.github.io/', root)).toBe('https://odere-pro.github.io/patterns-kb/');
+    expect(toPublic('https://odere-pro.github.io/patterns/a.html', root)).toBe('https://odere-pro.github.io/software-design-atlas/patterns/a.html');
+    expect(toPublic('https://odere-pro.github.io/software-design-atlas/patterns/a.html', root)).toBe('https://odere-pro.github.io/software-design-atlas/patterns/a.html');
+    expect(toPublic('https://github.com/odere-pro/software-design-atlas', root)).toBe('https://github.com/odere-pro/software-design-atlas');
+    expect(toPublic('https://odere-pro.github.io/', root)).toBe('https://odere-pro.github.io/software-design-atlas/');
   });
 
   it('names the page where it is served: its canonical link and og:url, never another absolute link', () => {
@@ -240,8 +241,8 @@ describe('the published root', () => {
       '<a href="https://odere-pro.github.io/elsewhere.html">out</a>';
     const moved = publicUrls(head, root);
     expect(moved).toBe(
-      '<link rel="canonical" href="https://odere-pro.github.io/patterns-kb/patterns/a.html"/>' +
-        '<meta property="og:url" content="https://odere-pro.github.io/patterns-kb/patterns/a.html"/>' +
+      '<link rel="canonical" href="https://odere-pro.github.io/software-design-atlas/patterns/a.html"/>' +
+        '<meta property="og:url" content="https://odere-pro.github.io/software-design-atlas/patterns/a.html"/>' +
         '<meta property="og:site_name" content="https://odere-pro.github.io/x"/>' +
         '<a href="https://odere-pro.github.io/elsewhere.html">out</a>',
     );
@@ -254,13 +255,59 @@ describe('the published root', () => {
       '<url><loc>https://odere-pro.github.io/capabilities/compute</loc></url><url><loc>https://elsewhere.test/x</loc></url></urlset>';
     const moved = publicSitemap(xml, root);
     expect(moved).toBe(
-      '<urlset><url><loc>https://odere-pro.github.io/patterns-kb/</loc></url><url><loc>https://odere-pro.github.io/patterns-kb/hazards.html</loc></url>' +
-        '<url><loc>https://odere-pro.github.io/patterns-kb/capabilities/compute.html</loc></url><url><loc>https://elsewhere.test/x</loc></url></urlset>',
+      '<urlset><url><loc>https://odere-pro.github.io/software-design-atlas/</loc></url><url><loc>https://odere-pro.github.io/software-design-atlas/hazards.html</loc></url>' +
+        '<url><loc>https://odere-pro.github.io/software-design-atlas/capabilities/compute.html</loc></url><url><loc>https://elsewhere.test/x</loc></url></urlset>',
     );
     expect(publicSitemap(moved, root)).toBe(moved);
     expect(publicSitemap('<sitemap><loc>https://odere-pro.github.io/sitemap-0.xml</loc></sitemap>', root)).toContain(
-      'https://odere-pro.github.io/patterns-kb/sitemap-0.xml',
+      'https://odere-pro.github.io/software-design-atlas/sitemap-0.xml',
     );
+  });
+});
+
+describe('the sitemap facts', () => {
+  const root = new URL('https://odere-pro.github.io/software-design-atlas/');
+  const at = (rest: string): string => `${root.href}${rest}`;
+  const refuse = (what: string): void => {
+    throw new Error(what);
+  };
+
+  it("reads a page's commit date and its robots meta off the built head", () => {
+    const plain = builtPage({ route: '/patterns/a.html', title: 'A', area: 'caching', body: '<p>A.</p>' });
+    const marked = plain
+      .replace('"headline":"A"}', '"headline":"A","dateModified":"2026-10-04T16:10:07+02:00"}')
+      .replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta name="robots" content="noindex, follow">');
+    expect(readPage('a.html', '/patterns/a.html', plain, refuse)).toMatchObject({ modified: null, noindex: false });
+    expect(readPage('a.html', '/patterns/a.html', marked, refuse)).toMatchObject({
+      modified: '2026-10-04T16:10:07+02:00',
+      noindex: true,
+    });
+  });
+
+  it('maps a URL under the root back to its route, the root itself to the home page', () => {
+    expect(routeOfPublic(at('patterns/a.html'), root)).toBe('/patterns/a.html');
+    expect(routeOfPublic(root.href, root)).toBe('/index.html');
+    expect(routeOfPublic('https://elsewhere.test/patterns/a.html', root)).toBeNull();
+  });
+
+  it('drops a page that stays out of search, dates the rest, and leaves a URL with no facts alone, once', () => {
+    const xml =
+      `<urlset><url><loc>${at('')}</loc></url><url><loc>${at('patterns/a.html')}</loc></url>` +
+      `<url><loc>${at('marks.html')}</loc></url><url><loc>${at('patterns.html')}</loc></url>` +
+      `<url><loc>${at('patterns/b.html')}</loc></url></urlset>`;
+    const facts = new Map([
+      ['/index.html', { modified: '2026-10-01T09:00:00+02:00', noindex: false }],
+      ['/patterns/a.html', { modified: '2026-10-04T16:10:07+02:00', noindex: false }],
+      ['/marks.html', { modified: null, noindex: true }],
+      ['/patterns.html', { modified: null, noindex: false }],
+    ]);
+    const out = publicSitemap(xml, root, facts);
+    expect(out).toBe(
+      `<urlset><url><loc>${at('')}</loc><lastmod>2026-10-01T09:00:00+02:00</lastmod></url>` +
+        `<url><loc>${at('patterns/a.html')}</loc><lastmod>2026-10-04T16:10:07+02:00</lastmod></url>` +
+        `<url><loc>${at('patterns.html')}</loc></url><url><loc>${at('patterns/b.html')}</loc></url></urlset>`,
+    );
+    expect(publicSitemap(out, root, facts)).toBe(out);
   });
 });
 
@@ -893,7 +940,7 @@ describe('manifest-O1', () => {
     const manifest = JSON.parse(sb.read('site/dist/index.json')) as Record<string, unknown>;
     // The schema and the contract first, as in every document of the contract.
     expect(Object.keys(manifest)).toEqual(['$schema', 'contract', 'generator', 'pages']);
-    expect(manifest).toMatchObject({ $schema: 'https://odere-pro.github.io/patterns-kb/schema/kb-index-1.json', contract: 'kb-index/1' });
+    expect(manifest).toMatchObject({ $schema: 'https://odere-pro.github.io/software-design-atlas/schema/kb-index-1.json', contract: 'kb-index/1' });
     const pages = manifest['pages'] as { route: string; title: string; headings: { id: string; text: string }[] }[];
     expect(pages.map((p) => p.route)).toEqual(['/index.html', '/guides/one.html']);
     // Every entry has the five knowledge-base fields, null here: this tree holds no knowledge base.
@@ -1364,7 +1411,7 @@ describe('the pass ships the contract files', () => {
     expectPass(await sb.run(spec));
     for (const schema of readSchemas(sb.dir)) expect(sb.read(`site/dist/schema/${schema.name}`), schema.name).toBe(sb.read(`${SCHEMA_DIR}/${schema.name}`));
     const llms = sb.read('site/dist/llms.txt');
-    expect(llms.split('\n')[0]).toBe('# Patterns KB');
+    expect(llms.split('\n')[0]).toBe('# Software Design Atlas');
     // Every link of llms.txt names a file the pass wrote, from the site root.
     for (const m of llms.matchAll(/\]\(([^)]+)\)/g)) expect(sb.exists(`site/dist/${m[1] as string}`), m[1]).toBe(true);
     const full = sb.read('site/dist/llms-full.txt');

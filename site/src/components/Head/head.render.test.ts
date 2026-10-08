@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { publicRoot } from '../../../../tools/src/site/site-output';
 import { renderComponent } from '../../lib/render-fixture';
 
 import Head from './Head.astro';
@@ -33,6 +34,7 @@ const data = {
 const at = (filePath?: string): App.Locals =>
   ({
     starlightRoute: {
+      lang: 'en',
       head: [
         { tag: 'link', attrs: { rel: 'canonical', href: CANONICAL } },
         { tag: 'link', attrs: { rel: 'stylesheet', href: '../_astro/style.css' } },
@@ -142,5 +144,24 @@ describe('Head', () => {
     expect(bundle[0]).toContain('src="/kb.js"');
     expect(bundle[0]).toContain('defer');
     expect(bundle[0]).not.toContain('type="module"');
+  });
+
+  it("gives the JSON-LD the page's address under the published root, and its trail from Home", async () => {
+    const html = await render(
+      at('/r/site/src/content/docs/patterns/distributed/resilience/example.md'),
+    );
+    const block = /<script[^>]*type="application\/ld\+json"[^>]*>([^]*?)<\/script>/.exec(html)?.[1];
+    const ld = JSON.parse(block ?? '{}') as {
+      url?: string;
+      inLanguage?: string;
+      mainEntityOfPage?: { breadcrumb?: { itemListElement?: { name: string; item: string }[] } };
+    };
+    const root = publicRoot().href;
+    const url = `${root}patterns/distributed/resilience/example.html`;
+    expect(ld.url).toBe(url);
+    expect(ld.inLanguage).toBe('en');
+    const items = ld.mainEntityOfPage?.breadcrumb?.itemListElement ?? [];
+    expect(items[0]).toMatchObject({ name: 'Home', item: root });
+    expect(items[items.length - 1]).toMatchObject({ name: 'Example', item: url });
   });
 });

@@ -1,6 +1,6 @@
 ---
 name: kb-intake
-description: "Merge a pattern found on the web into patterns-kb: triage against existing pages, compare block by block, then improve a page, skip when the KB is ahead, or create one. Use when someone says 'I found this pattern on the web', 'compare this article with our page'. Not for finding sources (kb-harvest) or sourceless ideas (kb-add)."
+description: "Merge a pattern found on the web into the KB: triage against existing pages, compare block by block, then improve a page, skip when the KB is ahead, or create one. Use when someone says 'I found this pattern on the web', 'compare this article with our page'. Not for finding sources (kb-harvest) or sourceless ideas (kb-add)."
 ---
 
 # kb-intake — improve, skip, or create, from a web-discovered pattern

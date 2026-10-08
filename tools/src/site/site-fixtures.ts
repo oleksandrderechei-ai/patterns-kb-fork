@@ -14,6 +14,7 @@ import type { Structure } from '../lib/site-routes.js';
 import type { Sandbox } from '../lib/sandbox.js';
 import { NOSCRIPT_STYLE } from '../lib/site-noise.js';
 import { formatHtml } from './site-format.js';
+import { publicRoot } from './site-output.js';
 
 /** The ignore rules that own the site's input folder, as the root .gitignore states them. */
 export const SITE_GITIGNORE = [
@@ -398,4 +399,73 @@ export function formattedSite(sb: Sandbox, dist = 'site/dist'): void {
   builtSite(sb, dist);
   upstreamFiles(sb, dist);
   for (const p of BUILT) sb.write(`${dist}${p.route}`, formatHtml(withUpstream(builtPage(p), p.route)));
+}
+
+/** A built page for the search gate (tools/src/gates/check-site-seo.ts): the head facts it reads. */
+export interface SeoPage {
+  readonly route: string;
+  readonly title: string;
+  /** Each of these left out writes the default; `null` writes none. */
+  readonly description?: string | null;
+  readonly canonical?: string | null;
+  readonly ogUrl?: string | null;
+  readonly ldUrl?: string | null;
+  readonly ogImage?: string | null;
+  readonly noindex?: boolean;
+}
+
+/** The address a route is published at under publicRoot(): the root itself for the home page. */
+export function publishedUrl(route: string): string {
+  const root = publicRoot().href;
+  return route === '/index.html' ? root : `${root}${route.slice(1)}`;
+}
+
+/** A built page whose canonical link, og:url and JSON-LD url name its published address, as the build writes them. */
+export function seoPage(p: SeoPage): string {
+  const url = publishedUrl(p.route);
+  const pick = (value: string | null | undefined): string | null => (value === undefined ? url : value);
+  const canonical = pick(p.canonical);
+  const ogUrl = pick(p.ogUrl);
+  const ldUrl = pick(p.ldUrl);
+  const ogImage = p.ogImage === undefined ? `${publicRoot().href}og.png` : p.ogImage;
+  const description = p.description === undefined ? `What ${p.title} is for.` : p.description;
+  const ld = ldUrl === null ? {} : { url: ldUrl };
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    `<title>${p.title}</title>`,
+    description === null ? '' : `<meta name="description" content="${description}">`,
+    canonical === null ? '' : `<link rel="canonical" href="${canonical}">`,
+    ogUrl === null ? '' : `<meta property="og:url" content="${ogUrl}">`,
+    ogImage === null ? '' : `<meta property="og:image" content="${ogImage}">`,
+    p.noindex === true ? '<meta name="robots" content="noindex, follow">' : '',
+    `<script type="application/ld+json" data-kb="page">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'TechArticle', ...ld })}</script>`,
+    '</head>',
+    `<body><h1>${p.title}</h1></body>`,
+    '</html>',
+    '',
+  ].join('\n');
+}
+
+/** A sitemap file listing these addresses. */
+export function seoSitemap(urls: readonly string[]): string {
+  return `<urlset>${urls.map((u) => `<url><loc>${u}</loc></url>`).join('')}</urlset>`;
+}
+
+/**
+ * A three-page built site whose search facts agree: the home page, a pattern,
+ * and the marks page kept out of search, with the picture and a sitemap that
+ * lists the two indexable pages.
+ */
+export function seoSite(sb: Sandbox, dist = 'site/dist'): void {
+  sb.write(`${dist}/index.html`, seoPage({ route: '/index.html', title: 'Home' }));
+  sb.write(`${dist}/patterns/a.html`, seoPage({ route: '/patterns/a.html', title: 'A pattern' }));
+  sb.write(`${dist}/marks.html`, seoPage({ route: '/marks.html', title: 'My marks', noindex: true }));
+  sb.write(`${dist}/og.png`, 'png');
+  sb.write(
+    `${dist}/sitemap-index.xml`,
+    `<sitemapindex><sitemap><loc>${publishedUrl('/sitemap-0.xml')}</loc></sitemap></sitemapindex>`,
+  );
+  sb.write(`${dist}/sitemap-0.xml`, seoSitemap([publishedUrl('/index.html'), publishedUrl('/patterns/a.html')]));
 }

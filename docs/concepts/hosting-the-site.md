@@ -58,16 +58,35 @@ at any depth and from a folder, in the reader's light or dark scheme (it uses th
 `Canvas` and `CanvasText` colours, so it types none).
 
 Its two links, **home page** and **search**, are absolute URLs under the published root
-(`https://odere-pro.github.io/patterns-kb/` unless `SITE_URL` moves it for a fork), so they land
-from any depth on the real host. A root-relative link such as `/index.html` would not: the site
-lives under the project path `/patterns-kb/`, not at the host's root. The cost is that from a
-folder on disk the two links open the published site, not the local copy; the search link opens
-the home page at its search box (`#search`), since this page loads no script to host the box.
+(`https://odere-pro.github.io/software-design-atlas/` unless `SITE_URL` moves it), so they
+land from any depth on the real host. A root-relative link such as `/index.html` would not: the
+site lives under the project path `/software-design-atlas/`, not at the host's root. The cost is
+that from a folder on disk the two links open the published site, not the local copy; the search
+link opens the home page at its search box (`#search`), since this page loads no script to host
+the box.
 
 This is a named exception in the absence gate (`NOT_FOUND_FILE` in `tools/src/lib/site-noise.ts`):
 every other page loads one stylesheet and one bundle and carries no style element, while this one
 must load nothing and carry exactly one small style that fetches nothing. The build step is
 `tools/src/site/site-not-found.ts`, run by the post-build pass.
+
+## Moving the site
+
+The published root has one source. `REPO_OWNER` and `REPO_NAME` in
+`tools/src/site/site-output.ts` build `PUBLIC_ROOT`, the repository link in the header and
+the links to files the site does not publish. The Pages workflow sets `SITE_URL` from what
+`configure-pages` reports, the address this repository publishes to, so a deploy after a
+rename or a custom domain writes the right canonical links with no edit.
+
+GitHub redirects a renamed repository's web and git addresses, but not its Pages site: every
+page under the old project path answers 404. The host root, `https://odere-pro.github.io/`,
+is the owner's user site, `odere-pro/odere-pro.github.io`, and it serves any path no project
+claims. So old links stay alive through a page there for each old address, with an instant
+meta refresh and a canonical link to the new one. Never create a repository under the old
+name: GitHub then stops redirecting to the renamed one.
+
+Crawlers read `robots.txt` only at the host root, so the sitemap line lives in that same user
+site: `Sitemap: https://odere-pro.github.io/software-design-atlas/sitemap-index.xml`.
 
 ## Check it
 

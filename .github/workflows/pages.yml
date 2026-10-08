@@ -4,11 +4,12 @@ name: pages
 # questions.
 #
 # It validates before it ships: `make site-build` runs the lint, the site's unit tests, the
-# build and the seven site gates, and stops at the first failure, so a red build never deploys.
+# build and the site gates, and stops at the first failure, so a red build never deploys.
 # Whatever is uploaded is what was just built and checked, including on a manual dispatch.
-# SITE_URL is where the site will live; left unset, tools/src/site/site-output.ts's
-# PUBLIC_ROOT is used, and the post-build pass writes the canonical links, og:url and the
-# sitemap from it.
+# SITE_URL is where the site will live, and the post-build pass writes the canonical links,
+# og:url and the sitemap from it. configure-pages reports the address this repository
+# publishes to, so a renamed repository or a custom domain needs no edit here; left unset,
+# tools/src/site/site-output.ts's PUBLIC_ROOT is used.
 #
 # Three jobs. `build` checks the site, fingerprints its index.json and uploads it; `deploy`
 # publishes the upload; `smoke` waits until the live index.json has that fingerprint, then
@@ -47,6 +48,10 @@ jobs:
       index_sha: ${{ steps.fingerprint.outputs.index_sha }}
     steps:
       - uses: actions/checkout@v4
+        # Full history: each page's dateModified is the last commit that touched its source,
+        # and a shallow clone knows only one commit.
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -61,7 +66,15 @@ jobs:
       - name: Install headless Chromium
         # The site build draws every diagram in it.
         run: make site-deps && node_modules/.bin/playwright install-deps chromium
+      - id: pages
+        uses: actions/configure-pages@v5
+        # Create the Pages site on first run instead of failing when Pages is not yet enabled.
+        # It runs before the build because the build needs its base_url.
+        with:
+          enablement: true
       - name: Build and check the site
+        env:
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
         run: make site-build
       - name: Fingerprint the built index
         id: fingerprint
@@ -71,10 +84,6 @@ jobs:
           set -euo pipefail
           sha="$(sha256sum site/dist/index.json | cut -d ' ' -f 1)"
           echo "index_sha=${sha}" >> "$GITHUB_OUTPUT"
-      - uses: actions/configure-pages@v5
-        # Create the Pages site on first run instead of failing when Pages is not yet enabled.
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/dist

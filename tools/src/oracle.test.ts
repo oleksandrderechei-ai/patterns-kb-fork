@@ -91,7 +91,7 @@ import { frontmatterMany } from './lib/frontmatter.js';
 import { STATUSES } from './lib/page-block.js';
 import { markers } from './lib/generated.js';
 import { formatHtml } from './site/site-format.js';
-import { builtPage, builtSite, docsTree, formattedSite } from './site/site-fixtures.js';
+import { builtPage, builtSite, docsTree, formattedSite, seoSite } from './site/site-fixtures.js';
 import { writeParitySite } from './site/parity-fixtures.js';
 import { OUT as SYNONYMS_PAGE, render as renderSynonyms, SRC as SYNONYMS } from './gen/gen-search-synonyms.js';
 
@@ -544,6 +544,14 @@ describe('kb.gates', () => {
         clean: (s) => builtSite(s),
         plant: (s) =>
           s.write('site/dist/patterns/caching/beta.html', builtPage({ route: '/patterns/caching/beta.html', title: 'Beta', area: 'caching', body: `<p>${'x'.repeat(400_000)}</p>` })),
+      },
+      // Search and preview facts over a small site that carries them; the plant removes the picture every page names.
+      'site-seo': {
+        clean: (s) => seoSite(s),
+        plant: (s) => {
+          seoSite(s);
+          s.rm('site/dist/og.png');
+        },
       },
       // The two accessibility gates (P7): one clean page, then a planted defect.
       'site-accessibility': {

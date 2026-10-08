@@ -371,3 +371,76 @@ describe('alternateLinks', () => {
     expect(alternateLinks({ markdown: null, record: null })).toEqual([]);
   });
 });
+
+describe('jsonLd, given where the page is published', () => {
+  const root = 'https://example.test/atlas/';
+  const route = '/patterns/distributed/resilience/circuit-breaker.html';
+  const crumbs = [
+    { href: '/index.html', label: 'Home' },
+    { href: '/patterns.html', label: 'Patterns' },
+    { href: null, label: 'Circuit Breaker' },
+  ];
+  const at = { root, route, lang: 'en', crumbs };
+
+  it('keeps the article on top and adds its address, language, picture and licence', () => {
+    const ld = jsonLd(pageMeta(entry({ aliases: ['CB'] })), at);
+    expect(Object.keys(ld).slice(0, 2)).toEqual(['@context', '@type']);
+    expect(ld).toMatchObject({
+      '@type': 'TechArticle',
+      headline: 'Circuit Breaker',
+      isPartOf: { '@type': 'Collection', name: 'distributed-resilience' },
+      alternateName: ['CB'],
+      url: `${root}patterns/distributed/resilience/circuit-breaker.html`,
+      inLanguage: 'en',
+      image: `${root}og.png`,
+      license: 'https://creativecommons.org/licenses/by/4.0/',
+    });
+  });
+
+  it('names the WebPage, the site it belongs to and its trail, the page last', () => {
+    const page = jsonLd(pageMeta(entry()), at)['mainEntityOfPage'] as Record<string, unknown>;
+    const url = `${root}patterns/distributed/resilience/circuit-breaker.html`;
+    expect(page).toMatchObject({
+      '@type': 'WebPage',
+      '@id': url,
+      isPartOf: { '@type': 'WebSite', name: 'Software Design Atlas', url: root },
+    });
+    expect(page['breadcrumb']).toEqual({
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: root },
+        { '@type': 'ListItem', position: 2, name: 'Patterns', item: `${root}patterns.html` },
+        { '@type': 'ListItem', position: 3, name: 'Circuit Breaker', item: url },
+      ],
+    });
+  });
+
+  it('gives the home page the root as its address, and a page with no trail no breadcrumb', () => {
+    const ld = jsonLd(pageMeta(entry()), { root, route: '/index.html', lang: 'en', crumbs: [] });
+    expect(ld['url']).toBe(root);
+    expect(ld['mainEntityOfPage']).not.toHaveProperty('breadcrumb');
+  });
+
+  it('adds no address for an entry outside the collection, but still its picture and licence', () => {
+    const ld = jsonLd(pageMeta(entry()), { root, route: null, lang: 'en', crumbs: [] });
+    expect(ld).not.toHaveProperty('url');
+    expect(ld).not.toHaveProperty('mainEntityOfPage');
+    expect(ld['image']).toBe(`${root}og.png`);
+  });
+
+  it("links the project owner's own site as author and publisher, and no one else's", () => {
+    const ld = jsonLd(pageMeta(entry()), at);
+    const owner = {
+      '@type': 'Person',
+      name: 'Oleksandr Derechei',
+      url: 'https://odere-pro.github.io/',
+    };
+    expect(ld['author']).toEqual(owner);
+    expect(ld['publisher']).toEqual(owner);
+    expect(jsonLd(pageMeta(entry({ owner: 'Someone' })), at)['author']).toEqual({
+      '@type': 'Person',
+      name: 'Someone',
+    });
+    expect(jsonLd(pageMeta(entry({ owner: '' })), at)).not.toHaveProperty('publisher');
+  });
+});

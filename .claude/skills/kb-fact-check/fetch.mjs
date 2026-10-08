@@ -55,7 +55,7 @@ const requireFromTools = createRequire(join(REPO, "tools", "package.json"));
 // ---------------------------------------------------------------- constants
 
 const CONTACT = optVal("--user-agent") ??
-  "patterns-kb-factcheck/0.1 (https://github.com/odere-pro/patterns; odere.pub@gmail.com) node/26";
+  "software-design-atlas-factcheck/0.1 (https://github.com/odere-pro/software-design-atlas; odere.pub@gmail.com) node/26";
 const HEADERS = { "User-Agent": CONTACT, "Accept-Encoding": "gzip" };
 const WP = "https://en.wikipedia.org/w/api.php";
 const DELAY_MS = Number(optVal("--delay-ms") ?? 1000);

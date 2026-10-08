@@ -29,9 +29,16 @@ import {
   type PlacedPage,
   type Structure,
 } from '../../../tools/src/lib/site-routes';
+import {
+  AUTHOR_URL,
+  CONTENT_LICENSE,
+  SITE_NAME,
+  SITE_OWNER,
+  SOCIAL_IMAGE,
+} from '../../../tools/src/site/site-output';
 import { lastModified } from './git-date';
 import { repoRoot } from './repo-root';
-import { routeOf } from './routes';
+import { routeOf, type TrailStep } from './routes';
 import type { Status } from './site-types';
 
 /** What `pageMeta` reads off an entry. Astro types the real thing wider. */
@@ -78,23 +85,84 @@ export function pageMeta(entry: MetaEntry): PageMetaValues {
   };
 }
 
-/** The schema.org TechArticle for a page (spec interfaces/built-page.md, the JSON-LD block). */
-export function jsonLd(meta: PageMetaValues): Record<string, unknown> {
+/** Where a page is published: what the JSON-LD's addresses are built from. */
+export interface PageAt {
+  /** The published root, ending in `/` (publicRoot() in tools/src/site/site-output.ts). */
+  readonly root: string;
+  /** The page's route, or null for an entry outside the collection. */
+  readonly route: string | null;
+  /** The page's language, as the html element declares it. */
+  readonly lang: string;
+  /** The trail the breadcrumbs show (crumbsOf in ./routes.ts), the page last. */
+  readonly crumbs: readonly TrailStep[];
+}
+
+/** A route's address under the root. The home page is the root itself, as its canonical link is. */
+export function pageUrl(root: string, route: string): string {
+  return route === '/index.html' ? root : `${root}${route.slice(1)}`;
+}
+
+/** The person a page names as its owner, with the owner's own site when the owner is the project's. */
+function person(owner: string): Record<string, unknown> {
+  return { '@type': 'Person', name: owner, ...(owner === SITE_OWNER ? { url: AUTHOR_URL } : {}) };
+}
+
+/**
+ * The page as a WebPage: the site it belongs to, and its trail as a
+ * BreadcrumbList whose last item is the page itself.
+ */
+function webPage(url: string, at: PageAt): Record<string, unknown> {
+  const items = at.crumbs.map((c, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: c.label,
+    item: c.href === null ? url : pageUrl(at.root, c.href),
+  }));
+  return {
+    '@type': 'WebPage',
+    '@id': url,
+    isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: at.root },
+    ...(items.length > 0
+      ? { breadcrumb: { '@type': 'BreadcrumbList', itemListElement: items } }
+      : {}),
+  };
+}
+
+/**
+ * The schema.org TechArticle for a page (spec interfaces/built-page.md, the
+ * JSON-LD block). One block with the article on top: the page's facts first,
+ * then, given where the page is published, its address, picture and licence,
+ * and the WebPage that carries the site and the breadcrumb. Readers depend on
+ * the top-level `headline`, `isPartOf` and `dateModified`, so those stay where
+ * they are. Pure: the caller passes the root, so nothing here reads the env.
+ */
+export function jsonLd(meta: PageMetaValues, at?: PageAt): Record<string, unknown> {
+  const url = at?.route ? pageUrl(at.root, at.route) : undefined;
+  const owner = meta.owner ? person(meta.owner) : undefined;
   return {
     '@context': 'https://schema.org',
     '@type': 'TechArticle',
     headline: meta.title,
     description: meta.description,
+    ...(meta.aliases.length > 0 ? { alternateName: meta.aliases } : {}),
     ...(meta.tags.length > 0 ? { keywords: meta.tags.join(', ') } : {}),
     isPartOf: { '@type': 'Collection', name: meta.area },
-    ...(meta.owner ? { author: { '@type': 'Person', name: meta.owner } } : {}),
+    ...(owner ? { author: owner, publisher: owner } : {}),
     ...(meta.modified ? { dateModified: meta.modified } : {}),
+    ...(at
+      ? {
+          inLanguage: at.lang,
+          image: new URL(SOCIAL_IMAGE.path, at.root).href,
+          license: CONTENT_LICENSE,
+        }
+      : {}),
+    ...(at && url ? { url, mainEntityOfPage: webPage(url, at) } : {}),
   };
 }
 
 /** The JSON-LD block's text: no `<`, so a closing tag in a value cannot end the block. */
-export function jsonLdText(meta: PageMetaValues): string {
-  return JSON.stringify(jsonLd(meta)).replace(/</g, '\\u003c');
+export function jsonLdText(meta: PageMetaValues, at?: PageAt): string {
+  return JSON.stringify(jsonLd(meta, at)).replace(/</g, '\\u003c');
 }
 
 const structure = structureFile as Structure;

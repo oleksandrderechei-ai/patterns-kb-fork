@@ -7,7 +7,7 @@ paths: ["docs/**/*.md"]
 
 **Question:** where does each fact of a page sit, and which rule decides it?
 
-> The data contract for a `patterns-kb` page. [page-rules.md](../../docs/reference/page-rules.md)
+> The data contract for a page of the Software Design Atlas. [page-rules.md](../../docs/reference/page-rules.md)
 > numbers every rule a gate decides — `PAGE-0nn` for any page, `KB-0nn` for a KB page — and
 > names the gate; this file cites those ids rather than restating them, and adds the judgement
 > no gate can make. The prose register is [tone.md](./tone.md).

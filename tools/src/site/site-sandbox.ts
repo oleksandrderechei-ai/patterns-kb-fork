@@ -63,6 +63,8 @@ export const COPIED = [
   'site/src/route-middleware.ts',
   'site/src/content.config.ts',
   'site/public/favicon.svg',
+  'site/public/apple-touch-icon.png',
+  'site/public/og.png',
 ] as const;
 
 /** The config Astro runs with here: the real one, with links kept as they are. */

@@ -57,7 +57,7 @@ function browserCache(): string[] {
 }
 
 /** The site gates' summary lines, as the driver prints them. */
-const GATE_LINE = /^\s*✓ .*\[(site-portable|site-parity|site-links|site-absence|site-accessibility|site-axe|site-budget)\] /;
+const GATE_LINE = /^\s*✓ .*\[(site-portable|site-parity|site-links|site-absence|site-accessibility|site-axe|site-budget|site-seo)\] /;
 
 /** The sandbox's structure file, each hub with a paragraph of intro. */
 const TALL_HUBS: Structure = {
@@ -125,7 +125,7 @@ describe('the build command', () => {
       '[gen-search-index]',
       '[site-format] formatted',
       '[site-assets]',
-      '[site-build] 7 gate(s)',
+      '[site-build] 8 gate(s)',
     ];
     let last = -1;
     for (const marker of markers) {
@@ -133,7 +133,7 @@ describe('the build command', () => {
       expect(i, `no line after line ${last + 1} says ${String(marker)}`).toBeGreaterThan(last);
       last = i;
     }
-    // The seven site gates, each once, all after the post-build passes.
+    // The eight site gates, each once, all after the post-build passes.
     const gates = lines.map((l, i) => [l, i] as const).filter(([l]) => GATE_LINE.test(l));
     expect(gates.map(([l]) => (GATE_LINE.exec(l) as RegExpExecArray)[1]).sort()).toEqual([
       'site-absence',
@@ -143,6 +143,7 @@ describe('the build command', () => {
       'site-links',
       'site-parity',
       'site-portable',
+      'site-seo',
     ]);
     for (const [, i] of gates) expect(i).toBeGreaterThan(last);
 

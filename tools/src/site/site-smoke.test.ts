@@ -84,9 +84,9 @@ function fakeNet(routes: Routes): { net: Net; calls: string[]; sleeps: number[] 
 // what the site holds when it is right
 // ---------------------------------------------------------------------------
 
-const ROOT = 'https://site.test/patterns-kb/';
+const ROOT = 'https://site.test/software-design-atlas/';
 /** The path the root is served under. */
-const AT = '/patterns-kb/';
+const AT = '/software-design-atlas/';
 
 const text = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
@@ -146,7 +146,7 @@ const RECORD_SCHEMA_ROUTE = route(`schema/${SCHEMA_BASES.record}.json`);
 function liveSite(over: Routes = {}): Routes {
   return {
     [INDEX_ROUTE]: { body: INDEX },
-    [route('llms.txt')]: { type: 'text/plain; charset=utf-8', body: '# patterns-kb\n\n- [Circuit breaker](patterns/distributed/resilience/circuit-breaker.html)\n' },
+    [route('llms.txt')]: { type: 'text/plain; charset=utf-8', body: '# software-design-atlas\n\n- [Circuit breaker](patterns/distributed/resilience/circuit-breaker.html)\n' },
     [INDEX_SCHEMA_ROUTE]: { body: text(INDEX_SCHEMA) },
     [RECORD_SCHEMA_ROUTE]: { body: text(RECORD_SCHEMA) },
     [RECORD_ROUTE]: { body: RECORD },
@@ -409,7 +409,7 @@ describe('site-smoke', () => {
     expect(found(empty.r)).toEqual([`[site-smoke] FAIL: ${ROOT}llms.txt is empty`]);
 
     // Markdown is text too; a page and JSON are not what a reader of llms.txt asked for.
-    const markdown = await check(liveSite({ [route('llms.txt')]: { type: 'text/markdown', body: '# patterns-kb\n' } }));
+    const markdown = await check(liveSite({ [route('llms.txt')]: { type: 'text/markdown', body: '# software-design-atlas\n' } }));
     expectPass(markdown.r);
     const html = await check(liveSite({ [route('llms.txt')]: { type: 'text/html; charset=utf-8', body: '<h1>home</h1>' } }));
     expect(found(html.r)).toEqual([`[site-smoke] FAIL: ${ROOT}llms.txt is served as "text/html; charset=utf-8", not as plain text`]);
@@ -419,7 +419,7 @@ describe('site-smoke', () => {
 
   it('fails a missing path that answers 200', async () => {
     // A host that falls back to the home page answers 200 to every path it lacks.
-    const fallback: Reply = { type: 'text/html; charset=utf-8', body: '<!doctype html><h1>patterns-kb</h1>' };
+    const fallback: Reply = { type: 'text/html; charset=utf-8', body: '<!doctype html><h1>software-design-atlas</h1>' };
     const { r } = await check({ ...liveSite(), '*': fallback });
     expectFail(r);
     expect(found(r)).toEqual([
@@ -461,7 +461,7 @@ describe('site-smoke', () => {
   });
 
   it('reads a root without its trailing slash, and drops a query or fragment from it', async () => {
-    const { r, calls } = await check(liveSite(), ['--url', 'https://site.test/patterns-kb?x=1#top', '--index-sha', INDEX_SHA]);
+    const { r, calls } = await check(liveSite(), ['--url', 'https://site.test/software-design-atlas?x=1#top', '--index-sha', INDEX_SHA]);
     expectPass(r);
     expect(r.out).toContain(`[site-smoke] ${ROOT} answers:`);
     expect(calls[0]).toBe(`${ROOT}index.json?build=${INDEX_SHA}`);
@@ -472,7 +472,7 @@ describe('site-smoke', () => {
     expectMisuse(r);
     expect(r.out).toBe('');
     expect(found(r)).toEqual([
-      '[site-smoke] --url is required: the published root of the site, such as https://odere-pro.github.io/patterns-kb/',
+      '[site-smoke] --url is required: the published root of the site, such as https://odere-pro.github.io/software-design-atlas/',
       'usage: site-smoke --url <published root> [--index-sha <sha256 of the built index.json>]',
     ]);
     expect(calls).toEqual([]);
@@ -480,7 +480,7 @@ describe('site-smoke', () => {
 
   it('exits 2 for an address that is not http or https, a fingerprint that is not a sha256 and an unknown flag', async () => {
     const wrong: [readonly string[], string][] = [
-      [['--url', 'patterns-kb'], '--url "patterns-kb" is not an address'],
+      [['--url', 'software-design-atlas'], '--url "software-design-atlas" is not an address'],
       [['--url', 'ftp://site.test/'], '--url "ftp://site.test/" is not an http or https address'],
       [['--url', ROOT, '--index-sha', ''], '--index-sha "" is not a sha256: 64 lower-case hex digits'],
       [['--url', ROOT, '--index-sha', INDEX_SHA.toUpperCase()], 'is not a sha256: 64 lower-case hex digits'],

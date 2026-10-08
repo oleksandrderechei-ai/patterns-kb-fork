@@ -40,7 +40,7 @@ git config core.hooksPath .githooks
 ### Build
 
 `make site-build` runs lint, the site's unit tests, the generators, the type check and Astro,
-then the post-build passes, then the seven site gates. From nothing (`make site-clean` first) it
+then the post-build passes, then the eight site gates. From nothing (`make site-clean` first) it
 takes about two minutes. It ends with one line per gate and a total:
 
 | Gate line | What it proves |
@@ -51,9 +51,10 @@ takes about two minutes. It ends with one line per gate and a total:
 | Site accessibility floor | the static checks: `lang`, one H1 first, named graphics, focus rings, and page chrome under 80% of the page |
 | Site noise and data layer | the formatter's fixed point, one script and one stylesheet per page, facts only on class-free data blocks |
 | Site accessibility in a browser | axe-core over every page in Chromium, in both themes |
+| Site search facts | no two pages share a title, every meta description fits a search result, each page's canonical link, `og:url` and JSON-LD `url` are one address under the published root, its `og:image` file exists, and the sitemap lists exactly the pages open to search |
 | Site size budget | every page, the bundle, the search payload, the manifest, every record, `graph.json`, `llms.txt` and `llms-full.txt` inside the sizes in `BUDGETS` (`tools/src/gates/check-site-budget.ts`); what a host adds is in [Hosting the site](hosting-the-site.md) |
 
-A clean build ends `✓ 7 gates, no findings`. A red line names the page and the fix, and the
+A clean build ends `✓ 8 gates, no findings`. A red line names the page and the fix, and the
 command exits non-zero, but `site/dist/` is still written, so you can open what failed.
 
 ### Open it the way an offline reader does

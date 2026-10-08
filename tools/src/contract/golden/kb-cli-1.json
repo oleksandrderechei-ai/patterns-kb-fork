@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://odere-pro.github.io/patterns-kb/schema/kb-cli-1.json",
+  "$id": "https://odere-pro.github.io/software-design-atlas/schema/kb-cli-1.json",
   "title": "kb.mjs read commands: --json output (kb-cli/1)",
   "description": "The --json output of the kb.mjs read commands, contract kb-cli/1: find, ls, get, brief, related, backlinks, refs, validate and resolve. Each command has one definition under $defs, named for it: check an output against #/$defs/<command>. The two commands that print one document of their own, record and graph, are kb-record-1.json and kb-graph-1.json. Objects are open, so a later release can add a key and stay in kb-cli/1; ignore keys you do not know. Renaming, removing or retyping a key, or changing the order of what a command prints, would be kb-cli/2, published beside this file. On relation rows read `verb`: `type` (and `rel` in refs) repeat it for old readers and are deprecated aliases. A failed call writes one line to stderr and nothing to stdout, so no definition covers an error; validate and resolve exit 1 when they find a problem and still print, since their findings are the answer.",
   "$defs": {

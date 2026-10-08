@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://odere-pro.github.io/patterns-kb/schema/kb-graph-1.json",
+  "$id": "https://odere-pro.github.io/software-design-atlas/schema/kb-graph-1.json",
   "title": "The link graph of the knowledge base (kb-graph/1)",
   "description": "Every page of the patterns knowledge base and every typed link between pages in one JSON document, contract kb-graph/1. `kb.mjs graph` prints it, and the site serves the same bytes as graph.json. Read it to plan a walk over the knowledge base; read a page's record (`nodes[].record`) for the page itself. Every key is always there. Keys come in the order this file lists them, and the document is two-space JSON with one newline at the end, so two builds of the same pages are byte for byte equal. Adding a key stays in kb-graph/1, so ignore keys you do not know; renaming, removing or retyping a key, or changing an order, would be kb-graph/2, published beside this file. ORDER: `verbs` in the content model's order; `nodes` as `kb.mjs ls` lists the pages, by kind and then in reading order; `edges` in the order of docs/data/relations.json; `tours` in learning-path order, each tour's stages in stage order; `mentions` by the page they are from, in the order of `nodes`, and within a page in order of first mention. EDGES: each edge is written once, from the page `a`, which reads `verb`; the page `b` reads `inverse`. Both pages' records list the edge, `a`'s with `verb` and `b`'s with `inverse`, and both rows carry the same `edge` {a, verb, b}. A symmetric verb (combines-with, alternative-to, often-confused-with) is its own inverse. Notes are markdown inline text whose links are relative to the page on that side. A tour stage whose route names no page is left out.",
   "type": "object",
   "properties": {
-    "$schema": { "type": "string", "const": "https://odere-pro.github.io/patterns-kb/schema/kb-graph-1.json", "description": "The address of this schema, so a reader that holds a graph can fetch what its keys mean." },
+    "$schema": { "type": "string", "const": "https://odere-pro.github.io/software-design-atlas/schema/kb-graph-1.json", "description": "The address of this schema, so a reader that holds a graph can fetch what its keys mean." },
     "contract": { "type": "string", "const": "kb-graph/1", "description": "The contract and its major version: `kb-graph/1`. A reader that knows only this one refuses any other value." },
     "verbs": { "type": "array", "items": { "$ref": "#/$defs/verb" }, "description": "The relation verbs the knowledge base uses, each with the verb the other page reads." },
     "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" }, "description": "Every page, in the order `kb.mjs ls` lists them." },

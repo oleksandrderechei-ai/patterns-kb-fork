@@ -12,7 +12,7 @@ source: docs/data/gates.json
 
 # Check gates
 
-A **check gate** is one automatic answer to "is this still true?". There are 48 of them,
+A **check gate** is one automatic answer to "is this still true?". There are 49 of them,
 and every one keeps the same contract: exit 0 with one summary line, exit 1 with one
 finding per line on stderr, exit 2 on misuse.
 
@@ -111,6 +111,7 @@ left to tell you.
 | [Site accessibility floor](#site-accessibility) | `make` · `validate.yml` | Every built page holds the accessibility floor markup can answer without a browser (spec kb.noise.accessibility, static-floor): a language on the root, one h1 with no heading before it, aria references that resolve, options inside a listbox, an alt on every image, a name on every graphic that is not hidden, an outline on every hub, a focus ring on every kb control, and page text that is not mostly chrome (80 percent, with a reasoned allowlist that ships empty, and a measured warning band from 70 percent whose page count may not rise above the bandMax in docs/data/allow/site-a11y.json). |
 | [Site accessibility in a browser](#site-axe) | `make` · `validate.yml` | Every built page, opened from disk in headless Chromium in both themes, has no WCAG 2.1 A or AA violation axe-core finds, contrast above all (spec kb.noise.accessibility, browser-floor). The waiver list ships empty; with no browser installed the gate opens nothing, says so and exits 0, unless KB_REQUIRE_BROWSER=1 is set (CI's site job sets it), when the missing browser is a finding. |
 | [Site size budget](#site-budget) | `make` · `validate.yml` | The built site stays inside the sizes it was measured at: any page's HTML raw and gzipped, a tighter raw bound on a page that is not a case study and on a hub, the bundle, the search payload and the manifest raw and gzipped, every record, graph.json, llms.txt and llms-full.txt raw and gzipped, the blocking stylesheets of a page, the gzipped bytes before a page's first render, and the files a page asks for. Every number is in the BUDGETS constant of tools/src/gates/check-site-budget.ts beside the value it was set from. |
+| [Site search facts](#site-seo) | `make` · `validate.yml` | What a search engine and a link preview read off every built page holds together: no two pages share a title, every page has a meta description of at most 160 characters, its canonical link, og:url and JSON-LD url are one address under the published root, its og:image names a file the build wrote, and the sitemap lists exactly the canonical address of every page that does not ask to stay out of search. Dates are not checked, since the site job's checkout is shallow. |
 | [Site reader flows](#site-e2e) | `make` · `validate.yml` | What a reader does on the built site works in a real browser, from disk and from a server, at a desktop and a phone width: home to a hub to a page, the Start here tracks, the sidebar, search, the theme, favourites, practiced marks, hub filters, the prerequisite card, mentioned-by and next steps, the draft chip, the stack map page and its sidebar link, diagrams, code sketches and copy, the keyboard path and the phone menu. Its own run place after make site-build, never inside it; the skipped flows are pinned to docs/data/allow/site-e2e.json, so a new skip or a stale allowance is a finding; with no browser installed the gate runs nothing, says so and exits 0, unless KB_REQUIRE_BROWSER=1 is set (CI's site job sets it), when the missing browser is a finding. |
 | [Hook suite (bash)](#tests-bash) | `make` · `validate.yml` | The hooks under .claude/hooks keep their contract: the advisory names a command for each kind of owed work and says nothing otherwise, the guard denies only in command position, and both exit 0 on any input. Proven by tests/**/*.test.sh, run through tests/run.sh. |
 | [Gate suite (vitest)](#tests-vitest) | `make` · `validate.yml` | Every gate, generator and the driver prove pass, fail and misuse in a sandbox, and the suite's coverage stays at or above the floors in tools/vitest.config.ts. |
@@ -529,6 +530,15 @@ A protected branch requires the change workflow's gate-holding jobs in
 - **Run it:** `node_modules/.bin/tsx tools/src/gates/check-site-budget.ts`
 - **Fix:** `make site-build first. The finding names the file, its size, the budget and the part that grew most: trim that part. Raise a number in BUDGETS only with a new measurement written beside it.`
 - **Triage:** [docs/reference/triage.md#site-size-budget](triage.md#site-size-budget)
+
+### <a id="site-seo"></a>Site search facts
+
+- **Protects:** What a search engine and a link preview read off every built page holds together: no two pages share a title, every page has a meta description of at most 160 characters, its canonical link, og:url and JSON-LD url are one address under the published root, its og:image names a file the build wrote, and the sitemap lists exactly the canonical address of every page that does not ask to stay out of search. Dates are not checked, since the site job's checkout is shallow.
+- **Runs:** `make` · `validate.yml` — step `Site search facts`
+- **Needs:** `node`
+- **Run it:** `node_modules/.bin/tsx tools/src/gates/check-site-seo.ts`
+- **Fix:** `make site-build first. A shared title is the page's own title plus its kind's word (site/src/lib/page-title.ts): rename one page at its source under docs/. A missing or long description is fixed where it is written, the page's frontmatter or its hub row in docs/data/site-structure.json. An address that disagrees comes from the post-build pass (tools/src/site/site-portable.ts) or the JSON-LD (site/src/lib/page-meta.ts).`
+- **Triage:** [docs/reference/triage.md#site-search-facts](triage.md#site-search-facts)
 
 ### <a id="site-e2e"></a>Site reader flows
 

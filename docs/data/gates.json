@@ -925,6 +925,24 @@
       "runbook": "docs/reference/triage.md#site-size-budget"
     },
     {
+      "id": "site-seo",
+      "name": "Site search facts",
+      "protects": "What a search engine and a link preview read off every built page holds together: no two pages share a title, every page has a meta description of at most 160 characters, its canonical link, og:url and JSON-LD url are one address under the published root, its og:image names a file the build wrote, and the sitemap lists exactly the canonical address of every page that does not ask to stay out of search. Dates are not checked, since the site job's checkout is shallow.",
+      "command": "node_modules/.bin/tsx tools/src/gates/check-site-seo.ts",
+      "wired": "node_modules/.bin/tsx tools/src/gates/check-site-seo.ts",
+      "local_command": "node_modules/.bin/tsx tools/src/gates/check-site-seo.ts",
+      "local_target": "site-build",
+      "positional": false,
+      "fixable": false,
+      "scans": ["site/**", "docs/**", "tools/src/site/**", "tools/src/lib/**", "tools/src/gates/check-site-seo.ts"],
+      "runs": ["local", "ci"],
+      "ci_job": "site",
+      "ci_step": "Site search facts",
+      "requires": ["node"],
+      "fix": "make site-build first. A shared title is the page's own title plus its kind's word (site/src/lib/page-title.ts): rename one page at its source under docs/. A missing or long description is fixed where it is written, the page's frontmatter or its hub row in docs/data/site-structure.json. An address that disagrees comes from the post-build pass (tools/src/site/site-portable.ts) or the JSON-LD (site/src/lib/page-meta.ts).",
+      "runbook": "docs/reference/triage.md#site-search-facts"
+    },
+    {
       "id": "site-e2e",
       "name": "Site reader flows",
       "protects": "What a reader does on the built site works in a real browser, from disk and from a server, at a desktop and a phone width: home to a hub to a page, the Start here tracks, the sidebar, search, the theme, favourites, practiced marks, hub filters, the prerequisite card, mentioned-by and next steps, the draft chip, the stack map page and its sidebar link, diagrams, code sketches and copy, the keyboard path and the phone menu. Its own run place after make site-build, never inside it; the skipped flows are pinned to docs/data/allow/site-e2e.json, so a new skip or a stale allowance is a finding; with no browser installed the gate runs nothing, says so and exits 0, unless KB_REQUIRE_BROWSER=1 is set (CI's site job sets it), when the missing browser is a finding.",

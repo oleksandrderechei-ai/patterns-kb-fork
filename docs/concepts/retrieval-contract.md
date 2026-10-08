@@ -34,7 +34,7 @@ A page has one JSON shape, the record, and five things hold for it.
 
 ## The surfaces
 
-The site is at `https://odere-pro.github.io/patterns-kb/`. Each page's files sit beside its
+The site is at `https://odere-pro.github.io/software-design-atlas/`. Each page's files sit beside its
 `.html`: `circuit-breaker.html` has `circuit-breaker.md` and `circuit-breaker.json` next to it.
 
 | What | Get it with | Schema | Notes |

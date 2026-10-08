@@ -155,7 +155,7 @@ export function paritySite(): ParitySite {
     dist.set('graph.json', files.graph);
     dist.set(
       'index.json',
-      `${JSON.stringify({ $schema: 'https://odere-pro.github.io/patterns-kb/schema/kb-index-1.json', contract: 'kb-index/1', generator: 'tools/src/site/site-portable.ts', pages: entries }, null, 2)}\n`,
+      `${JSON.stringify({ $schema: 'https://odere-pro.github.io/software-design-atlas/schema/kb-index-1.json', contract: 'kb-index/1', generator: 'tools/src/site/site-portable.ts', pages: entries }, null, 2)}\n`,
     );
     const repo = new Map<string, string>([[DATA.model, sb.read(DATA.model)]]);
     for (const s of files.schemas) repo.set(`${SCHEMA_DIR}/${s.name}`, s.bytes.toString('utf8'));

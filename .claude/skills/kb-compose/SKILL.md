@@ -1,6 +1,6 @@
 ---
 name: kb-compose
-description: "Compose a component-level solution from patterns-kb: from one sub-problem's FRs, NFRs and CAP stance, return the minimal pattern set with adopted, rejected and deferred verdicts and cited ids. Use when asked to \"design this component\", \"make this part resilient\", or \"which patterns satisfy these requirements\". Not for a whole system (sys-design)."
+description: "Compose a component-level solution from the KB: from one sub-problem's FRs, NFRs and CAP stance, return the minimal pattern set with adopted, rejected and deferred verdicts and cited ids. Use when asked to \"design this component\", \"make this part resilient\", or \"which patterns satisfy these requirements\". Not for a whole system (sys-design)."
 ---
 
 # Composing a component from the KB

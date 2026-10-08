@@ -1,7 +1,7 @@
-# patterns-kb
+# [Software Design Atlas](.claude/rules/branding.md)
 
 A knowledge base of 255 software design patterns, 41 design case studies, 51 themes, 45
-hazards, 36 principles, 10 cloud capabilities and 10 product comparisons — 448 pages in all.
+hazards, 36 principles, 10 cloud capabilities and 10 product comparisons — 448 pages.
 **It is data that happens to render**, not a site that happens to hold data.
 
 > **Migrated** to markdown under `docs/` and an Astro site built from it. The migration is

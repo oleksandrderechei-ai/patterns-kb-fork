@@ -774,7 +774,7 @@
       "label": "Running it in production",
       "nestUnder": "themes",
       "hub": {
-        "description": "The design areas of an always-on workload, in the order you meet them: what contract the platform and the application hold each other to, what the pieces are, how they are bundled, how traffic reaches them, where state lives, how you know it is well, how you change it safely, and how you run it.",
+        "description": "The design areas of an always-on workload, in the order you meet them: its contract, pieces, packaging, traffic, state, health, safe change and running it.",
         "intro": "The design areas of an always-on workload, in the order you meet them: what contract the platform and the application hold each other to, what the pieces are, how they are bundled, how traffic reaches them, where state lives, how you know it is well, how you change it safely, and how you run it.",
         "tags": ["operations", "availability", "maintainability"]
       },

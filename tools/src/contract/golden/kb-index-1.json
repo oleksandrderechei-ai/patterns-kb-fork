@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://odere-pro.github.io/patterns-kb/schema/kb-index-1.json",
+  "$id": "https://odere-pro.github.io/software-design-atlas/schema/kb-index-1.json",
   "title": "The page index of the site (kb-index/1)",
   "description": "Every page the site built, in one JSON document served as index.json, contract kb-index/1. Read it to find a page and what sits beside it: a page of the knowledge base names its record (kb-record/1), the typed JSON copy of the page, and every page that has a markdown source names that too. The index lists the pages and carries no page text. Every key is always there, except `markdown` on a page that has no markdown source. Keys come in the order this file lists them, and the document is two-space JSON with one newline at the end, so two builds of the same pages are byte for byte equal. Adding a key stays in kb-index/1, so ignore keys you do not know; renaming, removing or retyping a key, or changing an order, would be kb-index/2, published beside this file. ORDER: `pages` has the home page first, then the pages by area in the order of the site's structure file, then by route. WHICH PAGES: every built page is listed. A page of the knowledge base has values in `id`, `kind`, `band`, `group` and `record`; every other page (a hub, the home page, a map, reference or concept page) holds null in those five keys. An address that the index does not list as a `record` has no record, and a request for it is not a 200.",
   "type": "object",
   "properties": {
-    "$schema": { "type": "string", "const": "https://odere-pro.github.io/patterns-kb/schema/kb-index-1.json", "description": "The address of this schema, so a reader that holds the index can fetch what its keys mean." },
+    "$schema": { "type": "string", "const": "https://odere-pro.github.io/software-design-atlas/schema/kb-index-1.json", "description": "The address of this schema, so a reader that holds the index can fetch what its keys mean." },
     "contract": { "type": "string", "const": "kb-index/1", "description": "The contract and its major version: `kb-index/1`. A reader that knows only this one refuses any other value." },
     "generator": { "type": "string", "description": "The program that wrote the file: tools/src/site/site-portable.ts." },
     "pages": { "type": "array", "items": { "$ref": "#/$defs/page" }, "description": "Every built page, the home page first, then by area in structure order, then by route." }

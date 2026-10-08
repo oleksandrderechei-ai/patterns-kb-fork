@@ -98,7 +98,7 @@ describe('the header', () => {
     const r = recordOf(corpus, 'breaker');
     expect(Object.keys(r)).toEqual(KEYS);
     expect(r).toMatchObject({
-      $schema: 'https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json',
+      $schema: 'https://odere-pro.github.io/software-design-atlas/schema/kb-record-1.json',
       contract: 'kb-record/1',
       scope: null,
       id: 'breaker',
@@ -445,7 +445,7 @@ describe('graphOf', () => {
   it('opens with its schema and its contract, the verbs of the content model and every page in listing order', () => {
     const g = graph();
     expect(Object.keys(g)).toEqual(['$schema', 'contract', 'verbs', 'nodes', 'edges', 'tours', 'mentions']);
-    expect(g.$schema).toBe('https://odere-pro.github.io/patterns-kb/schema/kb-graph-1.json');
+    expect(g.$schema).toBe('https://odere-pro.github.io/software-design-atlas/schema/kb-graph-1.json');
     expect(g.contract).toBe('kb-graph/1');
     expect(g.verbs).toHaveLength(19);
     expect(g.verbs[0]).toEqual({ id: 'combines-with', label: 'Combines with', inverse: 'combines-with', symmetric: true });
@@ -578,8 +578,8 @@ describe('resolveRefs', () => {
       '/patterns/distributed/resilience/breaker.html',
       'patterns/distributed/resilience/breaker.html',
       '/patterns/distributed/resilience/breaker.md',
-      'https://odere-pro.github.io/patterns-kb/patterns/distributed/resilience/breaker.html',
-      'https://odere-pro.github.io/patterns-kb/patterns/distributed/resilience/breaker.md',
+      'https://odere-pro.github.io/software-design-atlas/patterns/distributed/resilience/breaker.html',
+      'https://odere-pro.github.io/software-design-atlas/patterns/distributed/resilience/breaker.md',
       './breaker.md',
       'https://example.test/anywhere/breaker.html?utm=1',
     ];

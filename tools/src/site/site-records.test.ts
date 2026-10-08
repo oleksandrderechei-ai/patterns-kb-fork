@@ -98,7 +98,7 @@ describe('llms.txt', () => {
 
   it('opens with the site’s name, a one-line summary and a paragraph on the files beside each page', () => {
     expect(lines.slice(0, 5)).toEqual([
-      '# Patterns KB',
+      '# Software Design Atlas',
       '',
       '> Software design patterns, hazards, themes, principles, case studies, capabilities and comparisons, as markdown for people and JSON for programs.',
       '',

@@ -121,12 +121,16 @@ describe('the published root', () => {
     siteSandbox(sb);
     expectBuilt(buildSite(sb));
     const root = publicRoot().href;
-    expect(root).toBe('https://odere-pro.github.io/patterns-kb/');
+    expect(root).toBe('https://odere-pro.github.io/software-design-atlas/');
     const html = sb.read('site/dist/hazards/gamma.html');
     const canonical = [...tags(html)].find((t) => t.name === 'link' && attrValue(parseAttrs(t.source), 'rel') === 'canonical');
     expect(attrValue(parseAttrs((canonical as { source: string }).source), 'href')).toBe(`${root}hazards/gamma.html`);
     const og = [...tags(html)].find((t) => t.name === 'meta' && attrValue(parseAttrs(t.source), 'property') === 'og:url');
     expect(attrValue(parseAttrs((og as { source: string }).source), 'content')).toBe(`${root}hazards/gamma.html`);
+    const block = /<script[^>]*type="application\/ld\+json"[^>]*>([^]*?)<\/script>/.exec(html)?.[1] ?? '{}';
+    const ld = JSON.parse(block) as { url?: string; mainEntityOfPage?: { '@id'?: string } };
+    expect(ld.url).toBe(`${root}hazards/gamma.html`);
+    expect(ld.mainEntityOfPage?.['@id']).toBe(ld.url);
     const sitemaps = fs.readdirSync(path.join(sb.dir, 'site/dist')).filter((f) => /^sitemap.*\.xml$/.test(f));
     expect(sitemaps.length).toBeGreaterThan(0);
     const locs = sitemaps.flatMap((f) => [...sb.read(`site/dist/${f}`).matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) => m[1] as string));

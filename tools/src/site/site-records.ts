@@ -44,6 +44,7 @@ import { CONTRACTS, SCHEMA_BASES, schemaDir } from '../contract/contract.js';
 import { Corpus, DATA, KbError } from '../kb/corpus.js';
 import { graphOf, recordOf } from '../kb/record.js';
 import { serialize } from '../lib/kb-record.js';
+import { SITE_NAME } from './site-output.js';
 
 /** A kind of page as the content model names it: its id, and the folder it sits in, which is its plural. */
 export interface KindName {
@@ -152,7 +153,7 @@ const CONTRACT_LINKS: readonly (readonly [file: string, what: string])[] = [
 
 /** The words above the first list of llms.txt. */
 const LLMS_OPENING = [
-  '# Patterns KB',
+  `# ${SITE_NAME}`,
   '',
   '> Software design patterns, hazards, themes, principles, case studies, capabilities and comparisons, as markdown for people and JSON for programs.',
   '',

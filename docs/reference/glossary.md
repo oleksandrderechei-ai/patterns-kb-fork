@@ -12,7 +12,7 @@ source: docs/data/glossary.json
 
 # Glossary
 
-One word per idea, and one place to change it: 88 terms, 21 banned phrasings.
+One word per idea, and one place to change it: 89 terms, 23 banned phrasings.
 
 This page is built from [`glossary.json`](../data/glossary.json): to change a word, edit the data
 file and run `make glossary`. **Glossary reference in sync** fails when the page and the data disagree.
@@ -582,6 +582,13 @@ keeps in other people's words. A line that must name one, as this page does, car
 - **Don't say:** derived class · derived type <!-- vocab-ok -->
 - **Why:** A class that extends another and inherits its members.
 - **Owner:** Oleksandr Derechei · **See:** [computed](#word-computed)
+
+### <a id="word-software-design-atlas"></a>Software Design Atlas
+
+- **Say:** Software Design Atlas — also fine: the Atlas · the KB
+- **Don't say:** Patterns KB · patterns-kb <!-- vocab-ok -->
+- **Why:** The project's name, in full at its first mention and "the Atlas" after it; "the KB" stays the plain noun for the knowledge base. An old name appears only inside a code span that records the history ([branding.md](../../.claude/rules/branding.md)).
+- **Owner:** Oleksandr Derechei
 
 ## Next steps
 

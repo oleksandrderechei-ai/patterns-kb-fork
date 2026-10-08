@@ -1,6 +1,6 @@
 export const meta = {
   name: 'kb-improve-batch',
-  description: 'Improve a batch of patterns-kb pages: six persona reviewers → one edit plan → kb-author, per page',
+  description: 'Improve a batch of KB pages: six persona reviewers → one edit plan → kb-author, per page',
   whenToUse: 'An unattended kb-improve run over an id list, only when the owner asks for a workflow by name. It applies each plan without the judging the kb-improve skill does between hand-offs, so the interactive skill is the default. The caller resolves the ids first and runs make gen, make validate, the commits and the pull request after.',
   phases: [
     { title: 'Review', detail: 'one kb-persona-reviewer per reader per page' },
@@ -136,7 +136,7 @@ ${JSON.stringify(reviews, null, 1)}
 Hard rules, which no severity overrides: never reorder, renumber or delete an existing list item (fix in place or append; delete only a claim shown false, and name it as a citation break); no fabrication (every added name or number appears in noFabricationCheck with its source, or the edit is dropped); generated blocks (relationships, tour, fluency) and hubs are never edited, an edge changes through link or unlink only; the gate limits hold (frontmatter description ≤160 chars, description block ≤80 words, explain 60–180 words with 2–4 costs of ≤25 words and an example ≤120 words, solves 3–5 phrases of ≤20 words, 2–5 closed-set tags, exactly three selfcheck questions, bold never italic, no glossary avoid-list word). Each edit's instruction must be something kb-author can run as written: the kb.mjs writer command with its arguments, or the exact prose to put in place of the anchored text.`,
   withModel({ label: `${id}:synthesize`, phase: 'Synthesize', agentType: 'kb-persona-reviewer', schema: PLAN_SCHEMA }))
 
-const apply = (id, plan) => agent(`Apply this edit plan to one patterns-kb page, ${id}, and nothing else. Read .claude/rules/markdown-authoring.md first. Read the page only through \`node scripts/kb.mjs get ${id} --block <b>\`; open the file only to edit block prose.
+const apply = (id, plan) => agent(`Apply this edit plan to one KB page, ${id}, and nothing else. Read .claude/rules/markdown-authoring.md first. Read the page only through \`node scripts/kb.mjs get ${id} --block <b>\`; open the file only to edit block prose.
 
 Edits, in order:
 ${JSON.stringify(plan.edits, null, 1)}

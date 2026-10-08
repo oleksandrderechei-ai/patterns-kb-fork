@@ -1,6 +1,6 @@
 ---
 name: kb-find
-description: "Find the right design pattern for a problem and answer with patterns-kb citations, without loading the corpus. Use when someone describes a symptom ('my thread pool is exhausted'), asks which pattern fits, or how two differ. Not for discussing one page (kb-discuss), reviewing it (kb-design-review) or composing a design (kb-compose)."
+description: "Find the right design pattern for a problem and answer with KB citations, without loading the corpus. Use when someone describes a symptom ('my thread pool is exhausted'), asks which pattern fits, or how two differ. Not for discussing one page (kb-discuss), reviewing it (kb-design-review) or composing a design (kb-compose)."
 ---
 
 # Finding a pattern for a problem
