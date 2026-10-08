@@ -14489,6 +14489,13 @@
       "b": "inverted-index",
       "note_a": "name matching rides a full-text inverted index, not a B-tree scan",
       "note_b": "the name leg of a three-filter local search: match, geo and category in one query"
+    },
+    {
+      "a": "google-news",
+      "verb": "exposed-to",
+      "b": "cache-stampede",
+      "note_a": "The baseline TTL expires a hot region's feed and every reader misses at once.",
+      "note_b": "A design whose TTL baseline expires a hot region's feed at once; CDC precompute removes the expiry."
     }
   ],
   "group_order": {

@@ -27,7 +27,7 @@ A news aggregator stores no articles, only an index of them, and keeps each regi
 - **Publisher-bound freshness.** Pushes arrive in seconds but polling takes minutes, so poll big publishers every 5 to 10 minutes.
 - **Category pairs.** Caching every category and region pair multiplies entries, so filter categories in memory instead.
 
-**Example.** A breaking story puts 10 million readers in one region. One Redis instance serves about 100,000 requests a second, so 10,000,000 / 100,000 = 100 read copies of that region's list. Each copy holds about 2,000 articles, a few megabytes. A publisher posts a new article: a worker adds it to the list and trims it back to 2,000, and a reader's next page of 20 is one lookup under 5 ms. The database sees none of the 10 million reads.
+**Example.** A breaking story puts 10 million readers in one region, each fetching about one page a second. One Redis instance serves about 100,000 requests a second, so 10,000,000 / 100,000 = 100 read copies of that region's list. Each copy holds about 2,000 articles, a few megabytes. A publisher posts a new article: a worker adds it to the list and trims it back to 2,000, and a reader's next page of 20 is one lookup under 5 ms. The database sees none of the 10 million reads.
 
 ## Requirements
 <!--meta block=requirements-->
@@ -52,13 +52,13 @@ Out of scope: interest-based customisation, saving articles, and social sharing 
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Reads.** 100M DAU (daily active users) refreshing 5–10 times a day is 0.5–1B feed requests/day ≈ **~11,500 req/s** on average. News is bursty, though, and the number that actually sizes the system is the breaking-news peak the brief hands us: **~10M concurrent readers in a single hot region**. Everything hangs off surviving that.
+**Reads.** 100M DAU (daily active users) refreshing 5–10 times a day is 0.5–1B feed requests/day ≈ **5,800–11,500 req/s** on average. News is bursty, so the breaking-news peak of **~10M concurrent readers in one region** sizes the system.
 
-**Writes.** Across thousands of publishers, even a busy news hour yields only 50–100 new articles — a handful of writes per second. Reads outrun writes by roughly a million to one, which is the whole reason the design is built around a read cache rather than a fast database.
+**Writes.** Across thousands of publishers, even a busy news hour yields only 50–100 new articles, which is 0.014–0.028 writes a second. Reads outrun writes by roughly 200,000 to 800,000 to one (5,800 ÷ 0.028 up to 11,500 ÷ 0.014), so the design is built around a read cache, not a fast database.
 
-**Working set.** A reader only ever sees the top of the feed, so what has to be fast is the last **~1,000–2,000 articles per region**, not the whole archive. As sorted article ids plus light metadata that is a few megabytes per region — it fits in memory comfortably, no sharding required.
+**Working set.** A reader only ever sees the top of the feed, so what has to be fast is the last **~1,000–2,000 articles per region**, not the whole archive. As sorted article ids plus light metadata that is a few megabytes per region — it fits in memory, no sharding required.
 
-**Cache fan-out.** One Redis instance serves on the order of **~100k req/s**. To absorb 10M concurrent readers in a peak region you need roughly 10M ÷ 100k ≈ 100 replicas of that region's feed — a read-throughput problem, not a storage one, since the data itself is tiny.
+**Cache fan-out.** One Redis instance serves on the order of **~100k req/s**. Assume each reader fetches one page a second, so peak is ~10M req/s; at ~100k req/s per instance that is 10M ÷ 100k ≈ 100 replicas of that region's feed. A reader who refreshes every 10 s would need ~10. This is a read-throughput problem, not a storage one, since the data itself is tiny.
 
 ## Core entities
 <!--meta block=entities-->
@@ -135,13 +135,13 @@ Offset pagination (`OFFSET (page-1)*limit`) is the obvious first move and it qui
 
 At 0.5–1B feed requests a day, a per-request database query — filter millions of articles by region, sort by time, paginate — will blow the latency budget even with perfect indexing. The fix is to stop querying on read and serve a precomputed feed from memory.
 
-- **TTL cache-aside.** Cache each region's feed in a Redis sorted set (`feed:US`) with, say, a 30-minute TTL (time to live); on a miss, query the store, populate, return. This is [cache-aside](../patterns/caching/cache-aside.md), and it has two problems. Up to 30 minutes of staleness fights the freshness goal, and — worse — when a hot region's entry expires, every concurrent request misses at once and stampedes the database, a [thundering herd](../hazards/thundering-herd.md) that degrades latency for minutes at a time.
-- **CDC-driven precompute (chosen).** Drop the TTL and keep the feed continuously fresh instead. When ingestion writes an article, a change-data-capture event reaches the Feed Generation Workers, which `ZADD` it (score = the monotonic article id, which already encodes publish order) into every affected regional set and then `ZREMRANGEBYRANK` to trim back to the recent ~1–2k — bounding memory without any TTL. Reads become a pure `ZREVRANGE` in under 5&nbsp;ms, freshness is measured in seconds, and there is no expiry to stampede. The cost is a real pipeline (CDC, a queue, workers) to operate and a rebuild path for when a worker or cache falls over.
+- **TTL cache-aside.** Cache each region's feed in a Redis sorted set (`feed:US`) with, say, a 30-minute TTL (time to live); on a miss, query the store, populate, return. This is [cache-aside](../patterns/caching/cache-aside.md), and it has two problems. Up to 30 minutes of staleness fights the freshness goal, and — worse — when a hot region's entry expires, every concurrent request misses at once and stampedes the database, a [cache stampede](../hazards/cache-stampede.md) that degrades latency for minutes at a time.
+- **CDC-driven precompute (chosen).** Drop the TTL and keep the feed continuously fresh instead. When ingestion writes an article, a change-data-capture event reaches the Feed Generation Workers, which `ZADD` it (score = the article's numeric sequence id, which must fit in 53 bits because a Redis score is a double; a 128-bit ULID cannot be the score; member = the article id, with the body in a separate hash, so an edited article replaces rather than duplicates) into every affected regional set and then `ZREMRANGEBYRANK` to trim back to the recent ~1–2k — bounding memory without any TTL. Reads become a pure `ZREVRANGE` in under 5&nbsp;ms, freshness is measured in seconds, and there is no expiry to stampede. The cost is a real pipeline (CDC, a queue, workers) to operate and a rebuild path: re-read a region's newest ~2,000 articles from the store and ZADD them into a fresh set, while readers keep using the old one.
 
 ```python summary="Redis — maintain a regional feed, then read a page"
 # worker, on a CDC "new article" event
 for region in affected_regions(article):
-    ZADD  f"feed:{region}"  score=article.id  member=article_json
+    ZADD  f"feed:{region}"  score=article.id  member=article.id
     ZREMRANGEBYRANK  f"feed:{region}"  0  -2001   # keep newest ~2000
 
 # Feed Service, on GET /feed?region=US&cursor=ID
@@ -173,7 +173,7 @@ Baseline polling runs every 3–6 hours — fine for a magazine, useless for a f
 
 - **Tiered polling.** Poll by priority — major outlets every 5–10 minutes, mid-tier every 30, niche every few hours — and use ETags / `Last-Modified` to skip unchanged feeds. Cheap and unilateral, but still reactive: even 5-minute polling lags real time, and newer publishers may have no RSS at all.
 - **Intelligent scraping.** For publishers without a feed, crawl their homepage for new links via known selectors and a fingerprint set of seen URLs, then normalise into the same ingestion pipeline. A fallback, not a primary path — HTML changes break extractors, and it raises legal questions.
-- **Webhooks + fallback (chosen).** Flip pull to push: cooperating publishers `POST /webhooks/article-published` the instant they publish, authenticated by a shared secret. Content lands in feeds within ~30 seconds via the same CDC-to-cache path. It needs publisher buy-in, so it can't be rolled out unilaterally — hence the hybrid: webhooks for premium partners, frequent polling for cooperative feeds, scraping for the rest.
+- **Webhooks + fallback (chosen).** Flip pull to push: cooperating publishers `POST /webhooks/article-published` the instant they publish, authenticated by an HMAC signature over the body plus a timestamp check to reject replays. Ingestion dedupes by a hash of the canonical URL, so a polled and a pushed copy of one article become one. Content lands in feeds within ~30 seconds via the same CDC-to-cache path. It needs publisher buy-in, so it can't be rolled out unilaterally — hence the hybrid: webhooks for premium partners, frequent polling for cooperative feeds, scraping for the rest.
 
 ### 4 · Thumbnails without melting the origin
 
@@ -181,14 +181,14 @@ Only thumbnails render in-feed (the full story is on the publisher), but at 100M
 
 - **Blobs in the database.** Storing 20–50&nbsp;KB of image bytes per row alongside metadata bloats backups, evicts real query workload from memory, and collapses past a few thousand articles. A textbook example of what object storage exists to prevent — rejected outright.
 - **Simple Storage Service (S3) with direct links.** Downsize once, upload to object storage, store the URL; browsers load images directly, off the app tier. Better, but distant readers pay latency to a single region and there is one fixed size for every screen.
-- **Object storage + CDN, multiple sizes (chosen).** Keep object storage as origin, front it with a CDN (content delivery network), and generate a few sizes (mobile / desktop / retina) chosen client-side via `srcset`. Edge caching gives sub-200&nbsp;ms global loads and cuts origin requests by 90%+, so serving more variants costs less overall.
+- **Object storage + CDN, multiple sizes (chosen).** Keep object storage as origin, front it with a CDN (content delivery network), and generate a few sizes (mobile / desktop / retina) chosen client-side via `srcset`. With a high edge hit rate, edge caching cuts origin requests by an order of magnitude and keeps global loads fast, so serving more variants costs less overall.
 
 ### 5 · Surviving a breaking-news spike
 
 News consumption is inherently regional — Americans want US news, Europeans want EU news — which is the structural gift that makes 10M concurrent tractable. Deploy per region so each cluster handles only its own traffic; a spike in one region leaves the others at baseline. Then walk each tier under peak load:
 
 - **Feed Service.** One app server handles tens of thousands of connections, nowhere near 10M. Because instances are [stateless](../patterns/distributed/routing/stateless-service.md), they scale out horizontally behind a [load balancer](../patterns/distributed/routing/load-balancer.md) — [auto-scaling](../patterns/distributed/routing/autoscaling.md) groups spin instances up on CPU pressure and back down when the story cools.
-- **Cache tier.** This is the real scaling target, since it now absorbs essentially all read traffic. A region holds only ~2,000 articles, so a single master fits the whole dataset — no sharding needed. The axis is pure read throughput, solved by [replication](../patterns/distributed/coordination/replication.md): writes hit the master, reads fan out across a fleet of read replicas (~100 in a peak region), and Redis Sentinel promotes a replica if the master dies. Replication lag stays under ~200&nbsp;ms — invisible on a news feed.
+- **Cache tier.** This is the real scaling target, since it now absorbs essentially all read traffic. A region holds only ~2,000 articles, so a single master fits the whole dataset — no sharding needed. The axis is pure read throughput, solved by [replication](../patterns/distributed/coordination/replication.md): writes hit the master, reads fan out across a fleet of read replicas (~100 at one request per reader per second, see sizing), replicate through intermediate replicas so the master feeds only a few directly, and Redis Sentinel promotes a replica if the master dies. Replication lag is usually well under a second; a failover can lose the last few writes, which the rebuild path repairs.
 - **Database.** Never in the read path once the cache is precomputed, so it never sees 10M concurrent reads at all — the cache shields it entirely.
 
 ```mermaid caption="How does one region's cache tier absorb ~10M concurrent readers without sharding? Replicate the single master, fan reads across replicas."
@@ -216,7 +216,7 @@ Two common extensions, and in both the tempting answer over-builds:
 <!--meta polarity=pro-->
 
 - A feed page is one in-memory sorted-set read (~5&nbsp;ms), so the 200&nbsp;ms budget holds even at a 10M-concurrent regional peak.
-- CDC keeps feeds fresh to within seconds and removes the TTL-expiry stampede that plagues cache-aside.
+- CDC keeps feeds fresh within seconds of ingestion (end to end, seconds for webhook publishers, 5–10 minutes for polled majors) and removes the TTL-expiry stampede that plagues cache-aside.
 - Ingestion and serving scale on independent axes — one batchy and write-light, the other spiky and read-heavy.
 - Regional deployment contains blast radius: a spike in one region never touches another's capacity.
 
@@ -241,6 +241,10 @@ Two common extensions, and in both the tempting answer over-builds:
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Cache Stampede](../hazards/cache-stampede.md) — The baseline TTL expires a hot region's feed and every reader misses at once.
 
 **Demonstrates**
 
