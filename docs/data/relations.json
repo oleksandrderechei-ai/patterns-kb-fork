@@ -14601,6 +14601,13 @@
       "b": "hot-key",
       "note_a": "A few viral videos take most views, so the writer that owns their counters cannot keep up; batching in the stream job absorbs them.",
       "note_b": "A skewed view stream concentrates writes on a few video counters."
+    },
+    {
+      "a": "web-crawler",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "When a per-domain rate-limit window resets, every waiting fetcher can retry in lockstep, so per-fetcher jitter spreads the retries.",
+      "note_b": "A crawler's per-domain rate limit releases all waiting fetchers at once when its window resets."
     }
   ],
   "group_order": {
