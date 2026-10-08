@@ -1273,7 +1273,7 @@
       "definition": "Remove races by giving each thread sole ownership of its data",
       "route": "/patterns/concurrency/thread-confinement.html",
       "requires": [],
-      "related": ["monitor-object", "reactor", "immutability", "mutex", "active-object", "lock-free"]
+      "related": ["monitor-object", "reactor", "immutability", "mutex", "active-object", "lock-free", "channels"]
     },
     {
       "id": "batching",
@@ -1337,7 +1337,7 @@
       "definition": "A typed pipe between goroutines or threads: one side sends, the other receives, and a full or empty pipe makes the sender or receiver wait",
       "route": "/patterns/concurrency/channels.html",
       "requires": [],
-      "related": ["producer-consumer", "backpressure", "mutex", "message-queue", "actor-model"]
+      "related": ["producer-consumer", "backpressure", "mutex", "message-queue", "actor-model", "thread-confinement"]
     },
     {
       "id": "ring-buffer",

@@ -195,6 +195,7 @@ class ShardedStore {
 **Combines with**
 
 - [Reactor](./reactor.md) — A single-threaded command loop is confinement with non-blocking I/O around it
+- [Channels](./channels.md) — Confinement keeps a value in one task; a channel moves it to the next owner
 
 **Alternative to**
 

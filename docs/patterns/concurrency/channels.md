@@ -22,7 +22,7 @@ Two tasks that share a variable need a lock and a rule about who reads when. A c
 
 A channel is a typed pipe between concurrent tasks. One task sends a value, another receives it, and ownership of the value moves with it, so the tasks share no variable and need no lock around one. A channel with a fixed buffer also blocks a fast sender when the buffer is full, which gives you backpressure (a slow consumer slowing its producer) without extra code. Choose it over a [mutex](./mutex.md) when data flows from stage to stage, and over a [message queue](../messaging/message-queue.md) when both ends live in one process and you do not need the messages to survive a restart. It is the [producer-consumer](./producer-consumer.md) queue with the waiting built in.
 
-- **Leaked waiters.** A task blocked on a channel nobody reads never ends. Give every sender a done signal.
+- **Leaked waiters.** A task blocked on a channel nobody reads or closes never ends. Give every sender and receiver a done signal.
 - **Shared again by pointer.** Sending a pointer shares the data it points to. Stop using the value after you send it.
 - **Handover cost.** Each send is a queue hop, far above a function call. Pass batches, not single small values.
 
@@ -66,8 +66,8 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Unbuffered channel** — The sender waits until a receiver is ready, so every send is also a synchronization point. It is the strictest form of handover.
-- **Buffered channel** — A fixed number of slots lets the sender run ahead by that many values. The size is your backpressure budget.
-- **Select over several channels** — A task waits on many channels and takes whichever is ready first. It lets one task combine data, a timeout and a cancel signal.
+- **Buffered channel** — A fixed number of slots lets the sender run ahead by that many values. The size is your backpressure budget. Size it to the burst you must absorb: the rate gap times the burst length (at a 600-a-second gap, 100 slots absorb about 0.17 s). A larger buffer only delays the stall, adds latency and hides a slow consumer.
+- **Select over several channels** — A task waits on many channels at once (Go's `select`) and takes one that is ready. When several are ready, Go picks one at random, so do not rely on order. A nil channel is never ready, which switches its case off. It lets one task combine data, a timeout and a cancel signal.
 - **Fan-out and fan-in** — Many workers read one channel, or many senders write one channel. It spreads work or merges results without a lock.
 - **Done channel** — A channel that is only closed, never sent on, tells every listener to stop. It gives a pipeline one clean way to shut down.
 - **[Producer-Consumer](./producer-consumer.md) queue** — A channel is that pattern with the bounded queue and the waiting built in.
@@ -79,7 +79,7 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - **Handover replaces sharing** — the receiver owns the value after the receive, so there is no data to lock.
-- **A bounded channel gives backpressure for free** — a fast sender waits instead of filling memory.
+- **A bounded channel gives backpressure from its buffer limit** — a fast sender waits instead of filling memory, so the producer stalls; give it other work or a drop policy.
 - **Select composes waits** — one loop handles data, a deadline and a cancel in a few lines.
 - **Closing signals the end** — the receiver learns the stream is over without a sentinel value.
 
@@ -88,7 +88,7 @@ sequenceDiagram
 
 - **A send to nobody blocks forever** — a goroutine left waiting on a channel nobody reads leaks; give every sender a way to stop.
 - **Passing a pointer shares it again** — the lock-free guarantee holds only if the sender stops using the value.
-- **Close rules bite** — in Go, sending on a closed channel panics, so only the sender closes.
+- **Closing from the wrong side crashes** — in Go, sending on a closed channel or closing one twice panics, so one owner closes: the sender, or with many senders a coordinator that closes after all of them finish. Receives on a closed channel drain what is buffered, then return the zero value at once; check the second result, `ok`, to tell the two apart.
 - **Each handover costs a queue hop** — a channel is slower than a plain function call, so do not pass tiny values one by one.
 
 ## When to use it
@@ -121,7 +121,7 @@ func stage(done <-chan struct{}, in <-chan int, f func(int) int) <-chan int {
 		for v := range in { // ends when the upstream closes
 			select {
 			case out <- f(v):
-			case <-done: // consumer gave up: stop instead of blocking forever
+			case <-done: // consumer gave up: stop sending
 				return
 			}
 		}
@@ -136,7 +136,11 @@ func main() {
 	go func() {
 		defer close(src)
 		for i := 1; i <= 5; i++ {
-			src <- i
+			select {
+			case src <- i:
+			case <-done:
+				return // consumer quit: stop instead of leaking
+			}
 		}
 	}()
 	for v := range stage(done, src, func(x int) int { return x * x }) {
@@ -175,6 +179,7 @@ func main() {
 - [Producer-Consumer](./producer-consumer.md) — A bounded channel is the queue between producer and consumer, with the waiting built in
 - [Backpressure](./backpressure.md) — A full buffer blocks the sender, so a slow receiver slows a fast sender
 - [Actor Model](./actor-model.md) — An actor's mailbox is a channel, and a select over channels builds actor-like loops
+- [Thread Confinement](./thread-confinement.md) — A channel hands the confined value from one owning task to the next, so one task holds it at a time
 
 **Alternative to**
 
@@ -184,5 +189,6 @@ func main() {
 **Exposed to**
 
 - [Unbounded Queue](../../hazards/unbounded-queue.md) — Can fall into unbounded queue when a channel with an unlimited buffer removes the backpressure the channel would otherwise give
+- [Deadlock](../../hazards/deadlock.md) — Can fall into deadlock when two tasks each wait to send to the other on unbuffered channels, or a sender waits on a channel nobody reads
 
 <!-- relationships:end -->

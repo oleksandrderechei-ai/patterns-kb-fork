@@ -14664,6 +14664,34 @@
       "b": "deadlock",
       "note_a": "move holds two folder locks, so two moves in opposite directions wait on each other until locks are taken in a fixed order.",
       "note_b": "Moving between two folders under per-folder locks is a worked case."
+    },
+    {
+      "a": "channels",
+      "verb": "combines-with",
+      "b": "thread-confinement",
+      "note_a": "A channel hands the confined value from one owning task to the next, so one task holds it at a time",
+      "note_b": "Confinement keeps a value in one task; a channel moves it to the next owner"
+    },
+    {
+      "a": "channels",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "Can fall into deadlock when two tasks each wait to send to the other on unbuffered channels, or a sender waits on a channel nobody reads",
+      "note_b": "Waiting cycles appear with channels when sends and receives block each other"
+    },
+    {
+      "a": "active-object",
+      "verb": "exposed-to",
+      "b": "head-of-line-blocking",
+      "note_a": "One slow request on the single scheduler thread holds every queued request behind it",
+      "note_b": "An active object's one scheduler thread makes every slow request block the queue behind it"
+    },
+    {
+      "a": "active-object",
+      "verb": "exposed-to",
+      "b": "unbounded-queue",
+      "note_a": "An unbounded request queue turns overload into growing memory and latency",
+      "note_b": "An active object's request queue grows without limit when callers outpace its single thread"
     }
   ],
   "group_order": {

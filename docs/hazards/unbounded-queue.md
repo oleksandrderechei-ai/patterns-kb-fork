@@ -91,5 +91,6 @@ A bounded queue also gives **backpressure**, at the price of blocked producers o
 - [Fan-In](../patterns/messaging/fan-in.md) — A fan-in collector is a common place it appears.
 - [Routing Slip](../patterns/messaging/routing-slip.md) — A route of many steps has a queue per step, and any one of them can back up
 - [Queue-Based Load Leveling](../patterns/distributed/resilience/load-leveling.md) — A burst-absorbing buffer with no cap becomes the outage.
+- [Active Object](../patterns/concurrency/active-object.md) — An active object's request queue grows without limit when callers outpace its single thread
 
 <!-- relationships:end -->
