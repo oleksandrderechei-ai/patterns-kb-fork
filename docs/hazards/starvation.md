@@ -109,5 +109,6 @@ Instrument before you tune. Per-class tail latency and the age of the oldest que
 - [Read-Write Lock](../patterns/concurrency/rw-lock.md) — A stream of readers can keep a writer out indefinitely
 - [Thread Pool](../patterns/concurrency/thread-pool.md) — A fixed pool is a common site where long tasks crowd out the rest
 - [Semaphore](../patterns/concurrency/semaphore.md) — A semaphore whose release lets the releasing thread retake the permit starves the queued waiters.
+- [Persona Identification & Sanction Check (V2)](../designs/persona-identification-v2.md) — a design that prices it: recheck and live work get separate pools and separate quota
 
 <!-- relationships:end -->

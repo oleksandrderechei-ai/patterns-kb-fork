@@ -97,5 +97,6 @@ Prevent the next one. Validate against a schema where the message enters, so bad
 - [Sequential Convoy](../patterns/messaging/sequential-convoy.md) — Ordered processing makes one bad message block every message behind it
 - [Publish-Subscribe](../patterns/messaging/pubsub.md) — A subscriber that keeps failing on one event redelivers it without end
 - [Polling Consumer](../patterns/messaging/polling-consumer.md) — The polling loop redelivers it after every failed attempt.
+- [Persona Identification & Sanction Check](../designs/persona-identification.md) — worked example: a Postgres task table with attempts, max_attempts and last_error parks the poisoned task in a dead state
 
 <!-- relationships:end -->

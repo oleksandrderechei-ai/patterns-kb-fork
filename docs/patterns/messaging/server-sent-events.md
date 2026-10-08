@@ -222,5 +222,6 @@ createServer((req, res) => {
 **Demonstrated by**
 
 - [Facebook Live Comments](../../designs/fb-live-comments.md) — a live comment feed pushes events to millions of viewers and replays the gap from the last event id
+- [ChatGPT](../../designs/chatgpt.md) — streams a model answer to the browser, with a Redis Stream replaying missed tokens on reconnect
 
 <!-- relationships:end -->

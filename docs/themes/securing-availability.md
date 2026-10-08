@@ -21,22 +21,20 @@ Security is usually argued as confidentiality, but the same controls decide avai
 
 Security controls matter for uptime as well as secrecy, because a compromised part must be pulled out and an expired credential stops a service with no attacker involved. Judge each control twice: by what it stops, and by what its own failure costs. Give every component only the access its job needs ([least privilege](../patterns/security/least-privilege.md)), so a break-in is limited to what that component could reach. Send every request through one screened entry ([single access point](../patterns/security/single-access-point.md)), and have the parts behind it refuse anything that came another way. Narrow, short-lived credentials, such as a [valet key](../patterns/distributed/routing/valet-key.md), limit the damage from one theft. One shared long-lived key is easy to run until the day it expires and everything using it fails together. Choose short-lived tokens issued per use when many components share a secret.
 
-- **More to issue.** Short-lived tokens multiply issuing and monitoring. Keep the issuer highly available, since its outage expires every token.
-- **Healthy-looking outages.** A lapsed certificate takes a service down while every part reports healthy. Alert on expiry dates well ahead.
+- **More to issue.** Short-lived tokens multiply issuing and monitoring. During an issuer outage tokens lapse as each expires, so lifetime is the outage budget.
+- **Healthy-looking outages.** A lapsed certificate takes a service down while every part reports healthy. Automate renewal, and alert on expiry dates well ahead.
 - **Error detail.** A stack trace maps your system for an attacker. Return an error identifier the caller can quote, and keep detail for operators.
 
-**Example.** Thirty services share one API key valid for 365 days. A leak exposes all 30, and on expiry day all 30 fail in the same minute. Switching to tokens that last 1 hour, each service asks for 24 a day, 720 requests a day to the issuer. A stolen token opens one service for under an hour. The cost is the issuer: if it is down for an hour, every token lapses and all 30 services lose access, so you run it as a critical service.
+**Example.** Thirty services share one API key valid for 365 days. A leak exposes all 30, and on expiry day all 30 fail in the same minute. Switching to tokens that last 1 hour, each service asks for 24 a day, 720 requests a day to the issuer. A stolen token opens one service for under an hour. The cost is the issuer: tokens lapse as they reach expiry, so an outage longer than an hour leaves all 30 services without access, and each service still holds one long-lived credential for the issuer, which you protect and rotate. Run it as a critical service.
 
 ## The tradespace
 <!--meta block=tradespace-->
 
-The first tension is that a control which cannot fail open cannot fail at all without stopping the system. Screening every request at one place is what makes the guarantee real, and it means the screen is now on the critical path: when it is wrong, nothing gets through. Every control worth having has to be judged twice — once for what it prevents and once for what its own failure costs. A pre-release hold such as [Quarantine](../patterns/security/quarantine.md) shows both sides: a public image or package is scanned before any pipeline may use it, which stops a known vulnerability from reaching production, and the checks take minutes to hours, so a new artifact waits, which people end the gate over if you do not request ahead.
+The first tension is fail-open against fail-closed, chosen per control. A screen on the only path makes the guarantee real, and puts the screen on the critical path. Fail closed, and the screen's own fault, including a false-positive rule that rejects real users, becomes an outage. Fail open, and the same fault becomes a breach. Watch the screen's error rate and rejection rate so it does not become the next outage. Judge every control twice: for what it prevents and for what its failure costs. [Quarantine](../patterns/security/quarantine.md) shows both sides: a public image or package is scanned before any pipeline may use it, which stops a known vulnerability reaching production, but the checks take time, so a new artifact waits, and teams bypass the gate unless they request artifacts ahead of need.
 
 The second is scope against operability. Narrow, short-lived, per-component credentials bound the damage from any single compromise and multiply the number of things that must be issued, refreshed and monitored. One shared long-lived key is trivially operable right up to the day it expires, at which point every component that used it fails together.
 
-The third is how much a failure is allowed to say. Detailed errors help legitimate callers and hand an attacker a map of the internals; opaque errors give nothing away and leave support unable to answer a customer. The resolution is not a compromise between the two but a redirection: return an identifier the caller can quote, and keep the detail where only an operator can read it.
-
-**Bound the blast radius of a compromise, and check that the control itself is not the next outage.**
+The third is how much a failure is allowed to say. Detailed errors help legitimate callers and hand an attacker a map of the internals; opaque errors give nothing away and leave support unable to answer a customer. The way out is to return an identifier the caller can quote, and keep the detail where only an operator can read it.
 
 ## The tour
 <!--meta block=tour-->
@@ -51,19 +49,19 @@ The control that decides how large every other failure is. A component that can 
 
 ### [Single Access Point](../patterns/security/single-access-point.md) {#tour-single-access-point}
 
-One guarded way in is what turns screening from a habit into a guarantee. The part people skip is the other half: the components behind have to reject anything that did not come through it, or a leaked backend address is an unscreened route straight to the application.
+One guarded way in turns screening from a habit into a guarantee, but only if the other half holds: the components behind have to reject anything that did not come through it, or a leaked backend address is an unscreened route straight to the application. Test it by calling a backend address directly and expecting a reject.
 
 ### [Gatekeeper](../patterns/distributed/routing/gatekeeper.md) {#tour-gatekeeper}
 
-Sitting at that entry point, it does the actual screening — malformed requests, known attack signatures, floods — before they consume a connection, a thread or a query anywhere behind it. Availability is the point: work rejected at the edge is capacity the real users keep.
+Sitting at that entry point, it does the actual screening — malformed requests, known attack signatures, floods — before they consume a connection, a thread or a query anywhere behind it. Work rejected at the edge is capacity the real users keep. It sits on the critical path, so a false-positive rule rejects real users: tune rules against real traffic.
 
 ### [Federated Identity](../patterns/distributed/coordination/federated-identity.md) {#tour-federated-identity}
 
-Trusting an identity provider's assertion rather than storing credentials removes a whole class of secret to leak, expire or rotate. The trade is explicit: fewer secrets in your system, and a hard dependency on the provider's availability during the operations that need a token.
+Trusting an identity provider's assertion rather than storing credentials reduces the secrets to leak, expire or rotate, though the trust configuration for the provider must still be kept current. The trade is explicit: fewer secrets in your system, and a hard dependency on the provider's availability during the operations that need a token. Decide in advance how long existing sessions keep working while the provider is down, and keep a local break-glass credential.
 
 ### [Valet Key](../patterns/distributed/routing/valet-key.md) {#tour-valet-key}
 
-A narrow, time-limited token scoped to one resource and one action means a leaked credential exposes little and stops working by itself. It is also the answer to the rotation problem: a credential that was always short-lived never needs a coordinated rotation across every component that held it.
+A narrow, time-limited token scoped to one resource and one action means a leaked credential exposes little and stops working by itself. It also removes the coordinated rotation across every holder, since a credential that was always short-lived expires on its own; the issuer's own signing key still rotates, so publish old and new keys together for an overlap window.
 
 ### [Intercepting Validator](../patterns/security/intercepting-validator.md) {#tour-intercepting-validator}
 
@@ -100,3 +98,17 @@ Diagnosing an incident needs generous logging, and generous logging is how crede
 - [Operating a Live System](./operating-a-live-system.md) — Where credential rotation actually happens, and why the shared long-lived key is the one that hurts.
 - [Global Traffic & Ingress](./global-traffic-and-ingress.md) — The entry point this theme wants screening at, and the routing job it does at the same time.
 - [Spike Handling](./spike-handling.md) — A flood is a flood whether it is malicious or a launch, and several of the same controls answer both.
+
+## How it relates
+<!--meta block=relationships-->
+
+<!-- relationships:start -->
+
+<!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Operating a Live System](./operating-a-live-system.md) — Rotation and certificate renewal are the scheduled work that stops the expiry outage this theme warns about.
+- [Handling Spikes](./spike-handling.md) — A flood is a flood whether hostile or a launch: Gatekeeper and Intercepting Validator reject work at the edge for both.
+
+<!-- relationships:end -->

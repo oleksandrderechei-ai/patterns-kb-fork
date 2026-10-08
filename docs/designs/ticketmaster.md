@@ -24,10 +24,10 @@ A fan views an event's seat map, picks a seat, pays and gets a confirmed booking
 Ticketmaster sells each seat to exactly one buyer while millions of people hit the same event in the same minute. A buyer who picks a seat takes a 10-minute hold on it in Redis, a fast in-memory store, using one atomic set-if-absent call with an expiry. The hold frees itself, so no sweeper has to run on time. The database stays the final judge: when payment confirms, a conditional update lets only one buyer win and the other is refunded. So a lost hold store hurts the experience but cannot double-sell. Choose a hold with an expiry over a database lock held through checkout, which ties up a connection for minutes. Writes are capped by seat count, so reads are the volume.
 
 - **Read load.** Reads reach hundreds of thousands a second, so cache the event page.
-- **Frenzy.** A rush outruns any seat map, so put a waiting room in front that admits people in batches, making everyone wait.
+- **Frenzy.** In a genuine frenzy the seat map fills faster than fans can click, so put a waiting room in front admitting people in batches.
 - **Duplicate webhooks.** The payment webhook can arrive twice, so key it by booking id.
 
-**Example.** A 60,000-seat arena draws 10 million users, so at most 60,000 of them, 0.6 percent, can ever book. Two buyers tap seat A1 in the same millisecond. The set-if-absent call succeeds for one and fails for the other. The holder is slow, and the 10-minute hold lapses mid-payment. A second buyer takes the seat and pays. Both confirms reach the database, one conditional update wins, and the loser gets a refund. The cost is that one buyer paid and was refunded, so a waiting room admits people in batches to keep this rare.
+**Example.** A 60,000-seat arena draws 10 million users, so at most 60,000 of them, 0.6 percent, can ever book. Two buyers tap seat A1 in the same millisecond. The set-if-absent call succeeds for one and fails for the other. The holder is slow, and the 10-minute hold lapses mid-payment. A second buyer takes the seat and pays. Both confirms reach the database, one conditional update wins, and the loser gets a refund. The cost is that one buyer paid and was refunded; the waiting room caps how many fans contend for seats but does not stop a hold from lapsing.
 
 ## Requirements
 <!--meta block=requirements-->
@@ -55,9 +55,9 @@ Out of scope: viewing one's own past bookings, admins creating events, and surge
 
 **Writes are capped by inventory.** A 60,000-seat arena has exactly 60,000 tickets to sell, no matter how many people try. Total successful bookings for an event are therefore bounded and small — the challenge is never write throughput, it is write contention: thousands of requests converging on the same handful of seat rows in the same second.
 
-**Reads are the number that hurts.** At the on-sale moment, a large fraction of 10&nbsp;million users load and re-poll the seat map. With a 100:1 read-to-write ratio and heavy refreshing, peak reads land in the **hundreds of thousands per second** for one event — that is the load caching and the edge have to absorb so the database never feels it.
+**Reads are the number that hurts.** At the on-sale moment, a large fraction of 10&nbsp;million users load and re-poll the seat map. With a 100:1 read-to-write ratio and heavy refreshing, peak reads land **on the order of hundreds of thousands per second** for one event — that is the load caching and the edge have to absorb so the database never feels it.
 
-**Storage is easy.** One ticket row per seat per event; a few thousand events at tens of thousands of seats each is on the order of tens of millions of rows — hundreds of GB at most. That fits a single relational primary with read replicas. The dataset does not force sharding; the contention forces the locking.
+**Storage is easy.** One ticket row per seat per event; a few thousand events at tens of thousands of seats each is on the order of tens of millions of rows. That fits a single relational primary with read replicas. The dataset does not force sharding; the contention forces the locking.
 
 ## Core entities
 <!--meta block=entities-->
@@ -86,9 +86,11 @@ GET /events/search?keyword=&start=&end=&page=&pageSize=
 # reserve first, confirm after payment
 POST /bookings              { eventId, seatIds: [...] }
 → 201 { bookingId }                                  # holds the seats for 10 minutes
+                                                     # 409 if a seat is already held or sold
 
 POST /bookings/{bookingId}/confirm  { paymentToken }
 → 200 { status: "confirmed" }                        # charges, marks seats sold, releases the hold
+                                                     # 402 if the payment is declined
 ```
 
 Splitting reserve from confirm is what lets a fan spend five minutes at the payment form without either losing the seat or blocking anyone else on a live database transaction — the mechanism behind that hold is the first deep dive.
@@ -124,11 +126,11 @@ Without a hold, a buyer can fill out a five-minute payment form only to learn th
 - **Status field + expiry + cron.** Give the ticket a `reserved` status and an expiry timestamp, and run a cron job that sweeps expired reservations back to `available`. Better, but correctness now depends on the sweep running on time — a lagging or failed cron leaves seats stuck locked, worst exactly during a hot on-sale.
 - **Distributed lock with time to live (TTL) (chosen).** Hold the seat in Redis with a [distributed lock](../patterns/distributed/coordination/distributed-lock.md) keyed by ticket ID, value set to the buyer's user ID, using an atomic `SET key value NX EX 600` so acquisition can't race. The lock auto-expires after 10&nbsp;minutes if payment never comes, so no external sweep decides correctness. Reservation state lives entirely in Redis; the ticket table needs only available and booked. For a multi-seat order, locks are taken one at a time and rolled back if any fails.
 
-The confirm step then charges the card. The client tokenizes card data with Stripe.js so the server never touches raw card numbers; it creates a Stripe PaymentIntent, and Stripe reports the result back through a webhook. That webhook runs a transaction flipping the ticket to sold and the booking to confirmed. Because Stripe retries webhooks, the handler must be [idempotent](../patterns/messaging/idempotency.md) — it uses the booking ID as an idempotency key and checks current status before applying. And crucially the database is the final arbiter: even if the Redis TTL (time to live) lapses mid-payment and a second buyer grabs the seat, an [optimistic-concurrency](../patterns/distributed/coordination/optimistic-concurrency-control.md) check at the DB lets only one confirm win; the loser is auto-refunded. That backstop is why a lock-store outage degrades user experience (UX) but never double-sells.
+The confirm step then charges the card. The client tokenizes card data with Stripe.js so the server never touches raw card numbers; it creates a Stripe PaymentIntent, and Stripe reports the result back through a webhook. That webhook runs a transaction flipping the ticket to sold and the booking to confirmed. Because Stripe retries webhooks, the handler must be [idempotent](../patterns/messaging/idempotency.md) — it uses the booking ID as an idempotency key and checks current status before applying. The database is the final arbiter: even if the Redis TTL (time to live) lapses mid-payment and a second buyer grabs the seat, an [optimistic-concurrency](../patterns/distributed/coordination/optimistic-concurrency-control.md) check at the DB lets only one confirm win; the loser is auto-refunded. That backstop is why a lock-store outage degrades user experience (UX) but never double-sells. Release on payment failure or cancel is a compare-and-delete: the key is deleted only if its value still equals the buyer's user ID, so a late release never frees the next buyer's hold.
 
-### 2 · Serving the event page to tens of millions at once
+### 2 · Serving the event page to millions at once
 
-When tickets drop, one event page gets hammered by thousands of simultaneous refreshes. The Event Service is [stateless](../patterns/distributed/routing/stateless-service.md), so it scales horizontally behind a [load balancer](../patterns/distributed/routing/load-balancer.md) (round-robin or least-connections) — but raw instance count isn't the answer, memory is. Event details, performer bios, and static venue and seat-map data are high-read and change rarely, so they sit in a [read-through cache](../patterns/caching/read-through.md) (Redis or Memcached) keyed `eventId → eventObject`. Static venue data gets a long TTL; fast-moving availability gets a short one, with database triggers invalidating entries when an event actually changes. The overwhelming majority of reads never reach Postgres.
+When tickets drop, one event page gets hammered by thousands of simultaneous refreshes. The Event Service is [stateless](../patterns/distributed/routing/stateless-service.md), so it scales horizontally behind a [load balancer](../patterns/distributed/routing/load-balancer.md) (round-robin or least-connections) — but raw instance count isn't the answer, memory is. Event details, performer bios, and static venue and seat-map data are high-read and change rarely, so they sit in a [read-through cache](../patterns/caching/read-through.md) (Redis or Memcached) keyed `eventId → eventObject`. Static venue data gets a long TTL; fast-moving availability gets a short one, with entries deleted when an event actually changes. With a long TTL on static data, most reads never reach Postgres. Holds live only in Redis, so the seat-map read merges active holds into the cached availability.
 
 ### 3 · Surviving the on-sale stampede
 
@@ -188,7 +190,7 @@ sequenceDiagram
 ### What it buys
 <!--meta polarity=pro-->
 
-- A seat held by a TTL lock in Redis can't be double-sold and auto-releases if the buyer abandons checkout — no long-lived database lock.
+- A seat held by a TTL lock in Redis stops two buyers holding it at once and auto-releases if the buyer abandons checkout, with no long-lived database lock; if the TTL lapses mid-payment, the database check is the guard.
 - View and search scale out independently behind a read-through cache, the edge, and stateless services, absorbing the on-sale burst.
 - The database's optimistic-concurrency check is the final guard, so a seat is never sold twice even if the lock store fails.
 
@@ -197,7 +199,8 @@ sequenceDiagram
 
 - Reservation state lives in Redis, so rendering live availability means merging lock state into the DB view — an extra hop and a source of skew.
 - Search rides an Elasticsearch index synced by CDC, so a just-announced event can be briefly missing from results.
-- A TTL that lapses mid-payment can let two buyers race one seat; the loser's charge has to be auto-refunded, and the waiting queue adds real wait time and operational weight.
+- A TTL that lapses mid-payment can let two buyers race one seat; the loser's charge has to be auto-refunded.
+- The waiting queue adds real wait time and operational weight.
 
 ## What's expected at each level
 <!--meta block=levels-->

@@ -20,16 +20,16 @@ Pick an identity provider once, and every service you write delegates login to i
 ## Explained
 <!--meta block=explain-->
 
-An identity provider is the server your services send people to for login, and it hands back a signed token each service can check. Every product here speaks the two standard login protocols, so the protocol alone decides nothing. Check what the protocol cannot show you. Enterprise buyers want SAML, a sign-in format many companies use, and directory federation, so day one needs Keycloak or a vendor. Then price the bill. Managed products charge per monthly active user, so success makes the same component dearer, and you counter that by keeping machine-to-machine clients out of the metered count and re-tendering before renewal. Self-hosting makes you own a service every login depends on, so publish the issuer on a hostname you control and the product underneath stays replaceable. AGPL, a license that makes you publish changes you expose to users, binds only if you modify it, so run it unmodified. Choose the tenancy model before you have tenants, because retrofitting it means a login outage.
+An identity provider is the server your services send people to for login, and it hands back a signed token each service can check. Every product here speaks OIDC, the login layer on OAuth2. Enterprise buyers also want SAML, a sign-in format many companies use, and directory federation: Keycloak, Authentik and Auth0/Okta cover both, so check the protocol and directory rows for the details. Managed products charge per monthly active user, so success makes the same component more expensive; where the vendor meters machine-to-machine clients separately, keep them out of the user count, and renegotiate before renewal. Self-hosting makes you own a service every login depends on, so publish the issuer on a hostname you control and the product underneath stays replaceable. AGPL, a license that makes you publish source to users of a modified copy, also binds when you ship it inside a product; run it unmodified and internally and it binds nothing. Choose how you split customers (the tenancy model) before you have tenants, because retrofitting it means a login outage.
 
 **Example.** Illustrative numbers. A managed provider charges 0.02 dollars per monthly active user. Self-hosting costs 1,000 dollars a month in servers and engineer time, nearly flat as users arrive. The lines cross at 1,000 divided by 0.02, or 50,000 users. At 10,000 users managed costs 200 dollars and wins. At 200,000 it costs 4,000, four times the self-hosted figure. The cost of switching is a user move: if password hashes cannot be exported, every user must reset a password.
 
 ## The contenders
 <!--meta block=contenders-->
 
-- **Keycloak** — Apache-2.0, a CNCF (Cloud Native Computing Foundation) project out of Red Hat, and the default answer once enterprises are in scope: OIDC, OAuth2, full SAML both ways, Active Directory federation, realms per tenant. The price is operating weight — a JVM (Java virtual machine) service and a database to cluster and upgrade.
-- **Authentik** — An MIT-licensed core with paid enterprise features, and the least friction of the four to stand up: login sequences are assembled from stages in the admin UI, so an unusual sign-up flow is configuration rather than a compiled plugin. Reach for it when a small team wants self-hosted single sign-on this month.
-- **Ory** — Apache-2.0, and identity as separate Go services rather than one server: Kratos for users, Hydra for OAuth2 and OIDC, Keto for permissions. Maximum composability, most assembly — the login interface included. Ory Network is the vendor's hosted version of the same components.
+- **Keycloak** — Apache-2.0, a CNCF (Cloud Native Computing Foundation) project out of Red Hat, and the self-hosted choice with the widest built-in protocol and directory coverage: OIDC, OAuth2, full SAML both ways, Active Directory federation, realms per tenant. The price is operating weight: a JVM (Java virtual machine) service and a database to cluster and upgrade.
+- **Authentik** — An MIT-licensed core with paid enterprise features, and the least friction of the self-hosted four to stand up: login sequences are assembled from stages in the admin UI, so an unusual sign-up flow is configuration rather than a compiled plugin. Reach for it when a small team wants self-hosted single sign-on this month.
+- **Ory** — Apache-2.0, and identity as separate Go services rather than one server: Kratos for users, Hydra for OAuth2 and OIDC, Keto for permissions. You compose the parts and assemble them yourself, including the login interface. Ory Network is the vendor's hosted version of the same components.
 - **ZITADEL** — Go, API-first and multi-tenant by design, with an event-sourced core: every change to a user or a grant stays a queryable event rather than overwriting a row. It moved from Apache-2.0 to AGPL-3.0 in 2025, so weigh the copyleft before shipping it inside a product. ZITADEL Cloud is the vendor's SaaS.
 - **Your cloud's own** — Amazon Cognito user pools, Microsoft Entra ID for workforce and Entra External ID for customers, Google Cloud Identity Platform on Firebase Auth. Each is proprietary, operated for you, and wired into its own platform's authorization rather than anyone else's. Reach for one when you are single-cloud and its limits fit.
 - **Auth0 and Okta** — The incumbent identity vendors, one company since Okta bought Auth0, priced per monthly active user. Every protocol, enterprise connections and a support contract arrive on day one. Cost tracks your user count rather than your traffic, so success is the expensive case.
@@ -41,13 +41,13 @@ An identity provider is the server your services send people to for login, and i
 | --- | --- | --- | --- | --- | --- | --- |
 | License | Apache-2.0 | MIT core, paid enterprise tier | Apache-2.0 | AGPL-3.0 since 2025 | Proprietary | Proprietary |
 | Who operates it | You | You | You | You, or ZITADEL Cloud | Your cloud provider | The vendor |
-| How the bill grows | With infrastructure | Infrastructure, plus the enterprise tier | With infrastructure | Infrastructure, or per user on Cloud | Per monthly active user | Per monthly active user |
+| How the bill grows | With infrastructure | Infrastructure, plus the enterprise tier | With infrastructure | Infrastructure, or usage-based on Cloud; check the vendor's current pricing | Per monthly active user | Per monthly active user |
 | Protocol surface | OIDC, OAuth2, SAML both ways | OIDC, OAuth2, SAML | OIDC and OAuth2, split across services | OIDC and OAuth2, API-first | Entra ID issues SAML; Cognito only consumes it | OIDC, OAuth2, SAML both ways |
 | What you run | A JVM service and a database, clustered | Server, worker, PostgreSQL, Redis | Several Go services, each with a store | One Go binary and PostgreSQL | Nothing | Nothing |
 | Directory federation | Lightweight Directory Access Protocol (LDAP) and Active Directory built in | LDAP source, plus an LDAP provider for legacy apps | Not in the core services | External providers, per organization | Cognito federates them; Entra ID is the directory | Active Directory and LDAP through an agent |
 | Multi-tenancy model | Realms, isolated per tenant | Brands change the look, not the isolation | One deployment per tenant; projects on Ory Network | Organizations, by design | One user pool or directory per tenant | Auth0 Organizations for business customers |
 | Audit trail | Event log in the database, retention you set | Events stored, retention configurable | Per-service logs, aggregated by you | Event-sourced, every change queryable | CloudTrail, Entra sign-in logs | Tenant system log, retention by plan |
-| Cost of leaving | Realm export plus your database | Config and database on your disk | Each service's store is yours | Your database; copyleft binds distribution, not use | Users export, password hashes do not | Vendor export, then re-point every integration |
+| Cost of leaving | Realm export plus your database | Config and database on your disk | Each service's store is yours | Your database; AGPL binds you only if you modify it and expose it, or ship it | Cognito exports users, not password hashes; check Entra and Identity Platform separately | Vendor export, then re-point every integration |
 
 ## Choosing between them
 <!--meta block=choosing-->
@@ -66,6 +66,10 @@ Do less first. Your framework's own session authentication is the right answer u
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Multi-Tenancy](../patterns/distributed/routing/multi-tenancy.md) — Realms, organizations and per-tenant pools are this pattern's isolation choices, picked per product.
 
 **Specializes**
 

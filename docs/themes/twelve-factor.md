@@ -22,22 +22,23 @@ A platform can only move, restart and replace a process that holds no baked-in c
 
 Twelve-factor is a list of properties your application must hold so a platform can move, restart and replace it for you. Configuration comes from the environment, so one build runs everywhere. Processes keep no durable state in memory or on local disk, so any copy can be killed. Slow work runs in a separate worker process. Health is a signal the platform reads, and logs go to a stream someone else collects. A release is immutable. Choose it for the parts of your system that should be interchangeable, and skip it for a database, where the state is the point.
 
-- **Extra stores.** Moving config and state out means running a store for each, now on the request path. Keep each highly available.
-- **Readiness over-checks.** A check that tests every dependency pulls the whole fleet out when one blinks. Test only what a request needs.
+- **Extra stores.** The config store is a start-up dependency; the session store is on the request path. Keep each highly available.
+- **Readiness over-checks.** A check that tests every dependency pulls the whole fleet out when one blinks. Test only what a request needs; keep liveness shallow.
 - **No enforcement.** Nothing stops someone caching one thing in memory, found when a copy moves at 3am. Test by killing copies routinely.
+- **Ungraceful shutdown.** A copy that ignores the stop signal drops in-flight requests. Drain, finish, then exit.
 
-**Example.** Four copies share 1,000 requests a second, and 10,000 users are signed in, 2,500 on each copy, with sessions held in memory. When the platform moves one copy, 2,500 users lose their session. Moving sessions to a shared store loses none, at a cost of about 1 ms per request and a store you now depend on. The same copy takes 20 s to start. With no readiness signal, it gets its 250 requests a second at once and fails 20 x 250 = 5,000 requests. With one, it receives traffic only when ready.
+**Example.** Four copies share 1,000 requests a second, and 10,000 users are signed in, 2,500 on each copy, with sessions held in memory. When the platform moves one copy, 2,500 users lose their session. Moving sessions to a shared store loses none, at a cost of an extra store call per request (assume about 1 ms) and a store you now depend on. The same copy takes 20 s to start. With no readiness signal, it gets its 250 requests a second at once and, if each fails, loses 20 x 250 = 5,000 requests. With one, it receives traffic only when ready.
 
 ## The tradespace
 <!--meta block=tradespace-->
 
-The first axis is what externalising costs. Configuration outside the build needs a store that is available at start-up, versioned, and secured — so an outage there is an outage everywhere, and the config becomes a deploy artifact nobody reviews. State outside the process needs a session store or a database on a path that used to be a memory read. You are trading local simplicity for the ability to be replaced, and that trade is only worth it if something is actually replacing you.
+The first axis is what externalising costs. Configuration outside the build needs a store that is available at start-up, versioned and secured. An outage there blocks every start and restart, though running processes keep the config they started with, and changes made in the store bypass the release review unless you version and audit them. State outside the process needs a session store or a database on a path that used to be a memory read. You are trading local simplicity for the ability to be replaced, and that trade is only worth it if something is actually replacing you.
 
-The second is the honesty of the health signal. A liveness check that only proves the process is running will keep a broken instance in rotation; one that checks every dependency will take the whole fleet out when a downstream service blinks. The interesting design work in this theme is almost all in that one endpoint.
+The second is the honesty of the health signal, which is two checks. Liveness decides restart and stays shallow: it proves only that the process responds, because a liveness check that tests dependencies restarts the whole fleet when one blinks. Readiness decides rotation and tests only what a request needs: too little keeps a broken instance in rotation, too much pulls the fleet out.
 
-The third is discipline over time. These properties decay silently: someone caches "just this one thing" in memory, someone reads a file the image happened to have, and nothing fails until an instance is rescheduled at three in the morning. Nothing enforces this list, which is why it is a set of habits rather than a framework.
+The third is discipline over time. These properties decay silently: someone caches "just this one thing" in memory, someone reads a file the image happened to have, and nothing fails until an instance moves at 3am. Nothing enforces the list, so it is a set of habits, not a framework.
 
-The fourth is scope. The original list was written for stateless web processes on a managed platform, and it does not have opinions about data-heavy or latency-critical workloads. Read it as the contract for the parts of your system that should be interchangeable, not as an architecture for all of them.
+The fourth is scope. The original list was written for stateless web processes on a managed platform, with no opinion on data-heavy or latency-critical workloads. Read it as the contract for the parts that should be interchangeable, not for all of them.
 
 ## The tour
 <!--meta block=tour-->
@@ -48,11 +49,11 @@ The fourth is scope. The original list was written for stateless web processes o
 
 ### [External Configuration Store](../patterns/distributed/coordination/external-configuration-store.md) {#tour-external-configuration-store}
 
-The first factor and the one everything else depends on. If the same artifact cannot be promoted between environments unchanged, nothing further on this list is reachable — and the store you move it into is now a start-up dependency of every process.
+The first factor and the one everything else depends on. If the same artifact cannot be promoted between environments unchanged, nothing further on this list is reachable. The store you move it into is now a start-up dependency of every process.
 
 ### [Stateless Service](../patterns/distributed/routing/stateless-service.md) {#tour-stateless-service}
 
-The property that makes an instance disposable. Once no request depends on which instance served the last one, the platform is free to add, move and kill processes — which is the entire capability you were trying to buy.
+The property that makes an instance disposable. Once no request depends on which instance served the last one, the platform is free to add, move and kill processes. That is the core of the capability you were trying to buy.
 
 ### [Health Endpoint](../patterns/distributed/resilience/health-endpoint.md) {#tour-health-endpoint}
 
@@ -64,11 +65,11 @@ Background work belongs in a process that can be scaled and restarted on its own
 
 ### [Distributed Tracing](../patterns/distributed/resilience/distributed-tracing.md) {#tour-distributed-tracing}
 
-Once a process is disposable, anything it wrote locally is gone with it. Emit a stream and let something else aggregate it — and once a request crosses several such processes, a correlated trace is the only thing that reassembles it.
+Once a process is disposable, anything it wrote locally is gone with it. Emit a stream and let something else aggregate it. Once a request crosses several such processes, a correlated trace reassembles it.
 
 ### [Blue-Green Deployment](../patterns/distributed/routing/blue-green-deployment.md) {#tour-blue-green-deployment}
 
-Where the whole list pays off. When config is external, state is elsewhere and readiness is reported, a release becomes an immutable thing you can stand up beside the current one and switch to — and switch back from.
+Where the whole list pays off. When config is external, state is elsewhere and readiness is reported, a release becomes an immutable thing you can stand up beside the current one and switch to, and switch back from while the shared state stays compatible with both releases.
 
 <!-- tour:end -->
 
@@ -81,7 +82,7 @@ Where the whole list pays off. When config is external, state is elsewhere and r
 | Instances to be interchangeable | Killing one loses a user's session | [Stateless Service](../patterns/distributed/routing/stateless-service.md) |
 | Something to know when an instance may take traffic | Restarts drop requests | [Health Endpoint](../patterns/distributed/resilience/health-endpoint.md) |
 | Slow work off the request path | Request latency tracks background load | [Web-Queue-Worker](../patterns/architecture/web-queue-worker.md) |
-| To follow a request across disposable processes | Logs vanish with the instance | [Distributed Tracing](../patterns/distributed/resilience/distributed-tracing.md) |
+| To follow a request across disposable processes | Can't follow one request across processes | [Distributed Tracing](../patterns/distributed/resilience/distributed-tracing.md) |
 | A release you can undo in one move | Rollback means a redeploy | [Blue-Green Deployment](../patterns/distributed/routing/blue-green-deployment.md) |
 | None of it, because the workload is a database | The state is the point | Keep the contract for the parts that should be interchangeable |
 
@@ -92,3 +93,17 @@ Where the whole list pays off. When config is external, state is elsewhere and r
 - [Continuous Delivery](./continuous-delivery.md) — An immutable, replaceable release is the unit this discipline moves.
 - [Health Modeling](./health-modeling.md) — Where the deceptively small health endpoint is argued properly, at system scale.
 - [Observability](./observability.md) — What to do with the streams once the processes emitting them are disposable.
+
+## How it relates
+<!--meta block=relationships-->
+
+<!-- relationships:start -->
+
+<!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Cloud Native](./cloud-native.md) — Its properties pay off only on a platform that takes over placement and scaling.
+- [Health Modeling](./health-modeling.md) — The health endpoint's over-check and under-check judgement is argued at system scale there.
+
+<!-- relationships:end -->

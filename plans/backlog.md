@@ -110,6 +110,40 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     as the real burst (`token-bucket`);
   - a second pass for the plan lines dropped as over the cap of 8, mostly wording,
     em-dash and one-claim-per-item splits.
+- From the kb-improve run on the ten comparison pages (its pull request lists every dropped
+  finding):
+  - a gate for the cost-lead stop: nine of the ten comparisons shipped every explain cost as
+    one run-on sentence ("**Lead** Note"), and KB-014 passed them all;
+  - matrix rows readers asked for that need a source for every column: cold start after idle
+    (`application-platforms`), versioning and object lock (`object-stores`), out-of-band
+    change detection (`infrastructure-as-code`), "if it goes down" (`identity-providers`);
+  - claims to verify before they land: SeaweedFS read-after-write per replication mode,
+    Authentik dropping Redis in 2025.10, Auth0 password-hash export, Kong's OSS packaging
+    after 3.9, Meilisearch's enterprise-edition license split, Pulumi secrets in state;
+  - edges drafted but over the cap or unverified: `relational-databases` implements
+    `failover`, `key-value-stores` implements `lsm-tree`, `application-platforms`
+    alternative-to `container-orchestration`, `search-engines` combines-with
+    `change-data-capture`, `workflow-orchestrators` alternative-to `message-queue`,
+    `infrastructure-as-code` implements `containerization`;
+  - an owner call on how a comparison names a hazard its products carry: `exposed-to` is
+    barred from a comparison, so `search-engines` cannot point at `dual-write-inconsistency`.
+- From the kb-improve run over the 15 Advanced case-study pages (its pull request lists
+  every dropped finding):
+  - a sourcing pass for the 51 findings dropped as "needs a source": TTLs, thresholds,
+    retry caps, error codes, shard counts and lease timings readers asked for in the
+    deep dives and interfaces;
+  - a second pass for the 99 findings dropped as over the cap of 8;
+  - two owner design calls the pages leave open: how `robinhood`'s trade processor
+    handles a fill that lands before the order's id is indexed, and whether a `FAILED`
+    run ends a `job-scheduler` recurrence;
+  - edges drafted but over the cap: `online-chess` demonstrates `websocket` and
+    `long-polling`, `ticketmaster` demonstrates `conditional-write`, `leetcode`
+    demonstrates `async-request-reply` and `web-queue-worker`, `youtube` exposed-to
+    `hot-partition`;
+  - the `alternative-to` note between the two persona-identification pages does not say
+    what this side argues; fix the note in place in `relations.json`;
+  - an owner call on `video-recommendations`, a theme page filed in the Advanced
+    case-study area: move it with kb-move or keep it there.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 
@@ -299,6 +333,22 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   `workflow-orchestration` and alternative-to `sweeper`, a rewritten `scheduling`→`starvation`
   note, `batching` exposed-to `poison-message` and combines-with `dead-letter-channel` and
   `idempotency`.
+
+- Left from the 2026-10-08 kb-improve run over the operating themes (edits a page groom may
+  not make, or that need a source). Membership decisions: `rolling-deployment` and
+  `feature-flag` as `continuous-delivery` members (their decide rows and tour stops follow),
+  and an SLO or alerting page that `observability` and `health-modeling` could route to.
+  Needing a source: rolling-update knobs and reconcile interval, preview-environment
+  lifetime and blocking-scan severity (`continuous-delivery`); canary ramp steps and bake
+  time (`continuous-validation`); starting trace sampling share (`observability`);
+  token lifetime against issuer outage and refresh timing (`operating-a-live-system`,
+  `securing-availability`); quota-headroom alert fraction, sweeper age cutoff, dead-letter
+  depth alarm (`operating-a-live-system`); autoscaling targets and cooldowns, receipt
+  status shape and retention (`workload-composition`); per-partition caps and broker
+  retention defaults (`data-platform`). Candidate edges to judge on their own:
+  `continuous-validation` prerequisite `continuous-delivery`, `health-modeling` to
+  `resilience` and `observability`, `twelve-factor` to `continuous-delivery`,
+  `workload-composition` to `health-modeling`, `data-platform` to `scaling-writes`.
 
 ## Questions
 

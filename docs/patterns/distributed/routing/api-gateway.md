@@ -226,6 +226,7 @@ app.use(async (req, res) => {
 - [Sticky Session](./sticky-session.md) — A streaming gateway needs connection affinity so a rebalance does not cut the flow
 - [Service Discovery](./service-discovery.md) — Behind the gateway, discovery supplies the live instances it routes to
 - [Agent2Agent](../coordination/a2a.md) — Fronts agent-to-agent calls as well as service calls.
+- [Global Traffic & Ingress](../../../themes/global-traffic-and-ingress.md) — This theme says when to keep one front door, and how to keep it unbypassable.
 
 **Generalizes**
 

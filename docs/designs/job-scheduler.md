@@ -16,7 +16,7 @@ A job scheduler stores what to run and when, then makes sure each job fires clos
 ## Understanding the problem
 <!--meta block=description-->
 
-A job scheduler runs each job at its appointed time, once, at a future date or on a repeating cadence, behind reminders, nightly batches and maintenance sweeps. Jobs must fire close to their due time at high volume, and each must run at least once even when its machine dies mid-job. Polling the database on a timer fails at scale, so the page walks through getting precision and durability cheaply.
+A job scheduler runs each job at its appointed time, at a future date or on a repeating cadence, behind reminders, nightly batches and maintenance sweeps. Jobs must fire close to their due time at high volume, and each must run at least once even when its machine dies mid-job.
 
 ## Explained
 <!--meta block=explain-->
@@ -53,7 +53,7 @@ Out of scope: cancelling and rescheduling jobs, security-policy enforcement, and
 
 **Throughput.** The target is 10k executions/sec at peak. Creates run lower — a recurring job is written once but fires many times — so the execution path, not the create path, sets the budget.
 
-**Queue depth.** If the scheduler looks 5&nbsp;minutes ahead, a full window holds 10k/sec × 300&nbsp;s ≈ **3&nbsp;million** in-flight jobs. Each queued message is just an id, an execution time and a little metadata — a couple hundred bytes — so the window is on the order of **~600&nbsp;MB**, well under a managed queue's per-message size cap and comfortably within its throughput.
+**Queue depth.** If the scheduler looks 5&nbsp;minutes ahead, a full window holds 10k/sec × 300&nbsp;s ≈ **3&nbsp;million** in-flight jobs. Each queued message is an id, an execution time and a little metadata, about 200 bytes, so the window is about **600&nbsp;MB**. Per-message size is far under a managed queue's size cap, and the window fits its throughput.
 
 **Write budget.** 10k execution rows a second, plus status updates on each. A single database partition sustains only so many writes per second (on DynamoDB, ~1,000 write units), so an hour of executions cannot land on one partition — the spread across partitions is a design constraint, not an afterthought.
 
@@ -83,7 +83,7 @@ POST /jobs
 → 202 { "job_id": "job_8f21" }        # stored PENDING, first execution enqueued
 
 GET /jobs?user_id={id}&status={status}&start_time={t0}&end_time={t1}
-→ 200 Job[]                            # this user's executions, filtered and paged
+→ 200 Execution[]                      # this user's executions, filtered and paged
 ```
 
 Create returns **202 Accepted**, not 200: the job is durably recorded, but its actual run happens later and asynchronously.
@@ -124,7 +124,7 @@ flowchart TB
 
 In a single-loop design, the poll frequency is the precision ceiling: poll every two minutes and jobs land up to two minutes late. Polling every two seconds to hit the target is worse than it sounds — at 10k/sec each query would sweep ~20k rows across a two-second window, and even an indexed read of that size, plus network and serialisation, can burn hundreds of milliseconds and keep the database under constant heavy load. So split the concern in two. **Phase one** polls the Executions table every few minutes for everything due in the next ~5 minutes — cheap, infrequent, database-friendly. **Phase two** hands those jobs to a queue that only makes each one visible at its exact run time; workers pull and execute the instant it appears. The poll cadence no longer caps precision.
 
-The queue's one hard requirement is delayed visibility. A strictly-ordered log like Kafka fails here: a newly created urgent job would queue behind everything already buffered and miss its window. Three options deliver deferred delivery. A **Redis sorted set** scores entries by timestamp and pops those with `score < now` — sub-millisecond, but you build retries, failure handling and replication yourself. **RabbitMQ** can fake it with per-message TTL (time to live) plus a dead-letter exchange, but high availability needs quorum queues and the TTL trick is fiddly. **Simple Queue Service (SQS)** wins for a managed stack: `DelaySeconds` gives native per-message delay (capped at 15 minutes, which comfortably covers the 5-minute lookahead), visibility timeouts recover from worker failure, and it auto-scales across availability zones. Jobs created with under 5 minutes of lead time skip the poll entirely and go straight to the queue with the right delay. Workers form a pool of [competing consumers](../patterns/messaging/competing-consumers.md), each message handled by exactly one of them.
+The queue's one hard requirement is delayed visibility. A strictly-ordered log like Kafka fails here: a newly created urgent job would queue behind everything already buffered and miss its window. Three options deliver deferred delivery. A **Redis sorted set** scores entries by timestamp and pops those with `score < now` — sub-millisecond, but you build retries, failure handling and replication yourself. **RabbitMQ** can fake it with per-message TTL (time to live) plus a dead-letter exchange, but high availability needs quorum queues and the TTL trick is fiddly. **Simple Queue Service (SQS)** wins for a managed stack: `DelaySeconds` gives native per-message delay (capped at 15 minutes, which comfortably covers the 5-minute lookahead), visibility timeouts recover from worker failure, and it auto-scales across availability zones. Jobs created with under 5 minutes of lead time skip the poll entirely and go straight to the queue with the right delay. Workers form a pool of [competing consumers](../patterns/messaging/competing-consumers.md), each message handled by exactly one of them. The lookahead must be longer than the poll interval, up to the 15-minute DelaySeconds cap, so one missed poll drops nothing. The poller marks each row as queued as it enqueues it, so an overlapping window never enqueues a row twice.
 
 The two phases meet at a queue that holds each job invisible until its run time.
 
@@ -149,11 +149,11 @@ The queue side barely needs attention — 3 million messages a window at a coupl
 
 ### 3 · Running each job at least once
 
-At-least-once means two failure modes must both be caught. A **visible failure** — a bug or bad parameters — surfaces as an exception: wrap the task, log it, mark the execution `RETRYING` with its attempt count, and re-enqueue with [exponential backoff](../patterns/distributed/resilience/retry-backoff.md) (5s, 25s, 125s) by raising `DelaySeconds` per attempt. After a bounded number of tries the row goes `FAILED` and the message lands in a [dead-letter queue](../patterns/messaging/dead-letter-channel.md) for inspection rather than looping forever. An **invisible failure** — the worker itself dies before reporting anything — is harder, because nothing raises. Polling health-check endpoints does not scale to thousands of workers and invents its own single point of failure. A database lease works: a worker writes its id and an expiry onto the execution and renews it while running, so an expired lease lets another worker retry — but at 10k/sec with 5-second leases that is ~50k renewal writes a second, plus clock-skew and partition edge cases. The cleanest answer reuses the queue's own [lease](../patterns/distributed/coordination/distributed-lock.md) semantics: an SQS message goes invisible when received and reappears automatically if the worker never deletes it, and a periodic `ChangeMessageVisibility` heartbeat extends ownership for long jobs — recovery in ~30 seconds with no extra infrastructure.
+At-least-once means two failure modes must both be caught. A **visible failure** — a bug or bad parameters — surfaces as an exception: wrap the task, log it, mark the execution `RETRYING` with its attempt count, and re-enqueue with [exponential backoff](../patterns/distributed/resilience/retry-backoff.md) (5s, 25s, 125s) by raising `DelaySeconds` per attempt. After a bounded number of tries the row goes `FAILED` and the message lands in a [dead-letter queue](../patterns/messaging/dead-letter-channel.md) for inspection rather than looping forever. An **invisible failure** — the worker itself dies before reporting anything — is harder, because nothing raises. Polling health-check endpoints does not scale to thousands of workers and invents its own single point of failure. A database lease works: a worker writes its id and an expiry onto the execution and renews it while running, so an expired lease lets another worker retry — but at 10k/sec each run still live needs a renewal write at least once per 5-second lease, on top of its start and finish writes, so write load grows with run length, plus clock-skew and partition edge cases. The cleanest answer reuses the queue's own [lease](../patterns/distributed/coordination/distributed-lock.md) semantics: an SQS message goes invisible when received and reappears automatically if the worker never deletes it, and a periodic `ChangeMessageVisibility` heartbeat extends ownership for long jobs — recovery in ~30 seconds with no extra infrastructure.
 
 At-least-once has a corollary the caller must honour: because a job can run more than once, task code has to be [idempotent](../patterns/messaging/idempotency.md). Executing blindly is dangerous — a retried money transfer moves funds twice. A deduplication table keyed by `job_id` + execution time works but adds a read-before-write and needs pruning. Best is to design the task so repetition is harmless: use an idempotency key with conditional operations ("set the counter to X", not "increment"; check a "welcome email sent" flag before sending), pushing the guarantee down into the work itself.
 
-```mermaid caption="What states does one execution move through under at-least-once? Both a crash and an exception route back through Retrying; the two terminals are Done and the dead-lettered Failed."
+```mermaid caption="What states does one execution move through under at-least-once? Both a crash and an exception route back through Retrying; the two finished states are Done and the dead-lettered Failed."
 stateDiagram-v2
     [*] --> Pending: execution row written
     Pending --> Running: worker pulls from delay queue
@@ -181,6 +181,7 @@ stateDiagram-v2
 - At-least-once pushes idempotency onto every task author; a non-idempotent job will eventually double-execute.
 - The hourly execution partition is a hot spot that only write-sharding tames — and sharding then forces fan-out reads across every shard.
 - Leaning on a managed queue (SQS `DelaySeconds`, visibility timeouts) buys simplicity at the cost of portability; a self-hosted stack must rebuild delay, retries and leasing by hand.
+- A run recovered after a crash fires about 30 seconds after it was lost, and a retry waits 5, 25 or 125 seconds. The 2-second bound covers first attempts only.
 
 ## What's expected at each level
 <!--meta block=levels-->
@@ -195,6 +196,10 @@ stateDiagram-v2
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Hot Key](../hazards/hot-key.md) — the current hour's execution partition takes every write for that hour until it is suffix-sharded
 
 **Demonstrates**
 
