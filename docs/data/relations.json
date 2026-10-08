@@ -14398,6 +14398,34 @@
       "b": "redundancy",
       "note_a": "The issuer is a single point of failure; run it redundantly and decide what survives its outage",
       "note_b": "Identity issuance stops every login when it fails, so it is a first candidate for a second copy"
+    },
+    {
+      "a": "replication",
+      "verb": "combines-with",
+      "b": "build-for-business",
+      "note_a": "Replication mode is where the recovery-point number gets paid for",
+      "note_b": "The data-loss target decides sync or async replication, so ask it before choosing"
+    },
+    {
+      "a": "architecture-documentation",
+      "verb": "prevents-hazard",
+      "b": "lava-flow",
+      "note_a": "A dated record of why code stayed lets a team tell a live constraint from a dead one it fears to touch",
+      "note_b": "A recorded reason is what lets a team delete unexplained code with confidence"
+    },
+    {
+      "a": "api-versioning",
+      "verb": "combines-with",
+      "b": "design-for-evolution",
+      "note_a": "Exhaust additive change first; design for evolution says what to design so most releases need no version",
+      "note_b": "Where an additive change is impossible, run both versions and date the old one's retirement the day you publish the new"
+    },
+    {
+      "a": "message-translator",
+      "verb": "combines-with",
+      "b": "design-for-evolution",
+      "note_a": "The translator is how a consumer takes a neighbour's schema change without touching its own code",
+      "note_b": "On a queue, translate a neighbour's message at the edge so one file changes when their schema moves"
     }
   ],
   "group_order": {

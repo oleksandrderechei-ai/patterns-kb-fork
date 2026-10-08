@@ -211,6 +211,7 @@ class Replica {
 - [Read-Through](../../caching/read-through.md) — Read replicas serve cached-style reads
 - [Gossip Protocol](./gossip-protocol.md) — Leaderless stores gossip membership and repair replicas in the background
 - [Make Everything Redundant](../../../principles/redundancy.md) — Replication is this principle applied to data
+- [Build for the Needs of the Business](../../../principles/build-for-business.md) — Replication mode is where the recovery-point number gets paid for
 
 **Enables**
 

@@ -713,7 +713,7 @@
       "definition": "Change a published contract while the callers built on the old one keep working",
       "route": "/patterns/distributed/routing/api-versioning.html",
       "requires": [],
-      "related": ["api-routing", "acl", "dto", "hyrums-law", "contract-testing", "postels-law"]
+      "related": ["api-routing", "acl", "dto", "hyrums-law", "contract-testing", "postels-law", "design-for-evolution"]
     },
     {
       "id": "async-request-reply",
@@ -1105,7 +1105,7 @@
       "definition": "Keeps copies of data on multiple nodes for durability and reads",
       "route": "/patterns/distributed/coordination/replication.html",
       "requires": ["write-ahead-log"],
-      "related": ["sharding", "consistent-hashing", "read-through", "gossip-protocol", "redundancy"]
+      "related": ["sharding", "consistent-hashing", "read-through", "gossip-protocol", "redundancy", "build-for-business"]
     },
     {
       "id": "crdt",
@@ -1449,7 +1449,7 @@
       "definition": "Converts a message between two different formats",
       "route": "/patterns/messaging/message-translator.html",
       "requires": [],
-      "related": ["acl", "adapter", "content-based-router", "postels-law", "message-encoding", "messaging-bridge", "content-enricher", "canonical-data-model", "dead-letter-channel"]
+      "related": ["acl", "adapter", "content-based-router", "postels-law", "message-encoding", "messaging-bridge", "content-enricher", "canonical-data-model", "dead-letter-channel", "design-for-evolution"]
     },
     {
       "id": "messaging-bridge",
@@ -2625,7 +2625,7 @@
       "definition": "Expect every part to change, and keep each change local",
       "route": "/principles/design-for-evolution.html",
       "requires": [],
-      "related": ["strangler-fig", "bounded-context", "acl", "hexagonal", "eda", "postels-law", "architecture-documentation", "conways-law", "rule-of-three"]
+      "related": ["strangler-fig", "bounded-context", "acl", "hexagonal", "eda", "postels-law", "architecture-documentation", "conways-law", "rule-of-three", "api-versioning", "message-translator"]
     },
     {
       "id": "build-for-business",
@@ -2633,7 +2633,7 @@
       "definition": "The non-functional numbers are requirements, and the business owns them",
       "route": "/principles/build-for-business.html",
       "requires": [],
-      "related": ["yagni", "kiss", "redundancy", "failure-mode-analysis", "load-shedding", "scale-out", "architecture-documentation"]
+      "related": ["yagni", "kiss", "redundancy", "failure-mode-analysis", "load-shedding", "scale-out", "architecture-documentation", "replication"]
     },
     {
       "id": "architecture-documentation",
