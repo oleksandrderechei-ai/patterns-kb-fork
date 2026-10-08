@@ -1505,7 +1505,7 @@
       "definition": "Undeliverable messages land somewhere visible, not lost",
       "route": "/patterns/messaging/dead-letter-channel.html",
       "requires": ["message-queue"],
-      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter", "recipient-list", "resequencer", "polling-consumer", "content-enricher", "routing-slip", "load-leveling"]
+      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter", "recipient-list", "resequencer", "polling-consumer", "content-enricher", "routing-slip", "load-leveling", "message-brokers"]
     },
     {
       "id": "correlation-identifier",
@@ -2762,6 +2762,14 @@
       "route": "/comparisons/relational-databases.html",
       "requires": [],
       "related": ["sharding"]
+    },
+    {
+      "id": "message-brokers",
+      "label": "Message brokers & streams",
+      "definition": "Kafka, RabbitMQ, NATS, Pulsar, Redpanda and the managed queues — consumed or replayed decides it",
+      "route": "/comparisons/message-brokers.html",
+      "requires": [],
+      "related": ["dead-letter-channel"]
     }
   ]
 }

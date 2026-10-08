@@ -14790,6 +14790,13 @@
       "b": "containerization",
       "note_a": "Container-native and self-hosted platforms run a standard container image, so the image is the unit you can carry to another platform.",
       "note_b": "Application platforms take the image you build and run it for you, with routing, scaling and certificates attached."
+    },
+    {
+      "a": "message-brokers",
+      "verb": "combines-with",
+      "b": "dead-letter-channel",
+      "note_a": "Cloud queues give the dead-letter path as configuration; the comparison shows which brokers do.",
+      "note_b": "Every broker compared on message-brokers needs a dead-letter destination for messages that keep failing."
     }
   ],
   "group_order": {
