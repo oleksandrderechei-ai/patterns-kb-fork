@@ -23,7 +23,7 @@ A local-business search lets users find places by name, location and category, t
 
 A local-business search keeps each business's average rating and review count as stored columns, updated as each review is written, and answers a search that combines place, name and category with an index built for each. A plain index on latitude and longitude cannot do a two-dimensional area lookup, so location needs a spatial index, name a full-text ([inverted](../patterns/distributed/coordination/inverted-index.md)) index and category a simple one. Size it before building: about 100,000 reviews a day is about 1 write a second, so you need no queue or consumer pipeline, and 10 GB of businesses and 1 TB of reviews need no sharding. The read shape is the problem, not the volume. Choose one database with spatial and text extensions over a separate search engine, until full-text speed forces the split.
 
-- **Sync gap.** A separate search index is faster but trails the database by seconds. Stay on one database until text search speed forces the split.
+- **Sync gap.** A separate search index is faster but trails the database by seconds and needs a CDC stream; one database needs neither.
 - **Rating races.** Two writers can overwrite each other's rating. Make the update conditional on the review count being unchanged, as \[optimistic concurrency\](../patterns/distributed/coordination/optimistic-concurrency-control.md) does, and retry.
 - **Area lookups.** Finding a neighbourhood per query is slow. Look up its area once when the business is written and store its names.
 
@@ -53,7 +53,7 @@ The interesting non-functionals here are latency and the query shape — every s
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Reads.** 100M daily users issuing searches and page views dominate the load — this is the number the architecture has to survive, and it is why a purpose-built search index earns its place.
+**Reads.** 100M daily users issuing searches and page views dominate the load — the read shape, not the volume, is the problem. 100k reviews/day x 1000 reads each is about 100M reads/day, roughly 1,200 reads/s on average, which one primary plus a read replica or cache can carry; a separate search engine is optional.
 
 **Writes.** Reviews are rare next to reads: at a ~1000:1 ratio, 100M users produce on the order of **~100k reviews/day ≈ 1 write/sec**. Even a large surge stays trivial for a single database. This one figure quietly rules out a [message queue](../patterns/messaging/message-queue.md) and a separate write pipeline later on.
 
@@ -96,7 +96,7 @@ Business details and reviews are split into two calls rather than one combined r
 ## How the system is built
 <!--meta block=architecture-->
 
-An [API gateway](../patterns/distributed/routing/api-gateway.md) fronts everything and routes each request to a service. Search and view are closely related and both read-heavy, so they share a single **Business Service**. Reviews behave completely differently — rare, write-side, and tied to the rating maths — so they get their own **Review Service**; splitting a service is justified when the halves scale differently, and this is exactly that case. Businesses and reviews live together in one primary database, because they are tightly coupled and, at 1&nbsp;TB, small enough that a shared store beats cross-service joins. A dedicated **search index** (Elasticsearch, or Postgres with geospatial and trigram extensions) answers the hard multi-filter queries, and a [change-data-capture](../patterns/distributed/coordination/change-data-capture.md) stream keeps it current with the primary store.
+An [API gateway](../patterns/distributed/routing/api-gateway.md) fronts everything and routes each request to a service. Search and view are closely related and both read-heavy, so they share a single **Business Service**. Reviews behave completely differently — rare, write-side, and tied to the rating maths — so they get their own **Review Service**; splitting a service is justified when the halves scale differently, and this is exactly that case. Businesses and reviews live together in one primary database, because they are tightly coupled and, at 1&nbsp;TB, small enough that a shared store beats cross-service joins. A dedicated **search index** (Elasticsearch, or Postgres with geospatial and trigram extensions) answers the hard multi-filter queries, and a [change-data-capture](../patterns/distributed/coordination/change-data-capture.md) stream keeps it current with the primary store. At this size the baseline is one Postgres database with spatial and text extensions; the search index and CDC stream above are the scale-up path, taken when full-text speed forces the split (deep dive 3).
 
 ```mermaid caption="The read path (gateway → Business Service → search index) carries the load; writes go through the Review Service and propagate to the index via CDC."
 flowchart TB
@@ -150,7 +150,7 @@ The query is the crux. A latitude/longitude bounding box combined with a wildcar
 }
 ```
 
-The engine must not be the system of record — it is not built for transactional integrity, and losing an index node should never lose data. So the primary database stays authoritative and CDC feeds changes into the index; the index is a read model, and consistency with the store is eventual. There is a simpler alternative worth naming: since the dataset is only ~10&nbsp;GB of businesses, Postgres with its PostGIS (geospatial) and `pg_trgm` (trigram full-text) extensions can serve all three filters from the primary store itself — no second system, no sync pipeline, no consistency gap. It trades some full-text performance at extreme scale for a much simpler operation, and at this data volume that is usually the better bet. When forced to reason about the geospatial index directly, a quadtree suits businesses well — they cluster densely in cities, and updates are infrequent — followed by a precise second pass with the Haversine great-circle distance, applying the most selective filter (distance) first to shrink the candidate set before the rest.
+The engine must not be the system of record — it is not built for transactional integrity, and losing an index node should never lose data. So the primary database stays authoritative and CDC feeds changes into the index; the index is a read model, and consistency with the store is eventual. There is a simpler alternative worth naming: since the dataset is only ~10&nbsp;GB of businesses, Postgres with its PostGIS (geospatial) and `pg_trgm` (trigram fuzzy match) extensions plus built-in full-text search; PostGIS indexes space with GiST (an R-tree) can serve all three filters from the primary store itself — no second system, no sync pipeline, no consistency gap. It trades some full-text performance at extreme scale for a much simpler operation, and at this data volume that is the better bet. When forced to reason about the geospatial index directly, a quadtree suits businesses well — they cluster densely in cities, and updates are infrequent — followed by a precise second pass with the Haversine great-circle distance, applying the most selective filter (distance) first to shrink the candidate set before the rest.
 
 ### 4 · Searching by neighbourhood, not just a radius
 
@@ -177,7 +177,7 @@ sequenceDiagram
     end
 ```
 
-The geometry is paid once, when the business is written:
+Precomputed `location_names` turn it into an inverted-index lookup; the geometry is paid once, when the business is written.
 
 ```mermaid caption="How is a neighbourhood search answered without testing polygons on every request?"
 flowchart LR
@@ -203,7 +203,8 @@ flowchart LR
 - A separate search index adds a CDC pipeline and an eventual-consistency gap between store and index.
 - Choosing Postgres extensions instead keeps it simple but caps full-text performance at very large scale.
 - Precomputed `location_names` must be recomputed if a business moves or a neighbourhood boundary changes.
-- The whole design leans on writes staying rare; a sudden review flood would reopen the queue-versus-inline question.
+- The design leans on writes staying rare; many writes a second to one business would make the rating retry fire often and reopen the queue-versus-inline question.
+- The stored average can drift if a bug skips an update; a periodic recount from the reviews table repairs average_rating and num_reviews.
 
 ## What's expected at each level
 <!--meta block=levels-->
@@ -228,5 +229,6 @@ flowchart LR
 - [Geohash](../patterns/distributed/routing/geohash.md) — location search rides a spatial index (geohash/quadtree/R-tree) that a plain B-tree cannot provide
 - [Materialized View](../patterns/distributed/coordination/materialized-view.md) — average_rating and precomputed location_names turn expensive aggregates and polygon geometry into single column reads
 - [Keep It Simple (KISS)](../principles/kiss.md) — ~1 write/sec rules out a message queue and ~1TB rules out sharding, and Postgres extensions avoid a second search system entirely
+- [Inverted Index](../patterns/distributed/coordination/inverted-index.md) — name matching rides a full-text inverted index, not a B-tree scan
 
 <!-- relationships:end -->
