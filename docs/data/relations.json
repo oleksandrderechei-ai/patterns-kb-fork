@@ -14202,6 +14202,20 @@
       "b": "priority-inversion",
       "note_a": "Takes no lock, so no low-priority holder can be preempted while a high-priority task waits.",
       "note_b": "No lock means no holder to preempt, at the price of retries."
+    },
+    {
+      "a": "command-query-separation",
+      "verb": "combines-with",
+      "b": "least-astonishment",
+      "note_a": "A query that stays side-effect free is what callers assume from its name.",
+      "note_b": "A read-named method that writes is the commonest astonishment; CQS is the rule that stops it."
+    },
+    {
+      "a": "hyrums-law",
+      "verb": "combines-with",
+      "b": "least-astonishment",
+      "note_a": "What callers expect is what they will come to depend on.",
+      "note_b": "Callers depend on whatever you actually do, so a same-name behaviour change breaks them."
     }
   ],
   "group_order": {

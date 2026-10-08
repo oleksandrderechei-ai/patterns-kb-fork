@@ -81,5 +81,6 @@ Spend the effort in proportion to your user base. An internal helper with three 
 - [API Versioning](../patterns/distributed/routing/api-versioning.md) — A change that keeps the documented contract can still break callers, so versions need a deliberate policy
 - [Contract Testing](../patterns/testing/contract-testing.md) — The contract is the promise plus what callers can see, so test what consumers really use
 - [Encapsulation](./encapsulation.md) — Callers depend on whatever leaks out of an interface, so expose less
+- [Principle of Least Astonishment](./least-astonishment.md) — What callers expect is what they will come to depend on.
 
 <!-- relationships:end -->

@@ -2409,7 +2409,7 @@
       "definition": "Behave the way the people using your code already expect",
       "route": "/principles/least-astonishment.html",
       "requires": [],
-      "related": ["kiss", "facade", "builder", "idempotency", "design-for-operations", "convention-over-configuration"]
+      "related": ["kiss", "facade", "builder", "idempotency", "design-for-operations", "convention-over-configuration", "command-query-separation", "hyrums-law"]
     },
     {
       "id": "fail-fast",
@@ -2505,7 +2505,7 @@
       "definition": "A method either changes state or returns a value, never both",
       "route": "/principles/command-query-separation.html",
       "requires": [],
-      "related": ["cqrs", "separation-of-concerns", "encapsulation", "idempotency"]
+      "related": ["cqrs", "separation-of-concerns", "encapsulation", "idempotency", "least-astonishment"]
     },
     {
       "id": "hyrums-law",
@@ -2513,7 +2513,7 @@
       "definition": "With enough users, every observable behaviour becomes a dependency, whatever the contract says",
       "route": "/principles/hyrums-law.html",
       "requires": [],
-      "related": ["postels-law", "api-versioning", "contract-testing", "encapsulation"]
+      "related": ["postels-law", "api-versioning", "contract-testing", "encapsulation", "least-astonishment"]
     },
     {
       "id": "high-cohesion-low-coupling",

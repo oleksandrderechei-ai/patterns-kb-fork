@@ -16,14 +16,14 @@ Names, signatures, defaults and side effects should match what a reasonable user
 ## What it says
 <!--meta block=description-->
 
-Make a thing behave the way the people using it already expect. Where behaviour and expectation disagree, change the behaviour: a documentation warning does not help, because the person about to be surprised did not read it. Eric Raymond states it as do the least surprising thing. Expectations come from convention, such as language idioms and your codebase, so the principle governs names, signatures, defaults and side effects, not implementation cleverness.
+Make a thing behave the way the people using it already expect. Where behaviour and expectation disagree, change the behaviour: a documentation warning helps only readers who look it up, and the person about to be surprised usually has not. Eric Raymond states it as do the least surprising thing. Expectations come from convention, such as language idioms and your codebase, so the principle governs names, signatures, defaults and side effects, not implementation cleverness.
 
 ## Explained
 <!--meta block=explain-->
 
 The principle of least astonishment says a thing should behave the way the people using it already expect, so they can predict it from its name and signature without opening the source. Most people spend their time predicting, not reading: they see getBalance(), assume it only reads a value, and write a retry loop around it. Each deviation adds a fact that only the source or an incident will teach, and a reader burned once stops trusting the whole interface. Expectation belongs to an audience, so name whose it is first, because what is obvious in one language ecosystem astonishes a newcomer from another. Rank it below correctness and safety: where the expected behaviour is the unsafe one, ship the safe default and make callers ask for the other by name. The standing cost is conservatism, because it always votes for what already exists, even a convention that is wrong. When you must break an expectation, break it loudly with a new name, a required argument or a type that refuses to compile, never quietly.
 
-**Example.** A function named findUser(id) also creates the user when none exists. A caller checks findUser(id) == null to detect a missing account before sign-up, never sees a null, and a typo in an id silently adds a new account. The fix is the name: findUser only reads, and a separate getOrCreateUser says what it does. The team keeps a deprecated alias for one release, because changing behaviour under the same name would compile everywhere and break callers who had no reason to reread it. The cost is one upgrade-time break across 12 call sites, found by the compiler instead of in production.
+**Example.** A function named findUser(id) also creates the user when none exists. A caller checks findUser(id) == null to detect a missing account before sign-up, never sees a null, and a typo in an id silently adds a new account. The fix is the name: findUser only reads, and a separate getOrCreateUser says what it does. The team also widens findUser's return type to allow null, so every caller that assumed a user fails to compile and is moved to getOrCreateUser or given a null check. The cost is one upgrade-time break at each call site, found by the compiler instead of in production.
 
 ## Why it helps
 <!--meta block=rationale-->
@@ -37,15 +37,35 @@ Matching convention keeps the number of facts a caller has to verify at zero; ea
 
 Make the outside of a thing predict its inside:
 
-- Name for the effect, not the implementation. A name that promises a read — `get`, `find`, `is` — must not write, must not fill a cache on the caller's behalf, and must not send anything over a network the caller cannot see.
+- Name for the effect, not the implementation. A name that promises a read (`get`, `find`, `is`) must not write state a caller can observe, and must not send anything over a network the caller cannot see.
 - Follow the local convention before your own preference: the language's idioms, the framework's lifecycle, the argument order the rest of your API already uses. One inconsistent signature costs every caller a lookup, forever.
 - Make the surprise impossible to write. Two adjacent booleans or two same-typed arguments will be swapped eventually, so give them distinct types or named parameters instead of documenting the order.
 - Default to what most callers would pick if asked, and to the safe option where those differ. Most callers never change a default, so the default is the behaviour.
 - Do not hide side effects behind convenience — a silent retry, a background write, a swallowed error. Retrying is a reasonable thing to do and an unreasonable thing to do invisibly: a caller who needs the operation to happen once has no way to learn that it happened twice.
 - When established behaviour has to change, change the name with it. A same-named function with new semantics compiles everywhere and breaks every caller who had no reason to re-read the docs; a new name plus a deprecation moves the break to upgrade time, where somebody is looking.
-- Across several ecosystems there is no single convention to match, so stop trying to have one. Generate the clients for a service from one specification and then adapt each to its language's idioms — an interface that looks identical in every language is idiomatic in none of them, and every caller pays the difference.
+- Across several ecosystems there is no single convention to match. Generate each client from one specification, then adapt it to its language's idioms, because an identical interface often reads as foreign in each.
+- Check it in review. Flag any `get`, `find` or `is` function whose body writes, caches or sends; any signature with two same-typed arguments next to each other; any catch that returns a default.
 
 The test is cheap: describe the behaviour to someone who has not seen the code, using only the name and the signature. If you need to add “but note that…”, you have found the astonishment.
+
+## In code
+<!--meta block=sketch-->
+
+```typescript summary="TypeScript — findUser that creates, then split by what the name promises"
+// Before: a read-named function that writes.
+function findUser(id: string): User {
+  return users.get(id) ?? users.create(id);   // a typo in id adds an account
+}
+
+// After: the name says what it does, and the type says a user may be missing.
+function findUser(id: string): User | null {
+  return users.get(id) ?? null;
+}
+function getOrCreateUser(id: string): User {
+  return findUser(id) ?? users.create(id);
+}
+// Callers that assumed a User no longer compile; each picks one of the two.
+```
 
 ## Taken too far
 <!--meta block=overreach-->
@@ -69,5 +89,7 @@ Used as a veto it also blocks anything genuinely new. A better model astonishes 
 - [Idempotency](../patterns/messaging/idempotency.md) — Callers assume a retry is safe; make that true
 - [Design for Operations](./design-for-operations.md) — Predictability is what an operator leans on when they cannot read the source
 - [Convention over Configuration](./convention-over-configuration.md) — Defaults that match what users expect surprise nobody
+- [Command-Query Separation](./command-query-separation.md) — A read-named method that writes is the commonest astonishment; CQS is the rule that stops it.
+- [Hyrum's Law](./hyrums-law.md) — Callers depend on whatever you actually do, so a same-name behaviour change breaks them.
 
 <!-- relationships:end -->

@@ -86,6 +86,7 @@ Treat the rule as a default that earns exceptions, not a law. The cost of a meth
 - [Separation of Concerns](./separation-of-concerns.md) — It separates the concern of changing state from reading it at method level.
 - [Encapsulation](./encapsulation.md) — Commands are the only door that changes an object's state.
 - [Idempotency](../patterns/messaging/idempotency.md) — A query is the safest idempotent call; commands need care to repeat.
+- [Principle of Least Astonishment](./least-astonishment.md) — A query that stays side-effect free is what callers assume from its name.
 
 **Often confused with**
 
