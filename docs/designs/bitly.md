@@ -26,7 +26,7 @@ A link shortener turns a counter value into a short code, stores the code and it
 
 - **Walkable codes.** Counter values can be guessed in order, so scramble each with a keyed one-to-one transform and use 7 characters.
 - **Viral stampede.** One expired cache entry for a viral code sends every reader to the database, so serve stale while one request refreshes it.
-- **One write path.** No new links while it fails over, so keep a warm standby; clicks never depend on it.
+- **One write path.** No new links while it fails over, so keep a warm standby; cached codes keep redirecting, a cold-code miss waits for promotion.
 
 **Example.** A link in a television ad draws 600,000 redirects a second, against a sustained 17,000 for the whole service. The redirect carries max-age=300, so each edge location asks the origin for that code at most once every 300 s, and 600,000 clicks a second land on the edge, not on your servers. The cost is that if you delete the link, it can keep redirecting for up to 300 s. A guesser does worse: with 6 characters, 1 billion live codes fill 1.8% of the space, so 1 guess in 57 hits a link; with 7 characters it is 1 in 3,500.
 
@@ -46,7 +46,7 @@ Out of scope: accounts and click analytics — named explicitly so the design st
 <!--meta requirement=nfr-->
 
 - **Uniqueness** — every short code maps to exactly one long URL.
-- **Latency** — redirects under 100&nbsp;ms.
+- **Latency** — redirects under 100&nbsp;ms when the edge or cache holds the code; a cold first click from another continent also pays the ~160&nbsp;ms round trip (dive 2).
 - **Availability** — 99.99%, favoured over strict consistency (a stale mapping is harmless; a dropped redirect is not).
 - **Unguessability** — holding one code must not hand you the next, and the space must be sparse enough that guessing is not worth the bandwidth.
 - **Scale** — 1B stored URLs, 100M daily actives, with reads dwarfing writes by roughly 1000:1.
@@ -77,7 +77,7 @@ Three things fall out of the arithmetic. The data is small enough to keep on one
 - Writes: the 1000:1 ratio stated as a rate — ~500k new links/day ≈ **5.8 row-writes/s**, perhaps 50/s while a customer bulk-loads a campaign, and ~5.5 years of that to accumulate the billion rows above. A single primary is untroubled below ~100 writes/s. → NFR: scale.
 - Allocator traffic: 500k links/day ÷ 1000-value blocks ≈ **500 allocator calls/day** — the design's only coordination point is touched about twenty times an hour. → NFR: uniqueness.
 - Storage: 1B rows × ~500 B (7-byte code, a ~200-byte URL on average with a long tail, timestamps, flags) ≈ **500&nbsp;GB**, plus a primary-key index at ~40 B/entry ≈ **40&nbsp;GB**. The index is the figure that matters: held in memory, a miss costs one disk read; evicted, it costs two. → NFR: scale.
-- Working set: assume the top 1% of codes carry the bulk of clicks (link popularity is steeply skewed); 10M mappings × ~250 B ≈ **2.5&nbsp;GB hot** — one cache node's memory, with room for the skew assumption to be wrong by 10×. → NFR: latency.
+- Working set: assume the top 1% of codes carry the bulk of clicks (link popularity is steeply skewed); 10M mappings × ~250 B (cached value only: code and URL, no timestamps or flags, unlike the ~500 B row in the store) ≈ **2.5&nbsp;GB hot** — one cache node's memory, with room for the skew assumption to be wrong by 10×. → NFR: latency.
 - Code space: 1B live codes among 62⁶ ≈ 5.7×10¹⁰ slots is **1.8% occupancy** — one random guess in 57 hits a live link. Seven characters (62⁷ ≈ 3.5×10¹²) drops that to **1 in 3,500**, eight to 1 in 218,000. → NFR: unguessability.
 - Latency geography: Sydney to a US-east origin is ~16,000&nbsp;km each way — about **160&nbsp;ms round trip** at the speed of light in fibre, before Transport Layer Security (TLS) or a lookup. The budget, not the load, is what forces serving from the reader's own continent. → NFR: latency.
 
@@ -131,7 +131,7 @@ GET /{short_code}
   (410 Gone if the link has expired, 404 if it never existed)
 ```
 
-The redirect is a **302**, not a 301: a 301 is cached by the browser and never comes back, which would forfeit expiry and any future analytics. 302 keeps every click reaching the service — and that is a cost as well as a choice, because it means the origin tier is sized for every click ever made, not just the first one from each browser.
+The redirect is a **302**, not a 301: a 301 is cached by the browser and never comes back, which would forfeit expiry and any future analytics. 302 keeps every click reaching the service — and that is a cost as well as a choice, because it means the origin tier is sized for every click that misses the edge, not just the first from each browser. With max-age=300 the edge and browser answer repeat clicks for five minutes, so the origin sees a code again only after max-age lapses; a 301 differs by never coming back, not by absorbing the traffic.
 
 `Cache-Control` on the redirect is the one dial the read path hands to machines it does not own. A `max-age` lets the edge answer repeat clicks without asking the origin, and it also bounds staleness in the only direction that matters: a deleted or expired link can keep redirecting for at most one `max-age` after it dies. Keep it in the minutes, and below the link's remaining life.
 
@@ -140,7 +140,7 @@ Creating a link is deliberately not idempotent: two identical `long_url` values 
 ## How the system is built
 <!--meta block=architecture-->
 
-Requests enter at two points and take routes with nothing in common. `POST /urls` runs once in a link's life: take the next id from the block this instance already claimed, permute it, encode it, insert one row. `GET /{short_code}` runs for years: the edge answers what it holds, the [shared cache](../patterns/caching/distributed-cache.md) answers what it holds, and only a miss reaches the store. The structural decision is that the two paths share exactly one thing — the store — which is what makes them scale on their own clocks and lets a write outage pass without a single failed redirect.
+Requests enter at two points and take routes with nothing in common. `POST /urls` runs once in a link's life: take the next id from the block this instance already claimed, permute it, encode it, insert one row. `GET /{short_code}` runs for years: the edge answers what it holds, the [shared cache](../patterns/caching/distributed-cache.md) answers what it holds, and only a miss reaches the store. The structural decision is that the two paths share exactly one thing — the store — which is what makes them scale on their own clocks and keeps redirects for cached codes running through a write outage.
 
 ```mermaid caption="The write path (generate code → store) is tiny; the read path (edge → cache → store) carries ~600k req/s."
 flowchart TB
@@ -183,7 +183,7 @@ Four questions decide this design, and two more decide how it survives. How do y
 
 - **Naïve — a prefix of the URL.** Take the first characters of the long URL. Two `linkedin.com/in/…` links share a prefix and become the same code, so a visitor lands on a stranger's profile. Rejected on the first collision.
 - **Hashing the URL.** Hash the canonicalized URL (SHA-256), base62-encode it, keep the leading characters. It is deterministic, which buys free deduplication — and deduplication is a feature this product does not want, because expiry belongs to the creator (see the interface). A truncated hash also collides by the birthday bound long before the space is full, so it still needs a constraint and bounded retries. Rejected as the primary source.
-- **Counter, permuted, then base62 (chosen).** One sequence hands every writer a distinct number, a keyed permutation makes that number opaque (dive 4), and base62 (a–z, A–Z, 0–9) renders it as seven characters that survive a URL — unlike base64's `+` and `/`, which mean other things there. No collision check, because there is no collision to find.
+- **[Counter](../patterns/distributed/coordination/unique-id-generation.md), permuted, then base62 (chosen).** One sequence hands every writer a distinct number, a keyed permutation makes that number opaque (dive 4), and base62 (a–z, A–Z, 0–9) renders it as seven characters that survive a URL — unlike base64's `+` and `/`, which mean other things there. No collision check, because there is no collision to find.
 - **Counter durability.** Persisting each increment only helps if the counter store keeps it across failover: Redis replicates and persists asynchronously by default, so fsync each increment or wait for replica acknowledgement, and promote only a replica that confirmed it; otherwise skip the counter forward by a margin on promotion, which costs nothing in a 3.5-trillion space.
 
 The counter is claimed, not called. Each Write Service instance takes 1000 ids with one atomic increment — Redis's `INCRBY` is the usual choice — and then hands them out from its own memory, which turns per-write coordination into a few hundred calls a day. An instance that dies with 400 ids unspent takes them with it, and that costs nothing: the space is 3.5 trillion wide and nobody is counting.
@@ -249,11 +249,11 @@ The failure is a [cache stampede](../hazards/cache-stampede.md), and it arrives 
 
 - **Hold it longer where you can invalidate it.** The shared cache is ours to delete from, so an immutable mapping can sit there for hours or for the link's whole remaining life, and the expiry that starts a stampede happens far less often; the edge copy keeps the minutes-scale `max-age` from the interface, because purging every point of presence is best-effort. Chosen, and the cheapest of the five.
 - **Serve stale while refreshing.** The edge answers from the just-expired copy and refreshes behind the response, so no click waits on the origin and the refresh is one request rather than a herd. Chosen.
-- **Collapse concurrent misses.** The Read Service keeps one in-flight fill per code and parks the other requests on it, so the store sees one read per code per fill however many arrive. Chosen — it bounds the blast radius instead of reducing the odds, which is what you want for the day the other two fail together.
+- **Collapse concurrent misses.** The Read Service keeps one in-flight fill per code and parks the other requests on it, so the store sees one read per code per fill however many arrive. Chosen — it bounds the blast radius instead of reducing the odds, which is what you want for the day the other two fail together. Collapsing is per instance, so with N Read Service instances the store sees up to N reads per code per fill.
 - **Refresh hot keys before they expire.** [Refresh-ahead](../patterns/caching/refresh-ahead.md) needs a list of what is hot, and popularity moves faster than a list built from yesterday's traffic. Deferred until hot codes are being measured anyway.
 - Replicating the hot key across cache nodes is deferred too: it addresses one cache node's network card, and a key hot enough to saturate that never gets past the edge to reach it.
 
-The residual is the cold start. A cache tier that comes back empty puts the full sustained rate — ~17k reads/s — on the store as single-row lookups, which is survivable while the index is in memory and unpleasant if it is not. Collapsing misses does the staging for free: the first request for each code fills it, the rest wait a millisecond behind it, and the store sees one read per distinct code rather than one per client.
+The residual is the cold start. A cache tier that comes back empty puts the full sustained rate — ~17k reads/s — on the store as single-row lookups, which is survivable while the index is in memory and unpleasant if it is not. Collapsing misses does the staging for free: the first request for each code fills it, the rest wait a millisecond behind it, and the store sees one read per distinct code per instance rather than one per client.
 
 ```mermaid caption="One expiry, N misses, one read: a single in-flight fill per code is what keeps a viral link from turning every edge miss into a database read."
 sequenceDiagram
@@ -278,11 +278,11 @@ sequenceDiagram
 
 Do that arithmetic before picking the length. A billion live codes among the 62⁶ ≈ 5.7×10¹⁰ slots of a six-character code is 1.8% occupancy: one random guess in 57 lands on a real link, so a single machine sending a thousand probes a second harvests around eighteen live destinations a second. Seven characters take that to 1 in 3,500 and eight to 1 in 218,000, which is why this design generates seven-character codes even though six would hold the billion. The extra character costs one byte per row and buys two orders of magnitude of dilution.
 
-Sparse is still not enough, because a counter is a numbered list. Base62 is a notation, not a cipher: encode 1,000,000 and 1,000,001 and you get neighbours, so anyone holding one code can read the one issued just after it. Permute the id with a keyed bijection before encoding — a small Feistel network, the construction behind format-preserving encryption, or multiplication by an odd constant modulo 2ⁿ. Both are one-to-one, so distinctness survives the transform and no collision check appears. A plain XOR with a secret is the tempting version and the wrong one: it flips fixed bits, so consecutive ids stay consecutive in the low bits and the codes still cluster.
+Sparse is still not enough, because a counter is a numbered list. Base62 is a notation, not a cipher: encode 1,000,000 and 1,000,001 and you get neighbours, so anyone holding one code can read the one issued just after it. Permute the id with a keyed bijection (a reversible one-to-one scramble) before encoding — a small Feistel network, the construction behind format-preserving encryption. It is one-to-one, so distinctness survives the transform; multiplication by an odd constant modulo 2ⁿ is also one-to-one but only scrambles (see the note below) and no collision check appears. A plain XOR with a secret is the tempting version and the wrong one: it flips fixed bits, so consecutive ids stay consecutive in the low bits and the codes still cluster.
 
-Then make probing expensive. A scan shows up as an unusual miss rate from one source, so apply a [rate limit](../patterns/distributed/resilience/rate-limiter.md) keyed on source at the edge, and cache negative answers so a scan cannot convert itself into store reads while it runs. And state the limit honestly: unguessable is not private. Whoever holds the link holds the content, and there is no revocation short of deletion or expiry — a link that must stay private needs authentication at the destination, which is a different product.
+Then make probing expensive. A scan shows up as an unusual miss rate from one source, so apply a [rate limit](../patterns/distributed/resilience/rate-limiter.md) keyed on source at the edge, and cache negative answers so a scan cannot convert itself into store reads while it runs. And unguessable is not private. Whoever holds the link holds the content, and there is no revocation short of deletion or expiry — a link that must stay private needs authentication at the destination, which is a different product.
 
-- Odd-constant multiplication is linear: two known code pairs reveal the multiplier and consecutive ids stay a fixed stride apart, so it scrambles without hiding. Use the Feistel network; a permutation over 2ⁿ ids fits seven base62 characters only while n ≤ 41 (62⁷ ≈ 3.5×10¹² exceeds 2⁴¹ ≈ 2.2×10¹², not 2⁴²), so cycle-walk if ids can exceed that.
+- Odd-constant multiplication is linear: two known code pairs reveal the multiplier and consecutive ids stay a fixed stride apart, so it scrambles without hiding. Use the Feistel network; a permutation over 2ⁿ ids fits seven base62 characters only while n ≤ 41 (62⁷ ≈ 3.5×10¹² exceeds 2⁴¹ ≈ 2.2×10¹², not 2⁴²), so cycle-walk if ids can exceed that. The key stays fixed for the life of the data: a new key would map fresh ids onto codes already issued. Dive 6's ranges (A from 0, B from 10¹²) leave region B about 1.2×10¹² ids below 2⁴¹, so a third region needs cycle-walking.
 
 ### 5 · Staying up through failures → NFR: availability
 
@@ -397,5 +397,6 @@ flowchart TB
 - [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) — Per-source limits on the miss rate at the edge stop a scanner turning guessed codes into store reads
 - [Distributed Cache](../patterns/caching/distributed-cache.md) — Hot mappings live in a shared cache tier, so every Read Service instance sees the same entries and one fill serves them all
 - [Immutability](../patterns/functional/immutability.md) — A short code never changes its long URL, so cached copies need only a time to live (TTL) and no invalidation protocol
+- [Unique ID Generation](../patterns/distributed/coordination/unique-id-generation.md) — Claimed counter blocks, a keyed permutation and base62 give collision-free codes with no check; hashing and random codes are the rejected alternatives.
 
 <!-- relationships:end -->

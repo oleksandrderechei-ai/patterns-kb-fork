@@ -14566,6 +14566,13 @@
       "b": "hot-key",
       "note_a": "One client at tens of thousands of requests a second saturates a single shard; header-aware client throttling and a blocklist contain it.",
       "note_b": "A rate limiter's own shard becomes the hot key, so adding shards does not raise one client's ceiling."
+    },
+    {
+      "a": "bitly",
+      "verb": "demonstrates",
+      "b": "unique-id-generation",
+      "note_a": "Claimed counter blocks, a keyed permutation and base62 give collision-free codes with no check; hashing and random codes are the rejected alternatives.",
+      "note_b": "Bitly shows it end to end: blocks of 1000 ids, permuted, then encoded as seven characters."
     }
   ],
   "group_order": {
