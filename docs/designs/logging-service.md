@@ -44,7 +44,7 @@ Out of scope: hot-reloading config, async or buffered writes, log rotation, netw
 ### Non-functional (constraints)
 <!--meta requirement=nfr-->
 
-- **Thread safety** — one record's bytes never interleave with another's on the same destination.
+- **Thread safety** — one record's bytes never interleave with another's on the same destination; two destinations built over one shared stream are not serialised against each other, so give them one shared sink object.
 - **Static config** — destinations are set once at construction and never change after.
 - **Extensibility** — a remote destination must drop in later without touching `Logger`.
 - **Ordering** — a single thread's calls keep their order; no strict cross-thread ordering is promised beyond each record's timestamp.
@@ -78,6 +78,7 @@ class Logger:
     def warn(self, message): ...
     def error(self, message): ...
     def fatal(self, message): ...
+    def close(self): ...                # closes every sink
 ```
 
 ## How the system is built
@@ -136,25 +137,26 @@ classDiagram
 
 ### 1 · Two axes of variation — compose them, don't multiply them
 
-The whole class design hinges on one requirement: format and target vary independently. Get it wrong and you get a combinatorial mess.
+The whole class design hinges on one requirement: format and target vary independently.
 
-- **One class that branches on a type field.** A single `Destination` with a `type` field and a `write()` that switches `CONSOLE` vs `FILE`. Fine for two targets, but the third adds a branch and fields only it uses (`filePath`, `socketAddress`, `kafkaTopic`), so most fields sit null and `write()` becomes a switch statement wearing polymorphism as a costume. Every new target edits existing logic — the textbook [open/closed](../principles/open-closed.md) violation. Rejected.
+- **One class that branches on a type field.** A single `Destination` with a `type` field and a `write()` that switches `CONSOLE` vs `FILE`. Fine for two targets, but the third adds a branch and fields only it uses (`filePath`, `socketAddress`, `kafkaTopic`), so most fields sit null and `write()` becomes a switch statement. Every new target edits existing logic — the textbook [open/closed](../principles/open-closed.md) violation. Rejected.
 - **Inheritance with a template method.** Make `Destination` abstract, put the filter-and-format skeleton in `write()`, and leave subclasses only a `doWrite()` to fill in. This is the [template method](../patterns/gof/behavioral/template-method.md) pattern: the level check and the formatter call live in exactly one place, so a subclass author can't forget them. It works — but inheritance is a heavy commitment for one axis of variation, and it composes badly. The moment you want to wrap a target (buffering, retry), "wrap" under inheritance means "subclass and override," and stacking two wrappers wants three levels of hierarchy for what should be one operation.
-- **Composition behind a Sink interface (chosen).** Pull the byte-writing step into its own `Sink` interface. `Destination` stays a single concrete class that owns the threshold and the formatter and delegates the write to a sink. Both the formatter and the sink are [strategies](../patterns/gof/behavioral/strategy.md) — pluggable roles chosen at construction — so the design leans on [composition over inheritance](../principles/composition-over-inheritance.md): a new output target is a new `Sink`, not a new `Destination` subclass, and any format × any target is `Destination(formatter, minLevel, sink)`. The high-level workflow depends only on the `Sink` and `Formatter` abstractions, never on `ConsoleSink` or `JsonFormatter` directly — [dependency inversion](../principles/dependency-inversion.md) in practice — which is exactly what lets the required-but-deferred `RemoteSink` drop in with nothing else touched. It is the shape real loggers converge on: Log4j separates appenders from layouts, Python's `logging` separates handlers from formatters.
+- **Composition behind a Sink interface (chosen).** Pull the byte-writing step into its own `Sink` interface. `Destination` stays a single concrete class that owns the threshold and the formatter and delegates the write to a sink. Both the formatter and the sink are [strategies](../patterns/gof/behavioral/strategy.md) — pluggable roles chosen at construction — so the design leans on [composition over inheritance](../principles/composition-over-inheritance.md): a new output target is a new `Sink`, not a new `Destination` subclass, and any format × any target is `Destination(formatter, minLevel, sink)`.
+- **Dependency inversion and precedent.** The high-level workflow depends only on the `Sink` and `Formatter` abstractions, never on `ConsoleSink` or `JsonFormatter` directly — [dependency inversion](../principles/dependency-inversion.md) in practice — which is exactly what lets the required-but-deferred `RemoteSink` drop in with nothing else touched. It is the shape real loggers converge on: Log4j separates appenders from layouts, Python's `logging` separates handlers from formatters.
 
 Underneath all three is the same discipline — [separation of concerns](../principles/separation-of-concerns.md), read as one axis of change per class: orchestration in `Logger`, classification in `LogLevel`, serialisation in `Formatter`, output in `Sink`, and the per-output invariant in `Destination`. The inheritance variant is still defensible in an interview if you can name the tradeoff; the senior signal is reasoning about the choice, not landing on one fixed answer.
 
 ### 2 · The record is an immutable value, captured once
 
-`LogRecord` is a [value object](../patterns/ddd/value-object.md): four read-only fields describing one moment in one thread, with no behaviour and no identity beyond its contents — a Java record, a Kotlin data class, a frozen `@dataclass`. Two things make that pay off. First, the timestamp and thread name are captured once, at the top of `log()`, not per destination — so every destination sees the identical moment for one logical event, rather than five slightly different clock reads. Second, because the record never changes after creation and formatters are pure functions, the record and its formatters are safe to share across destinations and threads with no synchronisation at all. A dedicated type also means that adding a field later — a request id, a logger name, a context map — touches one class and the one method that builds it, instead of every signature on `Destination` and `Formatter`. That [immutability](../patterns/functional/immutability.md) is not decoration; it is the property the concurrency design is built on.
+`LogRecord` is a [value object](../patterns/ddd/value-object.md): four read-only fields describing one moment in one thread, with no behaviour and no identity beyond its contents — a Java record, a Kotlin data class, a frozen `@dataclass`. Two things make that pay off. First, the timestamp and thread name are captured once, at the top of `log()`, not per destination — so every destination sees the identical moment for one logical event, rather than five slightly different clock reads. Second, because the record is [immutable](../patterns/functional/immutability.md) after creation and formatters are pure functions, the record and its formatters are safe to share across destinations and threads with no synchronisation at all. A dedicated type also means that adding a field later — a request id, a logger name, a context map — touches one class and the one method that builds it, instead of every signature on `Destination` and `Formatter`.
 
 ### 3 · Where the lock lives
 
-Thread safety means one record's bytes must never split across another's on the same output. The tempting answer is to `synchronize` the whole of `Logger.log()` — correct, but a sledgehammer: a slow file write (disk full, contended I/O) then blocks every other call, including console writes that should be instant, and one lock ends up guarding five unrelated resources. The better answer puts the lock where the resource is. Each `Destination` owns its own lock and applies it around only `sink.write()` — a [monitor object](../patterns/concurrency/monitor-object.md) guarding exactly one output. A hung remote destination can't block the file; a slow file can't block the console. And crucially, the level check and the formatting happen outside the critical section — safe precisely because the record is immutable and the formatter is pure, so there is nothing to race on — which keeps the locked region the smallest correct one. Holding the lock across format-and-write instead is also defensible and simpler; the throughput cost only bites when formatting is expensive and contention is high.
+Thread safety means one record's bytes must never split across another's on the same output. The tempting answer is to `synchronize` the whole of `Logger.log()` — correct, but a sledgehammer: a slow file write (disk full, contended I/O) then blocks every other call, including console writes that should be instant, and one lock ends up guarding five unrelated resources. The better answer puts the lock where the resource is. Each `Destination` owns its own lock and applies it around only `sink.write()` — a [monitor object](../patterns/concurrency/monitor-object.md) guarding exactly one output. Because each destination has its own lock, threads writing to different outputs never contend, so a slow file does not hold up another thread's console write. Within one `log()` call the destinations are still written in order, so a hung sink stalls its own caller and the destinations after it until the bounded-queue extension. And crucially, the level check and the formatting happen outside the critical section — safe precisely because the record is immutable and the formatter is pure, so there is nothing to race on — which keeps the locked region the smallest correct one. Holding the lock across format-and-write instead is also defensible and simpler; the throughput cost only bites when formatting is expensive and contention is high.
 
-Each destination owns its own lock, so a slow output stalls only itself.
+Each destination owns its own lock, so a slow output stalls only the threads that write to it.
 
-```mermaid caption="Why can a hung remote destination not block the file or the console?"
+```mermaid caption="Why does a slow file not hold up another thread's console write?"
 flowchart TB
     Log["Logger.log() - one immutable record"]
     subgraph D1["Console Destination"]
@@ -175,15 +177,18 @@ flowchart TB
 
 ### 4 · When a destination fails — and what comes next
 
-A logger is infrastructure, so a broken output must never crash the code that called it. If `sink.write()` throws and you let it propagate, a full disk turns `logger.error("payment failed")` into a payment-processing crash, and a later destination in the [fan-out](../patterns/messaging/fan-out.md) never sees the record. Swallowing the exception inside `Destination.write()` fixes the crash but fails silently — a forensic file can sit empty for days. The production default is to swallow and emit a one-line diagnostic to a known-good fallback stream (stderr), mirroring Log4j's `StatusLogger` and Python's handler-error behaviour; the diagnostic itself must be rate-limited or a persistently failing sink floods stderr. As for the deferred requirements, the shape holds: making `log()` non-blocking means a bounded queue and a single worker thread per destination (Log4j's `AsyncAppender`, Python's `QueueHandler`) — which brings its own worker-lifecycle and overflow-policy questions; hierarchical named loggers add a name and a parent pointer plus a registry `LoggerFactory`, the one place where shared global state is genuinely the requirement. Neither forces a rewrite of the core, which is the point of drawing the boundaries where they are.
+A logger is infrastructure, so a broken output must never crash the code that called it. If `sink.write()` throws and you let it propagate, a full disk turns `logger.error("payment failed")` into a payment-processing crash, and a later destination in the [fan-out](../patterns/messaging/fan-out.md) never sees the record. Swallowing the exception inside `Destination.write()` fixes the crash but fails silently — a forensic file can sit empty for days. The production default is to swallow and emit a one-line diagnostic to a known-good fallback stream (stderr), mirroring Log4j's `StatusLogger` and Python's handler-error behaviour; the diagnostic itself must be rate-limited or a persistently failing sink floods stderr. The interval is set once per destination; suppressed failures are counted and printed with the next report. As for the deferred requirements, the shape holds: making `log()` non-blocking means a bounded queue and a single worker thread per destination (Log4j's `AsyncAppender`, Python's `QueueHandler`) — which brings its own worker-lifecycle and overflow-policy questions; hierarchical named loggers add a name and a parent pointer plus a registry `LoggerFactory`, the one place where shared global state is genuinely the requirement. Neither forces a rewrite of the core.
 
 ```python summary="Pseudocode — Destination.write, the composed workflow"
 class Destination:                 # one concrete class, no hierarchy
-    def __init__(self, formatter, min_level, sink):
+    def __init__(self, formatter, min_level, sink, interval):
         self._formatter = formatter
         self._min_level = min_level
         self._sink = sink
         self._lock = Lock()        # this destination owns its own lock
+        self._interval = interval  # minimum time between stderr reports
+        self._last_report = None
+        self._suppressed = 0
 
     def write(self, record):
         if record.level < self._min_level:
@@ -195,7 +200,15 @@ class Destination:                 # one concrete class, no hierarchy
             try:
                 self._sink.write(formatted)
             except Exception as exc:
-                stderr.write(f"logger: sink write failed: {exc}")
+                self._report(exc)
+
+    def _report(self, exc):
+        if self._last_report and now() - self._last_report < self._interval:
+            self._suppressed += 1
+            return
+        stderr.write(f"logger: sink write failed: {exc} ({self._suppressed} suppressed)")
+        self._last_report = now()
+        self._suppressed = 0
 ```
 
 ```mermaid caption="What happens to one log call, from capture to a failing sink? The record is captured once and shared immutably; only sink.write() runs under the lock, and a broken sink is swallowed to stderr rather than crashing the caller."
@@ -215,9 +228,9 @@ flowchart TB
 <!--meta polarity=pro-->
 
 - Format and target are composed, not multiplied — any combination is a constructor call, and a new target is a new Sink with nothing else touched.
-- Per-destination locks: a slow file write never blocks instant console output, and the critical section is only the sink write.
+- Per-destination locks: threads writing to different destinations do not contend, and the critical section is only the sink write; within one call, destinations are still written in order.
 - One immutable record built per call — every destination sees the same moment, and formatting needs no synchronisation.
-- A failing sink is swallowed with a stderr diagnostic, so a broken output never crashes the caller or starves the other destinations.
+- A failing sink is swallowed with a stderr diagnostic, so a failing output does not crash the caller or skip the later destinations; a sink that hangs still blocks the caller.
 
 ### What it gives up
 <!--meta polarity=con-->
@@ -226,6 +239,7 @@ flowchart TB
 - Swallowing exceptions can hide a chronically broken destination unless the stderr diagnostic is rate-limited.
 - Writes are synchronous, so the caller blocks for the I/O duration; non-blocking writes need the bounded-queue extension.
 - No cross-thread ordering beyond each record's timestamp — wire order reflects who won the lock, not who called first.
+- The interface has no shutdown call, so file handles stay open and buffered output can be lost at exit unless `close()` is added to `Sink` and `Logger`.
 
 ## What's expected at each level
 <!--meta block=levels-->
