@@ -273,6 +273,22 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
   note, `batching` exposed-to `poison-message` and combines-with `dead-letter-channel` and
   `idempotency`.
 
+- Left from the 2026-10-08 kb-improve run over the operating themes (edits a page groom may
+  not make, or that need a source). Membership decisions: `rolling-deployment` and
+  `feature-flag` as `continuous-delivery` members (their decide rows and tour stops follow),
+  and an SLO or alerting page that `observability` and `health-modeling` could route to.
+  Needing a source: rolling-update knobs and reconcile interval, preview-environment
+  lifetime and blocking-scan severity (`continuous-delivery`); canary ramp steps and bake
+  time (`continuous-validation`); starting trace sampling share (`observability`);
+  token lifetime against issuer outage and refresh timing (`operating-a-live-system`,
+  `securing-availability`); quota-headroom alert fraction, sweeper age cutoff, dead-letter
+  depth alarm (`operating-a-live-system`); autoscaling targets and cooldowns, receipt
+  status shape and retention (`workload-composition`); per-partition caps and broker
+  retention defaults (`data-platform`). Candidate edges to judge on their own:
+  `continuous-validation` prerequisite `continuous-delivery`, `health-modeling` to
+  `resilience` and `observability`, `twelve-factor` to `continuous-delivery`,
+  `workload-composition` to `health-modeling`, `data-platform` to `scaling-writes`.
+
 ## Questions
 
 Each may be a page gap. The ids after each question are the top `kb.mjs find` hits, the
