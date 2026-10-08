@@ -16,19 +16,19 @@ A lock with one owner at a time: a thread locks it before it touches shared data
 ## What it is
 <!--meta block=description-->
 
-Two threads that each read a counter, add one and write it back can both read 7 and both write 8, so one increment vanishes and nothing reports an error. A mutex (mutual exclusion lock) closes the gap: a thread locks it before it touches the shared data, unlocks it after, and any thread that asks in between waits. Only one thread is inside the guarded section, so a change of several steps looks like one step to everyone else.
+Two threads that each read a counter, add one and write it back can both read 7 and both write 8, so one increment vanishes and nothing reports an error. A mutex closes the gap: a thread locks it before it touches the shared data, unlocks it after, and any thread that asks in between waits. Only one thread is inside the guarded section, so a change of several steps looks like one step to everyone else.
 
 ## Explained
 <!--meta block=explain-->
 
-A mutex is a lock with one owner at a time. A thread locks it before it reads or changes shared data and unlocks it afterwards, and any other thread that tries to lock in between waits. Without it, two threads that each read 7, add one and write back both store 8, and an update is lost with no error. With it, a change of several steps looks like one step to every other thread. Choose it over a [read-write lock](./rw-lock.md) when writes are common or the guarded section is a few instructions, and over [lock-free](./lock-free.md) code when you want logic a reviewer can check by reading it.
+A mutex is a lock with one owner at a time. A thread locks it before it reads or changes shared data and unlocks it afterwards, and unlock makes every write made inside the section visible to the next thread that locks. Choose it over a [read-write lock](./rw-lock.md) when writes are common or the guarded section is a few instructions, and over [lock-free](./lock-free.md) code when you want logic a reviewer can check by reading it.
 
 - **Waiting.** One slow holder stalls every other thread. Keep the guarded section to a few instructions and do slow work outside it.
 - **Deadlock.** Two threads that take two locks in opposite order wait for each other forever. Take locks in one fixed order everywhere.
 - **Forgotten unlock.** An early return or a panic that skips the unlock hangs every later caller. Unlock in a defer or finally block.
 - **No reentry.** In Go, locking twice from one goroutine hangs it. Split the work into a locked outer call and an unlocked helper.
 
-**Example.** Eight threads each run a request that holds one lock for 2 ms. The lock lets one request in at a time, so the section serves at most 1 / 0.002 = 500 requests a second, however many cores you add. A request that does a 50 ms network call inside the lock cuts that to 20 a second, and the other seven threads sit idle. Moving the call outside the lock, and holding it only for the 2 ms update, restores 500 a second. The cost is that you must copy the data out first and accept that it may change before you use the copy.
+**Example.** Eight threads each run a request that holds one lock for 2 ms. The lock lets one request in at a time, so the section serves at most 1 / 0.002 = 500 requests a second, however many cores you add. A request that does a 50 ms network call inside the lock holds it for about 52 ms, so the section serves about 19 a second, ignoring wake-up time, and the other seven threads sit idle. Moving the call outside the lock, and holding it only for the 2 ms update, restores 500 a second. The cost is that you must copy the data out first and accept that it may change before you use the copy.
 
 ## How it works
 <!--meta block=structure-->
@@ -69,12 +69,13 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Spinlock** — A waiting thread loops on the lock flag instead of sleeping. It wins when the hold is shorter than a context switch, and it burns a whole core when the hold is long. Kernel code uses it most.
+- **Spinlock** — A waiting thread loops on the lock flag instead of sleeping. It wins when the hold is shorter than a context switch, and it burns a whole core when the hold is long. Kernel code uses it where the holder cannot sleep, such as an interrupt handler.
 - **Reentrant mutex** — The thread that holds the lock may lock it again, and the lock counts the depth. It lets a method call another locked method, and it hides designs where lock scope is unclear.
 - **Try-lock and timed lock** — Ask for the lock and give up at once or after a deadline. A request path turns a stuck holder into a fast error instead of a hang.
 - **Striped locks** — Many mutexes each guard one slice of the data, chosen by key hash. Two threads that touch different slices no longer wait for each other.
 - **[Read-Write Lock](./rw-lock.md) split** — Readers share the lock and a writer takes it alone. It pays off when reads far outnumber writes and each read is long.
 - **[Monitor Object](./monitor-object.md)** — The mutex and its data live inside one object, with condition variables for waiting on a state. Every public method takes the lock for you.
+- **Adaptive mutex** — A waiting thread spins briefly in case the holder is about to release, then sleeps. It avoids a context switch for short holds and a burned core for long ones.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -84,8 +85,8 @@ sequenceDiagram
 
 - **Correct by reading it** — you can check the guarded section line by line, with no memory-ordering rules to reason about.
 - **Every multi-step change becomes one step** — no other thread sees a half-updated invariant inside the section.
-- **Waiting is cheap for the CPU** — a blocked thread sleeps and is woken on unlock, with no polling.
-- **Built into every language** — a standard library type with known behaviour, tooling and profilers.
+- **Waiting is cheap for the CPU** — a blocked thread sleeps and is woken on unlock, with no polling; each wake-up costs a context switch, so very short holds can favour a spinlock.
+- **Built into most languages** — a standard library type with known behaviour, tooling and profilers.
 
 ### Cons
 <!--meta polarity=con-->
@@ -135,7 +136,8 @@ func (c *Counter) Value() int {
 }
 
 // Two goroutines calling c.Inc() a million times each: Value() is always
-// 2000000; without mu it is often lower.
+// 2000000. Without mu the total is often lower; go test -race reports the
+// unguarded version.
 ```
 
 ## In the wild
@@ -153,9 +155,9 @@ func (c *Counter) Value() int {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **critical section size** — The work done while the lock is held. It sets the throughput ceiling: a 2 ms hold allows at most 500 entries a second on that lock.
+- **critical section size** — The work done while the lock is held. It sets the throughput ceiling: at most 1 / hold time entries a second on that lock.
 - **lock granularity** — One lock for all the data, or striped locks each guarding a slice. Finer locks cut waiting and raise the chance of taking two in the wrong order.
-- **try-lock or timed lock** — Whether a caller waits forever or gives up after a deadline. A deadline turns a stuck holder into a visible error.
+- **try-lock or timed lock** — Whether a caller waits forever or gives up after a deadline. A deadline turns a stuck holder into a visible error; set it near the p99 of lock hold time plus a margin, and count every timeout.
 - **mutex profile fraction** — In Go, `runtime.SetMutexProfileFraction` turns on sampling of lock contention for the profiler.
 
 ### Signals to watch
@@ -169,10 +171,11 @@ func (c *Counter) Value() int {
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **lock convoy** — Threads line up behind one hot lock and each wakes only to wait again. Throughput falls below what one thread alone achieves.
-- **deadlock** — Two threads each hold one lock and wait for the other. The process stops with no error and CPU drops to zero.
+- **lock convoy** — Threads line up behind one hot lock and each wakes only to wait again. Where each wake-up costs more than the work it does, throughput falls below what one thread alone achieves.
+- **deadlock** — Two threads each hold one lock and wait for the other. They stop with no error; if every thread is caught CPU drops to zero, otherwise only those requests hang. A thread dump shows who waits on what.
 - **lock held across I/O** — A slow disk or network call inside the section stalls every other thread for its whole length.
 - **holder dies without unlocking** — A skipped unlock leaves the lock held, and every later caller hangs. It reads as a freeze, not a crash.
+- **priority inversion** — A low-priority holder is preempted while a high-priority thread waits for its lock. It shows as a slow high-priority path with an idle lock holder; priority inheritance (`PTHREAD_PRIO_INHERIT` in POSIX) lifts the holder.
 
 ### Readiness checklist
 <!--meta polarity=check-->
