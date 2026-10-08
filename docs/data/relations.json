@@ -14629,6 +14629,13 @@
       "b": "rw-lock",
       "note_a": "Named as the next step when one coarse lock contends; the page ships a plain lock.",
       "note_b": "Parking Lot names a read-write lock as the step after one coarse lock: many entrances search while claiming stays exclusive."
+    },
+    {
+      "a": "elevator",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "Two hall-call dispatches can claim the same idle car, and step() can mutate a car's stop set while addRequest writes to it.",
+      "note_b": "An elevator controller handling concurrent hall calls can double-assign an idle car or corrupt a car's stop set mid-tick."
     }
   ],
   "group_order": {
