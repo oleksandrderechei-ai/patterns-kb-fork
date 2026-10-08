@@ -14783,6 +14783,13 @@
       "b": "valet-key",
       "note_a": "Every store here issues signed URLs, so clients upload and download directly and bytes skip your service.",
       "note_b": "Object stores are where the signed URLs are issued; this page compares six of them."
+    },
+    {
+      "a": "application-platforms",
+      "verb": "implements",
+      "b": "containerization",
+      "note_a": "Container-native and self-hosted platforms run a standard container image, so the image is the unit you can carry to another platform.",
+      "note_b": "Application platforms take the image you build and run it for you, with routing, scaling and certificates attached."
     }
   ],
   "group_order": {
