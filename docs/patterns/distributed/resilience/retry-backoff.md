@@ -249,6 +249,7 @@ const claim = `SELECT * FROM task WHERE status = 'pending' AND run_after <= now(
 - [Optimistic Concurrency Control](../coordination/optimistic-concurrency-control.md) — The retried operation can be a version-checked write, where a loss means reload and redo, not blind repeat.
 - [WebSocket](../../messaging/websocket.md) — Reconnecting WebSocket clients are the case where jitter matters most.
 - [Fail Fast](../../../principles/fail-fast.md) — Back off on a transient fault; stop at once on a permanent one.
+- [Fallacies of Distributed Computing](../../../principles/fallacies-of-distributed-computing.md) — The fallacies of distributed computing say which calls owe a retry and a deadline
 
 **Alternative to**
 

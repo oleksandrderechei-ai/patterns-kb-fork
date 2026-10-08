@@ -27,7 +27,7 @@ The fallacies are eight things a local function call gives you for free that a c
 - **Deadlines need choosing.** Pick each from the caller's own budget, and design the page or response to survive a missing piece.
 - **Batching and parallel calls add complexity.** Count calls per request first, and batch only on the hot path.
 
-**Example.** A product page makes 12 sequential calls to other services, each 25 ms on average, with no deadline set. The page takes 300 ms in a quiet test. Then one of the 12 services starts hanging, and each page request that reaches it holds a thread for 30 s. At 10 page requests a second, 200 threads are all stuck within 20 s and every page fails. A 100 ms deadline on each call turns the hang into a fast error and a page without that panel. Running 4 of the calls in parallel cuts the quiet-day time from 300 ms to about 225 ms. The cost is choosing each deadline and designing the page for a missing panel.
+**Example.** A product page makes 12 sequential calls, each 25 ms, and no deadline beyond a 30 s client default. It takes 300 ms when quiet. Then one of the 12 services starts hanging, and each request reaching it holds a thread until that 30 s default gives up. At 10 page requests a second, 200 threads are all stuck within 20 s and every page fails, with a pool of 200 threads. A 100 ms deadline on each call turns the hang into a fast error and a page missing one panel. Running 4 calls in parallel cuts the quiet-day time from 300 ms to about 225 ms. The cost is choosing deadlines and designing for a missing panel.
 
 ## Why it helps
 <!--meta block=rationale-->
@@ -41,14 +41,15 @@ Naming the assumptions turns each into a question you can ask in review: what ha
 
 Turn each fallacy into a default in the code you write:
 
-- Give every remote call a deadline, and pick it from the caller's own budget, not from the callee's best day. A [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) turns an unbounded wait into a failure you can handle.
-- Retry with backoff and a cap, and only where repeating the call is safe. An unlimited immediate retry multiplies load on a service that is already struggling.
+- Give every remote call a deadline picked from the caller's own budget, not the callee's best day: start from the callee's p99 latency plus a margin, cap it at the caller's remaining budget, and pass what is left to downstream calls. A [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) turns an unbounded wait into a failure you can handle.
+- [Retry](../patterns/distributed/resilience/retry-backoff.md) with a cap on attempts, exponential backoff with jitter, and a retry budget set as a share of normal traffic, and only where repeating the call is safe; send an idempotency key for work that is not. An unlimited immediate retry multiplies load on a service that is already struggling.
 - Count the remote calls on your hottest path and put the number in the design. Ten sequential calls at 20 ms each is 200 ms before any work happens.
 - Return only the fields and rows the caller asked for, and set a page size. A response that grows with the data will one day exceed the link or the memory on either end.
-- Authenticate and encrypt every hop, including internal ones, and give each caller only the access it needs.
-- Resolve addresses at call time, and keep the set of peers in a registry rather than in a file.
+- Authenticate and encrypt every hop that leaves the host, including internal ones, and give each caller only the access it needs.
+- Resolve addresses at call time, through DNS or a [registry](../patterns/distributed/routing/service-discovery.md), and expect them to change; do not bake addresses into builds. Check resolver TTL and connection-pool lifetime so a moved peer is picked up.
 - Write the contract down, version it, and test a new caller against an old callee and the reverse.
 - Assume every call can fail in the middle. Where the work spans several services, that means asking which of them are still allowed to hold locks or reservations and for how long; [Minimize Coordination](./minimize-coordination.md) covers the rest.
+- Treat every dependency you do not run as having its own change schedule and limits: agree rate limits and notice of change, and count egress and per-call cost beside the call count.
 
 The compact test: for each remote call, can you say what the caller does when the reply is lost, late, huge, forged or unreadable?
 
@@ -74,6 +75,8 @@ The list is also from 1994 and 1997, and it is not complete. It says nothing abo
 - [Minimize Coordination](./minimize-coordination.md) — Every remote agreement pays latency and failure costs the fallacies hide.
 - [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) — The first and second fallacies demand a deadline on every remote call.
 - [Identity Is the Perimeter](./identity-as-perimeter.md) — The fourth fallacy, a secure network, is why location cannot grant access.
+- [Retry with Backoff](../patterns/distributed/resilience/retry-backoff.md) — The capped, jittered retry the second habit asks for is this pattern
+- [Service Discovery](../patterns/distributed/routing/service-discovery.md) — Topology never changes is false, so peers are looked up at call time
 
 **Prevents**
 

@@ -207,6 +207,7 @@ authz.enforce(currentUser.id, "write", { ownerId: doc.ownerId });
 - [Intercepting Validator](./intercepting-validator.md) — Validation rejects malformed input at the edge; this decides what the valid caller may do, per service.
 - [Gatekeeper](../distributed/routing/gatekeeper.md) — The gatekeeper screens requests at the perimeter; this enforces the role's permissions at each service behind it.
 - [Single Access Point](./single-access-point.md) — The single entry point guards the perimeter; this decides what an admitted caller may do.
+- [Defense in Depth](../../principles/defense-in-depth.md) — Defense in depth asks for this check behind the gateway too
 
 **Requires**
 

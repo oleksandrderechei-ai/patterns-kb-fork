@@ -156,5 +156,6 @@ mustReact("Legacy");
 - [Aggregate](./aggregate.md) — Each context on the map holds its own aggregates and exposes only some of them
 - [Bounded Context](./bounded-context.md) — Each box on the map is one of these.
 - [Conway's Law](../../principles/conways-law.md) — The map records which team boundaries the system's structure follows, and where they cut across tight coupling.
+- [Conway's Law](../../principles/conways-law.md) — Conway's law explains why the map's team and context lines drift apart
 
 <!-- relationships:end -->

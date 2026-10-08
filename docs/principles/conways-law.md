@@ -16,18 +16,18 @@ A system ends up with the same shape as the communication structure of the organ
 ## What it says
 <!--meta block=description-->
 
-Melvin Conway wrote in 1968 that organisations that design systems produce designs that copy their own communication structure. Parts owned by people who talk daily stay loosely joined; a boundary between teams that rarely talk becomes a boundary in the software. It is often read as a jibe at org charts, but it is closer to a measurement. It is no law of nature: a design that fights the organisation costs a meeting on every change.
+Melvin Conway wrote in 1968 that organisations that design systems produce designs that copy their own communication structure. Parts owned by people who talk daily are shaped together and change freely; a boundary between teams that rarely talk becomes a formal, costly contract in the software. Read the system as a measurement of the organisation. It is no law of nature: a design that fights the organisation costs a meeting on every change.
 
 ## Explained
 <!--meta block=explain-->
 
-Conway's law says the structure of a system comes to match the way the people who build it communicate. Two parts can be shaped together only when their owners talk often, so a boundary between teams that rarely talk becomes a hard, formal boundary in the software, and parts owned by one team stay loosely joined and change freely. Read the system as a measurement of the organisation, including its informal paths. To diagnose, count the teams that each common change touches. To design, run the inverse Conway manoeuvre: form the teams the target architecture needs and let their communication shape the system, rather than drawing the system and hoping. Choose it over drawing boundaries on technical grounds alone, because a boundary that crosses a team line costs a negotiation on every change.
+Conway's law says the structure of a system comes to match the way the people who build it communicate. Two parts can be shaped together only when their owners talk often. Parts owned by one team are closely integrated, with fluid boundaries, and change freely; a boundary between teams that rarely talk becomes a hard, formal contract in the software. Read the system as a measurement of the organisation, including its informal paths. To diagnose, count the teams that each common change touches. To design, run the inverse Conway manoeuvre: form the teams the target architecture needs and let their communication shape the system, rather than drawing the system and hoping. Choose it over drawing boundaries on technical grounds alone, because a boundary that crosses a team line costs a negotiation on every change.
 
 - **Reorganising is slow.** First fix the interfaces that already hurt, because a reorg takes quarters and the pain is weekly.
 - **A team per service leaves no owner of the user journey.** Name one person or team who owns the journey across services.
 - **Bending people to a diagram backfires.** A good contract can bridge a weak boundary, so change the org only where the contract cannot.
 
-**Example.** A shop has a front-end team, an API team and a database team. Adding a coupon field to checkout needs all three: a field in the page, a change in the API and a column in the database. Each team plans, reviews and deploys on its own timetable, and the change takes 3 weeks. After a regroup into one checkout team that owns all three layers, the same kind of change takes 2 days. The cost is that the checkout team now carries on-call for the database and has to keep its schema and its code consistent, and nobody owns the shared platform until one is named.
+**Example.** A shop has a front-end team, an API team and a database team. Adding a coupon field to checkout needs all three: a field in the page, a change in the API and a column in the database. Each team plans, reviews and deploys on its own timetable, and the change takes, say, 3 weeks. After a regroup into one checkout team that owns all three layers, the same kind of change takes, say, 2 days. The regroup also removes the cross-team review and deploy queue. The cost is that the checkout team now carries on-call for the database and has to keep its schema and its code consistent, and nobody owns the shared platform until one is named.
 
 ## Why it helps
 <!--meta block=rationale-->
@@ -36,7 +36,7 @@ Software is built by people agreeing on interfaces, and agreement takes conversa
 
 That makes the law useful as a design input and not only a diagnosis. If a boundary in the diagram crosses a team boundary in the org chart, every change at that boundary is a negotiation between two groups with different priorities. If a feature touches five services owned by five teams, shipping it takes five plans and five reviews, however clean each service is on its own. Seeing the mismatch before you draw the boundary is cheaper than discovering it in the release calendar.
 
-It also explains why a reorganisation changes the code later. Merge two teams and the interface between their components drifts, because nobody now needs to hold it still. Split one team and a hidden coupling inside their component becomes a visible, painful one.
+It also explains why a reorganisation changes the code later. Merge two teams and the interface between their components tends to drift when the shared change rate stays low, because nobody now needs to hold it still. Split one team and a hidden coupling inside their component becomes a visible, painful one.
 
 ## Applying it
 <!--meta block=applying-->
@@ -45,8 +45,8 @@ Design the teams and the system together, and check one against the other:
 
 - Draw team boundaries along the business seams where a [Bounded Context](../patterns/ddd/bounded-context.md) would sit, so a team owns a whole slice, front to back, and can ship it alone.
 - Run the inverse Conway manoeuvre when you want a target architecture: form the teams the target needs first, and let their communication shape the system, instead of drawing the system and hoping the teams follow.
-- List the features you ship most often and count the teams each one touches. A feature that needs three teams every time marks a boundary in the wrong place.
-- Give a service one owning team. Shared ownership is a boundary with nobody on either side of it.
+- List the features you ship most often and count the teams each one touches. A feature that needs three teams every time suggests a misplaced boundary; check whether a contract or platform team can bridge it before moving it.
+- Give a service one owning team. Shared ownership leaves changes with no one to decide them, unless a named platform team owns the shared part.
 - Keep a team small enough to talk without a meeting, and give it the full set of skills it needs to ship, so it does not wait on another team for a deploy or a schema change.
 - Treat informal links as part of the design. If two teams must work closely, put them in the same group with the same goals, rather than letting a shared channel create the coupling by accident.
 - Plan for the system to change after a reorganisation, and revisit the boundaries then; [Design for Evolution](./design-for-evolution.md) covers how to keep that change inside one part.
@@ -75,6 +75,8 @@ Read the law as a prediction to test, not a rule to obey. When the system and th
 - [Design for Evolution](./design-for-evolution.md) — Reorganisations move boundaries, so keep each change inside one part.
 - [Context Map](../patterns/ddd/context-map.md) — A context map draws the team boundaries that Conway's law says the structure will follow.
 - [Micro-Frontends](../patterns/frontend/micro-frontends.md) — A team that owns a whole slice, built and shipped alone, is the same line drawn in the UI.
+- [Service Boundaries](../themes/service-boundaries.md) — Team lines are an input when you draw a service boundary
+- [Context Map](../patterns/ddd/context-map.md) — A context map shows where team lines and context lines disagree
 
 **Often confused with**
 

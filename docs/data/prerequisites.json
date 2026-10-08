@@ -489,7 +489,7 @@
       "definition": "Retries transient failures with a growing delay",
       "route": "/patterns/distributed/resilience/retry-backoff.html",
       "requires": ["idempotency", "timeout-deadline"],
-      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control", "websocket", "fail-fast"]
+      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control", "websocket", "fail-fast", "fallacies-of-distributed-computing"]
     },
     {
       "id": "bulkhead",
@@ -729,7 +729,7 @@
       "definition": "Resolve a logical service name to an instance that is alive right now",
       "route": "/patterns/distributed/routing/service-discovery.html",
       "requires": ["health-endpoint"],
-      "related": ["load-balancer", "circuit-breaker", "sidecar", "ambassador", "a2a", "reverse-proxy", "api-gateway"]
+      "related": ["load-balancer", "circuit-breaker", "sidecar", "ambassador", "a2a", "reverse-proxy", "api-gateway", "fallacies-of-distributed-computing"]
     },
     {
       "id": "mcp",
@@ -1873,7 +1873,7 @@
       "definition": "Centralizes verifying who is making the request",
       "route": "/patterns/security/authentication-enforcer.html",
       "requires": [],
-      "related": ["api-gateway", "federated-identity", "secure-session-manager", "single-access-point", "identity-as-perimeter"]
+      "related": ["api-gateway", "federated-identity", "secure-session-manager", "single-access-point", "identity-as-perimeter", "defense-in-depth"]
     },
     {
       "id": "authorization-enforcer",
@@ -1881,7 +1881,7 @@
       "definition": "Centralizes checking what a role is allowed to do",
       "route": "/patterns/security/authorization-enforcer.html",
       "requires": ["authentication-enforcer"],
-      "related": ["least-privilege", "secure-session-manager", "identity-as-perimeter", "intercepting-validator", "gatekeeper", "single-access-point"]
+      "related": ["least-privilege", "secure-session-manager", "identity-as-perimeter", "intercepting-validator", "gatekeeper", "single-access-point", "defense-in-depth"]
     },
     {
       "id": "secure-session-manager",
@@ -2380,6 +2380,14 @@
       "related": ["persona-identification"]
     },
     {
+      "id": "service-boundaries",
+      "label": "Service Boundaries",
+      "definition": "Deciding where one service ends and the next begins, and recognising the day you got it wrong",
+      "route": "/themes/service-boundaries.html",
+      "requires": [],
+      "related": ["conways-law"]
+    },
+    {
       "id": "dry",
       "label": "Don't Repeat Yourself (DRY)",
       "definition": "Every piece of knowledge has one authoritative home in the system",
@@ -2649,7 +2657,7 @@
       "definition": "Eight false assumptions about networks, each with the design habit that replaces it",
       "route": "/principles/fallacies-of-distributed-computing.html",
       "requires": [],
-      "related": ["failure-mode-analysis", "minimize-coordination", "timeout-deadline", "identity-as-perimeter"]
+      "related": ["failure-mode-analysis", "minimize-coordination", "timeout-deadline", "identity-as-perimeter", "retry-backoff", "service-discovery"]
     },
     {
       "id": "defense-in-depth",
@@ -2657,7 +2665,7 @@
       "definition": "Independent layers of protection, so one failed or bypassed control is not a breach",
       "route": "/principles/defense-in-depth.html",
       "requires": [],
-      "related": ["multi-tenancy", "redundancy", "identity-as-perimeter", "single-access-point", "least-privilege", "intercepting-validator", "agent-sandboxing"]
+      "related": ["multi-tenancy", "redundancy", "identity-as-perimeter", "single-access-point", "least-privilege", "intercepting-validator", "agent-sandboxing", "authentication-enforcer", "authorization-enforcer"]
     },
     {
       "id": "conways-law",
@@ -2665,7 +2673,7 @@
       "definition": "A system copies the communication structure of the organisation that builds it",
       "route": "/principles/conways-law.html",
       "requires": [],
-      "related": ["bounded-context", "design-for-evolution", "vertical-slice", "context-map", "micro-frontends"]
+      "related": ["bounded-context", "design-for-evolution", "vertical-slice", "context-map", "micro-frontends", "service-boundaries"]
     },
     {
       "id": "compute",

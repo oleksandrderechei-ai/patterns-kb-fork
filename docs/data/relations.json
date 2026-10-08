@@ -14426,6 +14426,48 @@
       "b": "design-for-evolution",
       "note_a": "The translator is how a consumer takes a neighbour's schema change without touching its own code",
       "note_b": "On a queue, translate a neighbour's message at the edge so one file changes when their schema moves"
+    },
+    {
+      "a": "retry-backoff",
+      "verb": "combines-with",
+      "b": "fallacies-of-distributed-computing",
+      "note_a": "The fallacies of distributed computing say which calls owe a retry and a deadline",
+      "note_b": "The capped, jittered retry the second habit asks for is this pattern"
+    },
+    {
+      "a": "service-discovery",
+      "verb": "combines-with",
+      "b": "fallacies-of-distributed-computing",
+      "note_a": "The sixth fallacy, topology never changes, is why a caller looks up peers instead of holding addresses",
+      "note_b": "Topology never changes is false, so peers are looked up at call time"
+    },
+    {
+      "a": "conways-law",
+      "verb": "combines-with",
+      "b": "service-boundaries",
+      "note_a": "Team lines are an input when you draw a service boundary",
+      "note_b": "Conway's law says team structure shapes the boundaries you draw"
+    },
+    {
+      "a": "context-map",
+      "verb": "combines-with",
+      "b": "conways-law",
+      "note_a": "Conway's law explains why the map's team and context lines drift apart",
+      "note_b": "A context map shows where team lines and context lines disagree"
+    },
+    {
+      "a": "authentication-enforcer",
+      "verb": "combines-with",
+      "b": "defense-in-depth",
+      "note_a": "Its layers are only as independent as its checks",
+      "note_b": "A per-service identity check is the layer this principle asks for"
+    },
+    {
+      "a": "authorization-enforcer",
+      "verb": "combines-with",
+      "b": "defense-in-depth",
+      "note_a": "Defense in depth asks for this check behind the gateway too",
+      "note_b": "An access check inside each service is a layer that stands alone"
     }
   ],
   "group_order": {
