@@ -123,9 +123,8 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     `long-polling`, `ticketmaster` demonstrates `conditional-write`, `leetcode`
     demonstrates `async-request-reply` and `web-queue-worker`, `youtube` exposed-to
     `hot-partition`;
-  - the `saga` edge notes on both persona-identification pages still say "failure
-    terminals", and the `alternative-to` note between the two pages does not say what
-    this side argues; each is an unlink then link;
+  - the `alternative-to` note between the two persona-identification pages does not say
+    what this side argues; fix the note in place in `relations.json`;
   - an owner call on `video-recommendations`, a theme page filed in the Advanced
     case-study area: move it with kb-move or keep it there.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
