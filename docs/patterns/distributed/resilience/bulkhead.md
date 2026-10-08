@@ -26,7 +26,7 @@ A bulkhead gives each thing you call its own small, fixed share of a resource, s
 
 - **Idle shares.** Reserved capacity sits unused, so split only the dependencies that can stall.
 - **Sizing guess.** A share too small recreates the starvation, so measure peak concurrent calls per dependency first.
-- **Shared roots.** Shares on one database fill together, so split that resource too, and pair with a \[circuit breaker\](circuit-breaker.md).
+- **Shared roots.** Shares on one database fill together, so split that resource too, and pair with a [circuit breaker](circuit-breaker.md).
 
 **Example.** A service has 100 threads. Checkout calls payment at 50 requests a second, each taking 100 ms, so 5 threads are busy. Recommendations get 100 requests a second at 50 ms, so 5 more. Recommendations slow to 10 s. With one shared pool, 100 calls a second need 1,000 threads, the pool is empty after 1 s, and checkout fails. With a bulkhead of 20 threads each, recommendations fill their 20 in 0.2 s and every later call is refused at once, while payment still has 15 of its 20 free. The cost is 40 threads held back, and payment's 20 sit mostly idle at a peak need of 5.
 

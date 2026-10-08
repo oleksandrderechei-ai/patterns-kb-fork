@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://odere-pro.github.io/patterns-kb/schema/kb-index-1.json",
+  "title": "The page index of the site (kb-index/1)",
+  "description": "Every page the site built, in one JSON document served as index.json, contract kb-index/1. Read it to find a page and what sits beside it: a page of the knowledge base names its record (kb-record/1), the typed JSON copy of the page, and every page that has a markdown source names that too. The index lists the pages and carries no page text. Every key is always there, except `markdown` on a page that has no markdown source. Keys come in the order this file lists them, and the document is two-space JSON with one newline at the end, so two builds of the same pages are byte for byte equal. Adding a key stays in kb-index/1, so ignore keys you do not know; renaming, removing or retyping a key, or changing an order, would be kb-index/2, published beside this file. ORDER: `pages` has the home page first, then the pages by area in the order of the site's structure file, then by route. WHICH PAGES: every built page is listed. A page of the knowledge base has values in `id`, `kind`, `band`, `group` and `record`; every other page (a hub, the home page, a map, reference or concept page) holds null in those five keys. An address that the index does not list as a `record` has no record, and a request for it is not a 200.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string", "const": "https://odere-pro.github.io/patterns-kb/schema/kb-index-1.json", "description": "The address of this schema, so a reader that holds the index can fetch what its keys mean." },
+    "contract": { "type": "string", "const": "kb-index/1", "description": "The contract and its major version: `kb-index/1`. A reader that knows only this one refuses any other value." },
+    "generator": { "type": "string", "description": "The program that wrote the file: tools/src/site/site-portable.ts." },
+    "pages": { "type": "array", "items": { "$ref": "#/$defs/page" }, "description": "Every built page, the home page first, then by area in structure order, then by route." }
+  },
+  "required": ["$schema", "contract", "generator", "pages"],
+  "$defs": {
+    "id": {
+      "description": "A page id: lower-case letters and digits in words joined by hyphens.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "kind": {
+      "description": "The seven kinds of page.",
+      "type": "string",
+      "enum": ["pattern", "hazard", "theme", "principle", "design", "capability", "comparison"]
+    },
+    "heading": {
+      "description": "One heading of a page, from the second level to the fourth.",
+      "type": "object",
+      "properties": {
+        "depth": { "type": "integer", "enum": [2, 3, 4], "description": "The heading level: 2 for an H2, 3 for an H3, 4 for an H4." },
+        "id": { "type": "string", "description": "The id the heading's anchor carries, so `<route>#<id>` opens the page at it; '' when the heading has none." },
+        "text": { "type": "string", "description": "The words of the heading, markup removed." }
+      },
+      "required": ["depth", "id", "text"]
+    },
+    "page": {
+      "description": "One built page.",
+      "type": "object",
+      "properties": {
+        "route": { "type": "string", "pattern": "^/.+\\.html$", "description": "The page's address on the site, from the site root: a slash, its path and .html." },
+        "title": { "type": "string", "description": "The page title: the headline of its structured data, else its title element." },
+        "description": { "type": "string", "description": "The one-line description from the page's head; '' when it has none." },
+        "area": { "type": "string", "description": "The id of the area the page is filed under in the site's structure." },
+        "owner": { "type": "string", "description": "The page's owner." },
+        "status": { "type": "string", "description": "The page's status, such as stable." },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "The page's tags, in the order its head lists them; [] when it has none." },
+        "aliases": { "type": "array", "items": { "type": "string" }, "description": "Other names the page goes by, in the order its head lists them; [] when it has none." },
+        "solves": { "type": "array", "items": { "type": "string" }, "description": "The problems the page solves, each in the words of someone who has it; [] when it lists none." },
+        "id": {
+          "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }],
+          "description": "For a page of the knowledge base, its id: its file name without .md, which every kb.mjs command takes. Null on any other page."
+        },
+        "kind": {
+          "anyOf": [{ "$ref": "#/$defs/kind" }, { "type": "null" }],
+          "description": "For a page of the knowledge base, its kind, from the folder it sits in under docs/. Null on any other page."
+        },
+        "band": { "type": ["string", "null"], "description": "For a pattern, the area directly under patterns; for any other page of the knowledge base, the kind itself. Null on any other page." },
+        "group": { "type": ["string", "null"], "description": "For a pattern, the area that lists it; for any other page of the knowledge base, the kind itself. Null on any other page." },
+        "record": { "type": ["string", "null"], "pattern": "^/.+\\.json$", "description": "For a page of the knowledge base, the address of its kb-record/1 record: `route` with .json in place of .html. Null on any other page, which has none." },
+        "headings": { "type": "array", "items": { "$ref": "#/$defs/heading" }, "description": "The page's headings from the second level to the fourth, in page order." },
+        "markdown": { "type": "string", "pattern": "^/.+\\.md$", "description": "The address of the page's markdown source: `route` with .md in place of .html, byte for byte the file under docs/ the page is built from. Absent on a page that has no markdown source." }
+      },
+      "required": ["route", "title", "description", "area", "owner", "status", "tags", "aliases", "solves", "id", "kind", "band", "group", "record", "headings"]
+    }
+  }
+}

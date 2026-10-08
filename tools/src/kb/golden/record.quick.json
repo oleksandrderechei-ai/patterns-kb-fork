@@ -1,0 +1,203 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "quick",
+  "title": "Quick",
+  "description": "The quick page",
+  "kind": "principle",
+  "band": "principle",
+  "group": "principle",
+  "area": "principles",
+  "areaChain": [
+    {
+      "id": "principles",
+      "label": "principles"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "resilience",
+    "latency"
+  ],
+  "aliases": [],
+  "solves": [],
+  "favourite": false,
+  "route": "/principles/quick.html",
+  "markdown": "/principles/quick.md",
+  "source": {
+    "path": "docs/principles/quick.md",
+    "sha256": "23302a36a72673bd73994769a0f0588fddf60a0eb751c49bd508853990f31672"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Fail early.",
+      "md": "Fail early."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "What it says",
+        "md": "What it says"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "fb44c321",
+          "text": "Report a fault where it starts.",
+          "md": "Report a fault where it starts."
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "cdd4487b",
+          "text": "Weigh it against availability. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Weigh it against availability. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "rationale",
+      "name": "rationale",
+      "heading": {
+        "text": "Why it helps",
+        "md": "Why it helps"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "rationale-p-1",
+          "fp": "f4f7d4bf",
+          "text": "Faults stay near their cause.",
+          "md": "Faults stay near their cause."
+        }
+      ]
+    },
+    {
+      "id": "applying",
+      "name": "applying",
+      "heading": {
+        "text": "How to apply it",
+        "md": "How to apply it"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "applying-p-1",
+          "fp": "747d5b3d",
+          "text": "Validate at the boundary.",
+          "md": "Validate at the boundary."
+        }
+      ]
+    },
+    {
+      "id": "overreach",
+      "name": "overreach",
+      "heading": {
+        "text": "Where it goes too far",
+        "md": "Where it goes too far"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "overreach-p-1",
+          "fp": "f53171ca",
+          "text": "Crashing on a recoverable blip.",
+          "md": "Crashing on a recoverable blip."
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": null,
+      "content": []
+    }
+  ],
+  "relations": [],
+  "themes": [],
+  "tour": [],
+  "prerequisites": {
+    "requires": [],
+    "related": []
+  },
+  "links": [],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "rationale": "/blocks/2",
+    "rationale-p-1": "/blocks/2/content/0",
+    "applying": "/blocks/3",
+    "applying-p-1": "/blocks/3/content/0",
+    "overreach": "/blocks/4",
+    "overreach-p-1": "/blocks/4/content/0",
+    "relationships": "/blocks/5"
+  }
+}

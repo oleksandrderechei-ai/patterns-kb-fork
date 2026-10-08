@@ -5,26 +5,31 @@
  * files a page's neighbours live in — `content-model.json` (kinds, blocks,
  * verbs), `relations.json` (typed edges) and `learning-paths.json` (tours).
  *
- * Nothing here parses a page body; tools/src/kb/page.ts does that, through
- * tools/src/lib/kb-attrs.ts. Everything is read on first use and kept, so a
- * command pays only for what it asks: `get` reads one page's frontmatter
- * with the rest, in one spawn, and no body but its own.
+ * A page body is parsed by tools/src/kb/page.ts, through
+ * tools/src/lib/kb-attrs.ts; the corpus keeps the parse (`doc`) and answers
+ * what needs the whole corpus: which page a link names (`linkTarget`) and which
+ * pages a page mentions in its prose (`mentions`). Everything is read on first
+ * use and kept, so a command pays only for what it asks: `get` reads one
+ * page's frontmatter with the rest, in one spawn, and no body but its own.
  *
  * A page's KIND is the top folder of its markdown under docs/ (dialect X-03);
  * its band and group are what scripts/kb.mjs printed: for a pattern, the area
  * under `patterns` and the page's own area; for every other kind, the kind
- * itself, twice.
+ * itself, twice. tools/src/lib/kb-place.ts works that out.
  */
 
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { frontmatterMany, listOf, type FmValue } from '../lib/frontmatter.js';
+import { placeOf, type AreaRef } from '../lib/kb-place.js';
+import { relationGroups, type RelationsFile, type Verbs } from '../lib/render-relations.js';
 import { pageCategories } from '../lib/search-score.js';
-import type { RelationsFile, Verbs } from '../lib/render-relations.js';
 
 import { DiskCache } from './disk-cache.js';
+import { parsePage, proseLinks, type PageDoc } from './page.js';
 
 /** The repo this module sits in: tools/src/kb → the root. */
 export const REPO = path.resolve(fileURLToPath(import.meta.url), '../../../..');
@@ -40,8 +45,15 @@ export const DATA = {
 /** The order scripts/kb.mjs lists kinds in (build.mjs KIND_SEQ). */
 export const KIND_SEQ = ['pattern', 'hazard', 'theme', 'principle', 'design', 'capability', 'comparison'] as const;
 
-/** A usage or lookup failure a command reports and exits 1 on. */
+/** A lookup failure, a refusal or a finding a command reports and exits 1 on: the call was well formed. */
 export class KbError extends Error {}
+
+/**
+ * The call itself is wrong — an unknown command or flag, a flag with no value,
+ * a missing argument. `run` exits 2 on it, so a script can tell a call that
+ * was made badly from one that was made well and found nothing.
+ */
+export class KbUsageError extends KbError {}
 
 export interface Kind {
   readonly id: string;
@@ -91,6 +103,8 @@ export interface Page {
   /** The markdown, repo-relative. */
   readonly source: string;
   readonly area: string;
+  /** The area that lists the page and every area it nests under, outermost first. */
+  readonly areaChain: readonly AreaRef[];
   readonly kind: string;
   readonly band: string;
   readonly group: string;
@@ -98,10 +112,13 @@ export interface Page {
   readonly categories: readonly string[];
 }
 
-/** A page's frontmatter, in the shape the reader prints. */
+/** A page's frontmatter, in the shape the reader prints; a key the page lacks reads as `''` or `[]`. */
 export interface Meta {
   readonly title: string;
   readonly essence: string;
+  readonly area: string;
+  readonly status: string;
+  readonly owner: string;
   readonly aliases: readonly string[];
   readonly tags: readonly string[];
   readonly solves: readonly string[];
@@ -167,25 +184,24 @@ export function readModel(root: string): ContentModel {
 export function readPages(root: string, model: ContentModel): Page[] {
   const raw = readJsonFile(root, DATA.structure)['areas'];
   const areas = (Array.isArray(raw) ? raw : []) as Area[];
-  const byId = new Map(areas.map((a) => [a.id, a]));
-  const kindOf = new Map(model.kinds.map((k) => [k.folder, k.id]));
-  const chainOf = (id: string): string[] => {
-    const chain: string[] = [];
-    for (let cur: string | undefined = id; cur !== undefined && !chain.includes(cur); cur = byId.get(cur)?.nestUnder) chain.push(cur);
-    return chain;
-  };
   const out: Page[] = [];
   for (const a of areas) {
-    const chain = chainOf(a.id);
     for (const p of a.pages ?? []) {
       // Kind is the top folder under docs/, not the top area (dialect X-03):
       // three theme pages sit in a designs tier and are still themes.
-      const kind = kindOf.get(p.source.split('/')[1] as string);
-      if (kind === undefined || !p.source.startsWith('docs/')) continue;
-      const band = kind === 'pattern' ? (chain[chain.length - 2] ?? a.id) : kind;
-      const group = kind === 'pattern' ? a.id : kind;
-      const labels = [...chain].reverse().map((id) => byId.get(id)?.label ?? id);
-      out.push({ slug: p.slug, route: p.route, path: p.route.replace(/^\//, ''), source: p.source, area: a.id, kind, band, group, categories: pageCategories(labels, kind) });
+      const place = placeOf({ areas }, model.kinds, { area: a.id, source: p.source });
+      if (place === null) continue;
+      out.push({
+        slug: p.slug,
+        route: p.route,
+        path: p.route.replace(/^\//, ''),
+        source: p.source,
+        ...place,
+        categories: pageCategories(
+          place.areaChain.map((c) => c.label),
+          place.kind,
+        ),
+      });
     }
   }
   return out;
@@ -223,6 +239,9 @@ export function metaOf(fm: Readonly<Record<string, FmValue>>): Meta {
   return {
     title: s('title'),
     essence: s('description'),
+    area: s('area'),
+    status: s('status'),
+    owner: s('owner'),
     aliases: asList(fm['aliases']),
     tags: asList(fm['tags']),
     solves: asList(fm['solves']),
@@ -300,12 +319,16 @@ export class Corpus {
     return this.#bySlug.get(slug);
   }
 
-  /** The page, or a KbError in scripts/kb.mjs's words, with near misses. */
+  /**
+   * The page, or a KbError in scripts/kb.mjs's words, with near misses. No id
+   * at all is a KbUsageError: the caller passes the positional it was given.
+   */
   need(slug: string | undefined): Page {
-    const p = slug === undefined ? undefined : this.page(slug);
+    if (slug === undefined) throw new KbUsageError('unknown id: (none given)');
+    const p = this.page(slug);
     if (p !== undefined) return p;
-    const near = slug === undefined ? [] : this.pages.map((x) => x.slug).filter((k) => k.includes(slug)).slice(0, 5);
-    throw new KbError(`unknown id: ${slug ?? '(none given)'}${near.length > 0 ? `\ndid you mean: ${near.join(', ')}` : ''}`);
+    const near = this.pages.map((x) => x.slug).filter((k) => k.includes(slug)).slice(0, 5);
+    throw new KbError(`unknown id: ${slug}${near.length > 0 ? `\ndid you mean: ${near.join(', ')}` : ''}`);
   }
 
   /**
@@ -340,6 +363,64 @@ export class Corpus {
     }
     this.#bodies.set(slug, t);
     return t;
+  }
+
+  /** A page parsed into its blocks and marked regions (tools/src/kb/page.ts), once for the life of the corpus. */
+  doc(slug: string): PageDoc {
+    return this.cached(`doc:${slug}`, () => parsePage(this.text(slug)));
+  }
+
+  /**
+   * The SHA-256 of a page's file, as hex: the bytes on disk, so that anyone
+   * holding the file, or its `.md` copy on the site, can tell it is the one a
+   * record describes.
+   */
+  digest(slug: string): string {
+    const p = this.need(slug);
+    try {
+      return createHash('sha256').update(fs.readFileSync(path.join(this.root, p.source))).digest('hex');
+    } catch {
+      throw new KbError(`${slug}: cannot read ${p.source}`);
+    }
+  }
+
+  /**
+   * The page a link url names, written in the page whose markdown is
+   * `fromSource`: a route (`/patterns/x.html`) or a relative path to a `.md`
+   * file, its query and fragment left out. An address elsewhere, a file that is
+   * not markdown and a page of none of the seven kinds name no page.
+   */
+  linkTarget(fromSource: string, url: string): Page | undefined {
+    const bare = (url.split('#')[0] as string).split('?')[0] as string;
+    if (/^[a-z]+:|^\/\//i.test(bare)) return undefined;
+    if (bare.startsWith('/')) return this.byRoute(bare);
+    if (!bare.endsWith('.md')) return undefined;
+    const source = path.posix.normalize(path.posix.join(path.posix.dirname(fromSource), bare));
+    return this.pages.find((p) => p.source === source);
+  }
+
+  /**
+   * A page's prose mentions: the pages it links to in its prose, first mention
+   * only, less itself and every page a typed relation, a theme it belongs to or
+   * its own tour already names. What `backlinks` lists as `mentions`.
+   */
+  mentions(slug: string): string[] {
+    return this.cached(`mentions:${slug}`, () => {
+      const page = this.need(slug);
+      const declared = new Set<string>([
+        ...relationGroups(slug, this.relations, this.model.verbs, this.model.relOrder).flatMap((g) => g.sides.map((s) => s.to)),
+        ...this.themesOf(slug).map((t) => t.id),
+        ...this.membersOf(slug).map((m) => m.id),
+      ]);
+      const out: string[] = [];
+      for (const url of this.derived(slug, 'links', () => proseLinks(this.doc(slug)))) {
+        if (!url.split('#')[0]?.endsWith('.md')) continue;
+        const t = this.linkTarget(page.source, url)?.slug;
+        if (t === undefined || t === slug || declared.has(t) || out.includes(t)) continue;
+        out.push(t);
+      }
+      return out;
+    });
   }
 
   get relations(): RelationsFile {

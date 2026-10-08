@@ -1,0 +1,361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "title": "One page of the knowledge base as a record (kb-record/1)",
+  "description": "One page of the patterns knowledge base as one JSON document, contract kb-record/1. `kb.mjs record <id>` prints it, and the site serves the same bytes at the page's address with `.json` in place of `.html`; the site's index.json lists every page that has one, and an address that is not a 200 has none. Every key is always there: null, [] or false where it does not apply. Keys come in the order this file lists them, and a record is two-space JSON with one newline at the end, so two builds of the same pages are byte for byte equal. There is no date: `source.sha256` changes when the page does. Adding a key stays in kb-record/1, so ignore keys you do not know; renaming, removing or retyping a key, or changing an order, would be kb-record/2, published beside this file. ORDER: blocks, content, items, rows, links and anchors are in page order; `relations` in the order the page's relationships block shows them; `themes` in learning-path order; `tags`, `aliases` and `solves` as the page's frontmatter lists them. WORDS: `text` is what the page shows (markup removed, runs of whitespace one space, no-break spaces kept) and `md` is the markdown it was written in, a trailing {#id} removed; an item's own words are those of its first paragraph. A block has a `heading` and `content`; the nodes above the first block are `intro`. IDS: a node that can be cited has an `id`, the one its author wrote or one the build gives by position (tradeoffs-con-2, usage-when-1), so an id is stable for a given text and may move when something is put in above it. Cite an element as `<page id>#<element id>@<fp>` and check the citation later with `kb.mjs resolve`, which says ok, moved, changed, ambiguous or gone. FP: `fp` is the first 8 hex digits of the SHA-256 of a basis, taken in Unicode NFC, lower case, every run of whitespace one space, trimmed. The basis is the node's own `text` when it has some; a paragraph, heading, group heading and item have it, and an item with none (it opens with a fence or a quote) takes the non-empty `text` of everything inside it, in order, one per line. A list takes the non-empty `text` of its items and what is in them, a table those of its header cells and its rows' cells, header first, and a row those of its cells, each one per line. A figure takes its caption's `text`, else its `code`; a code sketch its summary's `text`, else its `code`; a prose sketch its summary's `text`, else the non-empty `text` of what it holds; a plain `code` node its `code`; a quote the `text` of its first paragraph, else the non-empty `text` of what it holds. On a node that has an `fp`, it is null exactly when `id` is; blocks carry no fp: their id is their name and does not renumber, so cite a block as `<page id>#<name>` with no pin, and `kb.mjs resolve` ignores a pin on one. `anchors` maps every id to the JSON Pointer, read from this record, of the object that carries it. A record asked for with --block keeps only the blocks named, lists them in `scope`, leaves `intro` empty, and has the `links` and `anchors` of what it keeps; everything else is as in the whole record.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string", "const": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json", "description": "The address of this schema, so a reader that holds a record can fetch what its keys mean." },
+    "contract": { "type": "string", "const": "kb-record/1", "description": "The contract and its major version: `kb-record/1`. A reader that knows only this one refuses any other value." },
+    "scope": { "type": ["array", "null"], "items": { "type": "string" }, "description": "Null for a whole record; for one made with --block, the names of the blocks kept, in page order." },
+    "id": { "$ref": "#/$defs/id", "description": "The page id: its file name without .md, which every kb.mjs command takes." },
+    "title": { "type": "string", "description": "The page title, from the frontmatter." },
+    "description": { "type": "string", "description": "The one-line description from the frontmatter: what the page is, for a reader choosing whether to open it." },
+    "kind": { "$ref": "#/$defs/kind", "description": "The page kind, from the folder it sits in under docs/." },
+    "band": { "type": "string", "description": "For a pattern, the area directly under patterns (gof, distributed, messaging …); for every other kind, the kind itself." },
+    "group": { "type": "string", "description": "For a pattern, the area that lists it (distributed-resilience); for every other kind, the kind itself." },
+    "area": { "type": "string", "description": "The id of the area that lists the page in the site's structure, the last of `areaChain`." },
+    "areaChain": { "type": "array", "items": { "$ref": "#/$defs/areaRef" }, "description": "The areas the page sits in, the outermost first, ending with `area`, each with the label the site shows." },
+    "status": { "type": "string", "description": "The page's status from its frontmatter, such as stable." },
+    "owner": { "type": "string", "description": "The page's owner from its frontmatter." },
+    "tags": { "type": "array", "items": { "type": "string" }, "description": "The page's tags in frontmatter order; [] when it has none." },
+    "aliases": { "type": "array", "items": { "type": "string" }, "description": "Other names the page goes by, in frontmatter order; [] when it has none." },
+    "solves": { "type": "array", "items": { "type": "string" }, "description": "The problems the page solves, each in the words of someone who has it, in frontmatter order; [] when it lists none." },
+    "favourite": { "type": "boolean", "description": "True when the page is an editorial pick; false otherwise." },
+    "route": { "type": "string", "pattern": "^/.+\\.html$", "description": "The page's address on the site, from the site root: a slash, its path and .html." },
+    "markdown": { "type": "string", "pattern": "^/.+\\.md$", "description": "The address of the page's markdown on the site: `route` with .md in place of .html, byte for byte the file `source.path` names." },
+    "source": { "$ref": "#/$defs/source", "description": "The markdown file the record was built from, and the hash that tells whether it is still the one on disk." },
+    "intro": { "type": "array", "items": { "$ref": "#/$defs/node" }, "description": "What sits between the page's title and its first block, in order; [] when nothing does, and always [] for a record made with --block." },
+    "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" }, "description": "The page's blocks in page order, each with its content as typed nodes; only the blocks asked for when `scope` is not null." },
+    "relations": { "type": "array", "items": { "$ref": "#/$defs/relation" }, "description": "The page's typed relations, one row per side of an edge, in the order its relationships block shows them; [] when it has none." },
+    "themes": { "type": "array", "items": { "$ref": "#/$defs/stop" }, "description": "The themes whose tour includes the page, in learning-path order, each with the part this page plays in it; [] when it is in none." },
+    "tour": { "type": "array", "items": { "$ref": "#/$defs/stop" }, "description": "For a theme, the pages of its tour in stage order, each with the part it plays; [] for every other page." },
+    "prerequisites": { "$ref": "#/$defs/prerequisites", "description": "What to read before this page and what sits beside it, from the site's prerequisite graph." },
+    "links": { "type": "array", "items": { "$ref": "#/$defs/link" }, "description": "Every link the page's own words make, in page order: markdown links, and diagram nodes bound to a page by `click`. Links inside generated blocks are not here; `relations` and `tour` carry those." },
+    "mentions": { "type": "array", "items": { "$ref": "#/$defs/id" }, "description": "Ids of the pages this page links to with a markdown link to a .md file in its prose, outside the generated blocks and the siblings list, in order of first mention, leaving out the page itself and every page its own relations, themes and tour already name: the same list `kb.mjs backlinks` prints as `mentions`. `links` lists every link." },
+    "anchors": {
+      "type": "object",
+      "description": "Every element id of the record, in page order, with the JSON Pointer of the object that carries it, read from this record: follow it to reach the element and its `fp`.",
+      "additionalProperties": { "type": "string", "pattern": "^/(intro|blocks)/[0-9]+(/[a-z0-9]+)*$" }
+    }
+  },
+  "required": [
+    "$schema", "contract", "scope", "id", "title", "description", "kind", "band", "group", "area", "areaChain",
+    "status", "owner", "tags", "aliases", "solves", "favourite", "route", "markdown", "source", "intro", "blocks",
+    "relations", "themes", "tour", "prerequisites", "links", "mentions", "anchors"
+  ],
+  "$defs": {
+    "id": {
+      "description": "A page id or an element id: lower-case letters and digits in words joined by hyphens.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "elementId": {
+      "description": "The id of an element that can be cited, as its author wrote it or the build numbered it; null on a node that has none.",
+      "type": ["string", "null"],
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "fp": {
+      "description": "The fingerprint of an element's words: 8 lower-case hex digits; null on a node that has no id.",
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{8}$"
+    },
+    "kind": {
+      "description": "The seven kinds of page.",
+      "type": "string",
+      "enum": ["pattern", "hazard", "theme", "principle", "design", "capability", "comparison"]
+    },
+    "areaRef": {
+      "description": "One area of the site's structure.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The area's id, as the structure file names it." },
+        "label": { "type": "string", "description": "The label the site shows for the area." }
+      },
+      "required": ["id", "label"]
+    },
+    "source": {
+      "description": "The markdown a record was built from.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "description": "The file, relative to the repo root: docs/ and the page's path under it." },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "The SHA-256 of the file's bytes as 64 hex digits; the site's markdown copy of the page has the same hash." }
+      },
+      "required": ["path", "sha256"]
+    },
+    "inline": {
+      "description": "A run of words, as shown and as written.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "description": "What the page shows: markup removed, runs of whitespace one space, no-break spaces kept." },
+        "md": { "type": "string", "description": "The markdown it was written in, a trailing {#id} removed; code spans, links and bold are still there." }
+      },
+      "required": ["text", "md"]
+    },
+    "node": {
+      "description": "What a block or the intro holds: a group, or anything an item, a quote or a sketch holds. Read `type` to tell which.",
+      "oneOf": [
+        { "$ref": "#/$defs/group" },
+        { "$ref": "#/$defs/flow" }
+      ]
+    },
+    "flow": {
+      "description": "What a group, an item, a quote or a sketch holds: every node but a group. Read `type` to tell which.",
+      "oneOf": [
+        { "$ref": "#/$defs/paragraph" },
+        { "$ref": "#/$defs/heading" },
+        { "$ref": "#/$defs/list" },
+        { "$ref": "#/$defs/table" },
+        { "$ref": "#/$defs/figure" },
+        { "$ref": "#/$defs/sketch" },
+        { "$ref": "#/$defs/code" },
+        { "$ref": "#/$defs/quote" },
+        { "$ref": "#/$defs/html" }
+      ]
+    },
+    "block": {
+      "description": "One block of the page: a `##` section that carries a block fact. Its id is its name.",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id", "description": "The block's id, equal to its name; cite a block as <page>#<name>, with no fingerprint." },
+        "name": { "type": "string", "description": "The block's name, such as description, tradeoffs or usage: the value kb.mjs get --block takes." },
+        "heading": { "$ref": "#/$defs/inline", "description": "The words of the block's heading." },
+        "generated": { "type": ["string", "null"], "enum": ["relationships", "tour", "fluency", null], "description": "The generator that writes part of the block (its content is marked as generated in the markdown); null for a block written by hand." },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/node" }, "description": "The block's nodes in page order." }
+      },
+      "required": ["id", "name", "heading", "generated", "content"]
+    },
+    "paragraph": {
+      "description": "A paragraph that is no item's text and no quote's summary.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "paragraph", "description": "The node type: `paragraph`." },
+        "id": { "$ref": "#/$defs/elementId", "description": "The paragraph's id (usage-p-1); null above the first block, where nothing is numbered." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of `text`; null when `id` is." },
+        "text": { "type": "string", "description": "What the paragraph shows." },
+        "md": { "type": "string", "description": "The paragraph as written." }
+      },
+      "required": ["type", "id", "fp", "text", "md"]
+    },
+    "heading": {
+      "description": "A heading that is no group's: an H3 or deeper, or any heading on a page that has no blocks.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "heading", "description": "The node type: `heading`." },
+        "id": { "$ref": "#/$defs/elementId", "description": "The heading's id, a written one or the build's own (deepdives-dive-1); null above the first block." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of `text`; null when `id` is." },
+        "depth": { "type": "integer", "minimum": 1, "description": "The heading's level: 3 for ###, 4 for ####." },
+        "text": { "type": "string", "description": "What the heading shows." },
+        "md": { "type": "string", "description": "The heading as written." }
+      },
+      "required": ["type", "id", "fp", "depth", "text", "md"]
+    },
+    "group": {
+      "description": "An H3 that carries a polarity or a requirement, and what the section under it holds: the pros of a trade-off, the cons, the functional requirements.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "group", "description": "The node type: `group`." },
+        "fact": { "type": "string", "enum": ["polarity", "requirement"], "description": "Which kind of fact the heading carries." },
+        "value": { "type": "string", "enum": ["pro", "con", "when", "avoid", "knob", "signal", "failure", "check", "fr", "nfr"], "description": "The polarity (pro, con, when, avoid, knob, signal, failure, check) or the requirement (fr, nfr)." },
+        "heading": { "$ref": "#/$defs/groupHeading", "description": "The group's heading." },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/flow" }, "description": "The nodes of the group in page order. A polarity group ends after its last list when prose follows it, and that prose is a node of the block, not of the group." }
+      },
+      "required": ["type", "fact", "value", "heading", "content"]
+    },
+    "groupHeading": {
+      "description": "The heading of a group. It has an id only when the author wrote one.",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/elementId", "description": "The id the author wrote on the heading; null when none was written." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of `text`; null when `id` is." },
+        "text": { "type": "string", "description": "What the heading shows." },
+        "md": { "type": "string", "description": "The heading as written." }
+      },
+      "required": ["id", "fp", "text", "md"]
+    },
+    "list": {
+      "description": "A bullet or a numbered list.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "list", "description": "The node type: `list`." },
+        "id": { "$ref": "#/$defs/elementId", "description": "The list's id; null unless the author wrote one, since the build numbers items and not lists." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of the words of all its items; null when `id` is." },
+        "ordered": { "type": "boolean", "description": "True for a numbered list." },
+        "start": { "type": ["integer", "null"], "minimum": 0, "description": "The number the first item carries on a numbered list; null on a bullet list." },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/item" }, "description": "The list's items in order." }
+      },
+      "required": ["type", "id", "fp", "ordered", "start", "items"]
+    },
+    "item": {
+      "description": "One item of a list. Its own words are its first paragraph; a nested list, a fence, a quote and any later paragraph are its content.",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/elementId", "description": "The item's id (tradeoffs-con-2); the one to cite." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of `text`, or of what is inside the item when it has no text; null when `id` is." },
+        "text": { "type": "string", "description": "What the item's first paragraph shows; '' when the item opens with something else." },
+        "md": { "type": "string", "description": "The first paragraph as written, the item's {#id} and a task list's [ ] removed." },
+        "lead": { "type": ["string", "null"], "description": "The words of a bold run the item opens with, such as the label of a trade-off; null when it does not open with one." },
+        "checked": { "type": ["boolean", "null"], "description": "On a task list, whether the item is ticked; null on any other item." },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/flow" }, "description": "What follows the first paragraph inside the item, in order." }
+      },
+      "required": ["id", "fp", "text", "md", "lead", "checked", "content"]
+    },
+    "table": {
+      "description": "A table: header cells, an alignment for each column and the body rows.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "table", "description": "The node type: `table`." },
+        "id": { "$ref": "#/$defs/elementId", "description": "The table's id; null unless the author wrote one, since the build numbers rows and not tables." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of all its cells' words; null when `id` is." },
+        "align": { "type": "array", "items": { "type": ["string", "null"], "enum": ["left", "right", "center", null] }, "description": "One entry per column: left, right or center, or null where the table sets none." },
+        "header": { "type": "array", "items": { "$ref": "#/$defs/inline" }, "description": "The header cells in order." },
+        "rows": { "type": "array", "items": { "$ref": "#/$defs/row" }, "description": "The body rows in order; the header is not a row." }
+      },
+      "required": ["type", "id", "fp", "align", "header", "rows"]
+    },
+    "row": {
+      "description": "A body row of a table.",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/elementId", "description": "The row's id (matrix-row-3), a written one or the build's; the one to cite." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of the words of the row's cells; null when `id` is." },
+        "cells": { "type": "array", "items": { "$ref": "#/$defs/inline" }, "description": "The cells in column order; the row's {#id} is taken off the last one." }
+      },
+      "required": ["id", "fp", "cells"]
+    },
+    "figure": {
+      "description": "A diagram, or a captioned fence of another language: a figure on the page.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "figure", "description": "The node type: `figure`." },
+        "id": { "$ref": "#/$defs/elementId", "description": "The figure's id (structure-fig-1); null above the first block." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of the caption's words, or of the code when there is no caption; null when `id` is." },
+        "lang": { "type": ["string", "null"], "description": "The fence's language, such as mermaid; null when it names none." },
+        "caption": { "anyOf": [{ "$ref": "#/$defs/inline" }, { "type": "null" }], "description": "The question the figure answers; null when it has no caption." },
+        "wide": { "type": "boolean", "description": "True when the figure asks for the full width of the page." },
+        "code": { "type": "string", "description": "The source of the figure: the diagram's mermaid text, or the fence's code." }
+      },
+      "required": ["type", "id", "fp", "lang", "caption", "wide", "code"]
+    },
+    "sketch": {
+      "description": "A collapsed sketch: a fence with a summary (form code), or a quote that opens with a bold summary or a rule (form prose).",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "sketch", "description": "The node type: `sketch`." },
+        "id": { "$ref": "#/$defs/elementId", "description": "The sketch's id (sketch-variant-1, selfcheck-sketch-2); null above the first block." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of the summary's words, else of the code or of what the sketch holds; null when `id` is." },
+        "form": { "type": "string", "enum": ["code", "prose"], "description": "`code` for a fence with a summary; `prose` for a quote, such as a self-check question and its answer." },
+        "lang": { "type": ["string", "null"], "description": "The fence's language on a code sketch; null on a prose sketch and on a fence that names none." },
+        "summary": { "anyOf": [{ "$ref": "#/$defs/inline" }, { "type": "null" }], "description": "The line that stays visible when the sketch is collapsed; null on a prose sketch that opens with a rule." },
+        "caption": { "anyOf": [{ "$ref": "#/$defs/inline" }, { "type": "null" }], "description": "The question a code sketch answers; null when it has no caption and on every prose sketch." },
+        "wide": { "type": "boolean", "description": "True when a code sketch asks for the full width of the page." },
+        "code": { "type": ["string", "null"], "description": "The sketch's code on a code sketch; null on a prose sketch." },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/flow" }, "description": "What a prose sketch holds after its summary, in order; [] on a code sketch." }
+      },
+      "required": ["type", "id", "fp", "form", "lang", "summary", "caption", "wide", "code", "content"]
+    },
+    "code": {
+      "description": "A fence with neither a summary nor a caption.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "code", "description": "The node type: `code`." },
+        "id": { "$ref": "#/$defs/elementId", "description": "The fence's id; null above the first block." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of the code; null when `id` is." },
+        "lang": { "type": ["string", "null"], "description": "The fence's language; null when it names none." },
+        "code": { "type": "string", "description": "The code, as written." }
+      },
+      "required": ["type", "id", "fp", "lang", "code"]
+    },
+    "quote": {
+      "description": "A quotation that is no sketch: it has no summary of its own.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "quote", "description": "The node type: `quote`." },
+        "id": { "$ref": "#/$defs/elementId", "description": "The quote's id; null above the first block." },
+        "fp": { "$ref": "#/$defs/fp", "description": "The fingerprint of the first paragraph's words, else of what the quote holds; null when `id` is." },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/flow" }, "description": "What the quote holds, in order." }
+      },
+      "required": ["type", "id", "fp", "content"]
+    },
+    "html": {
+      "description": "Markup that carries no fact of its own: raw HTML, a rule, a footnote definition. It has no id.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "html", "description": "The node type: `html`." },
+        "md": { "type": "string", "description": "The markup as written." }
+      },
+      "required": ["type", "md"]
+    },
+    "link": {
+      "description": "One link the page's own words make.",
+      "type": "object",
+      "properties": {
+        "block": { "type": ["string", "null"], "description": "The name of the block the link sits in; null in the intro." },
+        "from": { "$ref": "#/$defs/elementId", "description": "The id of the nearest element around the link that has one; null when none does." },
+        "via": { "type": "string", "enum": ["text", "click"], "description": "`text` for a markdown link, `click` for a diagram node bound to a page." },
+        "text": { "type": "string", "description": "The link's words; for a click, the diagram node it is bound to." },
+        "href": { "type": "string", "description": "The target as written." },
+        "to": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }], "description": "The id of the page the target names; null for an address elsewhere or a file that is no page." },
+        "fragment": { "type": ["string", "null"], "description": "The part of the target after #, which is an element id when `to` is a page; null when there is none." }
+      },
+      "required": ["block", "from", "via", "text", "href", "to", "fragment"]
+    },
+    "maps": {
+      "description": "The row of a capability's mapping table or a comparison's matrix that an edge pins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The row's id on the page that holds it, such as mapping-row-3." },
+        "label": { "type": "string", "description": "The words of the row's first cell when the edge was written, so a moved row is noticed." }
+      },
+      "required": ["id", "label"]
+    },
+    "edgeRef": {
+      "description": "The record of docs/data/relations.json an edge is written in: the two pages and the verb as the first reads it. The same on both pages, so the two sides of one edge can be told to be one.",
+      "type": "object",
+      "properties": {
+        "a": { "$ref": "#/$defs/id", "description": "The page the edge was written from." },
+        "verb": { "type": "string", "description": "The verb as `a` reads it." },
+        "b": { "$ref": "#/$defs/id", "description": "The page at the other end." }
+      },
+      "required": ["a", "verb", "b"]
+    },
+    "relation": {
+      "description": "One side of a typed edge, as the page that holds it reads it.",
+      "type": "object",
+      "properties": {
+        "verb": { "type": "string", "description": "The relation as this page reads it, such as prevents-hazard on a pattern and mitigated-by on the hazard." },
+        "label": { "type": "string", "description": "The verb as the page shows it, such as Prevents." },
+        "inverse": { "type": "string", "description": "The verb the page at the other end reads: the same for a symmetric verb." },
+        "to": { "$ref": "#/$defs/id", "description": "The id of the page at the other end." },
+        "title": { "type": "string", "description": "That page's title." },
+        "kind": { "$ref": "#/$defs/kind", "description": "That page's kind." },
+        "route": { "type": "string", "pattern": "^/.+\\.html$", "description": "That page's address on the site." },
+        "note": { "$ref": "#/$defs/inline", "description": "The note on this side; its links are relative to this page. '' when there is none." },
+        "group": { "type": "string", "description": "The heading the row sits under in the relationships block: a custom group, else `label`." },
+        "maps": { "anyOf": [{ "$ref": "#/$defs/maps" }, { "type": "null" }], "description": "The row of this page's mapping table or matrix the edge pins; null when it pins none." },
+        "edge": { "$ref": "#/$defs/edgeRef", "description": "The edge this row is a side of." }
+      },
+      "required": ["verb", "label", "inverse", "to", "title", "kind", "route", "note", "group", "maps", "edge"]
+    },
+    "stop": {
+      "description": "A page in a tour, with the part it plays: a theme the page belongs to, or a stop of a theme's tour.",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id", "description": "The page's id." },
+        "title": { "type": "string", "description": "The page's title." },
+        "route": { "type": "string", "pattern": "^/.+\\.html$", "description": "The page's address on the site." },
+        "role": { "$ref": "#/$defs/inline", "description": "The part the page plays in the tour; '' when the tour gives it none." }
+      },
+      "required": ["id", "title", "route", "role"]
+    },
+    "prerequisites": {
+      "description": "The prerequisite graph's edges at one page.",
+      "type": "object",
+      "properties": {
+        "requires": { "type": "array", "items": { "$ref": "#/$defs/id" }, "description": "Ids of the pages to read first; [] when there are none." },
+        "related": { "type": "array", "items": { "$ref": "#/$defs/id" }, "description": "Ids of the pages that sit beside this one: combines with, alternative to, often confused with; [] when there are none." }
+      },
+      "required": ["requires", "related"]
+    }
+  }
+}

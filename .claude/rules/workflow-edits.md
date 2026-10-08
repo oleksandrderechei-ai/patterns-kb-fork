@@ -20,8 +20,11 @@ test.
   [docs-sweep](../skills/docs-sweep/SKILL.md) skill.
 - `pages.yml` runs only on a push to `main` that touches `docs/`, `site/`, `tools/`, the
   lockfile, the Makefile or itself, and on dispatch. It builds the site with
-  `make site-build` and deploys `site/dist`. **Review an edit to it as production
-  code** and dispatch it once by hand before trusting it; nothing on a pull request runs it.
+  `make site-build`, deploys `site/dist`, and then a `smoke` job checks the deployed site
+  ([Deployed site answers](../../docs/reference/triage.md#deployed-site-answers)); `smoke`
+  can only mark the run red, since the site is already out. **Review an edit to it as
+  production code** and dispatch it once by hand before trusting it; nothing on a pull
+  request runs it.
 
 ## A step name is a registry key
 

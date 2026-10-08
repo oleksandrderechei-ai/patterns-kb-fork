@@ -1,0 +1,410 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "validators",
+  "title": "Validators",
+  "description": "The validators page",
+  "kind": "capability",
+  "band": "capability",
+  "group": "capability",
+  "area": "capabilities",
+  "areaChain": [
+    {
+      "id": "capabilities",
+      "label": "capabilities"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "testing",
+    "cloud"
+  ],
+  "aliases": [],
+  "solves": [],
+  "favourite": false,
+  "route": "/capabilities/validators.html",
+  "markdown": "/capabilities/validators.md",
+  "source": {
+    "path": "docs/capabilities/validators.md",
+    "sha256": "47b521c4e28b0473e1f38e92ef052752fe67710882e1d1ca459716bca80d837c"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Input checks, rented.",
+      "md": "Input checks, rented."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "What it is",
+        "md": "What it is"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "654538ea",
+          "text": "A validator checks a value against a schema.",
+          "md": "A validator checks a value against a schema."
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "a38a60ba",
+          "text": "Mind the lock-in. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Mind the lock-in. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "capabilities",
+      "name": "capabilities",
+      "heading": {
+        "text": "Capabilities",
+        "md": "Capabilities"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "capabilities-item-1",
+              "fp": "8012647e",
+              "text": "Schema validation — Reject a value that breaks its schema.",
+              "md": "**Schema validation** — Reject a value that breaks its schema.",
+              "lead": "Schema validation",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "capabilities-item-2",
+              "fp": "bcca2bdf",
+              "text": "Sanitising — Strip what must not pass.",
+              "md": "**Sanitising** — Strip what must not pass.",
+              "lead": "Sanitising",
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mapping",
+      "name": "mapping",
+      "heading": {
+        "text": "Across the clouds",
+        "md": "Across the clouds"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "table",
+          "id": null,
+          "fp": null,
+          "align": [
+            null,
+            null,
+            null
+          ],
+          "header": [
+            {
+              "text": "Capability",
+              "md": "Capability"
+            },
+            {
+              "text": "AWS",
+              "md": "AWS"
+            },
+            {
+              "text": "Azure",
+              "md": "Azure"
+            }
+          ],
+          "rows": [
+            {
+              "id": "mapping-row-1",
+              "fp": "3a0998d6",
+              "cells": [
+                {
+                  "text": "Schema validation",
+                  "md": "Schema validation"
+                },
+                {
+                  "text": "API Gateway models",
+                  "md": "API Gateway models"
+                },
+                {
+                  "text": "API Management policies",
+                  "md": "API Management policies"
+                }
+              ]
+            },
+            {
+              "id": "mapping-row-2",
+              "fp": "3880682c",
+              "cells": [
+                {
+                  "text": "Sanitising",
+                  "md": "Sanitising"
+                },
+                {
+                  "text": "WAF rules",
+                  "md": "WAF rules"
+                },
+                {
+                  "text": "Front Door WAF",
+                  "md": "Front Door WAF"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "choosing",
+      "name": "choosing",
+      "heading": {
+        "text": "Choosing",
+        "md": "Choosing"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "choosing-p-1",
+          "fp": "65d313d3",
+          "text": "Start with the schema you already have.",
+          "md": "Start with the schema you already have."
+        }
+      ]
+    },
+    {
+      "id": "portability",
+      "name": "portability",
+      "heading": {
+        "text": "Portability",
+        "md": "Portability"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "portability-li-1",
+              "fp": "fdb1ccc0",
+              "text": "Schema dialect — JSON Schema is read everywhere.",
+              "md": "**Schema dialect** — JSON Schema is read everywhere.",
+              "lead": "Schema dialect",
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": "relationships",
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "relationships-p-1",
+          "fp": "60c1af14",
+          "text": "Implements",
+          "md": "**Implements**"
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": null,
+              "fp": null,
+              "text": "Boundary — Schema checks at the edge.",
+              "md": "[Boundary](../principles/boundary.md) — Schema checks at the edge.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "relationships-p-2",
+          "fp": "3ae057cb",
+          "text": "Read first",
+          "md": "**Read first**"
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": null,
+              "fp": null,
+              "text": "Boundary — Needs the principle first.",
+              "md": "[Boundary](../principles/boundary.md) — Needs the principle first.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "verb": "implements",
+      "label": "Implements",
+      "inverse": "implemented-by",
+      "to": "boundary",
+      "title": "Boundary",
+      "kind": "principle",
+      "route": "/principles/boundary.html",
+      "note": {
+        "text": "Schema checks at the edge.",
+        "md": "Schema checks at the edge."
+      },
+      "group": "Implements",
+      "maps": {
+        "id": "mapping-row-1",
+        "label": "Schema validation"
+      },
+      "edge": {
+        "a": "validators",
+        "verb": "implements",
+        "b": "boundary"
+      }
+    },
+    {
+      "verb": "prerequisite",
+      "label": "Requires",
+      "inverse": "enables",
+      "to": "boundary",
+      "title": "Boundary",
+      "kind": "principle",
+      "route": "/principles/boundary.html",
+      "note": {
+        "text": "Needs the principle first.",
+        "md": "Needs the principle first."
+      },
+      "group": "Read first",
+      "maps": null,
+      "edge": {
+        "a": "validators",
+        "verb": "prerequisite",
+        "b": "boundary"
+      }
+    }
+  ],
+  "themes": [],
+  "tour": [],
+  "prerequisites": {
+    "requires": [
+      "boundary"
+    ],
+    "related": []
+  },
+  "links": [],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "capabilities": "/blocks/2",
+    "capabilities-item-1": "/blocks/2/content/0/items/0",
+    "capabilities-item-2": "/blocks/2/content/0/items/1",
+    "mapping": "/blocks/3",
+    "mapping-row-1": "/blocks/3/content/0/rows/0",
+    "mapping-row-2": "/blocks/3/content/0/rows/1",
+    "choosing": "/blocks/4",
+    "choosing-p-1": "/blocks/4/content/0",
+    "portability": "/blocks/5",
+    "portability-li-1": "/blocks/5/content/0/items/0",
+    "relationships": "/blocks/6",
+    "relationships-p-1": "/blocks/6/content/0",
+    "relationships-p-2": "/blocks/6/content/2"
+  }
+}

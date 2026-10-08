@@ -1,0 +1,654 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "boundary",
+  "title": "Boundary",
+  "description": "The boundary page",
+  "kind": "principle",
+  "band": "principle",
+  "group": "principle",
+  "area": "principles",
+  "areaChain": [
+    {
+      "id": "principles",
+      "label": "principles"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "testing"
+  ],
+  "aliases": [
+    "edge validation"
+  ],
+  "solves": [
+    "bad input reaches deep code before anyone notices"
+  ],
+  "favourite": false,
+  "route": "/principles/boundary.html",
+  "markdown": "/principles/boundary.md",
+  "source": {
+    "path": "docs/principles/boundary.md",
+    "sha256": "14165cf070ceb1a2dc26f6d001185cdccb2a826bd734c3ca0d05704846ceca3e"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Check input where it enters, as Quick asks.",
+      "md": "Check input where it enters, as [Quick](./quick.md) asks."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "What it says",
+        "md": "What it says"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "c3b251ef",
+          "text": "Check each value once, at the edge.",
+          "md": "Check each value once, at the edge."
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "a7f37802",
+          "text": "One check at the edge. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "One check at the edge. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "rationale",
+      "name": "rationale",
+      "heading": {
+        "text": "Why it helps",
+        "md": "Why it helps"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "rationale-p-1",
+          "fp": "dc28df09",
+          "text": "Where a check sits decides who pays for a bad value.",
+          "md": "Where a check sits decides who pays for a bad value."
+        },
+        {
+          "type": "table",
+          "id": "rationale-where",
+          "fp": "c01e14ff",
+          "align": [
+            "left",
+            "center",
+            "right"
+          ],
+          "header": [
+            {
+              "text": "Where",
+              "md": "Where"
+            },
+            {
+              "text": "Cost of a bad value",
+              "md": "Cost of a bad value"
+            },
+            {
+              "text": "Checks",
+              "md": "Checks"
+            }
+          ],
+          "rows": [
+            {
+              "id": "rationale-row-1",
+              "fp": "b3234c4e",
+              "cells": [
+                {
+                  "text": "Edge",
+                  "md": "Edge"
+                },
+                {
+                  "text": "one rejected request",
+                  "md": "one rejected request"
+                },
+                {
+                  "text": "1",
+                  "md": "1"
+                }
+              ]
+            },
+            {
+              "id": "rationale-core",
+              "fp": "bce5e402",
+              "cells": [
+                {
+                  "text": "Core",
+                  "md": "Core"
+                },
+                {
+                  "text": "an outage",
+                  "md": "an outage"
+                },
+                {
+                  "text": "40",
+                  "md": "40"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "applying",
+      "name": "applying",
+      "heading": {
+        "text": "How to apply it",
+        "md": "How to apply it"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "applying-p-1",
+          "fp": "19149785",
+          "text": "Before an endpoint ships:",
+          "md": "Before an endpoint ships:"
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "applying-li-1",
+              "fp": "51fbb237",
+              "text": "Every field has a type and a bound",
+              "md": "Every field has a type and a bound",
+              "lead": null,
+              "checked": false,
+              "content": []
+            },
+            {
+              "id": "applying-errors",
+              "fp": "724e20aa",
+              "text": "Errors name the field that failed",
+              "md": "Errors name the field that failed",
+              "lead": null,
+              "checked": true,
+              "content": [
+                {
+                  "type": "list",
+                  "id": null,
+                  "fp": null,
+                  "ordered": false,
+                  "start": null,
+                  "items": [
+                    {
+                      "id": "applying-li-2",
+                      "fp": "2e479887",
+                      "text": "Say which field, not which rule.",
+                      "md": "Say which **field**, not which rule.",
+                      "lead": null,
+                      "checked": null,
+                      "content": []
+                    },
+                    {
+                      "id": "applying-li-3",
+                      "fp": "cd126924",
+                      "text": "Keep the value out of the message.",
+                      "md": "Keep the value out of the message.",
+                      "lead": null,
+                      "checked": null,
+                      "content": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": true,
+          "start": 3,
+          "items": [
+            {
+              "id": "applying-li-4",
+              "fp": "b2f65f8a",
+              "text": "Reject, do not repair.",
+              "md": "Reject, do not repair.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "applying-li-5",
+              "fp": "d2003bcf",
+              "text": "Log the rejection once.",
+              "md": "Log the rejection once.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "figure",
+          "id": "applying-fig-1",
+          "fp": "eebdda56",
+          "lang": "mermaid",
+          "caption": {
+            "text": "Where does a request get checked?",
+            "md": "Where does a request get checked?"
+          },
+          "wide": true,
+          "code": "flowchart LR\n  A[Edge] --> B[Core]\n  click A \"./quick.md#applying-p-1\""
+        },
+        {
+          "type": "heading",
+          "id": null,
+          "fp": null,
+          "depth": 4,
+          "text": "A deeper heading",
+          "md": "A deeper heading"
+        },
+        {
+          "type": "quote",
+          "id": "applying-sketch-1",
+          "fp": "9d5447c8",
+          "content": [
+            {
+              "type": "paragraph",
+              "id": null,
+              "fp": null,
+              "text": "A plain quote about edges.",
+              "md": "A plain quote about edges."
+            }
+          ]
+        },
+        {
+          "type": "sketch",
+          "id": "applying-sketch-2",
+          "fp": "6ad5c628",
+          "form": "prose",
+          "lang": null,
+          "summary": null,
+          "caption": null,
+          "wide": false,
+          "code": null,
+          "content": [
+            {
+              "type": "paragraph",
+              "id": "applying-p-2",
+              "fp": "6ad5c628",
+              "text": "A sketch with no summary.",
+              "md": "A sketch with no summary."
+            }
+          ]
+        },
+        {
+          "type": "html",
+          "md": "<div class=\"note\">Raw markup.</div>"
+        },
+        {
+          "type": "html",
+          "md": "---"
+        },
+        {
+          "type": "html",
+          "md": "[^1]: A footnote definition."
+        },
+        {
+          "type": "paragraph",
+          "id": "applying-p-3",
+          "fp": "c3b251ef",
+          "text": "Check each value once, at the edge.",
+          "md": "Check each value once, at the edge."
+        }
+      ]
+    },
+    {
+      "id": "overreach",
+      "name": "overreach",
+      "heading": {
+        "text": "Where it goes too far",
+        "md": "Where it goes too far"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "overreach-p-1",
+          "fp": "0da8302f",
+          "text": "Checking the same value at every layer.",
+          "md": "Checking the same value at every layer."
+        }
+      ]
+    },
+    {
+      "id": "sketch",
+      "name": "sketch",
+      "heading": {
+        "text": "Code sketch",
+        "md": "Code sketch"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "sketch",
+          "id": "sketch-variant-1",
+          "fp": "8ef12ad1",
+          "form": "code",
+          "lang": "ts",
+          "summary": {
+            "text": "TypeScript — parse at the edge",
+            "md": "TypeScript — parse at the edge"
+          },
+          "caption": {
+            "text": "What does the edge hand the core?",
+            "md": "What does the `edge` hand the core?"
+          },
+          "wide": true,
+          "code": "const input = parse(request.body);",
+          "content": []
+        }
+      ]
+    },
+    {
+      "id": "selfcheck",
+      "name": "selfcheck",
+      "heading": {
+        "text": "Check yourself",
+        "md": "Check yourself"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "sketch",
+          "id": "selfcheck-sketch-1",
+          "fp": "6d16be27",
+          "form": "prose",
+          "lang": null,
+          "summary": {
+            "text": "Why not check again deeper?",
+            "md": "**Why not check again deeper?**"
+          },
+          "caption": null,
+          "wide": false,
+          "code": null,
+          "content": [
+            {
+              "type": "paragraph",
+              "id": "selfcheck-p-1",
+              "fp": "14489a43",
+              "text": "The core would pay twice, see the table.",
+              "md": "The core would pay twice, see [the table](./boundary.md#rationale-where)."
+            }
+          ]
+        },
+        {
+          "type": "sketch",
+          "id": "selfcheck-sketch-2",
+          "fp": "b50e9939",
+          "form": "prose",
+          "lang": null,
+          "summary": {
+            "text": "What does the edge hand the core?",
+            "md": "**What does the edge hand the core?**"
+          },
+          "caption": null,
+          "wide": false,
+          "code": null,
+          "content": [
+            {
+              "type": "paragraph",
+              "id": "selfcheck-p-2",
+              "fp": "9a7ac1ad",
+              "text": "A parsed value, never raw text.",
+              "md": "A parsed value, never raw text."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": "relationships",
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "relationships-p-1",
+          "fp": "25e6e770",
+          "text": "Off the shelf",
+          "md": "**Off the shelf**"
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": null,
+              "fp": null,
+              "text": "Validators — Buy it off the shelf.",
+              "md": "[Validators](../capabilities/validators.md) — Buy it **off the shelf**.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "relationships-p-2",
+          "fp": "80c8b1a6",
+          "text": "Enables",
+          "md": "**Enables**"
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": null,
+              "fp": null,
+              "text": "Validators — Validators put it to work.",
+              "md": "[Validators](../capabilities/validators.md) — Validators put it to work.",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "verb": "implemented-by",
+      "label": "Implemented by",
+      "inverse": "implements",
+      "to": "validators",
+      "title": "Validators",
+      "kind": "capability",
+      "route": "/capabilities/validators.html",
+      "note": {
+        "text": "Buy it off the shelf.",
+        "md": "Buy it **off the shelf**."
+      },
+      "group": "Off the shelf",
+      "maps": null,
+      "edge": {
+        "a": "validators",
+        "verb": "implements",
+        "b": "boundary"
+      }
+    },
+    {
+      "verb": "enables",
+      "label": "Enables",
+      "inverse": "prerequisite",
+      "to": "validators",
+      "title": "Validators",
+      "kind": "capability",
+      "route": "/capabilities/validators.html",
+      "note": {
+        "text": "Validators put it to work.",
+        "md": "Validators put it to work."
+      },
+      "group": "Enables",
+      "maps": null,
+      "edge": {
+        "a": "validators",
+        "verb": "prerequisite",
+        "b": "boundary"
+      }
+    }
+  ],
+  "themes": [],
+  "tour": [],
+  "prerequisites": {
+    "requires": [],
+    "related": []
+  },
+  "links": [
+    {
+      "block": null,
+      "from": null,
+      "via": "text",
+      "text": "Quick",
+      "href": "./quick.md",
+      "to": "quick",
+      "fragment": null
+    },
+    {
+      "block": "applying",
+      "from": "applying-fig-1",
+      "via": "click",
+      "text": "A",
+      "href": "./quick.md#applying-p-1",
+      "to": "quick",
+      "fragment": "applying-p-1"
+    },
+    {
+      "block": "selfcheck",
+      "from": "selfcheck-p-1",
+      "via": "text",
+      "text": "the table",
+      "href": "./boundary.md#rationale-where",
+      "to": "boundary",
+      "fragment": "rationale-where"
+    }
+  ],
+  "mentions": [
+    "quick"
+  ],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "rationale": "/blocks/2",
+    "rationale-p-1": "/blocks/2/content/0",
+    "rationale-where": "/blocks/2/content/1",
+    "rationale-row-1": "/blocks/2/content/1/rows/0",
+    "rationale-core": "/blocks/2/content/1/rows/1",
+    "applying": "/blocks/3",
+    "applying-p-1": "/blocks/3/content/0",
+    "applying-li-1": "/blocks/3/content/1/items/0",
+    "applying-errors": "/blocks/3/content/1/items/1",
+    "applying-li-2": "/blocks/3/content/1/items/1/content/0/items/0",
+    "applying-li-3": "/blocks/3/content/1/items/1/content/0/items/1",
+    "applying-li-4": "/blocks/3/content/2/items/0",
+    "applying-li-5": "/blocks/3/content/2/items/1",
+    "applying-fig-1": "/blocks/3/content/3",
+    "applying-sketch-1": "/blocks/3/content/5",
+    "applying-sketch-2": "/blocks/3/content/6",
+    "applying-p-2": "/blocks/3/content/6/content/0",
+    "applying-p-3": "/blocks/3/content/10",
+    "overreach": "/blocks/4",
+    "overreach-p-1": "/blocks/4/content/0",
+    "sketch": "/blocks/5",
+    "sketch-variant-1": "/blocks/5/content/0",
+    "selfcheck": "/blocks/6",
+    "selfcheck-sketch-1": "/blocks/6/content/0",
+    "selfcheck-p-1": "/blocks/6/content/0/content/0",
+    "selfcheck-sketch-2": "/blocks/6/content/1",
+    "selfcheck-p-2": "/blocks/6/content/1/content/0",
+    "relationships": "/blocks/7",
+    "relationships-p-1": "/blocks/7/content/0",
+    "relationships-p-2": "/blocks/7/content/2"
+  }
+}

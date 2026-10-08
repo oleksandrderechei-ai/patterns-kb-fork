@@ -51,17 +51,26 @@ function fenceFor(code: string): string {
 
 /** One bullet of the costs list. */
 export interface CostInput {
+  /** The bold lead, plain text. */
   readonly lead: string;
+  /** The words after the lead; a `[label](path.md)` in it is written as a link, as in the paragraph. */
   readonly note: string;
 }
 
-/** The explain block: one paragraph, a costs list, then one example (D-50). */
+/**
+ * The explain block: one paragraph, a costs list, then one example (D-50).
+ * The paragraph and each cost note share one link rule (`linkedTokens`), so a
+ * link written in either is a link on the page, and the dump hands both back
+ * in the form they were written.
+ */
 export function explainLines(heading: string, input: ExplainInput): string[] {
   const out = head(heading, 'explain');
   out.push('', guardTrailingBrace(inlineMd(linkedTokens(input.text), true)));
   if (input.costs !== undefined && input.costs.length > 0) {
     out.push('');
-    for (const c of input.costs) out.push(`- ${inlineMd([{ k: 'strong', open: true }, { k: 'text', v: c.lead }, { k: 'strong', open: false }, { k: 'text', v: ` ${c.note}` }])}`);
+    for (const c of input.costs) {
+      out.push(`- ${inlineMd([{ k: 'strong', open: true }, { k: 'text', v: c.lead }, { k: 'strong', open: false }, ...linkedTokens(` ${c.note}`)])}`);
+    }
   }
   if (input.exampleLang === undefined) {
     out.push('', guardTrailingBrace(`**${EXAMPLE_LABEL}** ${inlineMd(plainTokens(input.example), true)}`));

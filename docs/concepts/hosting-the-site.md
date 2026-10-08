@@ -15,17 +15,23 @@ can do it; these are the settings that matter.
 
 ## What the host must do
 
-1. **Compress every text file**: HTML, JavaScript, CSS, JSON and SVG, with brotli or gzip. The
-   budgets in `tools/src/gates/check-site-budget.ts` hold the gzipped sizes, so compression is
-   what the numbers assume.
+1. **Compress every text file**: HTML, JavaScript, CSS, JSON, markdown, plain text and SVG, with
+   brotli or gzip. The budgets in `tools/src/gates/check-site-budget.ts` hold the gzipped sizes,
+   so compression is what the numbers assume. It matters most for `llms-full.txt`, the markdown
+   of every page in one file.
 2. **Cache the fingerprinted files for good**: send `Cache-Control: public, max-age=31536000, immutable`
    for everything under `_astro/`, for `kb.<hash>.js` and for `search-index.<hash>.js`. Each name
    carries a hash of its bytes, so a changed file is a new name and no reader is left with a stale one.
-3. **Make readers revalidate the pages and `index.json`**: send `Cache-Control: no-cache` (or a
-   short `max-age`) for every `.html` file and for `index.json`. A page names the fingerprinted
-   files it loads, so a fresh page is what points a reader at new scripts. `index.json` keeps its
-   name because it is a published address.
-4. **Serve `404.html`** for an address the site does not hold, with status 404.
+3. **Make readers revalidate the pages and every file with a published name**: send
+   `Cache-Control: no-cache` (or a short `max-age`) for every `.html` file and for the files
+   beside them that keep their names: each page's `.md` and `.json`, `index.json`, `graph.json`,
+   `llms.txt`, `llms-full.txt` and the files under `schema/`. A page names the fingerprinted
+   files it loads, so a fresh page is what points a reader at new scripts. The others keep their
+   names because they are published addresses, and a reader that kept an old copy would cite a
+   page that has since changed.
+4. **Serve `404.html`** for an address the site does not hold, with status 404. That covers a
+   missing `.json` too: a reader of the [retrieval contract](retrieval-contract.md) takes any
+   status but 200 to mean the file is not there.
 
 ## What it buys
 
@@ -66,6 +72,6 @@ must load nothing and carry exactly one small style that fetches nothing. The bu
 ## Check it
 
 Open the site from a server with the compression settings on, and read the response headers of one
-page, `_astro/style.<hash>.css` and `kb.<hash>.js`: the page should say `no-cache` and the other
-two `immutable`, each with a `content-encoding`. From a folder the same site works with none of
-this, only slower.
+page, one record, `_astro/style.<hash>.css` and `kb.<hash>.js`: the page and the record should say
+`no-cache` and the other two `immutable`, each with a `content-encoding`. From a folder the same
+site works with none of this, only slower.

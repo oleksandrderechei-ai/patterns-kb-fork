@@ -308,10 +308,10 @@ describe('pageFindings', () => {
     ]);
   });
 
-  it('fails a region that is not one article carrying exactly the four page facts', () => {
+  it('fails a region that is not one article carrying exactly the three page facts, or those and the place', () => {
     const extra = page('<p>x</p>').replace('data-tags="caching,performance">', 'data-tags="caching,performance" data-owner="x">');
     expect(pageFindings(extra, false)).toContain(
-      'the knowledge region is not one <article> carrying exactly data-page, data-area, data-tags — run the post-build pass',
+      'the knowledge region is not one <article> carrying exactly data-page, data-area, data-tags, then all of data-kind, data-band, data-group or none of them — run the post-build pass',
     );
     const two = page('<p>x</p>').replace('</article>', '</article><p>stray</p>');
     expect(pageFindings(two, false)).toHaveLength(1);
@@ -319,6 +319,56 @@ describe('pageFindings', () => {
     expect(pageFindings(none, false)).toHaveLength(1);
     const empty = page('').replace(/<article[^>]*><\/article>/, '');
     expect(pageFindings(empty, false)).toHaveLength(1);
+  });
+
+  describe('the place of a page of the knowledge base', () => {
+    const TAGS = 'data-tags="caching,performance"';
+    const PLACE = 'data-kind="pattern" data-band="caching" data-group="caching"';
+    const WANT =
+      'the knowledge region is not one <article> carrying exactly data-page, data-area, data-tags, then all of data-kind, data-band, data-group or none of them — run the post-build pass';
+    /** The page with its article's facts after `data-area` written as `facts`. */
+    const withFacts = (facts: string): string => page('<p>x</p>').replace(TAGS, facts);
+
+    it('accepts the three page facts alone, and the three followed by the kind, the band and the group', () => {
+      expect(pageFindings(withFacts(TAGS), false)).toEqual([]);
+      expect(pageFindings(withFacts(`${TAGS} ${PLACE}`), false)).toEqual([]);
+    });
+
+    it('fails a place that is partly there, whichever of the three is missing', () => {
+      for (const part of ['data-kind="pattern"', 'data-band="caching"', 'data-group="caching"', 'data-kind="pattern" data-band="caching"', 'data-band="caching" data-group="caching"']) {
+        expect(pageFindings(withFacts(`${TAGS} ${part}`), false), part).toEqual([WANT]);
+      }
+    });
+
+    it('fails a place out of order, and one that comes before the page facts', () => {
+      expect(pageFindings(withFacts(`${TAGS} data-band="caching" data-kind="pattern" data-group="caching"`), false)).toEqual([WANT]);
+      expect(pageFindings(page('<p>x</p>').replace('<article data-page', `<article ${PLACE} data-page`), false)).toEqual([WANT]);
+    });
+
+    it('still fails a page fact among the place that no page carries', () => {
+      expect(pageFindings(withFacts(`${TAGS} ${PLACE} data-owner="x"`), false)).toEqual([WANT]);
+    });
+  });
+
+  describe('the verb and target of a relationship item', () => {
+    /** A page whose relationships block holds the one `item`. */
+    const listing = (item: string): string =>
+      page(`<section data-block="relationships"><p id="p-1"><strong>Combines with</strong></p><ul>${item}</ul></section>`);
+
+    it('are facts of a class-free item, which carries them beside nothing but data-* and an id', () => {
+      expect(pageFindings(listing('<li data-verb="combines-with" data-to="retry"><a href="./retry.html">Retry</a> — note</li>'), false)).toEqual([]);
+      expect(pageFindings(listing('<li id="r-1" data-verb="combines-with" data-to="retry"><a href="./retry.html">Retry</a></li>'), false)).toEqual([]);
+    });
+
+    it('fail on a classed item, naming the attribute and the element, and on an item that carries anything else', () => {
+      expect(pageFindings(listing('<li class="row" data-verb="combines-with" data-to="retry">x</li>'), false)).toEqual([
+        'fact data-verb on the classed element <li class="row"> — a fact sits on a class-free element',
+        'fact data-to on the classed element <li class="row"> — a fact sits on a class-free element',
+      ]);
+      expect(pageFindings(listing('<li title="t" data-verb="combines-with" data-to="retry">x</li>'), false)).toEqual([
+        'data block <li> carries title — a data block holds only data-* and an id',
+      ]);
+    });
   });
 
   it('fails a page with no knowledge region, and a page but the home page with no title block', () => {
@@ -373,6 +423,30 @@ describe('check-site-absence', () => {
     const r = await sb.run(spec);
     expectPass(r);
     expect(r.out).toMatch(new RegExp(`^\\[site-absence\\] ${BUILT.length} pages: `));
+  });
+
+  it('passes a built page of the knowledge base, its article stating its place and each relationship item its relation, and fails it with the place cut short', async () => {
+    formattedSite(sb);
+    const alpha = 'site/dist/patterns/caching/alpha.html';
+    const place = ' data-kind="pattern" data-band="caching" data-group="caching"';
+    const stamped = formatHtml(
+      sb
+        .read(alpha)
+        .replace('data-tags="caching,performance">', `data-tags="caching,performance"${place}>`)
+        .replace(
+          '</article>',
+          '<section data-block="relationships"><ul><li data-verb="combines-with" data-to="beta"><a href="./beta.html">Beta</a> — note</li></ul></section></article>',
+        ),
+    );
+    sb.write(alpha, stamped);
+    expectPass(await sb.run(spec));
+
+    sb.write(alpha, formatHtml(stamped.replace(' data-group="caching"', '')));
+    const r = await sb.run(spec);
+    expectFail(r);
+    expect(findings(r.err)).toEqual([
+      `[site-absence] FAIL ${alpha}: the knowledge region is not one <article> carrying exactly data-page, data-area, data-tags, then all of data-kind, data-band, data-group or none of them — run the post-build pass`,
+    ]);
   });
 
   it('asks for a build when there is no built site, an empty one, or --dist is empty', async () => {

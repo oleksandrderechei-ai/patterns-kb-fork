@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://odere-pro.github.io/patterns-kb/schema/kb-graph-1.json",
+  "title": "The link graph of the knowledge base (kb-graph/1)",
+  "description": "Every page of the patterns knowledge base and every typed link between pages in one JSON document, contract kb-graph/1. `kb.mjs graph` prints it, and the site serves the same bytes as graph.json. Read it to plan a walk over the knowledge base; read a page's record (`nodes[].record`) for the page itself. Every key is always there. Keys come in the order this file lists them, and the document is two-space JSON with one newline at the end, so two builds of the same pages are byte for byte equal. Adding a key stays in kb-graph/1, so ignore keys you do not know; renaming, removing or retyping a key, or changing an order, would be kb-graph/2, published beside this file. ORDER: `verbs` in the content model's order; `nodes` as `kb.mjs ls` lists the pages, by kind and then in reading order; `edges` in the order of docs/data/relations.json; `tours` in learning-path order, each tour's stages in stage order; `mentions` by the page they are from, in the order of `nodes`, and within a page in order of first mention. EDGES: each edge is written once, from the page `a`, which reads `verb`; the page `b` reads `inverse`. Both pages' records list the edge, `a`'s with `verb` and `b`'s with `inverse`, and both rows carry the same `edge` {a, verb, b}. A symmetric verb (combines-with, alternative-to, often-confused-with) is its own inverse. Notes are markdown inline text whose links are relative to the page on that side. A tour stage whose route names no page is left out.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string", "const": "https://odere-pro.github.io/patterns-kb/schema/kb-graph-1.json", "description": "The address of this schema, so a reader that holds a graph can fetch what its keys mean." },
+    "contract": { "type": "string", "const": "kb-graph/1", "description": "The contract and its major version: `kb-graph/1`. A reader that knows only this one refuses any other value." },
+    "verbs": { "type": "array", "items": { "$ref": "#/$defs/verb" }, "description": "The relation verbs the knowledge base uses, each with the verb the other page reads." },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" }, "description": "Every page, in the order `kb.mjs ls` lists them." },
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" }, "description": "Every typed edge between two pages, once, with both sides' words." },
+    "tours": { "type": "array", "items": { "$ref": "#/$defs/tour" }, "description": "Every theme's tour: the pages to read in order, each with the part it plays." },
+    "mentions": { "type": "array", "items": { "$ref": "#/$defs/mention" }, "description": "Every page a page links to with a markdown link to a .md file in its prose, outside the generated blocks and the siblings list, that the first page's own relations, themes and tour do not already name, once for each page and in order of first mention: the same lists `kb.mjs backlinks` prints as `mentions`." }
+  },
+  "required": ["$schema", "contract", "verbs", "nodes", "edges", "tours", "mentions"],
+  "$defs": {
+    "id": {
+      "description": "A page id: lower-case letters and digits in words joined by hyphens.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "inline": {
+      "description": "A run of words, as shown and as written.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "description": "What the page shows: markup removed, runs of whitespace one space." },
+        "md": { "type": "string", "description": "The markdown it was written in; its links are relative to the page on that side of the edge." }
+      },
+      "required": ["text", "md"]
+    },
+    "maps": {
+      "description": "The row of a capability's mapping table or a comparison's matrix that one side of an edge pins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The row's id on the page that holds it, such as mapping-row-3." },
+        "label": { "type": "string", "description": "The words of the row's first cell when the edge was written, so a moved row is noticed." }
+      },
+      "required": ["id", "label"]
+    },
+    "verb": {
+      "description": "One relation verb of the content model.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The verb, such as prevents-hazard." },
+        "label": { "type": "string", "description": "The verb as a page shows it, such as Prevents." },
+        "inverse": { "type": "string", "description": "The verb the page at the other end reads; the verb itself when it is symmetric." },
+        "symmetric": { "type": "boolean", "description": "True when the verb is its own inverse." }
+      },
+      "required": ["id", "label", "inverse", "symmetric"]
+    },
+    "node": {
+      "description": "One page, with what is needed to place it and to fetch its record.",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id", "description": "The page id: its file name without .md, which every kb.mjs command takes." },
+        "kind": { "type": "string", "enum": ["pattern", "hazard", "theme", "principle", "design", "capability", "comparison"], "description": "The page kind, from the folder it sits in under docs/." },
+        "band": { "type": "string", "description": "For a pattern, the area directly under patterns; for every other kind, the kind itself." },
+        "group": { "type": "string", "description": "For a pattern, the area that lists it; for every other kind, the kind itself." },
+        "title": { "type": "string", "description": "The page title." },
+        "route": { "type": "string", "pattern": "^/.+\\.html$", "description": "The page's address on the site, from the site root." },
+        "record": { "type": "string", "pattern": "^/.+\\.json$", "description": "The address of the page's kb-record/1 record on the site: `route` with .json in place of .html." }
+      },
+      "required": ["id", "kind", "band", "group", "title", "route", "record"]
+    },
+    "edge": {
+      "description": "One typed edge between two pages, written once, from `a`.",
+      "type": "object",
+      "properties": {
+        "a": { "$ref": "#/$defs/id", "description": "The page the edge was written from; it reads `verb`." },
+        "verb": { "type": "string", "description": "The verb as `a` reads it." },
+        "b": { "$ref": "#/$defs/id", "description": "The page at the other end; it reads `inverse`." },
+        "inverse": { "type": "string", "description": "The verb as `b` reads it; the same as `verb` when the verb is symmetric." },
+        "noteA": { "$ref": "#/$defs/inline", "description": "The note on `a`'s side; '' when it has none." },
+        "noteB": { "$ref": "#/$defs/inline", "description": "The note on `b`'s side; '' when it has none." },
+        "groupA": { "type": "string", "description": "The heading `a`'s relationships block puts the edge under: a custom group, else the verb's label." },
+        "groupB": { "type": "string", "description": "The heading `b`'s relationships block puts the edge under: a custom group, else the inverse's label." },
+        "mapsA": { "anyOf": [{ "$ref": "#/$defs/maps" }, { "type": "null" }], "description": "The row of `a`'s mapping table or matrix the edge pins; null when it pins none." },
+        "mapsB": { "anyOf": [{ "$ref": "#/$defs/maps" }, { "type": "null" }], "description": "The row of `b`'s mapping table or matrix the edge pins; null when it pins none." }
+      },
+      "required": ["a", "verb", "b", "inverse", "noteA", "noteB", "groupA", "groupB", "mapsA", "mapsB"]
+    },
+    "stage": {
+      "description": "One stop of a theme's tour.",
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/id", "description": "The id of the page at this stop." },
+        "role": { "$ref": "#/$defs/inline", "description": "The part the page plays in the tour; '' when the tour gives it none." }
+      },
+      "required": ["id", "role"]
+    },
+    "tour": {
+      "description": "A theme's tour.",
+      "type": "object",
+      "properties": {
+        "theme": { "$ref": "#/$defs/id", "description": "The id of the theme page that owns the tour." },
+        "stages": { "type": "array", "items": { "$ref": "#/$defs/stage" }, "description": "The tour's stops in stage order." }
+      },
+      "required": ["theme", "stages"]
+    },
+    "mention": {
+      "description": "A page that one page links to in its prose, and that the first page's own relations, themes and tour do not already name.",
+      "type": "object",
+      "properties": {
+        "from": { "$ref": "#/$defs/id", "description": "The id of the page whose prose holds the link." },
+        "to": { "$ref": "#/$defs/id", "description": "The id of the page it links to." }
+      },
+      "required": ["from", "to"]
+    }
+  }
+}

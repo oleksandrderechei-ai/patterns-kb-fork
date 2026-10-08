@@ -48,7 +48,7 @@ asks what the ask answered.
 case studies. One call says whether the kata is already answered:
 
 ```
-node scripts/kb.mjs find "<the kata in the user's words>" --kind design -n 3
+node scripts/kb.mjs find "<the kata in the user's words>" --kind design --n 3
 ```
 
 Read the hits' essences. Then choose, and say which you chose:
@@ -173,6 +173,19 @@ already carries — read one design's `levels` block for the bar
 Mid / Senior / Staff, what this doc demonstrates and what it does not. Honest gaps
 here are worth more than a clean sweep; they tell the reader where to push.
 
+**Check the citations before delivering.** Element ids are positional, and a page may have
+changed since a scout read it. Run every cite in the doc through `resolve`:
+
+```bash
+node scripts/kb.mjs resolve <every cited ref>
+```
+
+Do not deliver until it exits 0. `gone` is a cite that names no element; `moved` and
+`changed` are a pinned cite (`<id>#<element>@<fp>`) whose words are not the ones you read.
+Read the element again, fix the cite or the claim, and run the call again. Pin the cites
+that carry no `@<fp>` yet, with the `now.fp` that `kb.mjs resolve <id>#<element> --json`
+prints, so a later reader can run the same call.
+
 In chat, lead with the verdict — the chosen architecture and its biggest flaw in two
 sentences — then the doc path and a compact summary. Then **offer, opt-in, never
 automatic**: (a) publish as a `docs/designs/` case-study page via
@@ -268,5 +281,7 @@ single katas, where the interview dominates the wall clock anyway.
    cited one as adjacent, or said the KB has none.
 9. `make gate G=check-mermaid ARGS=tmp/designs/<slug>.md` passed on the finished doc, and no
    fence is HTML-escaped.
-10. The doc exists at `tmp/designs/<slug>.md`, carries the self-assessment table, the
+10. `node scripts/kb.mjs resolve` over every cited ref exited 0, so no cite is gone, moved
+    or changed.
+11. The doc exists at `tmp/designs/<slug>.md`, carries the self-assessment table, the
     chat summary leads with the verdict, and both publish offers were made opt-in.

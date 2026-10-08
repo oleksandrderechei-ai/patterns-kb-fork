@@ -52,6 +52,4 @@ A trap that fits no tier is usually two facts in one bullet. Split it and route 
 - **The block writers escape what the rules say they keep.** `kb.mjs production` and `wild`
   wrote `` \` `` around an inline-code name (`max.poll.interval.ms`) that markdown-authoring
   says passes through. After each writer call, `grep -n '\\' docs/<path>.md` and restore
-  the backtick by hand. A link in an explain cost note is escaped too, and restoring that
-  one fails the write-tree round-trip test: put the link in `--text` instead. Leaves when
-  the writers pass inline code through, with a test case.
+  the backtick by hand. Leaves when the writers pass inline code through, with a test case.

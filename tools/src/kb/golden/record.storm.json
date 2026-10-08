@@ -1,0 +1,263 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "storm",
+  "title": "Storm",
+  "description": "The storm page",
+  "kind": "hazard",
+  "band": "hazard",
+  "group": "hazard",
+  "area": "hazards",
+  "areaChain": [
+    {
+      "id": "hazards",
+      "label": "hazards"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "resilience",
+    "latency"
+  ],
+  "aliases": [],
+  "solves": [
+    "retries pile up during an outage"
+  ],
+  "favourite": false,
+  "route": "/hazards/storm.html",
+  "markdown": "/hazards/storm.md",
+  "source": {
+    "path": "docs/hazards/storm.md",
+    "sha256": "32ffe1ab9db1fd1b9efd901fe276743735f4f17a7ca47c933c36c98a624f9f9a"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Retries that make an outage worse.",
+      "md": "Retries that make an outage worse."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "What goes wrong",
+        "md": "What goes wrong"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "202320ca",
+          "text": "Every client retries at once.",
+          "md": "Every client retries at once."
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "4ee560ed",
+          "text": "Budgets cap it. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Budgets cap it. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "causes",
+      "name": "causes",
+      "heading": {
+        "text": "Why it happens",
+        "md": "Why it happens"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "causes-p-1",
+          "fp": "94e3451c",
+          "text": "No jitter.",
+          "md": "No jitter."
+        }
+      ]
+    },
+    {
+      "id": "cost",
+      "name": "cost",
+      "heading": {
+        "text": "What it costs",
+        "md": "What it costs"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "cost-p-1",
+          "fp": "4099385f",
+          "text": "An outage that lasts.",
+          "md": "An outage that lasts."
+        }
+      ]
+    },
+    {
+      "id": "mitigation",
+      "name": "mitigation",
+      "heading": {
+        "text": "How to avoid it",
+        "md": "How to avoid it"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "mitigation-p-1",
+          "fp": "802eb2de",
+          "text": "Add a breaker.",
+          "md": "Add a [breaker](../patterns/distributed/resilience/breaker.md)."
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": "relationships",
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "relationships-p-1",
+          "fp": "07ba716f",
+          "text": "Mitigated by",
+          "md": "**Mitigated by**"
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": null,
+              "fp": null,
+              "text": "Breaker — Fails fast",
+              "md": "[Breaker](../patterns/distributed/resilience/breaker.md) — Fails fast",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "verb": "mitigated-by",
+      "label": "Mitigated by",
+      "inverse": "prevents-hazard",
+      "to": "breaker",
+      "title": "Breaker",
+      "kind": "pattern",
+      "route": "/patterns/distributed/resilience/breaker.html",
+      "note": {
+        "text": "Fails fast",
+        "md": "Fails fast"
+      },
+      "group": "Mitigated by",
+      "maps": null,
+      "edge": {
+        "a": "breaker",
+        "verb": "prevents-hazard",
+        "b": "storm"
+      }
+    }
+  ],
+  "themes": [],
+  "tour": [],
+  "prerequisites": {
+    "requires": [],
+    "related": []
+  },
+  "links": [
+    {
+      "block": "mitigation",
+      "from": "mitigation-p-1",
+      "via": "text",
+      "text": "breaker",
+      "href": "../patterns/distributed/resilience/breaker.md",
+      "to": "breaker",
+      "fragment": null
+    }
+  ],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "causes": "/blocks/2",
+    "causes-p-1": "/blocks/2/content/0",
+    "cost": "/blocks/3",
+    "cost-p-1": "/blocks/3/content/0",
+    "mitigation": "/blocks/4",
+    "mitigation-p-1": "/blocks/4/content/0",
+    "relationships": "/blocks/5",
+    "relationships-p-1": "/blocks/5/content/0"
+  }
+}

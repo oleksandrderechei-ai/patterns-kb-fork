@@ -34,6 +34,16 @@ describe('parsePage', () => {
     expect(parsePage('---\ntitle: x\n---\n\n# Title\n\nIntro.\n').h1).toBe('Title');
   });
 
+  it('keeps the markdown the tree was parsed from: the page less its frontmatter, which the positions index into', () => {
+    const body = '# Title\n\nIntro with `code`.\n\n## First\n<!--meta block=description-->\n\nA **bold** word.\n';
+    const doc = parsePage(`---\ntitle: x\n---\n${body}`);
+    expect(doc.source).toBe(body);
+    expect(parsePage(body).source).toBe(body);
+    const intro = doc.intro[0] as Paragraph;
+    const at = intro.position as { start: { offset: number }; end: { offset: number } };
+    expect(doc.source.slice(at.start.offset, at.end.offset)).toBe('Intro with `code`.');
+  });
+
   it('splits the blocks by their facts; what sits under a heading with none belongs to no block', () => {
     const doc = parsePage(
       [
@@ -209,6 +219,32 @@ describe('writer-owned blocks', () => {
       ],
       example: 'Checkout calls it.',
     });
+  });
+
+  it('keeps a link in a cost note as `[label](target)`, as in the paragraph, and a bracket that is no link as the text it is', () => {
+    const doc = parsePage(
+      [
+        '## E',
+        '<!--meta block=explain-->',
+        '',
+        'A gate in front.',
+        '',
+        '- **Hand-off.** Use the [outbox](../x/outbox.md), then [retry **twice**](./retry.md#why).',
+        '- **Lead.** [Starts](./s.md) with a link,',
+        '  and breaks the line.',
+        '- **Notation.** Write \\[n\\] and \\[a\\](b c) as text.',
+        '- [Bare](./b.md) bullet, no lead.',
+        '',
+        '**Example.** Checkout calls it.',
+        '',
+      ].join('\n'),
+    );
+    expect(explainItems(doc)?.costs).toEqual([
+      { lead: 'Hand-off.', note: 'Use the [outbox](../x/outbox.md), then [retry twice](./retry.md#why).' },
+      { lead: 'Lead.', note: '[Starts](./s.md) with a link, and breaks the line.' },
+      { lead: 'Notation.', note: 'Write [n] and [a](b c) as text.' },
+      { lead: '', note: '[Bare](./b.md) bullet, no lead.' },
+    ]);
   });
 
   it('dumps wild items: name, note, href; an item with no id, name or paragraph still dumps', () => {

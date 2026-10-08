@@ -23,7 +23,7 @@ A distributed lock lets only one process in a whole fleet run a critical section
 
 A distributed lock is a small record in a store every server can reach, saying who holds the lock and until when, so only one server in a fleet runs a critical job at a time. A server takes it with a create-only-if-absent write, deletes it when done, and the record expires after a set time, so a holder that crashes does not block everyone forever. Choose it over a database row lock or a [conditional write](conditional-write.md) when exclusivity must span many stateless servers and outlive a single transaction, such as a run-once job or a multi-minute seat hold.
 
-- **Not airtight.** A stalled holder loses the lock unaware. Give each grant a rising \[fencing token\](fencing-token.md) and reject older ones at the resource.
+- **Not airtight.** A stalled holder loses the lock unaware. Give each grant a rising [fencing token](fencing-token.md) and reject older ones at the resource.
 - **Expiry is a guess.** Too short risks double grants, too long blocks everyone after a crash. Exceed your longest pause, and still fence.
 - **Stampede on release.** Waiting servers all retry at once. Retry with random delays.
 - **New failure point.** The lock store can fail. Alert on locks that expired while held.

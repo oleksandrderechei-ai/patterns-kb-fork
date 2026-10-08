@@ -1,8 +1,12 @@
 /**
  * The corpus: pages placed by the structure file and kind by folder, the
- * frontmatter read in one spawn, the tour memberships, and the root.
+ * frontmatter read in one spawn, the tour memberships, the parse of a page and
+ * the questions that need every page (where a link goes, what a page mentions),
+ * the digest of a page's file, and the root.
  */
 
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -10,7 +14,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { writeKbFixture } from '../lib/fixtures.js';
 import { makeSandbox, type Sandbox } from '../lib/sandbox.js';
 
-import { Corpus, KbError, KIND_SEQ, metaOf, readModel, readOtherRows, readPages, REPO, rootFrom } from './corpus.js';
+import { Corpus, KbError, KbUsageError, KIND_SEQ, metaOf, readModel, readOtherRows, readPages, REPO, rootFrom } from './corpus.js';
+import { stripFrontmatter } from './page.js';
 
 let sb: Sandbox;
 beforeAll(() => {
@@ -35,6 +40,10 @@ describe('the pages', () => {
       'brokers:comparison:comparison:comparison:comparisons',
     ]);
     expect(pages[0]).toMatchObject({ route: '/patterns/distributed/resilience/breaker.html', path: 'patterns/distributed/resilience/breaker.html' });
+    // The areas it sits in, outermost first, each with its label: what `categories` is made of.
+    expect(pages[0]?.areaChain.map((a) => a.id)).toEqual(['patterns', 'distributed', 'distributed-resilience']);
+    expect(pages[0]?.categories).toEqual(['patterns', 'distributed', 'distributed-resilience', 'pattern']);
+    expect(pages.find((p) => p.slug === 'loop')?.areaChain.map((a) => a.id)).toEqual(['designs', 'designs-mid']);
     // The listing: kind by KIND_SEQ first, reading order within a kind.
     expect(new Corpus(sb.dir).listing.map((p) => p.slug)).toEqual(['breaker', 'retry', 'queue', 'storm', 'loop', 'steady', 'quick', 'shortener', 'queues', 'brokers']);
     expect(KIND_SEQ).toEqual(['pattern', 'hazard', 'theme', 'principle', 'design', 'capability', 'comparison']);
@@ -91,11 +100,32 @@ describe('lookups and facts', () => {
     expect(() => c.need(undefined)).toThrow(new KbError('unknown id: (none given)'));
   });
 
+  it('tells an id that names no page, a lookup that failed, from no id at all, a call made badly', () => {
+    const c = new Corpus(sb.dir);
+    const kind = (f: () => unknown): string[] => {
+      try {
+        f();
+      } catch (e) {
+        return [e instanceof KbUsageError ? 'usage' : e instanceof KbError ? 'lookup' : 'other'];
+      }
+      return [];
+    };
+    expect(kind(() => c.need('que'))).toEqual(['lookup']);
+    expect(kind(() => c.need('zzz'))).toEqual(['lookup']);
+    expect(kind(() => c.need(undefined))).toEqual(['usage']);
+    expect(kind(() => c.need('queue'))).toEqual([]);
+    // A usage error is a KbError, so a caller that catches one catches both.
+    expect(new KbUsageError('x')).toBeInstanceOf(KbError);
+  });
+
   it('reads every page’s frontmatter in one pass; lists split, a scalar list as one item', () => {
     const c = new Corpus(sb.dir);
     expect(c.meta('breaker')).toEqual({
       title: 'Breaker',
       essence: 'The breaker page',
+      area: 'distributed-resilience',
+      status: 'stable',
+      owner: 'Test Owner',
       aliases: ['CB', 'fuse'],
       tags: ['resilience', 'latency'],
       solves: ['my threads hang on a dead dependency', 'one failing call, and the whole service falls'],
@@ -105,6 +135,9 @@ describe('lookups and facts', () => {
     expect(c.frontmatter('breaker')).toMatchObject({ area: 'distributed-resilience', favourite: 'true', tags: ['resilience', 'latency'] });
     expect(c.frontmatter('nope')).toEqual({});
     expect(metaOf({ aliases: 'CB', tags: '', title: ['not', 'a', 'string'] })).toMatchObject({ title: '', aliases: ['CB'], tags: [] });
+    expect(metaOf({ area: 'caching', owner: 'A. Owner', status: 'draft' })).toMatchObject({ area: 'caching', owner: 'A. Owner', status: 'draft' });
+    // A key the page lacks reads as an empty string, a list as an empty list and the flag as false.
+    expect(metaOf({})).toEqual({ title: '', essence: '', area: '', status: '', owner: '', aliases: [], tags: [], solves: [], favourite: false });
   });
 
   it('reads a page’s text once, and names a file it cannot read', () => {
@@ -150,6 +183,94 @@ describe('lookups and facts', () => {
     } finally {
       odd.cleanup();
     }
+  });
+});
+
+describe('a page read whole', () => {
+  const BREAKER = 'docs/patterns/distributed/resilience/breaker.md';
+
+  it('parses a page once and keeps the parse, with the markdown it was parsed from', () => {
+    const c = new Corpus(sb.dir);
+    const doc = c.doc('breaker');
+    expect(c.doc('breaker')).toBe(doc);
+    expect(doc.h1).toBe('Breaker');
+    expect(doc.blocks[0]?.name).toBe('description');
+    expect(doc.source).toBe(stripFrontmatter(c.text('breaker')));
+    expect(() => c.doc('nope')).toThrow(new KbError('unknown id: nope'));
+  });
+
+  it('names the page a link url names, written on the page whose markdown is given', () => {
+    const c = new Corpus(sb.dir);
+    expect(c.linkTarget(BREAKER, './retry.md')?.slug).toBe('retry');
+    expect(c.linkTarget(BREAKER, '../../../hazards/storm.md#cost')?.slug).toBe('storm');
+    expect(c.linkTarget(BREAKER, '../../messaging/queue.md?x=1#y')?.slug).toBe('queue');
+    expect(c.linkTarget('docs/themes/steady.md', '../patterns/distributed/resilience/retry.md')?.slug).toBe('retry');
+    // A route is a page address from the site root, whichever page it is written on.
+    expect(c.linkTarget(BREAKER, '/hazards/storm.html')?.slug).toBe('storm');
+    expect(c.linkTarget('docs/themes/steady.md', '/hazards/storm.html#cost')?.slug).toBe('storm');
+    expect(c.linkTarget(BREAKER, '/hazards/nope.html')).toBeUndefined();
+  });
+
+  it('names no page for an address elsewhere, a file that is not markdown, a page of no kind or a bare fragment', () => {
+    const c = new Corpus(sb.dir);
+    for (const url of ['https://example.com/x.md', 'http://example.com', '//example.com/x.md', 'mailto:a@b.c', './notes.txt', '../../../reference/notes.md', '#cost', '', '../nowhere.md']) {
+      expect(c.linkTarget(BREAKER, url), url).toBeUndefined();
+    }
+  });
+
+  it('hashes the bytes of a page’s file, which is not the hash of its text when the bytes are not text', () => {
+    const own = makeSandbox();
+    try {
+      writeKbFixture(own.dir);
+      const c = new Corpus(own.dir);
+      expect(c.digest('breaker')).toBe(createHash('sha256').update(fs.readFileSync(path.join(own.dir, BREAKER))).digest('hex'));
+      // A byte that is no UTF-8 reads back as U+FFFD, so the text hashes differently from the file.
+      fs.writeFileSync(path.join(own.dir, 'docs/hazards/storm.md'), Buffer.concat([fs.readFileSync(path.join(own.dir, 'docs/hazards/storm.md')), Buffer.from([0xc3, 0x0a])]));
+      const odd = new Corpus(own.dir);
+      const bytes = fs.readFileSync(path.join(own.dir, 'docs/hazards/storm.md'));
+      expect(odd.digest('storm')).toBe(createHash('sha256').update(bytes).digest('hex'));
+      expect(odd.digest('storm')).not.toBe(createHash('sha256').update(odd.text('storm')).digest('hex'));
+      own.rm('docs/hazards/storm.md');
+      expect(() => new Corpus(own.dir).digest('storm')).toThrow(new KbError('storm: cannot read docs/hazards/storm.md'));
+      expect(() => c.digest('nope')).toThrow(new KbError('unknown id: nope'));
+    } finally {
+      own.cleanup();
+    }
+  });
+});
+
+describe('mentions', () => {
+  it('are the pages a page links to in its prose, first mention only, less itself and what a relation already names', () => {
+    const c = new Corpus(sb.dir);
+    // Retry twice, the storm and itself are named by edges or are the page; the queue is a mention.
+    expect(c.mentions('breaker')).toEqual(['queue']);
+    expect(c.mentions('breaker')).toBe(c.mentions('breaker'));
+    expect(c.mentions('retry')).toEqual([]);
+    expect(c.mentions('storm')).toEqual([]);
+    expect(() => c.mentions('nope')).toThrow(new KbError('unknown id: nope'));
+  });
+
+  it('leave out a theme the page is in and a page its own tour names, and keep the first mention of any other', () => {
+    const own = makeSandbox();
+    try {
+      writeKbFixture(own.dir);
+      const retry = 'docs/patterns/distributed/resilience/retry.md';
+      own.write(retry, own.read(retry).replace('Try again after a pause', 'Try again after a pause, under [the theme](../../../themes/steady.md), beside [the queue](../../messaging/queue.md) and [again](../../messaging/queue.md)'));
+      const steady = 'docs/themes/steady.md';
+      own.write(steady, own.read(steady).replace('Draw isolation lines.', 'Draw isolation lines, as [the breaker](../patterns/distributed/resilience/breaker.md) does, and see [the storm](../hazards/storm.md).'));
+      const c = new Corpus(own.dir);
+      expect(c.mentions('retry')).toEqual(['queue']);
+      expect(c.mentions('steady')).toEqual(['storm']);
+    } finally {
+      own.cleanup();
+    }
+  });
+
+  it('are taken from the markdown outside the generated blocks and the typed rows', () => {
+    const c = new Corpus(sb.dir);
+    // The theme's tour and its sibling rows link to pages, and none is a mention.
+    expect(c.mentions('loop')).toEqual([]);
+    expect(c.mentions('steady')).toEqual([]);
   });
 });
 

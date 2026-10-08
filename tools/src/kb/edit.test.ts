@@ -3,12 +3,16 @@
  * the one printer, the whole-file stamp, and a block put in, replaced or cut.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { frontmatter } from '../lib/frontmatter.js';
 import { makeSandbox, type Sandbox } from '../lib/sandbox.js';
 
-import { blockSpans, eolOf, fmShapeProblem, putBlock, refuseStamped, rewriteFrontmatter, splitFrontmatter, stampOf, type FmChange } from './edit.js';
+import { REPO } from './corpus.js';
+import { blockSpans, eolOf, FM_ORDER, fmShapeProblem, putBlock, refuseStamped, rewriteFrontmatter, splitFrontmatter, stampOf, type FmChange } from './edit.js';
 
 let sb: Sandbox;
 beforeEach(() => {
@@ -79,6 +83,24 @@ describe('rewriteFrontmatter', () => {
   it('puts a key with nothing before it first, and one the dialect does not order last', () => {
     expect(rewriteFrontmatter({ level: 'basic', extra: 'y' }, new Map<string, FmChange>([['title', 'T'], ['zzz', 'z']]))).toBe('---\ntitle: T\nlevel: basic\nextra: y\nzzz: z\n---\n');
     expect(rewriteFrontmatter({ empty: '' }, new Map())).toBe('---\nempty:\n---\n');
+  });
+});
+
+describe('FM_ORDER', () => {
+  it('is the key order of the dialect’s frontmatter table, no key more and none fewer', () => {
+    const lines = fs.readFileSync(path.join(REPO, 'tools/src/lib/dialect.md'), 'utf8').split('\n');
+    const at = lines.findIndex((l) => l.startsWith('**D-10 · Frontmatter.**'));
+    const header = lines.findIndex((l, i) => i > at && l.startsWith('| Key |'));
+    const keys: string[] = [];
+    // The table is the run of `|` lines after its header and its rule line.
+    for (const l of lines.slice(header + 2)) {
+      if (!l.startsWith('|')) break;
+      keys.push(/^\| `([a-z]+)` \|/.exec(l)?.[1] as string);
+    }
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(keys.length).toBeGreaterThan(5);
+    expect(keys).toEqual([...FM_ORDER]);
+    expect(FM_ORDER).not.toContain('level');
   });
 });
 

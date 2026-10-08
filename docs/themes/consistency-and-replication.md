@@ -24,7 +24,7 @@ Replication keeps several copies of your data so you survive a lost machine and 
 
 - **Write latency.** A majority wait adds a round trip per write and stalls if the majority is unreachable, so reserve it for money.
 - **Stale reads.** Confirming at once lets a lagging copy return old data: send a writer's own reads to the leader until the copy catches up.
-- **Election pause.** One \[elected writer\](../patterns/distributed/coordination/leader-election.md) gives a clear order but stops writes until a new one is chosen, so keep the election fast.
+- **Election pause.** One [elected writer](../patterns/distributed/coordination/leader-election.md) gives a clear order but stops writes until a new one is chosen, so keep the election fast.
 - **Conflicts.** Several writers need conflict rules, so decide the merge before launch.
 
 **Example.** A store has N = 3 copies in 3 zones, 2 ms apart. With W = 2 and R = 2, W + R = 4 is more than 3, so a read of two copies meets one with the last write and returns the newest version. A write returns after the second confirmation, about 2 ms, and one dead copy changes nothing. If two copies die, writes are refused, which is the availability you gave up. With W = 1 and R = 1, the total is 2, so a read can land on the one copy the write has not reached and return the old value. A user then misses their own post until that copy catches up.

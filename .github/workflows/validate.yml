@@ -138,6 +138,10 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node_modules/.bin/tsx tools/src/gates/check-search-oracle.ts
 
+      - name: KB records hold their schema
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: node_modules/.bin/tsx tools/src/gates/check-kb-records.ts
+
       - name: Product registry
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node_modules/.bin/tsx tools/src/gates/check-products.ts
@@ -245,6 +249,10 @@ jobs:
       - name: Site portability
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: node_modules/.bin/tsx tools/src/gates/check-site-portable.ts
+
+      - name: Site and markdown agree
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: node_modules/.bin/tsx tools/src/gates/check-site-parity.ts
 
       - name: Site noise and data layer
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}

@@ -1,0 +1,382 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "retry",
+  "title": "Retry",
+  "description": "The retry page",
+  "kind": "pattern",
+  "band": "distributed",
+  "group": "distributed-resilience",
+  "area": "distributed-resilience",
+  "areaChain": [
+    {
+      "id": "patterns",
+      "label": "patterns"
+    },
+    {
+      "id": "distributed",
+      "label": "distributed"
+    },
+    {
+      "id": "distributed-resilience",
+      "label": "distributed-resilience"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "resilience",
+    "latency"
+  ],
+  "aliases": [],
+  "solves": [
+    "transient errors fail my requests"
+  ],
+  "favourite": false,
+  "route": "/patterns/distributed/resilience/retry.html",
+  "markdown": "/patterns/distributed/resilience/retry.md",
+  "source": {
+    "path": "docs/patterns/distributed/resilience/retry.md",
+    "sha256": "78627f84e136aa58c58894886f57699e723e8fe711901bd5af7e7befc1a07acb"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Tries again.",
+      "md": "Tries again."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "What it is",
+        "md": "What it is"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "d99f0e18",
+          "text": "Try again after a pause, as the breaker allows.",
+          "md": "Try again after a pause, as the [breaker](./breaker.md) allows."
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "22a48c63",
+          "text": "Add jitter. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Add jitter. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "structure",
+      "name": "structure",
+      "heading": {
+        "text": "How it works",
+        "md": "How it works"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "structure-p-1",
+          "fp": "211d519e",
+          "text": "Calls repeat.",
+          "md": "Calls repeat."
+        }
+      ]
+    },
+    {
+      "id": "variations",
+      "name": "variations",
+      "heading": {
+        "text": "Variations",
+        "md": "Variations"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "variations-item-1",
+              "fp": "95dbb4f8",
+              "text": "Fixed — Same pause.",
+              "md": "**Fixed** — Same pause.",
+              "lead": "Fixed",
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tradeoffs",
+      "name": "tradeoffs",
+      "heading": {
+        "text": "Trade-offs",
+        "md": "Trade-offs"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "pro",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Pros",
+            "md": "Pros"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "tradeoffs-pro-1",
+                  "fp": "6be4cc0f",
+                  "text": "Recovers blips.",
+                  "md": "Recovers blips.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "usage",
+      "name": "usage",
+      "heading": {
+        "text": "When to use it",
+        "md": "When to use it"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "when",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Reach for it when",
+            "md": "Reach for it when"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "usage-when-1",
+                  "fp": "bc98e1d9",
+                  "text": "Errors are transient.",
+                  "md": "Errors are transient.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sketch",
+      "name": "sketch",
+      "heading": {
+        "text": "Code sketch",
+        "md": "Code sketch"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "code",
+          "id": "sketch-variant-1",
+          "fp": "88f9cfcf",
+          "lang": "typescript",
+          "code": "retry();"
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": "relationships",
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "relationships-p-1",
+          "fp": "f440a5eb",
+          "text": "Combines with",
+          "md": "**Combines with**"
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": null,
+              "fp": null,
+              "text": "Breaker — Trip on sustained errors",
+              "md": "[Breaker](./breaker.md) — Trip on sustained errors",
+              "lead": null,
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "verb": "combines-with",
+      "label": "Combines with",
+      "inverse": "combines-with",
+      "to": "breaker",
+      "title": "Breaker",
+      "kind": "pattern",
+      "route": "/patterns/distributed/resilience/breaker.html",
+      "note": {
+        "text": "Trip on sustained errors",
+        "md": "Trip on sustained errors"
+      },
+      "group": "Combines with",
+      "maps": null,
+      "edge": {
+        "a": "breaker",
+        "verb": "combines-with",
+        "b": "retry"
+      }
+    }
+  ],
+  "themes": [
+    {
+      "id": "steady",
+      "title": "Steady",
+      "route": "/themes/steady.html",
+      "role": {
+        "text": "Ride out blips",
+        "md": "Ride out blips"
+      }
+    }
+  ],
+  "tour": [],
+  "prerequisites": {
+    "requires": [],
+    "related": [
+      "breaker"
+    ]
+  },
+  "links": [
+    {
+      "block": "description",
+      "from": "description-p-1",
+      "via": "text",
+      "text": "breaker",
+      "href": "./breaker.md",
+      "to": "breaker",
+      "fragment": null
+    }
+  ],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "structure": "/blocks/2",
+    "structure-p-1": "/blocks/2/content/0",
+    "variations": "/blocks/3",
+    "variations-item-1": "/blocks/3/content/0/items/0",
+    "tradeoffs": "/blocks/4",
+    "tradeoffs-pro-1": "/blocks/4/content/0/content/0/items/0",
+    "usage": "/blocks/5",
+    "usage-when-1": "/blocks/5/content/0/content/0/items/0",
+    "sketch": "/blocks/6",
+    "sketch-variant-1": "/blocks/6/content/0",
+    "relationships": "/blocks/7",
+    "relationships-p-1": "/blocks/7/content/0"
+  }
+}

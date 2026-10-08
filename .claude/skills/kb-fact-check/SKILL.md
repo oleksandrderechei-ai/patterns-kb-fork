@@ -12,7 +12,7 @@ never writes to `docs/` or `site/`. Everything lands in gitignored `tmp/kb-fact-
 ```
 resolve   kb id → Wikipedia title (4-stage ladder) + committed alt-source allowlist
 fetch     fetch.mjs pulls each source into tmp/kb-fact-check/  (raw.txt readable + norm.txt match-target)
-evaluate  diff KB blocks (kb.mjs get --json) against sources, BY BLOCK CLASS across the corpus
+evaluate  diff KB blocks (kb.mjs record) against sources, BY BLOCK CLASS across the corpus
 verify    a second reader tries to REFUTE each finding; REJECTED ones are kept, flagged
 gate      eval-check.mjs re-verifies every quote and anchor mechanically
 roll up   rank by fix-class + severity — the human reads this, then hands the slice to kb-edit
@@ -65,8 +65,10 @@ quote gate matches against this). Add a one-off source with `alt add <id> --url 
 
 ## 4. Evaluate — by block class, honestly
 
-Read the KB via `kb.mjs get <id> --json` (add `--diagrams` — the `architecture`/`structure`
-blocks of designs and patterns are often mermaid). Write one
+Read the KB via `kb.mjs record <id> --block <name>`: the page as data, whose node `text` is
+what a quote is checked against and whose `code` holds a diagram's source (the
+`architecture`/`structure` blocks of designs and patterns are often mermaid). Cite an
+element's `id` as the finding's `anchor`. Write one
 `findings/<kind>/<id>.eval.json` per page. Every finding carries a closed `dimension`
 (fabrication `wild-false`/`production-false`, `factual-error`, `missing-tradeoff`,
 `missing-variation`, `missing-relationship`, …), a `severity`, a one-line `claim`, a `kb`
@@ -105,13 +107,20 @@ file (so they are not re-raised) but are excluded from the roll-up. Then:
 
 ```
 node .claude/skills/kb-fact-check/eval-check.mjs [--only a,b]     # exit 0 clean / 2 none / 3 issues
+node .claude/skills/kb-fact-check/eval-check.mjs --self-check     # the gate on two real pages, exit 0 / 3
 ```
 
 It re-verifies mechanically: **quote-or-drop** (every source quote is a real substring),
-**anchor-or-drop** (block ∈ the kind's blocks in `docs/data/content-model.json`, kb quote in that block), **prove-the-absence** (every
-`missing-*` term is genuinely absent from the page), **no-laundering** (no 8-word run of a fix
-intent appears in any source — Wikipedia is CC BY-SA; never copy prose into `docs/`),
-**severity ceiling** (CRITICAL/HIGH needs ≥2 sources or 1 tier-1), and the closed enums.
+**anchor-or-drop** (block ∈ the kind's blocks in `docs/data/content-model.json`, kb quote in that
+block's joined text, `anchor` an element id of the record that sits inside that block),
+**prove-the-absence** (every `missing-*` term is genuinely absent from the page),
+**no-laundering** (no 8-word run of a fix intent appears in any source — Wikipedia is CC BY-SA;
+never copy prose into `docs/`), **severity ceiling** (CRITICAL/HIGH needs ≥2 sources or 1
+tier-1), and the closed enums.
+
+After a change to `eval-check.mjs`, or to what `kb.mjs record` prints, run `--self-check`: it
+builds findings from two real pages, some clean and some seeded with one fault each, and fails
+when the gate gives any of them the wrong verdict.
 
 ## 6. Roll up and hand off
 

@@ -1,0 +1,502 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "shortener",
+  "title": "Shortener",
+  "description": "The shortener page",
+  "kind": "design",
+  "band": "design",
+  "group": "design",
+  "area": "designs-mid",
+  "areaChain": [
+    {
+      "id": "designs",
+      "label": "designs"
+    },
+    {
+      "id": "designs-mid",
+      "label": "designs-mid"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "resilience",
+    "latency"
+  ],
+  "aliases": [],
+  "solves": [
+    "my short links collide"
+  ],
+  "favourite": false,
+  "route": "/designs/shortener.html",
+  "markdown": "/designs/shortener.md",
+  "source": {
+    "path": "docs/designs/shortener.md",
+    "sha256": "28c9ba08a44ffece99da06d343433bbeb3cea59e3c6c64d942e6104c96529b20"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Short names for long links.",
+      "md": "Short names for long links."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "Understanding the problem",
+        "md": "Understanding the problem"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "9a145a6d",
+          "text": "Q1 — How many links? → NFR: scale. About a million a day.",
+          "md": "**Q1 — How many links?** → NFR: scale. About a million a day."
+        }
+      ]
+    },
+    {
+      "id": "requirements",
+      "name": "requirements",
+      "heading": {
+        "text": "Requirements",
+        "md": "Requirements"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "group",
+          "fact": "requirement",
+          "value": "fr",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Functional",
+            "md": "Functional"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "requirements-fr-1",
+                  "fp": "bef7c319",
+                  "text": "Shorten a link.",
+                  "md": "Shorten a link.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                },
+                {
+                  "id": "requirements-fr-2",
+                  "fp": "c72a41cb",
+                  "text": "Expand a code.",
+                  "md": "Expand a code.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "fact": "requirement",
+          "value": "nfr",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Non-functional",
+            "md": "Non-functional"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "requirements-nfr-1",
+                  "fp": "f469802a",
+                  "text": "Scale",
+                  "md": "**Scale**",
+                  "lead": "Scale",
+                  "checked": null,
+                  "content": [
+                    {
+                      "type": "list",
+                      "id": null,
+                      "fp": null,
+                      "ordered": false,
+                      "start": null,
+                      "items": [
+                        {
+                          "id": null,
+                          "fp": null,
+                          "text": "A million a day.",
+                          "md": "A million a day.",
+                          "lead": null,
+                          "checked": null,
+                          "content": []
+                        },
+                        {
+                          "id": null,
+                          "fp": null,
+                          "text": "Reads dominate.",
+                          "md": "Reads dominate.",
+                          "lead": null,
+                          "checked": null,
+                          "content": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "requirements-h-additional",
+              "fp": "5c1bec5b",
+              "text": "Additional — later",
+              "md": "**Additional — later**"
+            },
+            {
+              "type": "list",
+              "id": "requirements-ul-additional",
+              "fp": "522cb8af",
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "requirements-nfr-2",
+                  "fp": "1a62a084",
+                  "text": "Custom aliases.",
+                  "md": "Custom aliases.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                },
+                {
+                  "id": "requirements-nfr-3",
+                  "fp": "ef1916a9",
+                  "text": "Expiry.",
+                  "md": "Expiry.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "entities",
+      "name": "entities",
+      "heading": {
+        "text": "Core entities & data design",
+        "md": "Core entities & data design"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "entities-li-1",
+              "fp": "9df260f1",
+              "text": "Link — The mapping.",
+              "md": "**Link** — The mapping.",
+              "lead": "Link",
+              "checked": null,
+              "content": [
+                {
+                  "type": "sketch",
+                  "id": "entities-sketch-1",
+                  "fp": "04a94ce1",
+                  "form": "code",
+                  "lang": "sql",
+                  "summary": {
+                    "text": "Link table",
+                    "md": "Link table"
+                  },
+                  "caption": null,
+                  "wide": false,
+                  "code": "create table link (code text primary key);",
+                  "content": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "architecture",
+      "name": "architecture",
+      "heading": {
+        "text": "How the system is built",
+        "md": "How the system is built"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "architecture-p-1",
+          "fp": "8584a5e2",
+          "text": "An API in front of a cache.",
+          "md": "An API in front of a cache."
+        },
+        {
+          "type": "table",
+          "id": "architecture-table-1",
+          "fp": "7b689235",
+          "align": [
+            null,
+            null
+          ],
+          "header": [
+            {
+              "text": "Component",
+              "md": "Component"
+            },
+            {
+              "text": "Role",
+              "md": "Role"
+            }
+          ],
+          "rows": [
+            {
+              "id": "architecture-row-1",
+              "fp": "10af79ec",
+              "cells": [
+                {
+                  "text": "API",
+                  "md": "API"
+                },
+                {
+                  "text": "Takes writes",
+                  "md": "Takes writes"
+                }
+              ]
+            },
+            {
+              "id": "architecture-row-2",
+              "fp": "af7a41f9",
+              "cells": [
+                {
+                  "text": "Cache",
+                  "md": "Cache"
+                },
+                {
+                  "text": "Serves reads",
+                  "md": "Serves reads"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deepdives",
+      "name": "deepdives",
+      "heading": {
+        "text": "Deep dives",
+        "md": "Deep dives"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "heading",
+          "id": "deepdives-dive-1",
+          "fp": "2e835ac2",
+          "depth": 3,
+          "text": "1 · Codes that never collide → NFR: scale",
+          "md": "1 · Codes that never collide → NFR: scale"
+        },
+        {
+          "type": "paragraph",
+          "id": "deepdives-p-1",
+          "fp": "334d94e6",
+          "text": "Use a counter.",
+          "md": "Use a counter."
+        },
+        {
+          "type": "sketch",
+          "id": "deepdives-sketch-1",
+          "fp": "18d7368c",
+          "form": "prose",
+          "lang": null,
+          "summary": {
+            "text": "Why hashing fails",
+            "md": "**Why hashing fails**"
+          },
+          "caption": null,
+          "wide": false,
+          "code": null,
+          "content": [
+            {
+              "type": "paragraph",
+              "id": "deepdives-p-2",
+              "fp": "a715d89d",
+              "text": "Two links can share a hash.",
+              "md": "Two links can share a hash."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tradeoffs",
+      "name": "tradeoffs",
+      "heading": {
+        "text": "Limitations & trade-offs",
+        "md": "Limitations & trade-offs"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "tradeoffs-p-1",
+          "fp": "14007aed",
+          "text": "The counter is a single point.",
+          "md": "The counter is a single point."
+        },
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "pro",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Strengths",
+            "md": "Strengths"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "tradeoffs-pro-1",
+                  "fp": "145ed781",
+                  "text": "Simple.",
+                  "md": "Simple.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "fact": "polarity",
+          "value": "con",
+          "heading": {
+            "id": null,
+            "fp": null,
+            "text": "Risks",
+            "md": "Risks"
+          },
+          "content": [
+            {
+              "type": "list",
+              "id": null,
+              "fp": null,
+              "ordered": false,
+              "start": null,
+              "items": [
+                {
+                  "id": "tradeoffs-con-1",
+                  "fp": "5d7ba20f",
+                  "text": "A hot counter.",
+                  "md": "A hot counter.",
+                  "lead": null,
+                  "checked": null,
+                  "content": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": null,
+      "content": []
+    }
+  ],
+  "relations": [],
+  "themes": [],
+  "tour": [],
+  "prerequisites": {
+    "requires": [],
+    "related": []
+  },
+  "links": [],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "requirements": "/blocks/1",
+    "requirements-fr-1": "/blocks/1/content/0/content/0/items/0",
+    "requirements-fr-2": "/blocks/1/content/0/content/0/items/1",
+    "requirements-nfr-1": "/blocks/1/content/1/content/0/items/0",
+    "requirements-h-additional": "/blocks/1/content/1/content/1",
+    "requirements-ul-additional": "/blocks/1/content/1/content/2",
+    "requirements-nfr-2": "/blocks/1/content/1/content/2/items/0",
+    "requirements-nfr-3": "/blocks/1/content/1/content/2/items/1",
+    "entities": "/blocks/2",
+    "entities-li-1": "/blocks/2/content/0/items/0",
+    "entities-sketch-1": "/blocks/2/content/0/items/0/content/0",
+    "architecture": "/blocks/3",
+    "architecture-p-1": "/blocks/3/content/0",
+    "architecture-table-1": "/blocks/3/content/1",
+    "architecture-row-1": "/blocks/3/content/1/rows/0",
+    "architecture-row-2": "/blocks/3/content/1/rows/1",
+    "deepdives": "/blocks/4",
+    "deepdives-dive-1": "/blocks/4/content/0",
+    "deepdives-p-1": "/blocks/4/content/1",
+    "deepdives-sketch-1": "/blocks/4/content/2",
+    "deepdives-p-2": "/blocks/4/content/2/content/0",
+    "tradeoffs": "/blocks/5",
+    "tradeoffs-p-1": "/blocks/5/content/0",
+    "tradeoffs-pro-1": "/blocks/5/content/1/content/0/items/0",
+    "tradeoffs-con-1": "/blocks/5/content/2/content/0/items/0",
+    "relationships": "/blocks/6"
+  }
+}

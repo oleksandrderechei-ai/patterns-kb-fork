@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { deriveElements, parseKb } from '../lib/kb-attrs.js';
 
 import { explainLines, productionLines, wildLines } from './blocks.js';
+import { linksIn } from './page.js';
 
 /** id, polarity and text of every element with an id. */
 const read = (lines: readonly string[]): string[][] =>
@@ -45,6 +46,31 @@ describe('explainLines', () => {
     expect(lines.slice(3)).toEqual(['A [fuse](./fuse.md) in front.', '', '- **Latency.** One more \\*hop\\*.', '- **Upkeep.** Someone owns it.', '', '**Example.** Checkout']);
     expect(read(lines).map((r) => r[0])).toEqual(['explain', 'explain-text', 'explain-li-1', 'explain-li-2', 'explain-example']);
     expect(explainLines('E', { text: 't', costs: [], example: 'x' })).toEqual(explainLines('E', { text: 't', example: 'x' }));
+  });
+
+  it('writes a [label](path.md) in a cost note as a link, as in the paragraph, and keeps any other bracket as text', () => {
+    const lines = explainLines('Explained', {
+      text: 'A [fuse](./fuse.md) in front.',
+      costs: [
+        { lead: 'Upkeep.', note: 'Someone owns the [fuse](./fuse.md), and [Retry](../r.md#why) too.' },
+        { lead: 'Notation.', note: 'Write [n], [a](b c) and [](x.md) as text, with `ticks` and *stars* literal.' },
+        { lead: '[Lead](./l.md).', note: '[Starts](./s.md) with a link.' },
+      ],
+      example: 'Checkout',
+    });
+    expect(lines.slice(5, 8)).toEqual([
+      '- **Upkeep.** Someone owns the [fuse](./fuse.md), and [Retry](../r.md#why) too.',
+      '- **Notation.** Write \\[n\\], \\[a\\](b c) and \\[\\](x.md) as text, with \\`ticks\\` and \\*stars\\* literal.',
+      // A lead is plain text: only a note carries a link.
+      '- **\\[Lead\\](./l.md).** [Starts](./s.md) with a link.',
+    ]);
+    const tree = parseKb(lines.join('\n')).tree;
+    expect(linksIn(tree)).toEqual(['./fuse.md', './fuse.md', '../r.md#why', './s.md']);
+    expect(read(lines).filter((r) => (r[0] as string).startsWith('explain-li')).map((r) => r[2])).toEqual([
+      'Upkeep. Someone owns the fuse, and Retry too.',
+      'Notation. Write [n], [a](b c) and [](x.md) as text, with `ticks` and *stars* literal.',
+      '[Lead](./l.md). Starts with a link.',
+    ]);
   });
 
   it('guards a paragraph whose text ends in a brace group', () => {

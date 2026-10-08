@@ -23,7 +23,7 @@ A request that renders a video or calls three slow services holds a web thread f
 Web-queue-worker splits an application by speed. A web front end answers requests quickly. When a request needs slow work, it writes a job onto a queue and returns at once, and a separate worker takes jobs off the queue when it has room. Both halves are stateless, with session state in a shared cache, so any instance can serve any request and a restart loses no session state. The queue is the one new moving part, so choose it over one process doing everything when some requests take seconds or minutes while most take milliseconds, and over [microservices](microservices.md) when one team owns a simple domain. The worker is optional, and when the slow work already sits behind a function boundary, adding it later is a move, not a rewrite.
 
 - **Answers are no longer immediate.** Give every job a status the client can poll.
-- **Job row and message can split.** A crash between them loses the job, so commit both with an \[outbox\](../distributed/coordination/outbox.md).
+- **Job row and message can split.** A crash between them loses the job, so commit both with an [outbox](../distributed/coordination/outbox.md).
 - **At-least-once delivery.** A worker that charges a card must recognise a job it already ran, for instance by job ID.
 - **Backlog can outlive retention.** Watch the backlog against the queue's retention window.
 

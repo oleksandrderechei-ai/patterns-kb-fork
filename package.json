@@ -11,9 +11,10 @@
     "tools",
     "site"
   ],
-  "//dependencies": "Astro 7.3 made Sätteri the default Markdown processor and dropped @astrojs/markdown-remark to an optional peer of astro and @astrojs/starlight, which npm hoists to node_modules/, where they resolve that peer from node_modules/ too. Declared only by site/, it could install to site/node_modules/ and be invisible to them: astro then rejects the site's markdown.processor. Root is the one place a declaration is sure to hoist. Keep the version equal to site/package.json's.",
+  "//dependencies": "Astro 7.3 made Sätteri the default Markdown processor and dropped @astrojs/markdown-remark to an optional peer of astro and @astrojs/starlight, which npm hoists to node_modules/, where they resolve that peer from node_modules/ too. Declared only by site/, it could install to site/node_modules/ and be invisible to them: astro then rejects the site's markdown.processor. Root is the one place a declaration is sure to hoist. Keep the version equal to site/package.json's. ajv is here for the same reason: eslint pulls ajv 6 and npm hoists it to node_modules/, which left tools/'s ajv 8 nested under tools/node_modules/, where the pre-commit hook's extract (it links only the root node_modules) cannot see it. Keep the version equal to tools/package.json's.",
   "dependencies": {
-    "@astrojs/markdown-remark": "7.3.1"
+    "@astrojs/markdown-remark": "7.3.1",
+    "ajv": "8.20.0"
   },
   "//scripts": "Every value is one `make` call: make owns every target, so a script here cannot become a second answer to what a target does.",
   "scripts": {

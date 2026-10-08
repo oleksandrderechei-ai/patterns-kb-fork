@@ -28,6 +28,7 @@ import {
   type Root,
   type RootContent,
 } from '../lib/kb-attrs.js';
+import { clicksIn } from '../lib/kb-record.js';
 
 export interface Block {
   readonly name: string;
@@ -39,6 +40,12 @@ export interface Block {
 
 export interface PageDoc {
   readonly tree: Root;
+  /**
+   * The markdown the tree was parsed from: the page less its frontmatter. Every
+   * node's source position is an offset into this text, so a node's own words
+   * are `source.slice(start, end)`.
+   */
+  readonly source: string;
   readonly problems: readonly KbProblem[];
   /** The page's `#` title, or null. */
   readonly h1: string | null;
@@ -63,7 +70,8 @@ export function stripFrontmatter(text: string): string {
 
 /** Parse a page (frontmatter and all) into its blocks. */
 export function parsePage(text: string): PageDoc {
-  const { tree, problems } = parseKb(stripFrontmatter(text));
+  const source = stripFrontmatter(text);
+  const { tree, problems } = parseKb(source);
   const regionOf = new Map<RootContent, string>();
   const blocks: { name: string; heading: string; nodes: RootContent[] }[] = [];
   const intro: RootContent[] = [];
@@ -93,7 +101,7 @@ export function parsePage(text: string): PageDoc {
     if (current !== null) current.nodes.push(node);
     else if (blocks.length === 0) intro.push(node);
   }
-  return { tree, problems, h1, intro, blocks, regionOf };
+  return { tree, source, problems, h1, intro, blocks, regionOf };
 }
 
 /** A node's plain text as scripts/kb.mjs printed it: every whitespace run one space, trimmed. */
@@ -141,13 +149,11 @@ export function proseLinks(doc: PageDoc): string[] {
   return out;
 }
 
-const CLICK = /\bclick\s+[A-Za-z0-9_]+\s+"([^"]+)"/g;
-
 /** Every mermaid `click` target on the page, in document order. */
 export function clickTargets(doc: PageDoc): string[] {
   const out: string[] = [];
   const walk = (n: Nodes): void => {
-    if (n.type === 'code' && n.lang === 'mermaid') for (const m of n.value.matchAll(CLICK)) out.push(m[1] as string);
+    if (n.type === 'code' && n.lang === 'mermaid') for (const click of clicksIn(n.value)) out.push(click.href);
     if ('children' in n) for (const c of n.children as Nodes[]) walk(c);
   };
   walk(doc.tree);
@@ -157,7 +163,7 @@ export function clickTargets(doc: PageDoc): string[] {
 /** The explain block in the writer's own shape, or null when the page has none. */
 export interface ExplainItems {
   readonly text: string;
-  /** The costs list, when the block has one: each bullet's bold lead and the rest. */
+  /** The costs list, when the block has one: each bullet's bold lead and the rest, a link in it kept as `[label](target)`. */
   readonly costs?: readonly { readonly lead: string; readonly note: string }[];
   readonly example: string;
   /** Set when the example is a fenced sketch: its language and caption. */
@@ -165,15 +171,19 @@ export interface ExplainItems {
   readonly exampleCaption?: string;
 }
 
-/** A paragraph's text with its links kept as `[label](target)`, whitespace collapsed: what `--text` takes back. */
-function linkedInline(node: Nodes): string {
+/**
+ * Phrasing as the explain writer takes it back, whitespace collapsed, a link
+ * kept as `[label](target)`: the form `--text` and a costs note are written
+ * from, so a dump handed to the writer reads back as it was.
+ */
+function linkedOf(children: readonly PhrasingContent[]): string {
   const walk = (n: Nodes): string => {
     if (n.type === 'link') return `[${n.children.map(walk).join('')}](${n.url})`;
     if (n.type === 'text' || n.type === 'inlineCode') return n.value;
     if (n.type === 'break') return ' ';
     return 'children' in n ? (n.children as Nodes[]).map(walk).join('') : plainText(n);
   };
-  return walk(node).replace(/\s+/g, ' ').trim();
+  return children.map(walk).join('').replace(/\s+/g, ' ').trim();
 }
 
 /** The explain block's paragraph, costs and example, as `kb.mjs explain --text … --costs … --example …` takes them. */
@@ -184,7 +194,7 @@ export function explainItems(doc: PageDoc): ExplainItems | null {
   const [text, ...afterText] = content;
   const list = afterText[0]?.type === 'list' ? afterText[0] : undefined;
   const example = list === undefined ? afterText[0] : afterText[1];
-  const body = text?.type === 'paragraph' ? linkedInline(text) : '';
+  const body = text?.type === 'paragraph' ? linkedOf(text.children) : '';
   const costs =
     list === undefined
       ? {}
@@ -193,7 +203,7 @@ export function explainItems(doc: PageDoc): ExplainItems | null {
             const para = item.children[0];
             const kids = para?.type === 'paragraph' ? para.children : [];
             const bold = kids[0]?.type === 'strong';
-            return { lead: bold ? inlineOf(kids.slice(0, 1)) : '', note: inlineOf(bold ? kids.slice(1) : kids) };
+            return { lead: bold ? inlineOf(kids.slice(0, 1)) : '', note: linkedOf(bold ? kids.slice(1) : kids) };
           }),
         };
   if (example?.type === 'code') {

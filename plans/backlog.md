@@ -109,6 +109,36 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     component; home-page atlas controls; about five CORS console errors per page from
     `file://`.
 
+- From the 2026-10-08 retrieval probe of the case studies (`KB_RELEVANCE=report` on
+  `tools/src/kb/relevance.test.ts` prints the lists): the first five `find` hits of a case
+  study's own problem, each non-functional requirement and `solves` phrase taken together,
+  reach 40% of the patterns it demonstrates, and `brief` reaches 83%. Under those numbers:
+  - 41 of the 444 demonstrated patterns are not in the first 50 hits of any query of their
+    case study's own problem, so the problem as written never finds them:
+    `design-distributed-cache` (kiss); `elevator` (value-object, yagni); `connect-four`
+    (yagni); `amazon-locker` (valet-key); `design-rate-limiter` (interface-segregation, yagni,
+    immutability); `logging-service` (dependency-inversion); `instagram` (competing-consumers);
+    `google-news` (object-storage, api-gateway); `yelp` (api-gateway, kiss); `gopuff`
+    (retry-backoff); `fb-live-comments` (idempotency); `dropbox` (pubsub); `camelcamelcamel`
+    (separation-of-concerns); `bookmyshow` (state); `uber` (consistent-hashing); `tinder`
+    (api-gateway); `online-chess` (write-ahead-log, event-sourcing); `youtube`
+    (workflow-orchestration); `ticketmaster` (api-gateway); `online-auction`
+    (producer-consumer); `robinhood` (separation-of-concerns, sweeper);
+    `persona-identification` (priority-queue, external-configuration-store, claim-check, kiss,
+    backpressure, distributed-cache, thread-pool); `persona-identification-v2` (object-storage,
+    acl, external-configuration-store, claim-check, kiss, batching). `api-gateway` (four case
+    studies), `kiss` (four) and `yagni` (three) repeat, so start there. Each wants a `solves`
+    phrase or a synonym that says the symptom, or an owner call that a principle like `kiss`
+    is reached from the case study and not by symptom;
+  - 22 case studies have no case in `docs/data/search-oracle.json`, because their problem in a
+    person's words reaches at most one of their patterns in the first eight hits. None:
+    `web-crawler`, `google-docs`, `leetcode`, `online-auction`, `camelcamelcamel`,
+    `parking-lot`, `logging-service`, `amazon-locker`. One: `bitly` (`cache-aside` at 6; "short
+    codes that redirect in milliseconds for billions of reads a day" reaches none),
+    `metrics-monitoring`, `ad-click-aggregator`, `fb-post-search`, `gopuff`, `strava`, `uber`,
+    `online-chess`, `chatgpt`, `robinhood`, `instagram`, `dropbox`, `elevator`,
+    `inventory-management`. `fb-live-comments` reaches two, the second at rank 8 of 8.
+
 ## Pages
 
 - Left from the 2026-10-01 evaluation's thin pages: `cache-stampede`, `bot-detection` and

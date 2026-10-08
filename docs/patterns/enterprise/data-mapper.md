@@ -24,7 +24,7 @@ A data mapper is a layer whose only job is moving data between plain in-memory o
 
 - **Two shapes to keep in step.** Object graph and schema drift apart, so cover the mapping with tests that save and reload.
 - **Chatty loads.** A naive mapper loads a graph one query at a time, so load related rows with a join or batched query.
-- **Duplicate objects.** Without an \[identity map\](identity-map.md), the same row becomes two objects whose edits overwrite each other.
+- **Duplicate objects.** Without an [identity map](identity-map.md), the same row becomes two objects whose edits overwrite each other.
 
 **Example.** A table renames zip to postal_code. Only the mapper's column mapping changes; the Customer object and its methods stay as they are. Loading 50 orders and then the lines of each takes 1 + 50 = 51 queries. Fetching all lines with one query where order_id is in the list takes 2. Without an identity map, two code paths in one request load customer 7 as separate objects, one changes the address, the other changes the phone, and the second save, which writes every column, overwrites the first. The cost is the mapper code and a mapping test for each object.
 

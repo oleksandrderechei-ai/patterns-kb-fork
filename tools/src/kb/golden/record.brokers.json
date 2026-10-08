@@ -1,0 +1,264 @@
+{
+  "$schema": "https://odere-pro.github.io/patterns-kb/schema/kb-record-1.json",
+  "contract": "kb-record/1",
+  "scope": null,
+  "id": "brokers",
+  "title": "Brokers",
+  "description": "The brokers page",
+  "kind": "comparison",
+  "band": "comparison",
+  "group": "comparison",
+  "area": "comparisons",
+  "areaChain": [
+    {
+      "id": "comparisons",
+      "label": "comparisons"
+    }
+  ],
+  "status": "stable",
+  "owner": "Test Owner",
+  "tags": [
+    "resilience",
+    "latency"
+  ],
+  "aliases": [
+    "Kafka",
+    "RabbitMQ"
+  ],
+  "solves": [],
+  "favourite": false,
+  "route": "/comparisons/brokers.html",
+  "markdown": "/comparisons/brokers.md",
+  "source": {
+    "path": "docs/comparisons/brokers.md",
+    "sha256": "8fcb7409bb4b46e289a779fa7638dbd0d96244cb9cdb0c9184dd2540ad641bee"
+  },
+  "intro": [
+    {
+      "type": "paragraph",
+      "id": null,
+      "fp": null,
+      "text": "Kafka against RabbitMQ.",
+      "md": "Kafka against RabbitMQ."
+    }
+  ],
+  "blocks": [
+    {
+      "id": "description",
+      "name": "description",
+      "heading": {
+        "text": "The decision",
+        "md": "The decision"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "description-p-1",
+          "fp": "de64ff64",
+          "text": "Which broker?",
+          "md": "Which broker?"
+        }
+      ]
+    },
+    {
+      "id": "explain",
+      "name": "explain",
+      "heading": {
+        "text": "Explained",
+        "md": "Explained"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "explain-text",
+          "fp": "e78ae23d",
+          "text": "Operations cost. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour.",
+          "md": "Operations cost. It costs a little on every call, so measure it against a real workload, keep the counters where every copy of the service can read them, and decide in advance what the caller gets back while the gate is shut. Without it each caller waits out its full timeout, the waiting piles up behind the slow part, and the healthy parts starve for connections that never come back. Teams that skip this step usually find out during the first real outage, at the worst hour."
+        },
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "explain-li-1",
+              "fp": "1cf782f5",
+              "text": "Latency. Every call pays for one extra hop.",
+              "md": "**Latency.** Every call pays for one extra hop.",
+              "lead": "Latency.",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "explain-li-2",
+              "fp": "1c405695",
+              "text": "Upkeep. Someone owns the counters and the thresholds.",
+              "md": "**Upkeep.** Someone owns the counters and the thresholds.",
+              "lead": "Upkeep.",
+              "checked": null,
+              "content": []
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "explain-example",
+          "fp": "f0e6f52b",
+          "text": "Example. Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures.",
+          "md": "**Example.** Checkout calls a fraud check that answers in 50 ms, then one day in 10 s, and the breaker opens after 20 failures."
+        }
+      ]
+    },
+    {
+      "id": "contenders",
+      "name": "contenders",
+      "heading": {
+        "text": "Contenders",
+        "md": "Contenders"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "list",
+          "id": null,
+          "fp": null,
+          "ordered": false,
+          "start": null,
+          "items": [
+            {
+              "id": "contenders-item-1",
+              "fp": "066580df",
+              "text": "Kafka — A log.",
+              "md": "**Kafka** — A log.",
+              "lead": "Kafka",
+              "checked": null,
+              "content": []
+            },
+            {
+              "id": "contenders-item-2",
+              "fp": "bd182a7c",
+              "text": "RabbitMQ — A queue.",
+              "md": "**RabbitMQ** — A queue.",
+              "lead": "RabbitMQ",
+              "checked": null,
+              "content": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "matrix",
+      "name": "matrix",
+      "heading": {
+        "text": "The matrix",
+        "md": "The matrix"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "table",
+          "id": null,
+          "fp": null,
+          "align": [
+            null,
+            null,
+            null
+          ],
+          "header": [
+            {
+              "text": "Condition",
+              "md": "Condition"
+            },
+            {
+              "text": "Kafka",
+              "md": "Kafka"
+            },
+            {
+              "text": "RabbitMQ",
+              "md": "RabbitMQ"
+            }
+          ],
+          "rows": [
+            {
+              "id": "matrix-row-1",
+              "fp": "bb4b2144",
+              "cells": [
+                {
+                  "text": "Replay",
+                  "md": "Replay"
+                },
+                {
+                  "text": "yes",
+                  "md": "yes"
+                },
+                {
+                  "text": "no",
+                  "md": "no"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "choosing",
+      "name": "choosing",
+      "heading": {
+        "text": "Choosing",
+        "md": "Choosing"
+      },
+      "generated": null,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "choosing-p-1",
+          "fp": "53004018",
+          "text": "Replay decides it.",
+          "md": "Replay decides it."
+        }
+      ]
+    },
+    {
+      "id": "relationships",
+      "name": "relationships",
+      "heading": {
+        "text": "How it relates",
+        "md": "How it relates"
+      },
+      "generated": null,
+      "content": []
+    }
+  ],
+  "relations": [],
+  "themes": [],
+  "tour": [],
+  "prerequisites": {
+    "requires": [],
+    "related": []
+  },
+  "links": [],
+  "mentions": [],
+  "anchors": {
+    "description": "/blocks/0",
+    "description-p-1": "/blocks/0/content/0",
+    "explain": "/blocks/1",
+    "explain-text": "/blocks/1/content/0",
+    "explain-li-1": "/blocks/1/content/1/items/0",
+    "explain-li-2": "/blocks/1/content/1/items/1",
+    "explain-example": "/blocks/1/content/2",
+    "contenders": "/blocks/2",
+    "contenders-item-1": "/blocks/2/content/0/items/0",
+    "contenders-item-2": "/blocks/2/content/0/items/1",
+    "matrix": "/blocks/3",
+    "matrix-row-1": "/blocks/3/content/0/rows/0",
+    "choosing": "/blocks/4",
+    "choosing-p-1": "/blocks/4/content/0",
+    "relationships": "/blocks/5"
+  }
+}

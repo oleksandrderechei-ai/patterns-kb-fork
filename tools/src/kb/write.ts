@@ -19,6 +19,18 @@
  *
  * A page carrying a generator's whole-file stamp, and a data file whose note
  * says it is generated, belong to their generator: a writer refuses both.
+ *
+ * Two kinds of refusal, told by their exit code. Exit 2 means the call is
+ * malformed, so fix the command: it leaves out what the writer needs (an id, a
+ * required flag), or a flag's value is not the form the flag takes (text that
+ * is not JSON, JSON of the wrong shape, a word that is not true or false, a
+ * number that is not a whole number of 1 or more, an id that is not an id).
+ * That is a KbUsageError. Exit 1 means the call is well formed and the
+ * knowledge base refuses it, so fix the content: a tag outside the vocabulary
+ * or the wrong number of tags, an explain block that breaks KB-014, an unknown
+ * kind, band, group, verb or id, an edge that exists, a page related to
+ * itself, a description or group heading the page rules refuse. That is a
+ * KbError.
  */
 
 import fs from 'node:fs';
@@ -33,13 +45,14 @@ import { groupOrderToRecord, labelOf, relationGroups, renderRelations, sidesOf, 
 import { renderTour, type LearningPaths } from '../lib/render-tours.js';
 
 import { explainLines, productionLines, wildLines, type CostInput, type GateInput, type LabelledInput, type ProductionGroup, type WildInput } from './blocks.js';
-import { DATA, KbError, readJsonFile, type Kind, type Page } from './corpus.js';
+import { DATA, KbError, KbUsageError, readJsonFile, type Kind, type Page } from './corpus.js';
 import { dataBytes, readData } from './data.js';
 import { blockSpans, eolOf, fmShapeProblem, putBlock, refuseStamped, rewriteFrontmatter, splitFrontmatter, type FmChange } from './edit.js';
 import { collapse, inlineMd, plainTokens } from './inline.js';
 import { explainItems, parsePage } from './page.js';
 import { quickFacts } from './scan.js';
 import { scaffoldText } from './scaffold.js';
+import { usageLine } from './spec.js';
 import { tagListProblems, tagRules } from './tags.js';
 import { descriptionLengthProblem } from './validate.js';
 
@@ -177,7 +190,12 @@ function headingFor(s: Session, page: Page, text: string, block: string, value?:
 // Argument helpers, in scripts/kb.mjs's words
 // ---------------------------------------------------------------------------
 
-/** A flag's JSON, validated, or null when the flag is absent. */
+/**
+ * A flag's JSON, checked, or null when the flag is absent. `check` holds the
+ * form of what the flag takes — its types, required keys, non-blank strings and
+ * the id and href grammar — so text that is not JSON and JSON that fails `check`
+ * are both a malformed call. The knowledge base's own rules come after, outside.
+ */
 function jsonFlag<T>(s: Session, name: string, check: (v: unknown) => string | null): T | null {
   const raw = s.args.opt(name);
   if (raw === null) return null;
@@ -185,10 +203,10 @@ function jsonFlag<T>(s: Session, name: string, check: (v: unknown) => string | n
   try {
     v = JSON.parse(raw);
   } catch (e) {
-    throw new KbError(`--${name} is not valid JSON: ${(e as Error).message}`);
+    throw new KbUsageError(`--${name} is not valid JSON: ${(e as Error).message}`);
   }
   const err = check(v);
-  if (err !== null) throw new KbError(`--${name}: ${err}`);
+  if (err !== null) throw new KbUsageError(`--${name}: ${err}`);
   return v as T;
 }
 
@@ -243,7 +261,7 @@ function cmdSet(s: Session, io: Io): number {
   }
   const fav = s.args.opt('favourite');
   if (fav !== null) {
-    if (fav !== 'true' && fav !== 'false') throw new KbError('--favourite: must be true or false');
+    if (fav !== 'true' && fav !== 'false') throw new KbUsageError('--favourite: must be true or false');
     changes.set('favourite', fav === 'true' ? true : null);
     touched.push(`favourite=${fav}`);
   }
@@ -256,7 +274,7 @@ function cmdSet(s: Session, io: Io): number {
     changes.set('description', essence.trim());
     touched.push('essence');
   }
-  if (touched.length === 0) throw new KbError('nothing to set — pass --aliases / --tags / --solves / --favourite / --essence');
+  if (touched.length === 0) throw new KbUsageError('nothing to set — pass --aliases / --tags / --solves / --favourite / --essence');
   const { fm, body } = splitFrontmatter(source);
   if (fm === '') throw new KbError(`${page.source} has no frontmatter to set`);
   const odd = fmShapeProblem(fm);
@@ -314,9 +332,10 @@ function between(file: RelationsFile, a: string, b: string): RelationRecord[] {
 function cmdLink(s: Session, io: Io, opts: WriteOptions): number {
   const [, fromId, verb, toId] = s.args.positional;
   const { verbs } = s.corpus.model;
-  if (fromId === undefined || verb === undefined || toId === undefined || verbs[verb] === undefined) {
-    throw new KbError(`usage: kb.mjs link <from> <verb> <to> [--note "…"] [--note-back "…"] [--group "…"] [--group-back "…"] [--maps <row-id>]\nverbs: ${Object.keys(verbs).join(', ')}`);
-  }
+  // The same usage line answers a positional left out (misuse) and a verb the content model does not have (a refusal).
+  const usage = `usage: ${usageLine('link')}\nverbs: ${Object.keys(verbs).join(', ')}`;
+  if (fromId === undefined || verb === undefined || toId === undefined) throw new KbUsageError(usage);
+  if (!Object.hasOwn(verbs, verb)) throw new KbError(usage);
   const from = s.corpus.need(fromId);
   const to = s.corpus.need(toId);
   if (from.slug === to.slug) throw new KbError('a page cannot relate to itself');
@@ -379,7 +398,7 @@ function cmdLink(s: Session, io: Io, opts: WriteOptions): number {
 
 function cmdUnlink(s: Session, io: Io, opts: WriteOptions): number {
   const [, aId, bId] = s.args.positional;
-  if (aId === undefined || bId === undefined) throw new KbError('usage: kb.mjs unlink <a> <b>');
+  if (aId === undefined || bId === undefined) throw new KbUsageError(`usage: ${usageLine('unlink')}`);
   const a = s.corpus.need(aId);
   const b = s.corpus.need(bId);
   if (a.slug === b.slug) throw new KbError('a page cannot relate to itself');
@@ -460,7 +479,7 @@ function cmdWild(s: Session, io: Io): number {
               ? 'an href is one URL, with no space or angle bracket'
               : levels(v),
   );
-  if (items === null) throw new KbError('pass --items \'[{"id":…,"name":…,"note":…}]\' — kb.mjs get <id> --block wild --json dumps the current ones');
+  if (items === null) throw new KbUsageError('pass --items \'[{"id":…,"name":…,"note":…}]\' — kb.mjs get <id> --block wild --json dumps the current ones');
   const source = pageText(s, page);
   if (items.length === 0) {
     commitPage(s, page, putPageBlock(s, page, source, 'wild', null));
@@ -497,7 +516,7 @@ function cmdProduction(s: Session, io: Io): number {
         ? 'every item must be a non-empty string, or an object with text'
         : levels(v);
   if (PRODUCTION.every(([key]) => s.args.opt(key) === null)) {
-    throw new KbError('pass --knobs / --signals / --failures (\'[{"label":…,"note":…}]\') and/or --checklist (\'["…"]\') — kb.mjs get <id> --block production --json dumps the current ones');
+    throw new KbUsageError('pass --knobs / --signals / --failures (\'[{"label":…,"note":…}]\') and/or --checklist (\'["…"]\') — kb.mjs get <id> --block production --json dumps the current ones');
   }
   const lists = PRODUCTION.map(([key]) =>
     key === 'checklist'
@@ -527,7 +546,8 @@ const costsCheck = (v: unknown): string | null =>
 /**
  * The explain block: `--text` and `--example`, both empty to remove the block.
  * `--costs '[{"lead":"…","note":"…"}]'` writes the costs list between them;
- * left out it keeps the page's own, and `[]` drops it.
+ * left out it keeps the page's own, and `[]` drops it. A `[label](path.md)` in
+ * `--text` or in a cost's note is written as a link; every other bracket stays text.
  * With `--example-lang` the example is a fenced sketch in that language and
  * `--example-caption` names the question it answers. A shape KB-014 rejects
  * is refused before anything is written.
@@ -538,7 +558,7 @@ function cmdExplain(s: Session, io: Io): number {
   const example = s.args.opt('example');
   const lang = s.args.opt('example-lang');
   const caption = s.args.opt('example-caption');
-  if (text === null || example === null) throw new KbError('pass --text "…" and --example "…" (both empty to remove)');
+  if (text === null || example === null) throw new KbUsageError('pass --text "…" and --example "…" (both empty to remove)');
   const source = pageText(s, page);
   const given = jsonFlag<CostInput[]>(s, 'costs', costsCheck);
   if (text.trim() === '' && example.trim() === '') {
@@ -546,8 +566,8 @@ function cmdExplain(s: Session, io: Io): number {
     io.out(`${page.slug}: explain removed`);
     return 0;
   }
-  if (lang === null && caption !== null) throw new KbError('--example-caption goes with --example-lang: a caption names a sketch');
-  if (lang !== null && (caption === null || caption.trim() === '')) throw new KbError('--example-lang needs --example-caption "…": a sketch example names the question it answers');
+  if (lang === null && caption !== null) throw new KbUsageError('--example-caption goes with --example-lang: a caption names a sketch');
+  if (lang !== null && (caption === null || caption.trim() === '')) throw new KbUsageError('--example-lang needs --example-caption "…": a sketch example names the question it answers');
   const body = collapse(text);
   // A sketch keeps its newlines; a prose example is one paragraph.
   const sample = lang === null ? collapse(example) : example;
@@ -634,15 +654,15 @@ function cmdNew(s: Session, io: Io, opts: WriteOptions): number {
   const band = s.args.opt('band');
   const name = s.args.opt('name');
   if (id === undefined || kindId === null || name === null || name.trim() === '' || (kindId === 'pattern' && band === null)) {
-    throw new KbError(
+    throw new KbUsageError(
       'usage: kb.mjs new <id> --kind pattern|hazard|theme|principle|design|capability|comparison --band <b> [--group <g>] --name "…" [--order <n>] [--tags \'["a","b"]\']\n  (--band is required only for --kind pattern; --group names the area when the band or kind is split into several; --order is the place in that area, 1 first, the end when left out)',
     );
   }
-  if (!ID_PATTERN.test(id)) throw new KbError(`"${id}" is not a page id — lower-case letters, digits and hyphens`);
+  if (!ID_PATTERN.test(id)) throw new KbUsageError(`"${id}" is not a page id — lower-case letters, digits and hyphens`);
   const tags = jsonFlag<string[]>(s, 'tags', (v) => (!Array.isArray(v) || v.some((t) => typeof t !== 'string' || t.trim() === '') ? 'must be a JSON array of non-empty strings' : null));
   if (tags !== null) checkTags(s, tags, '');
   const rawOrder = s.args.opt('order');
-  if (rawOrder !== null && !/^[1-9]\d*$/.test(rawOrder)) throw new KbError('--order: a place in the area, 1 or more');
+  if (rawOrder !== null && !/^[1-9]\d*$/.test(rawOrder)) throw new KbUsageError('--order: a place in the area, 1 or more');
   const kind = s.corpus.model.kinds.find((k) => k.id === kindId);
   if (kind === undefined) throw new KbError(`unknown kind: ${kindId} (one of ${s.corpus.model.kinds.map((k) => k.id).join(', ')})`);
   const structure = readData<Structure>(s.corpus.root, DATA.structure);

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-09-30",
+  "updated": "2026-10-08",
   "note": "The one home for what a check gate is, where it runs and how it is repaired (spec: kb.gates.registry). tools/src/gen/gen-gates.ts renders docs/reference/gates.md, the triage page's symptom table and every gate-count block from it; tools/src/gates/check-gates-sync.ts holds the Makefile, the change workflow (the file runs_values names for ci), the triage page and the gate programs on disk to it, both ways; tools/src/run-gates.ts reads local_command and local_target to drive `make validate`, so the Makefile lists no gate. A row is registered only when its program keeps the gate contract: exit 0 with one summary line, exit 1 with findings on stderr, exit 2 on misuse. `wired` is the exact command that must appear in each place the row runs, whitespace-normalised. Edit this file, run `make gates`, commit both; the gates-sync gate names whatever else the edit owes.",
   "runs_values": {
     "local": {
@@ -422,7 +422,7 @@
     {
       "id": "search-oracle",
       "name": "Search oracle answers",
-      "protects": "Every query in docs/data/search-oracle.json is answered as the case says, by the search box's ranking over the page tree and by kb.mjs find alike: the first hit is one of the wished ids, the first n hits are all of the wished kind or band, and a page named in `within` is at or above its rank.",
+      "protects": "Every query in docs/data/search-oracle.json is answered as the case says, by the search box's ranking over the page tree and by kb.mjs find alike (a case marked `via: \"cli\"` by find alone): the first hit is one of the wished ids, the first n hits are all of the wished kind or band, a page named in `within` is at or above its rank, and at least `min` of the ids a `covers` names are among its first n hits.",
       "command": "make gate G=check-search-oracle",
       "wired": "node_modules/.bin/tsx tools/src/gates/check-search-oracle.ts",
       "local_command": "node_modules/.bin/tsx tools/src/gates/check-search-oracle.ts",
@@ -443,8 +443,42 @@
       "requires": [
         "node"
       ],
-      "fix": "Fix the ranking in tools/src/lib/search-score.ts or add the synonym the query needs through the kb-vocab skill, then rerun the gate; a case that names a page that is gone is edited or dropped in docs/data/search-oracle.json.",
+      "fix": "Fix the ranking in tools/src/lib/search-score.ts or add the synonym the query needs through the kb-vocab skill, then rerun the gate; a case that names a page that is gone is edited or dropped in docs/data/search-oracle.json. Never lower a `covers` case's `min`, or widen its `n`, to land a change.",
       "runbook": "docs/reference/triage.md#search-oracle-answers"
+    },
+    {
+      "id": "kb-record-schema",
+      "name": "KB records hold their schema",
+      "protects": "Every page's `kb.mjs record` holds the published kb-record/1 schema, and the `--json` of `get`, `related`, `backlinks`, `refs` and `resolve` for every page, of `ls`, `validate` and `graph`, and of `find` and `brief` for every query in docs/data/search-oracle.json holds its schema in kb-cli/1 or kb-graph/1, with every object closed to a key the schema does not list, every key in the order the schema lists it, and each call ending as the contract says: an allowed exit code, nothing on stderr, two-space JSON and one newline.",
+      "command": "make gate G=check-kb-records",
+      "wired": "node_modules/.bin/tsx tools/src/gates/check-kb-records.ts",
+      "local_command": "node_modules/.bin/tsx tools/src/gates/check-kb-records.ts",
+      "positional": false,
+      "fixable": false,
+      "scans": [
+        "docs/**/*.md",
+        "docs/data/content-model.json",
+        "docs/data/site-structure.json",
+        "docs/data/relations.json",
+        "docs/data/learning-paths.json",
+        "docs/data/prerequisites.json",
+        "docs/data/search-oracle.json",
+        "tools/src/kb/**",
+        "tools/src/lib/**",
+        "tools/src/contract/**",
+        "tools/src/gates/check-kb-records.ts"
+      ],
+      "runs": [
+        "local",
+        "ci"
+      ],
+      "ci_job": "validate",
+      "ci_step": "KB records hold their schema",
+      "requires": [
+        "node"
+      ],
+      "fix": "Fix the code that printed it (tools/src/kb/record.ts, tools/src/lib/kb-record.ts or tools/src/kb/cli.ts), or, when the code is right and the schema lags, add the key to the schema in tools/src/contract/schema/ in the same change; inside /1 a schema only grows, so a rename, a removal, a changed type or a changed key order is a new major version and never an edit. A schema that is missing or does not compile is restored or repaired first, since no page is read until it holds.",
+      "runbook": "docs/reference/triage.md#kb-records-hold-their-schema"
     },
     {
       "id": "products",
@@ -767,14 +801,14 @@
     {
       "id": "site-portable",
       "name": "Site portability",
-      "protects": "The built site opens from a local folder: no root-absolute link or source, no module script of ours, the page facts in every head, the keyboard walk intact, and a search payload that covers every page but the hubs with anchors that resolve (spec kb.site.offline).",
+      "protects": "The built site opens from a local folder: no root-absolute link or source, no module script of ours, the page facts in every head, the keyboard walk intact, and a search payload that covers every page but the hubs with anchors that resolve (spec kb.site.offline). The files a machine reader takes match the repo: each page-tree page has its markdown source beside it, byte for byte; each page of the knowledge base has its record, byte for byte what kb.mjs record prints, and a head that links the markdown and the record beside it; graph.json is what kb.mjs graph prints, schema/ holds a copy of each published schema, index.json holds the closed form of kb-index-1 and agrees with the records, llms.txt is the build's and every link in it opens a file, and llms-full.txt is every page's markdown after its marker line.",
       "command": "node_modules/.bin/tsx tools/src/gates/check-site-portable.ts",
       "wired": "node_modules/.bin/tsx tools/src/gates/check-site-portable.ts",
       "local_command": "node_modules/.bin/tsx tools/src/gates/check-site-portable.ts",
       "local_target": "site-build",
       "positional": false,
       "fixable": false,
-      "scans": ["site/**", "docs/**", "tools/src/site/**", "tools/src/lib/**", "tools/src/gates/check-site-portable.ts"],
+      "scans": ["site/**", "docs/**", "tools/src/site/**", "tools/src/lib/**", "tools/src/kb/**", "tools/src/contract/**", "tools/src/gates/check-site-portable.ts"],
       "runs": ["local", "ci"],
       "ci_job": "site",
       "ci_step": "Site portability",
@@ -783,9 +817,27 @@
       "runbook": "docs/reference/triage.md#site-portability"
     },
     {
+      "id": "site-parity",
+      "name": "Site and markdown agree",
+      "protects": "A page of the knowledge base says the same thing as HTML, as its record and as its markdown, and the files that list pages say what the records say. Over every page index.json lists with a record: the article block's route, area, tags, kind, band and group; the blocks in order; the words of the intro; every id on both sides and no other, each on the same kind of element, in the same block and group, with the same words, in the same order; the relations the list items state; the prerequisite card. The markdown, read as kb.mjs reads it, gives the same ids, order and words, and is the file the record's source.sha256 names. Each index.json entry says what the record says, and graph.json agrees with the records: every edge is a row of both pages' records, and the nodes, tours and mentions are what the records list. The portability gate holds each record to the repo, so a finding means two readers saw the page differently, never a stale record.",
+      "command": "node_modules/.bin/tsx tools/src/gates/check-site-parity.ts",
+      "wired": "node_modules/.bin/tsx tools/src/gates/check-site-parity.ts",
+      "local_command": "node_modules/.bin/tsx tools/src/gates/check-site-parity.ts",
+      "local_target": "site-build",
+      "positional": false,
+      "fixable": false,
+      "scans": ["site/**", "docs/**", "tools/src/site/**", "tools/src/lib/**", "tools/src/kb/**", "tools/src/contract/**", "tools/src/gates/check-site-parity.ts"],
+      "runs": ["local", "ci"],
+      "ci_job": "site",
+      "ci_step": "Site and markdown agree",
+      "requires": ["node"],
+      "fix": "make site-build first. A finding that stays means two readers of a page see it differently: the record builder (tools/src/lib/kb-record.ts), the renderer and the post-build pass (tools/src/lib/site-markdown.ts, tools/src/site/site-portable.ts), or the page under docs/ itself. The triage page says how to tell which.",
+      "runbook": "docs/reference/triage.md#site-and-markdown-agree"
+    },
+    {
       "id": "site-absence",
       "name": "Site noise and data layer",
-      "protects": "Every built page carries its knowledge and nothing a machine reader has to wade through (spec kb.noise.absence-gate, with kb.pagedata.two-layers): each page is at the formatter's fixed point, loads one classic kb.js and no inline module, carries no style element, presentational style or inline handler, and keeps every landmark outside the knowledge region skip-marked; no script file ships that nothing loads; a fact sits only on a class-free element carrying nothing but data-* and an id, the knowledge region is one article block with the four page facts and no skip marker, and every title sits in a title block. Every other script, stylesheet and noscript style carries a reasoned entry in its allowlists; anything unnamed fails, and so does an entry that matches nothing. One page, 404.html, is held to its own rule in place of the bundle, stylesheet and style-element ones: it loads no file of the site and carries exactly one small style of its own.",
+      "protects": "Every built page carries its knowledge and nothing a machine reader has to wade through (spec kb.noise.absence-gate, with kb.pagedata.two-layers): each page is at the formatter's fixed point, loads one classic kb.js and no inline module, carries no style element, presentational style or inline handler, and keeps every landmark outside the knowledge region skip-marked; no script file ships that nothing loads; a fact sits only on a class-free element carrying nothing but data-* and an id, the knowledge region is one article block with the three page facts, followed on a page of the knowledge base by its kind, band and group (all three or none of them), and no skip marker, and every title sits in a title block. Every other script, stylesheet and noscript style carries a reasoned entry in its allowlists; anything unnamed fails, and so does an entry that matches nothing. One page, 404.html, is held to its own rule in place of the bundle, stylesheet and style-element ones: it loads no file of the site and carries exactly one small style of its own.",
       "command": "node_modules/.bin/tsx tools/src/gates/check-site-absence.ts",
       "wired": "node_modules/.bin/tsx tools/src/gates/check-site-absence.ts",
       "local_command": "node_modules/.bin/tsx tools/src/gates/check-site-absence.ts",
@@ -857,7 +909,7 @@
     {
       "id": "site-budget",
       "name": "Site size budget",
-      "protects": "The built site stays inside the sizes it was measured at: any page's HTML raw and gzipped, a tighter raw bound on a page that is not a case study and on a hub, the bundle, the search payload and the manifest raw and gzipped, the blocking stylesheets of a page, the gzipped bytes before a page's first render, and the files a page asks for. Every number is in the BUDGETS constant of tools/src/gates/check-site-budget.ts beside the value it was set from.",
+      "protects": "The built site stays inside the sizes it was measured at: any page's HTML raw and gzipped, a tighter raw bound on a page that is not a case study and on a hub, the bundle, the search payload and the manifest raw and gzipped, every record, graph.json, llms.txt and llms-full.txt raw and gzipped, the blocking stylesheets of a page, the gzipped bytes before a page's first render, and the files a page asks for. Every number is in the BUDGETS constant of tools/src/gates/check-site-budget.ts beside the value it was set from.",
       "command": "node_modules/.bin/tsx tools/src/gates/check-site-budget.ts",
       "wired": "node_modules/.bin/tsx tools/src/gates/check-site-budget.ts",
       "local_command": "node_modules/.bin/tsx tools/src/gates/check-site-budget.ts",
@@ -935,6 +987,11 @@
       "name": "Build the site",
       "anchor": "build-the-site",
       "where": "`site`, before the site gates"
+    },
+    {
+      "name": "Deployed site answers",
+      "anchor": "deployed-site-answers",
+      "where": "`smoke` in `pages.yml`, after the deploy"
     }
   ]
 }

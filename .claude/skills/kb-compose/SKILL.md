@@ -85,7 +85,19 @@ creates exposure (a cache invites `cache-stampede`; a retry invites `retry-storm
 When unclear, read the hazard's `mitigation` block. Every hazard in scope ends the brief
 either guarded by a roster member or named as an accepted risk — never silently open.
 
-7. **Deliver the component brief.**
+7. **Check the citations.** Run every cite in the brief through `resolve`:
+
+```
+node scripts/kb.mjs resolve <every cited ref>
+```
+
+It must exit 0 before you deliver. `gone` is a cite that names no element; `moved` and
+`changed` are a pinned cite (`<id>#<element>@<fp>`) whose words are not the ones you read.
+Read the element again, fix the cite or the verdict, and run the call again. Element ids
+are positional, so pin a cite that must outlive the next page edit, with the `now.fp` that
+`kb.mjs resolve <id>#<element> --json` prints.
+
+8. **Deliver the component brief.**
 
 ## The component brief
 
@@ -152,3 +164,5 @@ the violated stance, defers one with its trigger, and says what would change the
 5. No vendor, product or managed-service name anywhere in the brief.
 6. No page file (`docs/**.md`, or the HTML `make site-build` writes) was opened; every claim
    came through `kb.mjs` and carries its id.
+7. `node scripts/kb.mjs resolve` over every cited ref exited 0, so no cite is gone, moved
+   or changed.

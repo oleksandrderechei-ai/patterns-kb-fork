@@ -37,9 +37,21 @@
  *     around the article block, never a data block itself (two-layers-C5);
  *   - a knowledge region that is not exactly one article block carrying
  *     `data-page`, `data-area` and `data-tags`, in that order and
- *     nothing else (spec interfaces/built-page.md, the article block);
+ *     nothing else, or those three followed by `data-kind`, `data-band` and
+ *     `data-group` (spec interfaces/built-page.md, the article block). The
+ *     three that follow say where a page of the knowledge base sits, and a
+ *     block carries all of them or none: a page's facts are never partly there;
  *   - on every page but the home page, no class-free `data-page-head` block
  *     holding the H1.
+ *
+ * THE FACTS OF A LIST ITEM. An item of a page's relationships block carries
+ * `data-verb` and `data-to`, the relation of the page's record that it shows.
+ * Like any bare `data-*` on a class-free element they are facts about the
+ * item, and the layer rule is all this gate holds them to: the item stays
+ * class-free, and carries nothing but data-* and an id. What the pair says is
+ * the post-build pass's to prove (`stampRelations` in
+ * tools/src/site/site-portable.ts refuses a block that shows other relations
+ * than its record holds), not this gate's, which reads no name of a fact.
  *
  * A BLOCK FACT AND ITS HEADING'S ID. A section data block's `data-block`
  * names its block, and the block's heading carries the same name as its id,
@@ -75,8 +87,14 @@ import { DIST } from '../site/site-output.js';
 export const SKIP = 'data-kb-skip';
 export const HOOK = /^data-kb(?:-[a-z0-9-]+)?$/;
 
-/** The article block's facts, in order and alone. */
+/** The article block's facts, in order: every page has these. */
 export const ARTICLE_FACTS = ['data-page', 'data-area', 'data-tags'] as const;
+
+/** Where a page of the knowledge base sits, after `ARTICLE_FACTS`: the block carries all three or none of them. */
+export const PLACE_FACTS = ['data-kind', 'data-band', 'data-group'] as const;
+
+/** The attribute names an article block may carry, in order: the three facts of any page, or those and the place. */
+export const ARTICLE_SHAPES: readonly (readonly string[])[] = [ARTICLE_FACTS, [...ARTICLE_FACTS, ...PLACE_FACTS]];
 
 /**
  * Bare `data-*` names the generator writes as its own state, never facts
@@ -183,8 +201,10 @@ export function pageFindings(html: string, isHome: boolean): string[] {
       const kids = (el.childNodes as El[]).filter(isEl);
       const article = kids[0];
       const order = (article?.attrs ?? []).map((a) => a.name).join(' ');
-      if (kids.length !== 1 || article?.tagName !== 'article' || order !== ARTICLE_FACTS.join(' ')) {
-        out.push(`the knowledge region is not one <article> carrying exactly ${ARTICLE_FACTS.join(', ')} — run the post-build pass`);
+      if (kids.length !== 1 || article?.tagName !== 'article' || !ARTICLE_SHAPES.some((shape) => order === shape.join(' '))) {
+        out.push(
+          `the knowledge region is not one <article> carrying exactly ${ARTICLE_FACTS.join(', ')}, then all of ${PLACE_FACTS.join(', ')} or none of them — run the post-build pass`,
+        );
       }
     }
     for (const child of el.childNodes as El[]) if (isEl(child)) visit(child, region);
@@ -264,7 +284,7 @@ export const SUMMARY = [
   NOISE.unreachable.holds,
   NOISE.notFound.holds,
   'facts on class-free data blocks only',
-  'one article block per knowledge region',
+  'one article block per knowledge region, its place all there or not at all',
   'no skip marker inside it',
   'every title in a title block',
 ].join(', ');

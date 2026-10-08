@@ -27,8 +27,9 @@ node scripts/kb.mjs find "one slow dependency blocks my threads"   # symptom →
 node scripts/kb.mjs get circuit-breaker --block usage
 ```
 
-`node scripts/kb.mjs` alone prints every command and flag. Cite the stable element id:
-`…/circuit-breaker.md#tradeoffs-con-2`.
+`node scripts/kb.mjs` alone prints every command and flag. `kb.mjs record <id>` is the page
+as data (kb-record/1), the JSON the site serves beside each page. Element ids are positional:
+pin a citation as `circuit-breaker#tradeoffs-con-2@<fp>`, and `kb.mjs resolve` checks it.
 
 ## Writing the KB
 
