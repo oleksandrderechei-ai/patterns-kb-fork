@@ -28,18 +28,29 @@ export const CONTENT = 'site/src/content/docs';
 export const DIST = 'site/dist';
 
 /**
+ * The GitHub account and repository the project lives in. Every repository
+ * and site URL below is built from this pair, so a rename is this one edit.
+ */
+export const REPO_OWNER = 'odere-pro';
+export const REPO_NAME = 'software-design-atlas';
+
+/** The repository's page on GitHub: the link in the site header. */
+export const REPO_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}`;
+
+/**
  * Where a repo path lives on GitHub, for a link from a published page to a
  * file the site does not publish (spec mirror-and-hubs link-rewrite).
  */
-export const REPO_BLOB = 'https://github.com/odere-pro/patterns-kb/blob/main';
+export const REPO_BLOB = `${REPO_URL}/blob/main`;
 
 /**
  * Where the published site lives: the root every absolute URL a built page
- * names starts with — its canonical link, its `og:url`, the sitemap. The site
- * is served under a project path, so the root is more than an origin.
- * `SITE_URL` overrides it (a fork deploys elsewhere).
+ * names starts with — its canonical link, its `og:url`, the sitemap. GitHub
+ * Pages serves a project site under the repository's name, so the root is
+ * more than an origin. `SITE_URL` overrides it: the Pages workflow sets it to
+ * the address the deploy publishes to, and a fork deploys elsewhere.
  */
-export const PUBLIC_ROOT = 'https://odere-pro.github.io/patterns-kb/';
+export const PUBLIC_ROOT = `https://${REPO_OWNER}.github.io/${REPO_NAME}/`;
 
 /** The published root as a URL, ending in `/`. */
 export function publicRoot(env: NodeJS.ProcessEnv = process.env): URL {
@@ -51,7 +62,7 @@ export function publicRoot(env: NodeJS.ProcessEnv = process.env): URL {
 /**
  * An absolute URL on the site's origin, moved under the published root:
  * `https://odere-pro.github.io/patterns/x.html` becomes
- * `https://odere-pro.github.io/patterns-kb/patterns/x.html`. The generator
+ * `https://odere-pro.github.io/software-design-atlas/patterns/x.html`. The generator
  * builds these from the origin alone (it has no base path, so that every
  * route stays a file path); anything already under the root, or on another
  * origin, is left as it is, so a second run changes nothing.

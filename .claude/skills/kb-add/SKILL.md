@@ -1,6 +1,6 @@
 ---
 name: kb-add
-description: "Add a new pattern, hazard, theme, principle, design, capability or comparison page to patterns-kb. Use when someone wants to document something the KB does not cover yet, or asks how to add to it. Not for a page that already exists (kb-edit) or for merging a pattern found on the web (kb-intake)."
+description: "Add a new pattern, hazard, theme, principle, design, capability or comparison page to the KB. Use when someone wants to document something the KB does not cover yet, or asks how to add to it. Not for a page that already exists (kb-edit) or for merging a pattern found on the web (kb-intake)."
 ---
 
 # Adding a page

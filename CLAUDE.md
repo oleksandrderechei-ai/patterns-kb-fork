@@ -1,8 +1,10 @@
-# patterns-kb
+# Software Design Atlas
 
 A knowledge base of 255 software design patterns, 41 design case studies, 51 themes, 45
 hazards, 36 principles, 10 cloud capabilities and 10 product comparisons — 448 pages in all.
-**It is data that happens to render**, not a site that happens to hold data.
+**It is data that happens to render**, not a site that happens to hold data. The repo is
+`odere-pro/software-design-atlas`, formerly `patterns-kb`; how to write the name, and which
+tools keep the `kb` prefix: [branding.md](.claude/rules/branding.md).
 
 > **Migrated** to markdown under `docs/` and an Astro site built from it. The migration is
 > done and awaits the owner's dev testing: [Testing the site](docs/concepts/testing-the-site.md).

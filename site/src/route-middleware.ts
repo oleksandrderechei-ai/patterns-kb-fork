@@ -4,8 +4,13 @@
 // reading rail on a wide screen and the "On this page" bar on a phone: Starlight
 // draws neither for a page with no outline. A hub's outline is its one
 // "Overview" entry, which is a rail with nothing to jump to.
+//
+// The <title> gains the word a searcher types for the page's kind
+// (lib/page-title.ts). Only the head's title entry changes: the h1, og:title
+// and the JSON-LD headline keep the page's own title.
 import { defineRouteMiddleware } from '@astrojs/starlight/route-data';
 
+import { titleFor } from './lib/page-title';
 import { isMenuOnly, routeOf } from './lib/routes';
 import { worthShowing } from './lib/toc';
 
@@ -18,4 +23,9 @@ export const onRequest = defineRouteMiddleware((context) => {
   // the marks link on a phone; a desktop hides the pinned pane for them
   // (Sidebar.astro marks these pages, sidebar.css hides it).
   if (isMenuOnly(routeOf(route.entry?.filePath))) route.hasSidebar = true;
+  const title = route.head?.find((entry) => entry.tag === 'title');
+  const own = route.entry?.data?.title;
+  if (title !== undefined && typeof title.content === 'string' && typeof own === 'string') {
+    title.content = titleFor(routeOf(route.entry?.filePath), own, title.content);
+  }
 });

@@ -2,6 +2,7 @@
   "name": "kb-tools",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Repo-side check gates, generators and the driver, plus the kb.mjs program, the site build's steps and the reader flows under e2e/. Never shipped with the site.",
   "engines": {

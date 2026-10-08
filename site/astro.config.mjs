@@ -7,7 +7,7 @@ import rehypeMermaid from 'rehype-mermaid';
 
 import { rehypeKbDiagrams, rehypeKbTables, remarkKbSite } from '../tools/src/lib/site-markdown.ts';
 import { linkPage, navOf, placedHubs, placedPages } from '../tools/src/lib/site-routes.ts';
-import { publicRoot } from '../tools/src/site/site-output.ts';
+import { publicRoot, REPO_URL } from '../tools/src/site/site-output.ts';
 
 // The sidebar is not authored here: docs/data/site-structure.json is the one
 // structure source — area order, page order, labels, nesting — shared with the
@@ -74,7 +74,7 @@ function sidebarFromStructure() {
 // inlined chunk (offline output-settings).
 //
 // `site` is the published root's origin only. The site is served under a
-// project path (https://odere-pro.github.io/patterns-kb/), but a base path
+// project path (PUBLIC_ROOT, under the repository's name), but a base path
 // would prefix every route Starlight writes and none this repo's components
 // write; so the build writes absolute URLs from the origin and the post-build
 // pass moves the canonical link, og:url and sitemap under the root
@@ -136,8 +136,9 @@ export default defineConfig({
   },
   integrations: [
     starlight({
-      title: 'Patterns KB',
-      // "Circuit Breaker · Patterns KB", the separator the HTML pages' titles use.
+      title: 'Software Design Atlas',
+      // "Circuit Breaker · Software Design Atlas", the separator the HTML pages'
+      // titles use. site/src/lib/page-title.ts adds the page's kind before it.
       titleDelimiter: '·',
       description:
         'A knowledge base of software design patterns, design case studies, themes, hazards, principles, cloud capabilities and product comparisons.',
@@ -216,9 +217,7 @@ export default defineConfig({
         // route data, so the pager's previous and next still walk every page.
         Sidebar: './src/components/Sidebar/Sidebar.astro',
       },
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/odere-pro/patterns-kb' },
-      ],
+      social: [{ icon: 'github', label: 'GitHub', href: REPO_URL }],
       sidebar: sidebarFromStructure(),
     }),
   ],

@@ -8,13 +8,13 @@ import { describe, expect, it } from 'vitest';
 
 import { NOT_FOUND_STYLE, NotFoundShapeError, standaloneNotFound } from './site-not-found.js';
 
-const ROOT = new URL('https://odere-pro.github.io/patterns-kb/');
+const ROOT = new URL('https://odere-pro.github.io/software-design-atlas/');
 
 /** A not-found page as Starlight builds it: its chrome, its assets, its title block and its region. */
 const BUILT = `<!DOCTYPE html>
 <html lang="en" dir="ltr" data-theme="dark" data-has-sidebar class="astro-x">
 <head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Page not found · Patterns KB</title><link rel="canonical" href="https://odere-pro.github.io/404.html"/><link rel="sitemap" href="/sitemap-index.xml"/><link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml"/><meta name="description" content="The address you opened is not a page of this site."/>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Page not found · Software Design Atlas</title><link rel="canonical" href="https://odere-pro.github.io/404.html"/><link rel="sitemap" href="/sitemap-index.xml"/><link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml"/><meta name="description" content="The address you opened is not a page of this site."/>
 <meta name="kb:area" content="patterns"><meta name="kb:owner" content="Oleksandr Derechei">
 <script type="application/ld+json" data-kb="page">{"@context":"https://schema.org","headline":"Page not found"}</script>
 <script src="/kb.js" defer data-kb="bundle"></script>
@@ -22,7 +22,7 @@ const BUILT = `<!DOCTYPE html>
 <script>(() => { document.documentElement.dataset.theme = 'dark'; })();</script>
 <link rel="stylesheet" href="/_astro/print.css" media="print"><link rel="stylesheet" href="/_astro/style.css"><script type="module" src="/_astro/page.js"></script></head>
 <body class="astro-x">
-<header class="header"><a href="/index.html">Patterns KB</a></header>
+<header class="header"><a href="/index.html">Software Design Atlas</a></header>
 <main>
 <div data-page-head>
       <h1 id="_top" class="astro-y">Page not found</h1>
@@ -56,11 +56,11 @@ describe('standaloneNotFound', () => {
   it('drops the chrome around the content', () => {
     expect(out).not.toContain('<header');
     expect(out).not.toContain('<footer');
-    expect(out).not.toContain('Patterns KB</a>');
+    expect(out).not.toContain('Software Design Atlas</a>');
   });
 
   it('keeps the title, the page facts, the description and the JSON-LD block', () => {
-    expect(out).toContain('<title>Page not found · Patterns KB</title>');
+    expect(out).toContain('<title>Page not found · Software Design Atlas</title>');
     expect(out).toContain('<meta name="kb:area" content="patterns">');
     expect(out).toContain('<meta name="kb:owner" content="Oleksandr Derechei">');
     expect(out).toContain('<meta name="description" content="The address you opened is not a page of this site."/>');
@@ -78,8 +78,8 @@ describe('standaloneNotFound', () => {
   });
 
   it('makes each root link absolute under the published root, so it lands from any depth', () => {
-    expect(out).toContain('<a href="https://odere-pro.github.io/patterns-kb/index.html">Home</a>');
-    expect(out).toContain('href="https://odere-pro.github.io/patterns-kb/index.html#search"');
+    expect(out).toContain('<a href="https://odere-pro.github.io/software-design-atlas/index.html">Home</a>');
+    expect(out).toContain('href="https://odere-pro.github.io/software-design-atlas/index.html#search"');
     expect(out).toContain('href="https://example.org/x"');
   });
 

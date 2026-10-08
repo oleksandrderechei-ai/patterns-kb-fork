@@ -1,6 +1,6 @@
 ---
 title: Skill routing
-description: Which skill owns which job in patterns-kb, the four ways a page can be used, and the read-only agents that keep the corpus out of the main context.
+description: Which skill owns which job in the KB, the four ways a page can be used, and the read-only agents that keep the corpus out of the main context.
 area: reference
 owner: Oleksandr Derechei
 tags: [routing, separation-of-concerns]

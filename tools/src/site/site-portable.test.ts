@@ -205,7 +205,7 @@ describe('rewriteLinks over a diagram', () => {
 });
 
 describe('the published root', () => {
-  const root = new URL('https://odere-pro.github.io/patterns-kb/');
+  const root = new URL('https://odere-pro.github.io/software-design-atlas/');
 
   it('is the project path, and SITE_URL moves it, with or without its end slash', () => {
     expect(publicRoot({}).href).toBe(PUBLIC_ROOT);
@@ -214,10 +214,10 @@ describe('the published root', () => {
   });
 
   it('moves a URL on the origin under the root, once, and leaves every other URL alone', () => {
-    expect(toPublic('https://odere-pro.github.io/patterns/a.html', root)).toBe('https://odere-pro.github.io/patterns-kb/patterns/a.html');
-    expect(toPublic('https://odere-pro.github.io/patterns-kb/patterns/a.html', root)).toBe('https://odere-pro.github.io/patterns-kb/patterns/a.html');
-    expect(toPublic('https://github.com/odere-pro/patterns-kb', root)).toBe('https://github.com/odere-pro/patterns-kb');
-    expect(toPublic('https://odere-pro.github.io/', root)).toBe('https://odere-pro.github.io/patterns-kb/');
+    expect(toPublic('https://odere-pro.github.io/patterns/a.html', root)).toBe('https://odere-pro.github.io/software-design-atlas/patterns/a.html');
+    expect(toPublic('https://odere-pro.github.io/software-design-atlas/patterns/a.html', root)).toBe('https://odere-pro.github.io/software-design-atlas/patterns/a.html');
+    expect(toPublic('https://github.com/odere-pro/software-design-atlas', root)).toBe('https://github.com/odere-pro/software-design-atlas');
+    expect(toPublic('https://odere-pro.github.io/', root)).toBe('https://odere-pro.github.io/software-design-atlas/');
   });
 
   it('names the page where it is served: its canonical link and og:url, never another absolute link', () => {
@@ -228,8 +228,8 @@ describe('the published root', () => {
       '<a href="https://odere-pro.github.io/elsewhere.html">out</a>';
     const moved = publicUrls(head, root);
     expect(moved).toBe(
-      '<link rel="canonical" href="https://odere-pro.github.io/patterns-kb/patterns/a.html"/>' +
-        '<meta property="og:url" content="https://odere-pro.github.io/patterns-kb/patterns/a.html"/>' +
+      '<link rel="canonical" href="https://odere-pro.github.io/software-design-atlas/patterns/a.html"/>' +
+        '<meta property="og:url" content="https://odere-pro.github.io/software-design-atlas/patterns/a.html"/>' +
         '<meta property="og:site_name" content="https://odere-pro.github.io/x"/>' +
         '<a href="https://odere-pro.github.io/elsewhere.html">out</a>',
     );
@@ -242,12 +242,12 @@ describe('the published root', () => {
       '<url><loc>https://odere-pro.github.io/capabilities/compute</loc></url><url><loc>https://elsewhere.test/x</loc></url></urlset>';
     const moved = publicSitemap(xml, root);
     expect(moved).toBe(
-      '<urlset><url><loc>https://odere-pro.github.io/patterns-kb/</loc></url><url><loc>https://odere-pro.github.io/patterns-kb/hazards.html</loc></url>' +
-        '<url><loc>https://odere-pro.github.io/patterns-kb/capabilities/compute.html</loc></url><url><loc>https://elsewhere.test/x</loc></url></urlset>',
+      '<urlset><url><loc>https://odere-pro.github.io/software-design-atlas/</loc></url><url><loc>https://odere-pro.github.io/software-design-atlas/hazards.html</loc></url>' +
+        '<url><loc>https://odere-pro.github.io/software-design-atlas/capabilities/compute.html</loc></url><url><loc>https://elsewhere.test/x</loc></url></urlset>',
     );
     expect(publicSitemap(moved, root)).toBe(moved);
     expect(publicSitemap('<sitemap><loc>https://odere-pro.github.io/sitemap-0.xml</loc></sitemap>', root)).toContain(
-      'https://odere-pro.github.io/patterns-kb/sitemap-0.xml',
+      'https://odere-pro.github.io/software-design-atlas/sitemap-0.xml',
     );
   });
 });

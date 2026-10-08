@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-01",
+  "updated": "2026-10-08",
   "note": "One term per idea, and the phrasings banned in its place (spec: kb.data.glossary). Each term holds eight fields: `id` (stable, anchors its block on the reference page), `term` (the word to write), `definition` (markdown inline text), `aliases` (also-fine words), `avoid` (banned phrasings), `scope` (a key of `scopes`: who decides the word), `owner` and `see` (related term ids, listed on both sides). Every `avoid` phrasing is banned in every markdown prose line git lists by the vocabulary gate (tools/src/gates/check-vocabulary.ts): matched whole-word and case-blind, a trailing s or es included, never inside code or on a line carrying <!-- vocab-ok -->. tools/src/gen/gen-vocabulary.ts renders docs/reference/glossary.md from this file (make glossary, or make gen). It is the single source and is edited by hand; ban a phrasing only when failing a build over it is acceptable, and never one whose words appear in a path.",
   "scopes": {
     "kinds": "The content model decides the page kinds: each fixes which blocks a page carries and the folder it lives in.",
@@ -890,6 +890,16 @@
       "scope": "house",
       "owner": "Oleksandr Derechei",
       "see": ["word-computed"]
+    },
+    {
+      "id": "word-software-design-atlas",
+      "term": "Software Design Atlas",
+      "definition": "The project's name, in full at its first mention and \"the Atlas\" after it; \"the KB\" stays the plain noun for the knowledge base. An old name appears only inside a code span that records the history ([branding.md](../../.claude/rules/branding.md)).",
+      "aliases": ["the Atlas", "the KB"],
+      "avoid": ["Patterns KB", "patterns-kb"],
+      "scope": "house",
+      "owner": "Oleksandr Derechei",
+      "see": []
     }
   ]
 }

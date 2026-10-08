@@ -1,6 +1,6 @@
 ---
 name: kb-vocab
-description: "Review, extend or retire the patterns-kb vocabularies: tags, relation verbs, page kinds, blocks, section facts, suffix keys, value sets, areas, banned words, kb.mjs commands, search synonyms. Use when someone says 'add a tag', 'add a synonym', 'ban a word', 'what are the legal values'. Not for retagging one page (kb-edit)."
+description: "Review, extend or retire the KB's vocabularies: tags, relation verbs, page kinds, blocks, section facts, suffix keys, value sets, areas, banned words, kb.mjs commands, search synonyms. Use when someone says 'add a tag', 'add a synonym', 'ban a word', 'what are the legal values'. Not for retagging one page (kb-edit)."
 ---
 
 # Evolving the vocabularies

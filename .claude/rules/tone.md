@@ -7,7 +7,7 @@ paths: ["docs/**/*.md"]
 
 **Question:** how does a KB page's prose read?
 
-> The canonical tone rulebook for patterns-kb prose. Skills and agents point here
+> The canonical tone rulebook for Software Design Atlas prose. Skills and agents point here
 > instead of restating these rules. Where a `kb-design-*` skill declares a
 > block-specific exception, the exception wins — see [Scope](#scope).
 

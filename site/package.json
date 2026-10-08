@@ -6,6 +6,7 @@
     "node": ">=22.12"
   },
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "bundle": "esbuild src/client/index.ts --bundle --format=iife --target=es2017 --minify --outfile=public/kb.js",

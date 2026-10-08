@@ -108,6 +108,9 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     region (blocks-C9); the search-synonyms third payload key (search-C1) and a Term
     component; home-page atlas controls; about five CORS console errors per page from
     `file://`.
+- The internal "atlas" code for the retired home hub (`site/src/lib/atlas.ts`, `SiteMap.astro`)
+  now shares a word with the project's name. Rename it if a reader of the code mistakes one
+  for the other ([branding.md](../.claude/rules/branding.md) lists it as a handle that stays).
 
 ## Pages
 

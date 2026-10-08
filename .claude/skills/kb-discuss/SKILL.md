@@ -1,6 +1,6 @@
 ---
 name: kb-discuss
-description: "Talk through a patterns-kb page as a peer: argue its choices, replay it under a changed requirement, compare it with another page, explain a deep dive. Use when someone says 'let's talk about this design', 'what if the write rate were 10x', 'convince me'. Not for a findings list (kb-design-review), quizzing (kb-grill-page) or edits (kb-edit)."
+description: "Talk through a KB page as a peer: argue its choices, replay it under a changed requirement, compare it with another page, explain a deep dive. Use when someone says 'let's talk about this design', 'what if the write rate were 10x', 'convince me'. Not for a findings list (kb-design-review), quizzing (kb-grill-page) or edits (kb-edit)."
 ---
 
 # Discussing a page as a peer

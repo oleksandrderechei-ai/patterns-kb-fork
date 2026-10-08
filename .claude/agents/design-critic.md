@@ -1,6 +1,6 @@
 ---
 name: design-critic
-description: "Adversarial reviewer of a draft system design against patterns-kb: sweeps hazards, performance antipatterns and principle overreach, and returns bottlenecks and unguarded risks with severity and citations. Use when a design draft is assembled and has not been delivered yet. Not for reviewing a KB page, which is the kb-design-review skill, and not for fixing the draft: it returns findings only."
+description: "Adversarial reviewer of a draft system design against the KB: sweeps hazards, performance antipatterns and principle overreach, and returns bottlenecks and unguarded risks with severity and citations. Use when a design draft is assembled and has not been delivered yet. Not for reviewing a KB page, which is the kb-design-review skill, and not for fixing the draft: it returns findings only."
 tools: ["Read", "Grep", "Glob", "Bash"]
 model: opus
 ---

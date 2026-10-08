@@ -1,6 +1,6 @@
 ---
 name: kb-move
-description: "Move a patterns-kb page to another area (band or group): its area line and its structure-file row together, the file move, and the relative links that break. Use when someone says 'move this pattern to another band', 'this belongs under Resilience', 're-file this page'. Not for a new page (kb-add) or regrouping relationships (kb-edit)."
+description: "Move a KB page to another area (band or group): its area line and its structure-file row together, the file move, and the relative links that break. Use when someone says 'move this pattern to another band', 'this belongs under Resilience', 're-file this page'. Not for a new page (kb-add) or regrouping relationships (kb-edit)."
 ---
 
 # Moving a page

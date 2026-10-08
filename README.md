@@ -1,11 +1,11 @@
-# patterns-kb — the Software Design Atlas
+# Software Design Atlas
 
 A cross-linked reference of **255 software design patterns, 41 design case studies, 51
 themes, 45 hazards, 36 principles, 10 cloud capabilities and 10 product comparisons — 448
 pages in all**, written to be learned from: every page answers the same questions in the
 same order, and every page says how it relates to its neighbours.
 
-Live at **https://odere-pro.github.io/patterns-kb/**.
+Live at **https://odere-pro.github.io/software-design-atlas/**. Formerly `patterns-kb`.
 
 ## What you'll find
 
@@ -51,6 +51,18 @@ node scripts/kb.mjs related circuit-breaker                        # typed neigh
 
 Every claim has a stable id, so it can be cited precisely:
 `…/circuit-breaker.md#tradeoffs-con-2`.
+
+## Licence
+
+The code is under the [MIT licence](LICENSE): `tools/`, `site/`, `scripts/`, `.claude/`,
+`.githooks/` and `.github/`. The content, meaning the pages and data under `docs/` with their
+diagrams, is under [Creative Commons Attribution 4.0](LICENSE-CC-BY-4.0) (CC BY 4.0). You may
+copy, adapt and share it, commercially too, as long as you give credit:
+
+> [Software Design Atlas](https://odere-pro.github.io/software-design-atlas/) by Oleksandr
+> Derechei, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+A code sketch inside a page may also be used under the MIT licence.
 
 ---
 

@@ -121,7 +121,7 @@ describe('the published root', () => {
     siteSandbox(sb);
     expectBuilt(buildSite(sb));
     const root = publicRoot().href;
-    expect(root).toBe('https://odere-pro.github.io/patterns-kb/');
+    expect(root).toBe('https://odere-pro.github.io/software-design-atlas/');
     const html = sb.read('site/dist/hazards/gamma.html');
     const canonical = [...tags(html)].find((t) => t.name === 'link' && attrValue(parseAttrs(t.source), 'rel') === 'canonical');
     expect(attrValue(parseAttrs((canonical as { source: string }).source), 'href')).toBe(`${root}hazards/gamma.html`);

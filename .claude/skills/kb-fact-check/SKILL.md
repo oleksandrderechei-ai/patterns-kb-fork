@@ -1,6 +1,6 @@
 ---
 name: kb-fact-check
-description: "Check patterns-kb pages against Wikipedia and other trusted sources: a script fetches them, then you diff each page's claims and write cited findings. Use when someone says 'fact-check the KB', 'check this pattern against Wikipedia', 'are our tradeoffs right'. Not for applying findings (kb-edit) or claims about this repo (docs-sweep)."
+description: "Check KB pages against Wikipedia and other trusted sources: a script fetches them, then you diff each page's claims and write cited findings. Use when someone says 'fact-check the KB', 'check this pattern against Wikipedia', 'are our tradeoffs right'. Not for applying findings (kb-edit) or claims about this repo (docs-sweep)."
 ---
 
 # kb-fact-check — corroborate the KB against outside sources
