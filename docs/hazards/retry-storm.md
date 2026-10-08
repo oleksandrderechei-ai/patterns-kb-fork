@@ -92,6 +92,7 @@ The dependency has a move of its own. Refuse excess work quickly and cheaply ins
 - [Rate Limiter](../patterns/distributed/resilience/rate-limiter.md) — The dependency refuses excess cheaply instead of queueing it
 - [Fault Injection](../patterns/distributed/resilience/fault-injection.md) — The multiplication only shows up when something is actually failing
 - [Fallacies of Distributed Computing](../principles/fallacies-of-distributed-computing.md) — The first fallacy is how a retry storm starts.
+- [Timeout / Deadline](../patterns/distributed/resilience/timeout-deadline.md) — A caller's retries stop at its deadline, but callers that expire together still retry together.
 
 **Threatens**
 

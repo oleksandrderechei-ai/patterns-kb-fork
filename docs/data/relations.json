@@ -14762,6 +14762,13 @@
       "b": "request-coalescing",
       "note_a": "A lock with an expiry lets one caller per key rebuild a value while the rest wait for it.",
       "note_b": "Cross-process coalescing: the winner of a short-lived lock does the fetch, so the fleet makes one origin call."
+    },
+    {
+      "a": "timeout-deadline",
+      "verb": "prevents-hazard",
+      "b": "retry-storm",
+      "note_a": "A deadline shared by every retry caps one caller's total attempts; it does not spread callers apart, so pair it with jittered backoff.",
+      "note_b": "A caller's retries stop at its deadline, but callers that expire together still retry together."
     }
   ],
   "group_order": {
