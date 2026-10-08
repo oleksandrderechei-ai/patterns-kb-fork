@@ -14706,6 +14706,76 @@
       "b": "mutex",
       "note_a": "A mutex around clone-and-publish keeps two writers from discarding each other's copy; readers never take it",
       "note_b": "Copy-on-write readers never take the mutex; only writers do, around clone-and-publish"
+    },
+    {
+      "a": "fault-injection",
+      "verb": "combines-with",
+      "b": "service-mesh",
+      "note_a": "A mesh proxy adds latency or errors for the experiment, so no application code needs a fault switch.",
+      "note_b": "The mesh is one place to apply an injected fault, and it reaches only traffic that goes through the mesh."
+    },
+    {
+      "a": "fallback",
+      "verb": "combines-with",
+      "b": "fault-injection",
+      "note_a": "A fallback is unproven until a fault forces it to run.",
+      "note_b": "Injecting the dependency failure is the only way the fallback runs under load before an incident."
+    },
+    {
+      "a": "leaky-bucket",
+      "verb": "prevents-hazard",
+      "b": "unbounded-queue",
+      "note_a": "A queue capped at C items refuses when full, so the backlog cannot grow without limit.",
+      "note_b": "A leaky bucket caps its queue at capacity C and refuses when full, so memory stays flat."
+    },
+    {
+      "a": "load-shedding",
+      "verb": "combines-with",
+      "b": "timeout-deadline",
+      "note_a": "Deadline-aware shedding drops a request whose remaining budget is below the queue wait, which needs deadlines propagated end to end.",
+      "note_b": "A propagated deadline lets a server refuse work the caller has already abandoned."
+    },
+    {
+      "a": "load-leveling",
+      "verb": "combines-with",
+      "b": "dead-letter-channel",
+      "note_a": "Parks a message that keeps failing so it cannot block the queue behind it.",
+      "note_b": "A leveling queue's redelivery loop ends here once a message reaches its attempt cap."
+    },
+    {
+      "a": "rate-limiter",
+      "verb": "combines-with",
+      "b": "retry-backoff",
+      "note_a": "A 429 with a retry-after hint tells clients when to retry.",
+      "note_b": "Backoff spaces retries so they do not hit the limiter's refusal again."
+    },
+    {
+      "a": "circuit-breaker",
+      "verb": "often-confused-with",
+      "b": "rate-limiter",
+      "note_a": "A breaker stops calls to a failing dependency; a limiter caps a caller's rate.",
+      "note_b": "A limiter caps calls that would succeed; a breaker stops calls that would fail."
+    },
+    {
+      "a": "distributed-lock",
+      "verb": "combines-with",
+      "b": "request-coalescing",
+      "note_a": "A lock with an expiry lets one caller per key rebuild a value while the rest wait for it.",
+      "note_b": "Cross-process coalescing: the winner of a short-lived lock does the fetch, so the fleet makes one origin call."
+    },
+    {
+      "a": "timeout-deadline",
+      "verb": "prevents-hazard",
+      "b": "retry-storm",
+      "note_a": "A deadline shared by every retry caps one caller's total attempts; it does not spread callers apart, so pair it with jittered backoff.",
+      "note_b": "A caller's retries stop at its deadline, but callers that expire together still retry together."
+    },
+    {
+      "a": "token-bucket",
+      "verb": "prevents-hazard",
+      "b": "noisy-neighbour",
+      "note_a": "A per-key bucket caps what one tenant can take, so a burst spends that tenant's own tokens.",
+      "note_b": "A per-key token bucket gives each tenant a bounded burst."
     }
   ],
   "group_order": {

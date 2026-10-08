@@ -75,8 +75,8 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Bounded queue** — Cap the queue's depth and reject or redirect once full, so an [unbounded backlog](../../../hazards/unbounded-queue.md) can't itself become the outage.
-- **[Competing Consumers](../../messaging/competing-consumers.md)** — Run several consumer instances draining the same queue in parallel, raising throughput without changing the producer side at all.
-- **[Autoscaling](../routing/autoscaling.md)** — Scale the number of consumers to queue depth, so the backlog itself is the signal that drives added capacity.
+- **[Competing Consumers](../../messaging/competing-consumers.md)** — Run several consumer instances draining the same queue in parallel. Throughput rises until the downstream store or the partition-key count becomes the ceiling, and the producer side does not change.
+- **[Autoscaling](../routing/autoscaling.md)** — Scale the number of consumers on backlog per consumer or on the age of the oldest message, so the backlog itself drives added capacity. Cap the fleet at the downstream limit and the partition count, and add a cooldown, or scaling out overloads the store the queue protects.
 - **[Priority queue](../../messaging/priority-queue.md)** — Give latency-sensitive messages a lane that skips the backlog, while bulk or best-effort work waits behind it.
 - **[Dead-letter queue](../../messaging/dead-letter-channel.md)** — Move a message aside after it fails processing repeatedly, so one poison message can't block everything behind it.
 
@@ -88,7 +88,7 @@ sequenceDiagram
 
 - **Smooths bursty, unpredictable traffic** into a steady load the consumer can actually sustain.
 - **Producers and consumers scale, deploy, and fail independently** — the queue is the only coupling.
-- **A durable queue survives a consumer outage**; work waits instead of being dropped.
+- **A durable queue survives a consumer outage**, so work waits instead of being dropped, for as long as retention and storage allow.
 - **Simple to reason about** — one component, the queue, does all of the leveling.
 
 ### Cons
@@ -98,7 +98,7 @@ sequenceDiagram
 - **The queue becomes a critical, stateful dependency** that needs its own capacity and durability planning.
 - **Under sustained overload** an unbounded backlog just delays the failure instead of preventing it — bound the depth and shed above it with a [rate limiter](./rate-limiter.md), or push the refusal upstream as [backpressure](../../concurrency/backpressure.md).
 - **Consumers must tolerate redelivery** — they must be [idempotent](../../messaging/idempotency.md), since most queues redeliver a message on a failed or timed-out ack.
-- **Ordering is not free**: several consumers draining one queue finish out of order, so work that depends on sequence needs a partition key that pins related messages to one consumer — and that key caps how far you can parallelize.
+- **Ordering is not free**: several consumers draining one queue finish out of order, so work that depends on sequence needs a partition key that pins related messages to one consumer. That key caps how far you can parallelize.
 
 ## When to use it
 <!--meta block=usage-->
@@ -113,7 +113,7 @@ sequenceDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **Callers need a synchronous response** and can't tolerate queueing delay.
+- **Callers need a synchronous response** and can't tolerate queueing delay. Call directly with a timeout, or use [Rate Limiter](./rate-limiter.md) or [Backpressure](../../concurrency/backpressure.md) to refuse overload at the edge.
 - **Load is steady and predictable** — a queue adds a component for no leveling benefit.
 - **The real constraint is capacity itself, not smoothing** — pair with [Autoscaling](../routing/autoscaling.md) to actually add throughput.
 
@@ -124,6 +124,7 @@ sequenceDiagram
 interface Task { id: string; flowId: string; personaId: string; type: "verify_id"; }
 
 class LevelingQueue {
+  // in-memory for illustration; use a durable broker with acks in production
   private buffer: Task[] = [];
   constructor(private readonly maxDepth = 10_000) {}
 
@@ -147,8 +148,15 @@ async function idWorker(queue: LevelingQueue, permitsPerSecond: number) {
   while (true) {
     const task = queue.dequeue();
     if (!task) { await sleep(50); continue; }
-    await idVendor.verify(task.flowId, task.personaId);
-    await sleep(intervalMs); // steady pace, independent of arrival rate
+    try {
+      await idVendor.verify(task.flowId, task.personaId);
+    } catch {
+      // real systems: ack on success, redeliver on timeout, park after N failures (dead-letter)
+      queue.enqueue(task);
+    }
+    // steady pace, independent of arrival rate; the real rate is a little below
+    // permitsPerSecond by the call latency
+    await sleep(intervalMs);
   }
 }
 ```
@@ -166,18 +174,20 @@ async function idWorker(queue: LevelingQueue, permitsPerSecond: number) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Queue depth bound** — The backlog after which the producer sheds or redirects, so the buffer cannot itself become the outage.
-- **Consumer concurrency** — How many consumers drain the queue in parallel — the only dial on this page that changes sustained throughput.
-- **Visibility / ack timeout** — How long a dequeued message stays hidden from other consumers before it is redelivered (SQS VisibilityTimeout, ack deadline).
+- **Queue depth bound** — The backlog after which the producer sheds or redirects, so the buffer cannot itself become the outage. Set it to the wait callers accept times the drain rate: callers who accept 40 minutes at 20 a second allow 48,000, the backlog in the example.
+- **Consumer concurrency** — How many consumers drain the queue in parallel, the main dial on sustained throughput until the downstream store or the partition-key count caps it.
+- **Visibility / ack timeout** — How long a dequeued message stays hidden from other consumers before it is redelivered (SQS VisibilityTimeout, ack deadline). Start at a high percentile (p99) of measured processing time plus margin, and extend it by heartbeat for long tasks. SQS defaults to 30 s, allows up to 12 hours and extends with `ChangeMessageVisibility`. Kafka has no visibility timeout: a consumer that exceeds `max.poll.interval.ms` (default 300,000 ms) leaves the group and its partitions move. Celery on a Redis broker redelivers after a `visibility_timeout` of 1 hour by default. Watch redelivery after each deploy.
 - **Batch / prefetch size** — How many messages a consumer takes per fetch (SQS max messages, Kafka max.poll.records, Celery prefetch multiplier). Bigger batches raise throughput and put more work at risk on a crash.
 - **Dead-letter policy** — How many failed deliveries a message gets before it is moved aside (maxReceiveCount, redrive), so one poison message cannot hold up the queue behind it.
 - **Retention and storage** — How long the broker keeps a message and how much it will hold — the real limit on how long consumers may be down before work is lost.
+- **Consumer rate cap** — A pace or permit limit per consumer or fleet, set to the downstream ceiling, so extra consumers cannot move the overload to the store the queue protects.
+- **Message expiry (TTL)** — How old a message may get before it is dropped or parked, so the drain is not spent on requests nobody still wants.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **Backlog depth** — Messages waiting, per queue. Rising depth means consumers are behind arrivals right now.
-- **Age of oldest message** — How long the head of the queue has waited (ApproximateAgeOfOldestMessage, consumer lag in time). This, not depth, is the latency a caller feels.
+- **Age of oldest message** — How long the head of the queue has waited (ApproximateAgeOfOldestMessage, consumer lag in time). This, not depth, is the latency a caller feels. Alert when it passes a set fraction of the wait callers tolerate.
 - **Enqueue rate against dequeue rate** — Sustained divergence is overload the buffer is only postponing.
 - **Dead-letter depth** — Messages that exhausted their deliveries. A rising count is a poison message or a broken consumer path, never routine.
 - **Redelivery rate** — How often messages come back for another attempt — the load consumers are re-doing, and the pressure on their idempotency.
@@ -189,7 +199,8 @@ async function idWorker(queue: LevelingQueue, permitsPerSecond: number) {
 - **Redelivery double-processing** — A failed or timed-out ack redelivers, so a consumer that is not idempotent does the same work twice — a second charge, a second email.
 - **Visibility timeout mistuned** — Set below real processing time it hands a live message to a second consumer; set far above it, a crashed consumer leaves its message untouched for that whole window.
 - **Poison message with no dead-letter** — A message that always fails retries forever and, on an ordered partition, blocks everything behind it.
-- **Recovery slower than the outage** — A backlog built over an hour needs consumer headroom above arrival rate to clear. At exactly arrival rate it never drains, and the queue stays full long after the spike has passed.
+- **Recovery slower than the outage** — A backlog built over an hour needs consumer headroom above arrival rate to clear. At exactly arrival rate it never drains, and the queue stays full long after the spike has passed. Drain time is backlog ÷ (consumer rate − arrival rate): with arrivals stopped, 48,000 ÷ 20 a second is 2,400 s, the example's 40 minutes. Size consumers so this fits the recovery time the business expects.
+- **Autoscale past the downstream ceiling** — Consumers added on queue depth overload the store the queue was protecting. Cap the fleet at the downstream limit and add a cooldown.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -232,6 +243,7 @@ async function idWorker(queue: LevelingQueue, permitsPerSecond: number) {
 - [Web-Queue-Worker](../../architecture/web-queue-worker.md) — The web-queue-worker shape is load levelling promoted to the architecture of the whole application.
 - [Priority Queue](../../messaging/priority-queue.md) — Add priority classes when the buffered work is not all worth the same
 - [Polling Consumer](../../messaging/polling-consumer.md) — The steady drain rate of a polling consumer is what levels the load
+- [Dead Letter Channel](../../messaging/dead-letter-channel.md) — Parks a message that keeps failing so it cannot block the queue behind it.
 
 **Alternative to**
 

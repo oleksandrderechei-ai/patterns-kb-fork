@@ -297,6 +297,7 @@ await new SharedBreaker(kv, "idVendor").call(flowId, () => verifyDocument(person
 **Often confused with**
 
 - [Load Shedding](./load-shedding.md) — The breaker guards a caller against a sick callee; shedding guards a server against its own saturation.
+- [Rate Limiter](./rate-limiter.md) — A breaker stops calls to a failing dependency; a limiter caps a caller's rate.
 
 **Prevents**
 

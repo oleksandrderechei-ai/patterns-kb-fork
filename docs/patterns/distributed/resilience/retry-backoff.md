@@ -250,6 +250,7 @@ const claim = `SELECT * FROM task WHERE status = 'pending' AND run_after <= now(
 - [WebSocket](../../messaging/websocket.md) — Reconnecting WebSocket clients are the case where jitter matters most.
 - [Fail Fast](../../../principles/fail-fast.md) — Back off on a transient fault; stop at once on a permanent one.
 - [Fallacies of Distributed Computing](../../../principles/fallacies-of-distributed-computing.md) — The fallacies of distributed computing say which calls owe a retry and a deadline
+- [Rate Limiter](./rate-limiter.md) — Backoff spaces retries so they do not hit the limiter's refusal again.
 
 **Alternative to**
 

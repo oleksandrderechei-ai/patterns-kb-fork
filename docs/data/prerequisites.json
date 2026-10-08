@@ -473,7 +473,7 @@
       "definition": "Stops calling a service that's already failing",
       "route": "/patterns/distributed/resilience/circuit-breaker.html",
       "requires": ["timeout-deadline"],
-      "related": ["retry-backoff", "bulkhead", "health-endpoint", "fail-fast", "service-mesh", "self-healing", "fault-injection", "messaging-bridge", "service-discovery", "fallback", "load-shedding"]
+      "related": ["retry-backoff", "bulkhead", "health-endpoint", "fail-fast", "service-mesh", "self-healing", "fault-injection", "messaging-bridge", "service-discovery", "fallback", "load-shedding", "rate-limiter"]
     },
     {
       "id": "fallback",
@@ -481,7 +481,7 @@
       "definition": "Return a reduced answer — a stale copy, a default, a simpler result — when a dependency fails, so the request still succeeds",
       "route": "/patterns/distributed/resilience/fallback.html",
       "requires": [],
-      "related": ["circuit-breaker", "timeout-deadline", "load-shedding", "failover", "bulkhead", "null-object", "fail-fast"]
+      "related": ["circuit-breaker", "timeout-deadline", "load-shedding", "failover", "bulkhead", "null-object", "fail-fast", "fault-injection"]
     },
     {
       "id": "retry-backoff",
@@ -489,7 +489,7 @@
       "definition": "Retries transient failures with a growing delay",
       "route": "/patterns/distributed/resilience/retry-backoff.html",
       "requires": ["idempotency", "timeout-deadline"],
-      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control", "websocket", "fail-fast", "fallacies-of-distributed-computing"]
+      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control", "websocket", "fail-fast", "fallacies-of-distributed-computing", "rate-limiter"]
     },
     {
       "id": "bulkhead",
@@ -521,7 +521,7 @@
       "definition": "A queue absorbs bursts so consumers work at their own pace",
       "route": "/patterns/distributed/resilience/load-leveling.html",
       "requires": ["idempotency"],
-      "related": ["backpressure", "autoscaling", "competing-consumers", "batching", "rate-limiter", "load-shedding", "async-request-reply", "web-queue-worker", "priority-queue", "polling-consumer"]
+      "related": ["backpressure", "autoscaling", "competing-consumers", "batching", "rate-limiter", "load-shedding", "async-request-reply", "web-queue-worker", "priority-queue", "polling-consumer", "dead-letter-channel"]
     },
     {
       "id": "rate-limiter",
@@ -529,7 +529,7 @@
       "definition": "Caps how many requests a client can make in a window",
       "route": "/patterns/distributed/resilience/rate-limiter.html",
       "requires": [],
-      "related": ["bulkhead", "backpressure", "load-leveling", "load-shedding", "api-gateway", "pagination", "partition-around-limits", "priority-queue", "sliding-window", "leaky-bucket", "multi-tenancy"]
+      "related": ["bulkhead", "backpressure", "load-leveling", "load-shedding", "api-gateway", "pagination", "partition-around-limits", "priority-queue", "sliding-window", "leaky-bucket", "multi-tenancy", "retry-backoff", "circuit-breaker"]
     },
     {
       "id": "timeout-deadline",
@@ -537,7 +537,7 @@
       "definition": "Caps how long a call may take before giving up",
       "route": "/patterns/distributed/resilience/timeout-deadline.html",
       "requires": [],
-      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request", "heartbeat", "bulkhead", "scatter-gather"]
+      "related": ["sweeper", "service-mesh", "fail-fast", "idempotency", "request-coalescing", "failure-mode-analysis", "fault-injection", "fallacies-of-distributed-computing", "fallback", "hedged-request", "heartbeat", "bulkhead", "scatter-gather", "load-shedding"]
     },
     {
       "id": "hedged-request",
@@ -569,7 +569,7 @@
       "definition": "Collapses concurrent identical requests into one in-flight call",
       "route": "/patterns/distributed/resilience/request-coalescing.html",
       "requires": [],
-      "related": ["refresh-ahead", "read-through", "batching", "timeout-deadline", "load-shedding", "hedged-request"]
+      "related": ["refresh-ahead", "read-through", "batching", "timeout-deadline", "load-shedding", "hedged-request", "distributed-lock"]
     },
     {
       "id": "load-shedding",
@@ -577,7 +577,7 @@
       "definition": "Rejects work early once the server is past what it can serve",
       "route": "/patterns/distributed/resilience/load-shedding.html",
       "requires": [],
-      "related": ["rate-limiter", "load-leveling", "bulkhead", "backpressure", "retry-backoff", "autoscaling", "request-coalescing", "design-for-operations", "build-for-business", "feature-flag", "fallback", "leaky-bucket", "circuit-breaker"]
+      "related": ["rate-limiter", "load-leveling", "bulkhead", "backpressure", "retry-backoff", "autoscaling", "request-coalescing", "design-for-operations", "build-for-business", "feature-flag", "fallback", "leaky-bucket", "circuit-breaker", "timeout-deadline"]
     },
     {
       "id": "fault-injection",
@@ -585,7 +585,7 @@
       "definition": "Break it on purpose, on a schedule, to prove it survives",
       "route": "/patterns/distributed/resilience/fault-injection.html",
       "requires": [],
-      "related": ["circuit-breaker", "bulkhead", "retry-backoff", "timeout-deadline", "health-endpoint", "failure-mode-analysis"]
+      "related": ["circuit-breaker", "bulkhead", "retry-backoff", "timeout-deadline", "health-endpoint", "failure-mode-analysis", "service-mesh", "fallback"]
     },
     {
       "id": "distributed-tracing",
@@ -665,7 +665,7 @@
       "definition": "Moves service-to-service networking into a managed proxy layer",
       "route": "/patterns/distributed/routing/service-mesh.html",
       "requires": [],
-      "related": ["api-gateway", "retry-backoff", "timeout-deadline", "circuit-breaker", "load-balancer", "identity-as-perimeter", "distributed-tracing", "shadow-traffic"]
+      "related": ["api-gateway", "retry-backoff", "timeout-deadline", "circuit-breaker", "load-balancer", "identity-as-perimeter", "distributed-tracing", "shadow-traffic", "fault-injection"]
     },
     {
       "id": "sticky-session",
@@ -985,7 +985,7 @@
       "definition": "Hold exclusivity as a lease with a time to live (TTL) that any server can see",
       "route": "/patterns/distributed/coordination/distributed-lock.html",
       "requires": ["conditional-write"],
-      "related": ["minimize-coordination", "leader-election", "quorum-consensus", "sweeper", "sequential-convoy", "pessimistic-locking", "optimistic-concurrency-control", "lease"]
+      "related": ["minimize-coordination", "leader-election", "quorum-consensus", "sweeper", "sequential-convoy", "pessimistic-locking", "optimistic-concurrency-control", "lease", "request-coalescing"]
     },
     {
       "id": "lease",
@@ -1505,7 +1505,7 @@
       "definition": "Undeliverable messages land somewhere visible, not lost",
       "route": "/patterns/messaging/dead-letter-channel.html",
       "requires": ["message-queue"],
-      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter", "recipient-list", "resequencer", "polling-consumer", "content-enricher", "routing-slip"]
+      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter", "recipient-list", "resequencer", "polling-consumer", "content-enricher", "routing-slip", "load-leveling"]
     },
     {
       "id": "correlation-identifier",
