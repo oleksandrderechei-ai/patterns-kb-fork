@@ -16,14 +16,17 @@ With enough users, every observable behaviour of your system becomes something s
 ## What it says
 <!--meta block=description-->
 
-Hyrum's Law, named for Google engineer Hyrum Wright, says that once an API has enough users, it does not matter what you promised in the contract: somebody depends on every observable behaviour. It is often read as a complaint about careless callers. It is really a statement about what a contract is: the documented promise plus everything else a caller can see, such as ordering, timing, error text and field names.
+Hyrum's Law, named for Google engineer Hyrum Wright, says that once an API has enough users, it does not matter what you promised in the contract: somebody depends on every observable behaviour. It is often read as a complaint about careless callers. It says what a contract is: the documented promise plus everything else a caller can see, such as ordering, timing, error text and field names.
 
 ## Explained
 <!--meta block=explain-->
 
-Hyrum's Law says that a contract is not what you wrote down but everything a caller can observe. Once enough people use your API, someone depends on the order of results, the timing of a response, the wording of an error or an undocumented field, and your change to any of them breaks that someone. So you cannot treat the documentation as the full interface. Choose to shrink and shape what is observable over relying on warnings in the docs, because callers read behaviour, not prose. Return narrow types, give errors stable codes, and make unpromised behaviour vary, for example by shuffling unordered results in tests. Use [API versioning](../patterns/distributed/routing/api-versioning.md) and [contract tests](../patterns/testing/contract-testing.md) to find out who depends on what before you change it. The cost is effort and some noise in the code, which grows with the size of your user base.
+Hyrum's Law says that a contract is not what you wrote down but everything a caller can observe. Once enough people use your API, someone depends on the order of results, the timing of a response, the wording of an error or an undocumented field, and your change to any of them breaks that someone. So you cannot treat the documentation as the full interface. Shrink what callers can observe instead of warning them in the docs, because callers read behaviour, not prose. Return narrow types, give errors stable codes, and make unpromised behaviour vary, for example by shuffling unordered results in tests. Use [API versioning](../patterns/distributed/routing/api-versioning.md) and [contract tests](../patterns/testing/contract-testing.md) to find out who depends on what before you change it.
 
-**Example.** A search API documents results as unordered, but they come back sorted by id because of an index. Over 4 years, 3 of 40 client teams start using the first result as the oldest record. A database upgrade changes the plan, and the order flips. Three teams see wrong data and file bugs against an unbroken contract. If the API had shuffled unordered results in its test build, the 3 teams would have failed in their first week. The cost of that fix is one line and a more annoying test run, and the cost of not doing it was 3 incident reviews.
+- **Effort** Narrowing the surface and writing contract tests take work that grows with your user base.
+- **Noise** A shuffle in test builds and an explicit order option add code and a more annoying test run.
+
+**Example.** A search API documents results as unordered, but they come back sorted by id because of an index. Say, over 4 years, 3 of 40 client teams start using the first result as the oldest record. A database upgrade changes the plan, and the order flips. Three teams see wrong data and file bugs against an unbroken contract. If the sandbox the client teams test against had shuffled unordered results, those 3 teams would have failed in their first week.
 
 ## Why it helps
 <!--meta block=rationale-->
@@ -38,10 +41,11 @@ Holding the law in mind shrinks the gap on purpose. You decide which behaviours 
 Shape what callers can observe, because you cannot control what they notice:
 
 - **Expose less.** Return a narrow type instead of your internal object, and keep fields and helpers private, so there is less to depend on.
-- **Make unpromised behaviour vary.** If order is not guaranteed, randomise or sort it differently in test builds, so callers who rely on it fail early instead of years later.
-- **Give errors a stable code.** Callers will parse messages if that is all there is, so provide a machine-readable error code and treat the text as free to change.
+- **Make unpromised behaviour vary.** If order is not guaranteed, shuffle it in a build callers' tests actually run against, such as a sandbox, staging or a client test mode, so callers who rely on it fail early instead of years later.
+- **Give errors a stable code.** Callers will parse messages if that is all there is, so return a machine-readable code such as USER_NOT_FOUND, add codes but never rename them, and treat the text as free to change.
 - **Record what is promised.** Write down which behaviours are guaranteed and which are not, and link that note from the places callers look.
-- **Plan breaking changes.** Use [versioning](../patterns/distributed/routing/api-versioning.md), deprecation periods and a contract test per consumer, so you learn who depends on what before you change it.
+- **Plan breaking changes.** Use [versioning](../patterns/distributed/routing/api-versioning.md), deprecation periods and a contract test per consumer. Learn who depends on what by sampling request logs and counting reads per field; a contract test covers only what that consumer recorded.
+- **Review check.** For each diff, ask whether it changes order, timing, error text, field names, defaults or extra fields the docs never promised. If so, treat it as breaking for someone and ask who reads it before merging.
 
 ## In code
 <!--meta block=sketch-->
@@ -57,6 +61,7 @@ function listUsers(db: Db): User[] {
 function listUsers(db: Db, opts: { order?: "id" | "created" } = {}): User[] {
   const rows = db.query("SELECT * FROM users");
   if (opts.order) return sortBy(rows, opts.order);   // order only when asked for
+  // Production still returns accidental id order until you sort or document it; callers' tests must run against a build that shuffles.
   return process.env.NODE_ENV === "test" ? shuffle(rows) : rows; // tests catch hidden reliance
 }
 ```
