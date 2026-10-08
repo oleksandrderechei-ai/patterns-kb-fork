@@ -88,6 +88,7 @@ The distinction that matters is the cost of changing later. Choices that are che
 - [Build for the Needs of the Business](./build-for-business.md) — A non-functional target is a present requirement, not a speculative feature
 - [Transaction Script](../patterns/enterprise/transaction-script.md) — Shipping a plain procedure now defers the domain model until the rules actually demand one
 - [Rule of Three](./rule-of-three.md) — Do not build the abstraction until a need shows up, which is when a third copy appears
+- [Open/Closed Principle](./open-closed.md) — Close an axis only once it has varied; YAGNI is the brake on speculative seams.
 
 **Prevents**
 

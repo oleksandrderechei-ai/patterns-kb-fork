@@ -196,8 +196,8 @@ function register<Req, Res>(app: App, e: Endpoint<Req, Res>, ...extra: Stage[]) 
 **Combines with**
 
 - [Vertical Slice](./vertical-slice.md) — The same one-per-request instinct, applied at the transport edge rather than to the whole feature
-- [Single Responsibility Principle](../../principles/single-responsibility.md) — The unit of responsibility becomes one operation, which is the granularity the maxim actually implies
 - [DTO](../enterprise/dto.md) — The request and response models are purpose-shaped carriers, one pair per operation
+- [Single Responsibility Principle](../../principles/single-responsibility.md) — One reason to change per operation, for an API where operations have separate owners.
 
 **Alternative to**
 

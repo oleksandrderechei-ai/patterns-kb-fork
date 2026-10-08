@@ -80,5 +80,6 @@ The rule also makes a cost easy to ignore: each tolerated copy is a place to fix
 - [You Aren't Gonna Need It (YAGNI)](./yagni.md) — Waits for evidence before building a shared abstraction
 - [Vertical Slice](../patterns/architecture/vertical-slice.md) — Tolerates duplicated code until a third copy shows what is really shared
 - [Design for Evolution](./design-for-evolution.md) — Lets the right abstraction emerge from real cases, not guesses
+- [Open/Closed Principle](./open-closed.md) — Wait for the second or third real variant before laying the seam.
 
 <!-- relationships:end -->

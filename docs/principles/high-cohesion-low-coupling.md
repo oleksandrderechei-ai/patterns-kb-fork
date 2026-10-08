@@ -85,6 +85,7 @@ Some coupling is the point. A checkout that needs a price must know the pricing 
 - [Law of Demeter](./law-of-demeter.md) — Fewer things one module must know about another
 - [Dependency Inversion Principle](./dependency-inversion.md) — Modules depend on abstractions rather than on one another's details
 - [Bounded Context](../patterns/ddd/bounded-context.md) — A context groups what changes together and keeps its model private
+- [Single Responsibility Principle](./single-responsibility.md) — One reason to change is the unit that cohesion groups around.
 
 **Prevents**
 

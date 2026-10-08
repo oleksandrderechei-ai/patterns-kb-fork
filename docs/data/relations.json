@@ -8474,13 +8474,6 @@
     {
       "a": "repr",
       "verb": "combines-with",
-      "b": "single-responsibility",
-      "note_a": "The unit of responsibility becomes one operation, which is the granularity the maxim actually implies",
-      "note_b": "A class per operation is the maxim applied to a web application programming interface (API)'s transport layer"
-    },
-    {
-      "a": "repr",
-      "verb": "combines-with",
       "b": "dto",
       "note_a": "The request and response models are purpose-shaped carriers, one pair per operation",
       "note_b": "A per-operation request and response pair is where these earn their keep"
@@ -14216,6 +14209,48 @@
       "b": "least-astonishment",
       "note_a": "What callers expect is what they will come to depend on.",
       "note_b": "Callers depend on whatever you actually do, so a same-name behaviour change breaks them."
+    },
+    {
+      "a": "retry-backoff",
+      "verb": "combines-with",
+      "b": "fail-fast",
+      "note_a": "Back off on a transient fault; stop at once on a permanent one.",
+      "note_b": "Retry the blip, fail fast on the fault that cannot clear."
+    },
+    {
+      "a": "idempotency",
+      "verb": "combines-with",
+      "b": "fail-fast",
+      "note_a": "Idempotent work makes fail-then-retry safe.",
+      "note_b": "Restart-on-fault is only safe if the rerun does no harm."
+    },
+    {
+      "a": "repr",
+      "verb": "combines-with",
+      "b": "single-responsibility",
+      "note_a": "One reason to change per operation, for an API where operations have separate owners.",
+      "note_b": "REPR suits an API where each operation has its own actor; it is not a rule that every operation gets a class."
+    },
+    {
+      "a": "high-cohesion-low-coupling",
+      "verb": "combines-with",
+      "b": "single-responsibility",
+      "note_a": "One reason to change is the unit that cohesion groups around.",
+      "note_b": "Cohesion is the other half: keep together what one actor changes together."
+    },
+    {
+      "a": "open-closed",
+      "verb": "combines-with",
+      "b": "yagni",
+      "note_a": "A seam for an unneeded variant is the speculative generality this principle can produce.",
+      "note_b": "Close an axis only once it has varied; YAGNI is the brake on speculative seams."
+    },
+    {
+      "a": "open-closed",
+      "verb": "combines-with",
+      "b": "rule-of-three",
+      "note_a": "The seam is what you extract once the repeats prove the axis.",
+      "note_b": "Wait for the second or third real variant before laying the seam."
     }
   ],
   "group_order": {

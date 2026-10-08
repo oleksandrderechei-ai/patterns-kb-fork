@@ -247,6 +247,7 @@ res.status(result.status).json(result.body);
 - [Aggregator](./aggregator.md) — An aggregator that tallies messages double counts a redelivery unless its input is deduplicated.
 - [Fan-Out](./fan-out.md) — Fan-out multiplies redelivery, one branch per consumer.
 - [Polling Consumer](./polling-consumer.md) — Pull consumers redeliver after a timeout, so this is the property they need.
+- [Fail Fast](../../principles/fail-fast.md) — Idempotent work makes fail-then-retry safe.
 
 **Enables**
 
