@@ -95,9 +95,9 @@ POST /alerts/rules              # written rarely, evaluated every minute
 
 **Write path.** Having every server POST straight into an ingestion service that writes straight to a database collapses at this volume, and simply adding ingestion instances only moves the flood downstream. So the fix works the edge and the middle: an **agent** on each host [batches](../patterns/concurrency/batching.md) and pre-aggregates points locally before shipping them, and a [message queue](../patterns/messaging/message-queue.md) (Kafka) sits between ingestion and storage. The queue decouples the two and does [load leveling](../patterns/distributed/resilience/load-leveling.md) — a burst is absorbed into the log so the store sees a steady, survivable rate instead of the raw spike.
 
-**Store and read.** The store is a purpose-built **time-series database**, one of the rare cases where a specialised engine is clearly right: its [LSM-tree](../patterns/distributed/coordination/lsm-tree.md) backbone turns the incoming firehose into sequential appends, exactly what a Postgres row-per-point layout can't sustain. In front of it, a separate **query service** translates the PromQL-style DSL (domain-specific language) into storage scans. Splitting the read path from the write path is deliberate [command-query separation](../patterns/architecture/cqrs.md): writes are constant and must never drop, reads are sporadic and expensive, so each scales and tunes independently — and a cache can be bolted onto the query side without touching ingestion.
+**Store and read.** The store is a purpose-built **time-series database**, a specialised engine fits here because its [LSM-tree](../patterns/distributed/coordination/lsm-tree.md) backbone turns the incoming firehose into sequential appends, exactly what a Postgres row-per-point layout can't sustain. In front of it, a separate **query service** translates the PromQL-style DSL (domain-specific language) into storage scans. Splitting the read path from the write path is deliberate [command-query separation](../patterns/architecture/cqrs.md): writes are constant and should rarely drop, and every drop is counted (`dropped_metrics`), reads are sporadic and expensive, so each scales and tunes independently — and a cache can be bolted onto the query side without touching ingestion.
 
-**Alert and notify.** Alerts are built on top of queries, not as a separate engine — the sub-minute budget allows it. Rules live in Postgres; an **alert evaluator** pulls them on a fixed interval and runs each as a scheduled query against the store (the Prometheus Alertmanager model — "alerts are just scheduled queries"). On breach it emits an event to a **notification service**, which is what stands between a breach and a human: it tracks each alert as firing or resolved and pages only on state transitions, and it [aggregates](../patterns/messaging/aggregator.md) breaches arriving in a short window by label so a hundred servers tripping one threshold become one page, not a hundred.
+**Alert and notify.** Alerts are built on top of queries, not as a separate engine — the sub-minute budget allows it. Rules live in Postgres; an **alert evaluator** pulls them on a fixed interval and runs each as a scheduled query against the store (as Prometheus rule evaluation does: rules run as scheduled queries; the Alertmanager role is the notification service's grouping and dedup). On breach it emits an event to a **notification service**, which is what stands between a breach and a human: it tracks each alert as firing or resolved and pages only on state transitions, and it [aggregates](../patterns/messaging/aggregator.md) breaches arriving in a short window by label so a hundred servers tripping one threshold become one page, not a hundred.
 
 ```mermaid caption="The write path (agent → queue → time-series store) is a steady firehose; the read path forks off it, and alerting rides the same store the dashboards query."
 flowchart TB
@@ -123,18 +123,16 @@ flowchart TB
 ## Deep dives
 <!--meta block=deepdives-->
 
-### 1 · Sub-second dashboards over weeks of data
+### 1 · Fast dashboards over weeks of data
 
 "CPU for every production pod over the last 30 days" can touch billions of points; scanning full-resolution data on each request is hopeless. Two instincts apply — pre-compute, and cache.
 
-- **Pre-computed rollups.** Maintain the metric as a [materialized view](../patterns/distributed/coordination/materialized-view.md) at several granularities — 1-minute, 1-hour, 1-day buckets. A month-long chart reads a few thousand daily buckets instead of billions of raw samples, and the query planner picks the coarsest resolution the requested `step` allows.
+- **Pre-computed rollups.** Maintain the metric as a [materialized view](../patterns/distributed/coordination/materialized-view.md) at several granularities — 1-minute, 1-hour, 1-day buckets. A month-long chart reads about 30 daily buckets per series instead of 259,200 raw points at a 10-second interval, and the query planner picks the coarsest resolution the requested `step` allows. Roll up histogram buckets or mergeable sketches, not precomputed percentiles, so p99 over a coarse bucket stays correct.
 - **Cache plus query splitting.** Put a [cache-aside](../patterns/caching/cache-aside.md) layer in front of the query service and split each request along the time axis, so overlapping and repeated windows (everyone reloads the same "last 6 hours" panel) are served from cache and only the uncached tail hits storage. Rollups shrink the work; the cache removes the repeated work entirely.
 
 ### 2 · Driving alert latency below a minute
 
-Polling every minute already meets the requirement for most rules, but a breach one second after a cycle isn't seen for ~59 seconds, and a few critical services want faster. Increasing the poll frequency is an incremental patch — it never removes the round trip. The real move is **stream processing**: evaluate the condition directly on the Kafka stream (kafka → stream → alert) instead of round-tripping through the database (kafka → db → alert), reacting to data in flight. It's genuine added complexity, so keep it a minority path — most alerts stay on the cheap polling loop, and only the few that need seconds go real-time. Evaluating a daily-grained metric in real time is pure overkill.
-
-Most alerts stay on the polling loop, and only the few that need seconds take the stream path.
+Polling every minute meets the requirement for most rules only while poll interval plus ingest lag plus query time stays under 60 seconds; a breach one second after a cycle waits ~59 seconds before the next look, and a few critical services want faster. Increasing the poll frequency is an incremental patch — it never removes the round trip. The real move is **stream processing**: evaluate the condition directly on the Kafka stream (kafka → stream → alert) instead of round-tripping through the database (kafka → db → alert), reacting to data in flight. It adds complexity, so keep it a minority path — most alerts stay on the cheap polling loop, and only the few that need seconds go real-time. Evaluating a daily-grained metric in real time is overkill.
 
 ```mermaid caption="Why does evaluating alerts on the stream beat polling the database?"
 flowchart LR
@@ -184,7 +182,7 @@ flowchart TB
 <!--meta polarity=pro-->
 
 - Agent batching plus a buffering queue absorb 5M-point/second bursts, so the store only ever sees a steady, survivable write rate.
-- Read and write paths scale independently — a query storm during an incident can't stall ingestion, and a cache slots onto the read side alone.
+- Read and write paths scale independently — a query storm during an incident can't stall ingestion, though alert queries share the read store with dashboards, and a cache slots onto the read side alone.
 - Alerts are just scheduled queries over the same store the dashboards use — one mental model, easy to debug — with grouping and dedup keeping a big incident to one page.
 
 ### What it gives up
@@ -192,7 +190,8 @@ flowchart TB
 
 - Buffering is double-edged: a multi-minute outage leaves a backlog that only drains if you run with spare headroom — for monitoring it's often better to drop data than fall permanently behind.
 - Cardinality caps silently drop real data when mis-tuned; per-metric policies assume you actually understand each metric's usage.
-- Dashboards are only eventually consistent and default alerting is near-minute; true sub-second detection needs a second, more complex path that judges each rule on the data in flight.
+- Default alerting is near-minute; true sub-second detection needs a second, more complex path that judges each rule on the data in flight.
+- Dashboards are only eventually consistent, so a panel can lag the newest points.
 
 ## What's expected at each level
 <!--meta block=levels-->
@@ -208,6 +207,10 @@ flowchart TB
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
 
+**Exposed to**
+
+- [Metastable Failure](../hazards/metastable-failure.md) — A queue backlog after an outage keeps ingestion behind unless spare headroom or dropping is policy.
+
 **Demonstrates**
 
 - [Message Queue](../patterns/messaging/message-queue.md) — Kafka sits between the ingestion service and the store, decoupling them so a spike is buffered rather than dropped
@@ -219,5 +222,6 @@ flowchart TB
 - [Cache-Aside](../patterns/caching/cache-aside.md) — a cache in front of the query service serves repeated dashboard windows without re-scanning storage
 - [Aggregator](../patterns/messaging/aggregator.md) — the notification service collects breaches arriving in a short window and groups them by label into a single page
 - [Bloom Filter](../patterns/distributed/coordination/bloom-filter.md) — a local Bloom filter fronts the Redis series tracker so only possibly-new series pay for a round trip
+- [Backpressure](../patterns/concurrency/backpressure.md) — A multi-minute backlog forces a drop-versus-catch-up choice; the queue only drains with spare headroom, so monitoring prefers dropping.
 
 <!-- relationships:end -->

@@ -14608,6 +14608,20 @@
       "b": "thundering-herd",
       "note_a": "When a per-domain rate-limit window resets, every waiting fetcher can retry in lockstep, so per-fetcher jitter spreads the retries.",
       "note_b": "A crawler's per-domain rate limit releases all waiting fetchers at once when its window resets."
+    },
+    {
+      "a": "metrics-monitoring",
+      "verb": "demonstrates",
+      "b": "backpressure",
+      "note_a": "A multi-minute backlog forces a drop-versus-catch-up choice; the queue only drains with spare headroom, so monitoring prefers dropping.",
+      "note_b": "A metrics pipeline picks dropping over catching up when a backlog will not drain."
+    },
+    {
+      "a": "metrics-monitoring",
+      "verb": "exposed-to",
+      "b": "metastable-failure",
+      "note_a": "A queue backlog after an outage keeps ingestion behind unless spare headroom or dropping is policy.",
+      "note_b": "A metrics pipeline whose backlog never drains stays behind long after the outage that caused it."
     }
   ],
   "group_order": {

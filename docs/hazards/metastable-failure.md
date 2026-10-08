@@ -100,5 +100,6 @@ Finally, test the recovery, not just the failure. Run a load test that applies a
 - [Cache-Aside](../patterns/caching/cache-aside.md) — A cold cache after a flush sends every read to the database, which can then never refill it
 - [Message Queue](../patterns/messaging/message-queue.md) — A backlog of requests whose callers gave up keeps the consumers busy with worthless work
 - [Failover](../patterns/distributed/coordination/failover.md) — The standby meets the full load cold, and the next failover re-triggers the failure
+- [Metrics & Monitoring](../designs/metrics-monitoring.md) — A metrics pipeline whose backlog never drains stays behind long after the outage that caused it.
 
 <!-- relationships:end -->
