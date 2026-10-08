@@ -219,6 +219,7 @@ async function runTask(task: Task): Promise<void> {
 - [Polling Consumer](./polling-consumer.md) — A polling consumer is where the redelivery loop starts; this channel catches the message at the attempt cap.
 - [Content Enricher](./content-enricher.md) — Messages an enricher cannot complete arrive here
 - [Routing Slip](./routing-slip.md) — A slip route's failed step is a source of dead letters
+- [Queue-Based Load Leveling](../distributed/resilience/load-leveling.md) — A leveling queue's redelivery loop ends here once a message reaches its attempt cap.
 
 **Enables**
 

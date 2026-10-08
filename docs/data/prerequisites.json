@@ -521,7 +521,7 @@
       "definition": "A queue absorbs bursts so consumers work at their own pace",
       "route": "/patterns/distributed/resilience/load-leveling.html",
       "requires": ["idempotency"],
-      "related": ["backpressure", "autoscaling", "competing-consumers", "batching", "rate-limiter", "load-shedding", "async-request-reply", "web-queue-worker", "priority-queue", "polling-consumer"]
+      "related": ["backpressure", "autoscaling", "competing-consumers", "batching", "rate-limiter", "load-shedding", "async-request-reply", "web-queue-worker", "priority-queue", "polling-consumer", "dead-letter-channel"]
     },
     {
       "id": "rate-limiter",
@@ -1505,7 +1505,7 @@
       "definition": "Undeliverable messages land somewhere visible, not lost",
       "route": "/patterns/messaging/dead-letter-channel.html",
       "requires": ["message-queue"],
-      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter", "recipient-list", "resequencer", "polling-consumer", "content-enricher", "routing-slip"]
+      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter", "recipient-list", "resequencer", "polling-consumer", "content-enricher", "routing-slip", "load-leveling"]
     },
     {
       "id": "correlation-identifier",

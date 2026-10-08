@@ -14734,6 +14734,13 @@
       "b": "timeout-deadline",
       "note_a": "Deadline-aware shedding drops a request whose remaining budget is below the queue wait, which needs deadlines propagated end to end.",
       "note_b": "A propagated deadline lets a server refuse work the caller has already abandoned."
+    },
+    {
+      "a": "load-leveling",
+      "verb": "combines-with",
+      "b": "dead-letter-channel",
+      "note_a": "Parks a message that keeps failing so it cannot block the queue behind it.",
+      "note_b": "A leveling queue's redelivery loop ends here once a message reaches its attempt cap."
     }
   ],
   "group_order": {
