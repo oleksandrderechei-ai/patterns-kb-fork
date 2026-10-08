@@ -14503,6 +14503,27 @@
       "b": "clock-skew",
       "note_a": "Order is by server-receipt time, so skew between chat servers lets a message sit above a later one.",
       "note_b": "A chat service stamps each message with server receipt time, so skew between its servers can show a message above a later one."
+    },
+    {
+      "a": "gopuff",
+      "verb": "exposed-to",
+      "b": "cache-stampede",
+      "note_a": "Entries written during a ramp share a TTL, so hot cells expire together and every miss fans out to the replicas.",
+      "note_b": "A design whose ramp-written availability entries share a 60 s TTL and expire together."
+    },
+    {
+      "a": "gopuff",
+      "verb": "exposed-to",
+      "b": "connection-pool-exhaustion",
+      "note_a": "Each new service instance opens its own pool against one writable leader, so a surge exhausts connections before CPU.",
+      "note_b": "A design where surge-scaled service instances all open pools against one regional leader."
+    },
+    {
+      "a": "gopuff",
+      "verb": "exposed-to",
+      "b": "stale-cache",
+      "note_a": "Cached, replica-served counts run up to a minute behind, so checkout is the authority and answers 409.",
+      "note_b": "A design whose cached listing can show an item for up to its 60 s TTL after the last unit is claimed."
     }
   ],
   "group_order": {

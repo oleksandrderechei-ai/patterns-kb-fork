@@ -84,5 +84,6 @@ Three moves defuse it. **[Request coalescing](../patterns/distributed/resilience
 - [Cache-Aside](../patterns/caching/cache-aside.md) — A miss makes each caller rebuild the value, so concurrent misses on a hot key all hit the source
 - [Bitly](../designs/bitly.md) — A design where one expiry puts every edge miss on a single row.
 - [Google News](../designs/google-news.md) — A design whose TTL baseline expires a hot region's feed at once; CDC precompute removes the expiry.
+- [Gopuff](../designs/gopuff.md) — A design whose ramp-written availability entries share a 60 s TTL and expire together.
 
 <!-- relationships:end -->
