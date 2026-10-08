@@ -422,7 +422,7 @@
     {
       "id": "search-oracle",
       "name": "Search oracle answers",
-      "protects": "Every query in docs/data/search-oracle.json is answered as the case says, by the search box's ranking over the page tree and by kb.mjs find alike: the first hit is one of the wished ids, the first n hits are all of the wished kind or band, and a page named in `within` is at or above its rank.",
+      "protects": "Every query in docs/data/search-oracle.json is answered as the case says, by the search box's ranking over the page tree and by kb.mjs find alike (a case marked `via: \"cli\"` by find alone): the first hit is one of the wished ids, the first n hits are all of the wished kind or band, a page named in `within` is at or above its rank, and at least `min` of the ids a `covers` names are among its first n hits.",
       "command": "make gate G=check-search-oracle",
       "wired": "node_modules/.bin/tsx tools/src/gates/check-search-oracle.ts",
       "local_command": "node_modules/.bin/tsx tools/src/gates/check-search-oracle.ts",
@@ -443,7 +443,7 @@
       "requires": [
         "node"
       ],
-      "fix": "Fix the ranking in tools/src/lib/search-score.ts or add the synonym the query needs through the kb-vocab skill, then rerun the gate; a case that names a page that is gone is edited or dropped in docs/data/search-oracle.json.",
+      "fix": "Fix the ranking in tools/src/lib/search-score.ts or add the synonym the query needs through the kb-vocab skill, then rerun the gate; a case that names a page that is gone is edited or dropped in docs/data/search-oracle.json. Never lower a `covers` case's `min`, or widen its `n`, to land a change.",
       "runbook": "docs/reference/triage.md#search-oracle-answers"
     },
     {

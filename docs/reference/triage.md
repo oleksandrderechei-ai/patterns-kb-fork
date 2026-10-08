@@ -645,7 +645,9 @@ tell: that judgement is the kb-vocab skill's.
 `docs/data/search-oracle.json` lists queries a person typed and what the first hits must be. The
 gate runs each one through the search box's ranking (over the page tree) and through `kb.mjs
 find`; a finding ends in `(site)` or `(cli)` for the path that missed, and both paths usually
-miss together.
+miss together. A case marked `"via": "cli"` is held to `find` alone, because the search box reads
+a page's declared facts only and is not expected to answer a long description: its findings end
+in `(cli)`.
 
 - **`<query> → got <id>, wanted <id> or <id> (site|cli)`** — the first hit is not one of the
   wished pages. Read the two rankings with `node scripts/kb.mjs find "<query>"`. If the query
@@ -658,9 +660,24 @@ miss together.
   fell below its rank. The same reading as the first bullet.
 - **`<query> → got <k> hits (…), wanted <n> of kind <kind>`** — fewer hits than the case asks
   to look at.
+- **`<query> → got <k> of <count> in the first <n> (<hits>), wanted <min>; missing <ids> (site|cli)`**
+  — a `covers` case: fewer of its pages are among the first `n` hits than the case asks for.
+  The query describes a problem, and the pages that answer it rank lower or not at all. Fix it
+  in this order. First, read the query as a person would type it: a symptom and a constraint,
+  with no pattern, product or page name in it. A query that names a page finds it for the wrong
+  reason, and one nobody would type fails for the right one, so rewrite it. Second, read the
+  ranking with `node scripts/kb.mjs find "<query>" --n 20` and add the synonym the missing page
+  needs to `docs/data/search-synonyms.json` through the kb-vocab skill. Last, change the ranking
+  in `tools/src/lib/search-score.ts`: it moves every other query, so rerun this gate and
+  `make tools-test T=relevance`. Never lower `min`, drop an id or widen `n` to land a change
+  without the owner's say. The case records what the ranking reaches, and a lower number hides
+  a loss.
 - **`case <n> "<query>": `top` names "<id>", which is no page`** — an id in the case is no
-  page of the tree. The page was renamed or retired: edit the case.
-- **`case <n>: unknown key`**, **`expects nothing`**, **`n means something only beside kind or band`** — the case's shape; the
+  page of the tree. The page was renamed or retired: edit the case. The same finding names
+  `within`, and `covers.ids` for a case's `covers`.
+- **`case <n>: unknown key`**, **`expects nothing`**, **`n means something only beside kind or band`**,
+  **`covers.min is <m>, more than its <k> ids`** (or more than the `n` hits it looks at),
+  **`covers.ids names "<id>" twice`**, **`via is not one of cli`** — the case's shape; the
   note in `docs/data/search-oracle.json` lists the forms.
 - **`docs/data/search-oracle.json: is missing`** — restore it from git.
 
