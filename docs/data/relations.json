@@ -14545,6 +14545,13 @@
       "b": "deadlock",
       "note_a": "two opposite-direction transfers each hold one warehouse lock and wait on the other unless locks are taken in sorted id order",
       "note_b": "the inventory transfer avoids it with sorted-id lock order and reentrant locks"
+    },
+    {
+      "a": "bookmyshow",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "Per-seat locking needs sorted lock acquisition, or two multi-seat bookings can wait on each other.",
+      "note_b": "A seat-booking design where finer-grained per-seat locks bring the risk."
     }
   ],
   "group_order": {
