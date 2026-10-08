@@ -78,7 +78,6 @@ Stop new lava from forming. Give every module an owner, delete a feature flag in
 - [Golden Master](../patterns/testing/golden-master.md) — Fear of removal fades when a recorded baseline shows nothing changed
 - [You Aren't Gonna Need It (YAGNI)](../principles/yagni.md) — Code written for an unproven need is what turns into lava when the need never comes
 - [Record Architecture Decisions](../principles/architecture-documentation.md) — Fear of removal fades when a record says why the code exists.
-- [Record Architecture Decisions](../principles/architecture-documentation.md) — A recorded reason is what lets a team delete unexplained code with confidence
 
 **Threatens**
 

@@ -14407,13 +14407,6 @@
       "note_b": "The data-loss target decides sync or async replication, so ask it before choosing"
     },
     {
-      "a": "architecture-documentation",
-      "verb": "prevents-hazard",
-      "b": "lava-flow",
-      "note_a": "A dated record of why code stayed lets a team tell a live constraint from a dead one it fears to touch",
-      "note_b": "A recorded reason is what lets a team delete unexplained code with confidence"
-    },
-    {
       "a": "api-versioning",
       "verb": "combines-with",
       "b": "design-for-evolution",
@@ -14447,13 +14440,6 @@
       "b": "service-boundaries",
       "note_a": "Team lines are an input when you draw a service boundary",
       "note_b": "Conway's law says team structure shapes the boundaries you draw"
-    },
-    {
-      "a": "context-map",
-      "verb": "combines-with",
-      "b": "conways-law",
-      "note_a": "Conway's law explains why the map's team and context lines drift apart",
-      "note_b": "A context map shows where team lines and context lines disagree"
     },
     {
       "a": "authentication-enforcer",

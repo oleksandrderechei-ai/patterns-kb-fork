@@ -76,7 +76,6 @@ Read the law as a prediction to test, not a rule to obey. When the system and th
 - [Context Map](../patterns/ddd/context-map.md) — A context map draws the team boundaries that Conway's law says the structure will follow.
 - [Micro-Frontends](../patterns/frontend/micro-frontends.md) — A team that owns a whole slice, built and shipped alone, is the same line drawn in the UI.
 - [Service Boundaries](../themes/service-boundaries.md) — Team lines are an input when you draw a service boundary
-- [Context Map](../patterns/ddd/context-map.md) — A context map shows where team lines and context lines disagree
 
 **Often confused with**
 

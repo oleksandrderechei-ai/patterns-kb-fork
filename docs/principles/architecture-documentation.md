@@ -79,6 +79,5 @@ The fourth failure is records nobody can find. Keep one index, and link each rec
 
 - [Boat Anchor](../hazards/boat-anchor.md) — A dated record of why something was kept makes it possible to tell a live constraint from a dead one
 - [Lava Flow](../hazards/lava-flow.md) — A dated record of why code was kept lets a reader tell live code from dead.
-- [Lava Flow](../hazards/lava-flow.md) — A dated record of why code stayed lets a team tell a live constraint from a dead one it fears to touch
 
 <!-- relationships:end -->
