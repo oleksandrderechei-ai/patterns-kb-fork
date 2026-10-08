@@ -23,7 +23,7 @@ Updating a B-tree in place means seeking to scattered pages, which makes a write
 
 An LSM tree is a storage engine that turns many small random writes into a few big sequential ones. Each write is logged for safety, then put in a sorted in-memory table. When that table fills, it is written to disk in one pass as a sorted, never-changed file, and deletes are stored as markers that hide the old value. Choose it over a B-tree, which updates pages in place and finds any key in a few page reads, when writes far outnumber reads and slower, more variable reads are acceptable. Cassandra, RocksDB and LevelDB use it.
 
-- **Reads check many files.** A key may sit in several files. Keep a \[Bloom filter\](bloom-filter.md) and an index per file to skip most.
+- **Reads check many files.** A key may sit in several files. Keep a [Bloom filter](bloom-filter.md) and an index per file to skip most.
 - **Compaction rewrites data.** Background merging rewrites bytes several times and needs free disk. Leave headroom, and watch file count so reads do not slow.
 - **Resurrected deletes.** Markers dropped before reaching every copy bring deleted data back. Keep them longer than your repair interval.
 

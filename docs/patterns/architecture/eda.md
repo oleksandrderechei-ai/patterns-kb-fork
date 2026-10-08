@@ -23,7 +23,7 @@ A service that calls its collaborators directly must know their addresses and wa
 
 A producer announces a fact and carries on; consumers react on their own time. Choose it over direct calls at the boundaries between services owned by different teams that react to the same facts: you add a reaction without editing the producer, and a slow or dead consumer cannot stall it. Inside one team's synchronous flow it mostly trades a readable call stack for distributed debugging, because the decoupling buys little when one team owns both sides.
 
-- **Write and publish can split.** Write the event in the same transaction and publish from there, as in an \[outbox\](../distributed/coordination/outbox.md).
+- **Write and publish can split.** Write the event in the same transaction and publish from there, as in an [outbox](../distributed/coordination/outbox.md).
 - **Redelivery.** Record each event ID in the same commit as the change; for an outside call like email, pass it as the idempotency key.
 - **No call stack.** Stamp one correlation ID on every event and trace on it.
 - **Open payload.** Every subscriber can read it, so decide what goes in as a disclosure choice.

@@ -25,7 +25,7 @@ A web crawler splits the work into two stages joined by [queues](../patterns/mes
 
 - **Name lookups.** Across millions of domains, domain-name lookups, not bandwidth, become the bottleneck. Cache lookups in each fetcher and use several resolvers.
 - **Crawler traps.** Endless link chains never finish. Cap depth and normalise URLs; a content hash skips only exact duplicates, not pages that differ per visit.
-- **Skipped pages.** A probabilistic seen-set (\[Bloom filter\](../patterns/distributed/coordination/bloom-filter.md)) saves memory but occasionally skips a page you never fetched. Size it for a low error rate.
+- **Skipped pages.** A probabilistic seen-set ([Bloom filter](../patterns/distributed/coordination/bloom-filter.md)) saves memory but occasionally skips a page you never fetched. Size it for a low error rate.
 
 **Example.** The crawl needs 10 billion pages in 5 days, 432,000 seconds, about 23,000 pages a second. A 200 Gbps machine could pull 200 / 8 / 2 MB = 12,500 pages a second; at 30% real utilisation that is 3,750. One machine needs 10 billion / 3,750, about 31 days; 8 machines need about 3.9 days. A fetcher that dies mid-download never deletes its message, so it reappears for another worker. After 5 failed receives it moves to a dead-letter queue and the site is marked offline.
 

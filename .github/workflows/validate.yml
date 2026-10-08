@@ -250,6 +250,10 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: node_modules/.bin/tsx tools/src/gates/check-site-portable.ts
 
+      - name: Site and markdown agree
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: node_modules/.bin/tsx tools/src/gates/check-site-parity.ts
+
       - name: Site noise and data layer
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: node_modules/.bin/tsx tools/src/gates/check-site-absence.ts

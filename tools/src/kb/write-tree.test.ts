@@ -6,8 +6,8 @@
  *                `get --json` dump, is byte for byte the block that was there;
  *                every explain block rewritten from its own dump keeps its
  *                words (and its bytes, where it carries no inline markup the
- *                plain writer cannot), and one KB-014 rejects is refused and
- *                left as it was
+ *                plain writer cannot; a link in a cost note is one it can),
+ *                and one KB-014 rejects is refused and left as it was
  *   the           every `kb.mjs` command the instructions type — the skills,
  *   instructions  agents and rules under .claude/, every CLAUDE.md, the README
  *                 and the concept and reference pages — parses under the
@@ -93,11 +93,12 @@ describe('the round trip through the block writers', () => {
       let same = 0;
       let marked = 0;
       let refused = 0;
+      let linked = 0;
       for (const p of corpus.pages) {
         const before = sb.read(p.source);
         const block = blockNamed(parsePage(before), 'explain');
         if (block === undefined) continue;
-        const dump = ((JSON.parse((await kb(['get', p.slug, '--json'], corpus)).out) as { items: { explain: { text: string; example: string; exampleLang?: string; exampleCaption?: string } } }).items.explain);
+        const dump = ((JSON.parse((await kb(['get', p.slug, '--json'], corpus)).out) as { items: { explain: { text: string; costs?: { lead: string; note: string }[]; example: string; exampleLang?: string; exampleCaption?: string } } }).items.explain);
         const argv = ['explain', p.slug, '--text', dump.text, '--example', dump.example];
         if (dump.exampleLang !== undefined) argv.push('--example-lang', dump.exampleLang, '--example-caption', dump.exampleCaption ?? '');
         const r = await kb(argv);
@@ -117,11 +118,19 @@ describe('the round trip through the block writers', () => {
         else {
           expect(after, p.slug).toBe(before);
           same += 1;
+          // A link in a cost note is a link on the page: the list kept from the page above, and handed back whole here, give the page again.
+          if (dump.costs?.some((c) => c.note.includes(']('))) {
+            const whole = await kb([...argv, '--costs', JSON.stringify(dump.costs)]);
+            expect(whole.err, p.slug).toBe('');
+            expect(sb.read(p.source), p.slug).toBe(before);
+            linked += 1;
+          }
         }
         sb.write(p.source, before);
       }
       expect(same + marked + refused).toBeGreaterThan(350);
       expect(marked).toBeLessThan(20);
+      expect(linked).toBeGreaterThan(0);
     },
     REAL_TREE_TIMEOUT,
   );

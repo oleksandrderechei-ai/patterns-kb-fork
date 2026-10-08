@@ -817,9 +817,27 @@
       "runbook": "docs/reference/triage.md#site-portability"
     },
     {
+      "id": "site-parity",
+      "name": "Site and markdown agree",
+      "protects": "A page of the knowledge base says the same thing as HTML, as its record and as its markdown, and the files that list pages say what the records say. Over every page index.json lists with a record: the article block's route, area, tags, kind, band and group; the blocks in order; the words of the intro; every id on both sides and no other, each on the same kind of element, in the same block and group, with the same words, in the same order; the relations the list items state; the prerequisite card. The markdown, read as kb.mjs reads it, gives the same ids, order and words, and is the file the record's source.sha256 names. Each index.json entry says what the record says, and graph.json agrees with the records: every edge is a row of both pages' records, and the nodes, tours and mentions are what the records list. The portability gate holds each record to the repo, so a finding means two readers saw the page differently, never a stale record.",
+      "command": "node_modules/.bin/tsx tools/src/gates/check-site-parity.ts",
+      "wired": "node_modules/.bin/tsx tools/src/gates/check-site-parity.ts",
+      "local_command": "node_modules/.bin/tsx tools/src/gates/check-site-parity.ts",
+      "local_target": "site-build",
+      "positional": false,
+      "fixable": false,
+      "scans": ["site/**", "docs/**", "tools/src/site/**", "tools/src/lib/**", "tools/src/kb/**", "tools/src/contract/**", "tools/src/gates/check-site-parity.ts"],
+      "runs": ["local", "ci"],
+      "ci_job": "site",
+      "ci_step": "Site and markdown agree",
+      "requires": ["node"],
+      "fix": "make site-build first. A finding that stays means two readers of a page see it differently: the record builder (tools/src/lib/kb-record.ts), the renderer and the post-build pass (tools/src/lib/site-markdown.ts, tools/src/site/site-portable.ts), or the page under docs/ itself. The triage page says how to tell which.",
+      "runbook": "docs/reference/triage.md#site-and-markdown-agree"
+    },
+    {
       "id": "site-absence",
       "name": "Site noise and data layer",
-      "protects": "Every built page carries its knowledge and nothing a machine reader has to wade through (spec kb.noise.absence-gate, with kb.pagedata.two-layers): each page is at the formatter's fixed point, loads one classic kb.js and no inline module, carries no style element, presentational style or inline handler, and keeps every landmark outside the knowledge region skip-marked; no script file ships that nothing loads; a fact sits only on a class-free element carrying nothing but data-* and an id, the knowledge region is one article block with the four page facts and no skip marker, and every title sits in a title block. Every other script, stylesheet and noscript style carries a reasoned entry in its allowlists; anything unnamed fails, and so does an entry that matches nothing. One page, 404.html, is held to its own rule in place of the bundle, stylesheet and style-element ones: it loads no file of the site and carries exactly one small style of its own.",
+      "protects": "Every built page carries its knowledge and nothing a machine reader has to wade through (spec kb.noise.absence-gate, with kb.pagedata.two-layers): each page is at the formatter's fixed point, loads one classic kb.js and no inline module, carries no style element, presentational style or inline handler, and keeps every landmark outside the knowledge region skip-marked; no script file ships that nothing loads; a fact sits only on a class-free element carrying nothing but data-* and an id, the knowledge region is one article block with the three page facts, followed on a page of the knowledge base by its kind, band and group (all three or none of them), and no skip marker, and every title sits in a title block. Every other script, stylesheet and noscript style carries a reasoned entry in its allowlists; anything unnamed fails, and so does an entry that matches nothing. One page, 404.html, is held to its own rule in place of the bundle, stylesheet and style-element ones: it loads no file of the site and carries exactly one small style of its own.",
       "command": "node_modules/.bin/tsx tools/src/gates/check-site-absence.ts",
       "wired": "node_modules/.bin/tsx tools/src/gates/check-site-absence.ts",
       "local_command": "node_modules/.bin/tsx tools/src/gates/check-site-absence.ts",

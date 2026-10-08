@@ -39,7 +39,7 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
       { flag: '--block <b>', desc: 'just that block, about 180 tokens instead of ~4k' },
       { flag: '--diagrams', desc: 'keep the mermaid source, omitted by default as noise' },
     ],
-    note: 'On the `wild` and `production` blocks, `--json` also dumps `items` in the writers\' own shape — edit one entry and hand the lot back, rather than re-typing the neighbours from rendered prose and dropping their inline `<code>`. On `explain`, `--json` dumps `{text, example}` (plus `exampleLang` and `exampleCaption` when the example is a sketch).',
+    note: 'On the `wild` and `production` blocks, `--json` also dumps `items` in the writers\' own shape — edit one entry and hand the lot back, rather than re-typing the neighbours from rendered prose and dropping their inline `<code>`. On `explain`, `--json` dumps `{text, example}`, plus `costs` when the block has a costs list and `exampleLang` and `exampleCaption` when the example is a sketch; a link in the text or a cost note comes back as `[term](path.md)`.',
   },
   {
     name: 'brief', args: '<query…>', group: 'read',
@@ -123,7 +123,7 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
     desc: 'Write the explain block: one paragraph of expert-grade explanation in plain words, a costs list, then one short example.',
     flags: [
       { flag: '--text "…"', desc: 'the paragraph, 60 to 180 words, no bold label; write [term](path.md) to link a term on its first use' },
-      { flag: '--costs \'[{"lead":"…","note":"…"}]\'', desc: '2 to 4 bullets of at most 25 words each, a bold lead and a note; required on a pattern; left out it keeps the page\'s own list, [] drops it' },
+      { flag: '--costs \'[{"lead":"…","note":"…"}]\'', desc: '2 to 4 bullets of at most 25 words each, a bold lead and a note; a note may link a term as [term](path.md); required on a pattern; left out it keeps the page\'s own list, [] drops it' },
       { flag: '--example "…"', desc: 'the example paragraph, at most 120 words; the **Example.** label is added' },
       { flag: '--example-lang <lang>', desc: 'write the example as a fenced sketch in that language instead (at most 25 lines, newlines kept)' },
       { flag: '--example-caption "…"', desc: 'the question the sketch answers; required with --example-lang' },

@@ -4,7 +4,7 @@ name: pages
 # questions.
 #
 # It validates before it ships: `make site-build` runs the lint, the site's unit tests, the
-# build and the six site gates, and stops at the first failure, so a red build never deploys.
+# build and the seven site gates, and stops at the first failure, so a red build never deploys.
 # Whatever is uploaded is what was just built and checked, including on a manual dispatch.
 # SITE_URL is where the site will live; left unset, tools/src/site/site-output.ts's
 # PUBLIC_ROOT is used, and the post-build pass writes the canonical links, og:url and the

@@ -12,17 +12,27 @@
 // The files beside the page are linked as alternates: its markdown, and for a
 // page of the knowledge base its record. Root-absolute here like every link
 // the components write; the post-build pass makes them relative, and the link
-// gate then proves each file is there.
+// gate then proves each file is there. A page of the knowledge base also
+// states where it sits (kb:kind, kb:band, kb:group), read from the same row of
+// the structure file that gives it a record.
 import Default from '@astrojs/starlight/components/Head.astro';
-import { alternateLinks, alternatesOf, jsonLdText, metaTags, pageMeta } from '../../lib/page-meta';
+import {
+  alternateLinks,
+  alternatesOf,
+  jsonLdText,
+  metaTags,
+  pageMeta,
+  placeOfFile,
+} from '../../lib/page-meta';
 
 const { entry } = Astro.locals.starlightRoute;
 const meta = pageMeta(entry);
 const alternates = alternateLinks(alternatesOf(entry.filePath));
+const place = placeOfFile(entry.filePath);
 ---
 
 <Default><slot /></Default>
-{metaTags(meta).map(([name, content]) => <meta name={name} content={content} />)}
+{metaTags(meta, place).map(([name, content]) => <meta name={name} content={content} />)}
 {alternates.map(([type, href]) => <link rel="alternate" type={type} href={href} />)}
 <script is:inline type="application/ld+json" data-kb="page" set:html={jsonLdText(meta)} />
 {/*

@@ -651,22 +651,28 @@ describe('explain', () => {
     expect(got.blocks.explain).toContain('EXAMPLE\n\nOne line.\n\n```python\nx = 1\n```');
   });
 
-  it('writes the costs list from --costs, links a term from [label](path), and drops the list on []', async () => {
+  it('writes the costs list from --costs, links a term from [label](path) in the paragraph and in a note, and drops the list on []', async () => {
     const costs = JSON.stringify([
       { lead: 'Latency.', note: 'One more hop.' },
-      { lead: 'Upkeep.', note: 'Someone owns [the breaker](./breaker.md).' },
+      { lead: 'Upkeep.', note: 'Someone owns [the breaker](../distributed/resilience/breaker.md), and a [note] is no link.' },
     ]);
     const text = `A [breaker](../resilience/breaker.md) opens. ${explanation('It guards a call.')}`;
     await ok('explain', 'queue', '--text', text, '--costs', costs, '--example', 'One order.');
     expect(read(QUEUE)).toContain(`A [breaker](../resilience/breaker.md) opens. It guards a call.`);
-    // A link inside a bullet's note is plain text there: the writer links the paragraph only.
-    expect(read(QUEUE)).toContain('- **Upkeep.** Someone owns \\[the breaker\\](./breaker.md).');
-    const dumped = (await getJson('queue', '--block', 'explain')) as { items: { explain: { text: string; costs: unknown[] } } };
+    // A link in a bullet's note is a link, as in the paragraph; a bracket that is not a link stays text.
+    expect(read(QUEUE)).toContain('- **Upkeep.** Someone owns [the breaker](../distributed/resilience/breaker.md), and a \\[note\\] is no link.');
+    const dumped = (await getJson('queue', '--block', 'explain')) as { items: { explain: { text: string; costs: { lead: string; note: string }[] } } };
     expect(dumped.items.explain.text).toContain('A [breaker](../resilience/breaker.md) opens.');
-    expect(dumped.items.explain.costs).toHaveLength(2);
-    // The dump feeds the writer: rewriting it leaves the page byte for byte as it was.
+    expect(dumped.items.explain.costs).toEqual([
+      { lead: 'Latency.', note: 'One more hop.' },
+      { lead: 'Upkeep.', note: 'Someone owns [the breaker](../distributed/resilience/breaker.md), and a [note] is no link.' },
+    ]);
+    invariants();
+    // The dump feeds the writer: handed back whole, or with the page's own list kept, it leaves the page byte for byte as it was.
     const written = read(QUEUE);
     await ok('explain', 'queue', '--text', dumped.items.explain.text, '--example', 'One order.');
+    expect(read(QUEUE)).toBe(written);
+    await ok('explain', 'queue', '--text', dumped.items.explain.text, '--costs', JSON.stringify(dumped.items.explain.costs), '--example', 'One order.');
     expect(read(QUEUE)).toBe(written);
     // A design may leave the list out: --costs [] drops what it had, and no flag keeps what it has.
     await ok('explain', 'shortener', '--text', text, '--costs', costs, '--example', 'One order.');

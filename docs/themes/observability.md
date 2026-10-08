@@ -24,7 +24,7 @@ Observability means recording what a running system does, in a form you can quer
 
 - **Storage and money.** Every log line, metric label and trace costs. Sample traces and cap metric label combinations.
 - **Tail sampling holds memory.** Every unfinished trace sits in a buffer until it ends. Size the buffer from request rate times duration.
-- **Secrets leak into logs.** Redact fields before writing with a \[secure logger\](../patterns/security/secure-logger.md), and give each record type its own retention budget.
+- **Secrets leak into logs.** Redact fields before writing with a [secure logger](../patterns/security/secure-logger.md), and give each record type its own retention budget.
 
 **Example.** A service takes 500 requests a second and each trace is 5 KB. Keeping all traces writes 2.5 MB a second, about 216 GB a day. Keeping 1 in 100 up front writes about 2.2 GB a day, but a failing request has a 99% chance of being missing. Keeping only the 2% that are slow or failed, decided after the request ends, writes about 4.3 GB a day and always has the bad ones. The cost is memory: at 2 s per request, about 1,000 traces, 5 MB, sit in the buffer at any moment.
 

@@ -17,9 +17,14 @@
  *   * section facts: each `<!--meta k=v-->` under a heading becomes a class-free
  *     `<section data-k="v">` spanning that heading to the next of equal or
  *     higher rank, and no comment survives (spec kb.pagedata.blocks);
+ *   * the relationships block: each item of a page's `section[data-block=
+ *     relationships]` carries the verb and the target page of the relation of
+ *     the page's record that it shows, as `data-verb` and `data-to`, so a
+ *     reader of the markup alone knows which edge each link is;
  *   * the article block: the knowledge region's only child, carrying the
- *     page's route, area and tags — read from the `kb:*` meta Head.astro
- *     emitted — and nothing else; the body carries none of them;
+ *     page's route, area and tags — and, on a page of the knowledge base, its
+ *     kind, band and group — read from the `kb:*` meta Head.astro emitted, and
+ *     nothing else; the body carries none of them;
  *   * chrome shielded: Starlight's skip link, header, sidebar, rails and footer
  *     get the skip marker `data-kb-skip`;
  *   * the next-steps list, when every item is one link and its reason, becomes
@@ -47,7 +52,10 @@
  * It reads every page and checks its `kb:area` and `kb:owner` meta, builds every
  * record and checks that every page of the knowledge base has built HTML,
  * before it writes anything (offline-C4): a half-transformed site is worse than
- * none. A second run changes no byte.
+ * none. A relationships block that shows other relations than its page's
+ * record holds stops the pass the same way: every page is transformed in
+ * memory, and none is written while one of them is refused. A second run
+ * changes no byte.
  *
  * No dependencies: the edits are attribute-level and a scan does them honestly.
  * The site tree carries HTML parsers as Astro's dependencies, and reaching into
@@ -75,14 +83,31 @@ import {
   type Span,
 } from '../lib/built-page.js';
 import { CONTRACTS, SCHEMA_BASES, schemaUrl } from '../contract/contract.js';
+import type { PageRecord, RelationRow } from '../kb/record.js';
 import { main, type GateContext, type GateSpec } from '../lib/gate.js';
 import { fromPageTree, placedPages, type Structure } from '../lib/site-routes.js';
 import { publicRoot, readStructure, toPublic } from './site-output.js';
 import { NOT_FOUND_ROUTE, standaloneNotFound } from './site-not-found.js';
-import { indexFieldsOf, readContract, writeContract } from './site-records.js';
+import { indexFieldsOf, readContract, writeContract, type KbPage } from './site-records.js';
 
 /** The page facts every built page must carry in its head (offline-C4). */
 export const REQUIRED_META = ['kb:area', 'kb:owner'];
+
+/**
+ * The three facts of where a page of the knowledge base sits: each is stated
+ * in the head by its `<meta>` and carried by the article block as its
+ * attribute, in this order, after the block's three page facts. A page states
+ * all three or none, since a block that held part of a place would read as a
+ * page of the knowledge base that lost the rest.
+ */
+export const PLACE_FACTS = [
+  { key: 'kind', meta: 'kb:kind', attr: 'data-kind' },
+  { key: 'band', meta: 'kb:band', attr: 'data-band' },
+  { key: 'group', meta: 'kb:group', attr: 'data-group' },
+] as const;
+
+/** Where a page of the knowledge base sits, by the keys of `PLACE_FACTS`. */
+export type PagePlace = Readonly<Record<(typeof PLACE_FACTS)[number]['key'], string>>;
 
 // ---------------------------------------------------------------------------
 // small helpers
@@ -395,26 +420,31 @@ export function sectionMeta(html: string, route: string, errors: PageError[]): s
 // ---------------------------------------------------------------------------
 // 3b. the article data block: the page's facts on the knowledge they govern
 // ---------------------------------------------------------------------------
+/** What the article block states of its page: the facts of every page, and the place of a page of the knowledge base. */
+export interface ArticleFacts {
+  readonly area: string;
+  readonly tags: string;
+  /** Null on a page that is not a page of the knowledge base: the block then holds its three page facts alone. */
+  readonly place: PagePlace | null;
+}
+
 /**
  * Wraps the rendered markdown body in `<article data-page …
- * data-area … data-tags …>` — the page's outermost data block. The wrapper
- * carries only bare data-* attributes and no class, which is how a machine
- * reader tells a data block from decoration (.claude/rules/page-schema.md):
- * the classed div around it is paint, the article is facts. The values come
- * from the kb:* meta tags, so `site/src/lib/page-meta.ts` stays the single
- * source and nothing here can drift from `index.json`.
+ * data-area … data-tags …>` — the page's outermost data block — and, on a page
+ * of the knowledge base, `data-kind … data-band … data-group …` after them.
+ * The wrapper carries only bare data-* attributes and no class, which is how a
+ * machine reader tells a data block from decoration
+ * (.claude/rules/page-schema.md): the classed div around it is paint, the
+ * article is facts. The values come from the kb:* meta tags, so
+ * `site/src/lib/page-meta.ts` stays the single source and nothing here can
+ * drift from `index.json`.
  *
  * MUST run after sectionMeta: a <!--meta--> section can close at the region
  * end, and wrapping first would leave its </section> outside </article> —
  * interleaved tags a browser "fixes" into something nobody meant. Safe to run
  * twice: a previous stamp is unwrapped before re-stamping.
  */
-export function wrapArticle(
-  html: string,
-  route: string,
-  facts: { area: string; tags: string },
-  errors: PageError[],
-): string {
+export function wrapArticle(html: string, route: string, facts: ArticleFacts, errors: PageError[]): string {
   const region = knowledgeRegion(html);
   if (!region) {
     errors.push({ route, what: `no knowledge region: no one element carries ${REGION} to wrap in the article block` });
@@ -425,10 +455,111 @@ export function wrapArticle(
   if (/^\s*<article\b[^>]*\bdata-page=/.test(inner)) {
     inner = inner.replace(/^\s*<article\b[^>]*>/, '').replace(/<\/article>\s*$/, '');
   }
-  const attrs =
-    `data-page="${attrEscape(route)}" data-area="${attrEscape(facts.area)}" data-tags="${attrEscape(facts.tags)}"`;
+  const place = facts.place;
+  const stated: (readonly [name: string, value: string])[] = [
+    ['data-page', route],
+    ['data-area', facts.area],
+    ['data-tags', facts.tags],
+    ...(place === null ? [] : PLACE_FACTS.map((f) => [f.attr, place[f.key]] as const)),
+  ];
+  const attrs = stated.map(([name, value]) => `${name}="${attrEscape(value)}"`).join(' ');
   return `${html.slice(0, rs)}<article ${attrs}>${inner}</article>${html.slice(re_)}`;
 }
+
+// ---------------------------------------------------------------------------
+// 3c. the relationships block: each item says which relation it shows
+// ---------------------------------------------------------------------------
+/** What an item of a relationships block must show of one relation of its page's record: the verb, and the page at the other end. */
+export type RelationFact = Pick<RelationRow, 'verb' | 'to' | 'route'>;
+
+/** The two attributes an item of a relationships block is stamped with. */
+const RELATION_ATTRS = /^data-(?:verb|to)$/i;
+
+/**
+ * Stamps each item of the page's relationships block with the relation of its
+ * record that it shows: `<li data-verb="combines-with" data-to="bulkhead">`.
+ * The block is generated from the same relations as the record, in the order
+ * the record lists them (`relationGroups`), so the n-th item is the n-th
+ * relation; this pairs them by position and then proves it, since a block
+ * that shows another relation than its record holds would carry a fact that is
+ * false. The item stays class-free, so by the layer rule it is a data block and
+ * the two attributes are facts about the link inside it.
+ *
+ * A finding goes to `refusals`, and the page is returned as it came, when the
+ * block shows a different number of items than the record has relations, or an
+ * item's first link does not open the page of its relation. Only the first
+ * such item of a page is named: the rest follow from it. A page with no
+ * relationships section and no relations has nothing to stamp or to refuse.
+ *
+ * MUST run after sectionMeta (the section is what scopes the items) and after
+ * rewriteLinks (a link is compared as the page now links it, relative to the
+ * page). Safe to run twice: a stamp already on an item is replaced.
+ */
+export function stampRelations(html: string, route: string, relations: readonly RelationFact[], refusals: PageError[]): string {
+  const [section] = elements(html, (name, attrs) => name === 'section' && attrValue(attrs, 'data-block') === 'relationships');
+  const base = section === undefined ? 0 : section.innerStart;
+  const inner = section === undefined ? '' : html.slice(section.innerStart, section.innerEnd);
+  const items = elements(inner, (name) => name === 'li');
+  if (items.length !== relations.length) {
+    refusals.push({
+      route,
+      what: `its relationships block lists ${items.length} item(s) and its record holds ${relations.length} relation(s) — the block is stale: run make gen, then make site-build`,
+    });
+    return html;
+  }
+  const opened = items.map((li) => opensRoute(route, inner.slice(li.innerStart, li.innerEnd)));
+  const first = opened.findIndex((opens, n) => opens !== (relations[n] as RelationFact).route);
+  if (first >= 0) {
+    const want = relations[first] as RelationFact;
+    refusals.push({
+      route,
+      what:
+        `item ${first + 1} of its relationships block opens ${opened[first] ?? 'no page'}, and relation ${first + 1} of its record, ${want.verb} ${want.to}, is for ${want.route} — ` +
+        'the block and the record disagree: run make gen, then make site-build',
+    });
+    return html;
+  }
+  const parts: string[] = [];
+  let last = 0;
+  items.forEach((li, n) => {
+    const { verb, to } = relations[n] as RelationFact;
+    // The item's own attributes stay, less a stamp from an earlier run.
+    const kept = inner
+      .slice(li.start + '<li'.length, li.innerStart - 1)
+      .replace(TAG_ATTR, (all: string, _space: string, name: string) => (RELATION_ATTRS.test(name) ? '' : all))
+      .trimEnd();
+    parts.push(html.slice(last, base + li.start), `<li${kept} data-verb="${attrEscape(verb)}" data-to="${attrEscape(to)}">`);
+    last = base + li.innerStart;
+  });
+  parts.push(html.slice(last));
+  return parts.join('');
+}
+
+/** The route the first link in `item` opens, from the page at `page`; null when the item holds no link. */
+function opensRoute(page: string, item: string): string | null {
+  const link = [...tags(item)].find((t) => t.name === 'a' && !t.closing);
+  const href = link === undefined ? undefined : attrValue(parseAttrs(link.source), 'href');
+  return href === undefined ? null : path.posix.join(path.posix.dirname(page), href.replace(/[?#].*$/, ''));
+}
+
+/**
+ * The relations of a page's record, in the order its relationships block shows
+ * them. The record is the page's built bytes (`KbPage.json`), read back, so
+ * the pass builds no record twice.
+ */
+function relationsOf(page: KbPage): readonly RelationFact[] {
+  return (JSON.parse(page.json) as Pick<PageRecord, 'relations'>).relations;
+}
+
+/**
+ * The facts of the article block, as a copy of them would sit on `<body>` (an
+ * older build wrote them there): the attribute and the space before it. A name
+ * that only starts like one of them is left alone.
+ */
+const BODY_FACTS = new RegExp(
+  `\\s+(?:${['data-page', 'data-area', 'data-tags', ...PLACE_FACTS.map((f) => f.attr)].join('|')})(?![^\\s"'>/=])(?:="[^"]*")?`,
+  'gi',
+);
 
 // ---------------------------------------------------------------------------
 // 4b. code out of the page text: the inline classics become files
@@ -956,13 +1087,33 @@ interface PageRead {
   readonly tags: string[];
   readonly aliases: string[];
   readonly solves: string[];
+  /** Where the head says the page sits; null on a page that is not a page of the knowledge base. */
+  readonly place: PagePlace | null;
   readonly title: string;
   readonly description: string;
 }
 
 /**
+ * The place a head states: all three facts of `PLACE_FACTS`, or none. A head
+ * that states some of them is a finding and reads as none, so that no article
+ * block is written from part of a place.
+ */
+function readPlace(html: string, problem: (what: string) => void): PagePlace | null {
+  const stated = PLACE_FACTS.map((f) => metaContent(html, f.meta) || null);
+  const absent = PLACE_FACTS.filter((_f, i) => stated[i] === null);
+  if (absent.length > 0 && absent.length < PLACE_FACTS.length) {
+    problem(
+      `the head states part of a place, without ${absent.map((f) => f.meta).join(', ')} — a page of the knowledge base states ` +
+        `${PLACE_FACTS.map((f) => f.meta).join(', ')} together and any other page none; site/src/components/Head/Head.astro emits them`,
+    );
+  }
+  return absent.length > 0 ? null : { kind: stated[0] as string, band: stated[1] as string, group: stated[2] as string };
+}
+
+/**
  * Read one built page's head and check what the passes need from it: one
- * knowledge region, the required page facts, and at most one JSON-LD block
+ * knowledge region, the required page facts, the place a page of the
+ * knowledge base states in whole or not at all, and at most one JSON-LD block
  * that parses. Every problem is a finding; the page is returned only when it
  * has none.
  */
@@ -984,6 +1135,7 @@ export function readPage(file: string, route: string, html: string, report: (wha
   if (missing.length > 0) {
     problem(`missing page facts: ${missing.join(', ')} — site/src/components/Head/Head.astro emits them from frontmatter`);
   }
+  const place = readPlace(html, problem);
   const blocks = jsonLdBlocks(html);
   let title = '';
   if (blocks.length > 1) problem(`${blocks.length} JSON-LD blocks — a page carries one`);
@@ -1013,6 +1165,7 @@ export function readPage(file: string, route: string, html: string, report: (wha
       .filter(Boolean),
     aliases: metaContents(html, 'kb:alias'),
     solves: metaContents(html, 'kb:solves'),
+    place,
     title,
     description: metaContent(html, 'description') ?? '',
   };
@@ -1066,19 +1219,25 @@ export const spec: GateSpec = {
 
     // ---- pass 2 — transform, write, and index -----------------------------
     const errors: PageError[] = [];
+    // The findings that stop the pass before it writes a page: a relationships
+    // block that disagrees with its page's record. Every page is transformed in
+    // memory first, so that one refusal leaves the whole site as it was.
+    const refusals: PageError[] = [];
+    const transformed: { readonly file: string; readonly html: string }[] = [];
     const index: IndexEntry[] = [];
 
     // One file per distinct externalised body, shared across every page that
-    // carries it, content-hashed like Astro's own chunks.
+    // carries it, content-hashed like Astro's own chunks, and written with the
+    // pages.
     const assetsDir = path.join(DIST, '_astro');
     const chunkNames = new Map<string, string>();
+    const chunks = new Map<string, string>();
     const allocChunk = (entry: Externalizable, body: string): string => {
       const norm = normalizeScript(body);
       let name = chunkNames.get(norm);
       if (!name) {
         name = `${entry.file}.${createHash('sha256').update(norm).digest('hex').slice(0, 8)}.js`;
-        mkdirSync(assetsDir, { recursive: true });
-        writeFileSync(path.join(assetsDir, name), `${body.trim()}\n`);
+        chunks.set(name, `${body.trim()}\n`);
         chunkNames.set(norm, name);
       }
       return name;
@@ -1104,10 +1263,15 @@ export const spec: GateSpec = {
       }
       let html = externalizeInlineScripts(source, allocChunk);
       html = rewriteLinks(html, prefix);
-      // Order is load-bearing: sectionMeta before wrapArticle, or a section
-      // closing at the region end would interleave with </article>.
+      // Order is load-bearing. sectionMeta runs before wrapArticle, or a
+      // section closing at the region end would interleave with </article>,
+      // and before stampRelations, which finds the block by its section.
+      // rewriteLinks runs before both, so the links stampRelations compares
+      // are the ones the page keeps.
       html = sectionMeta(html, page.route, errors);
-      html = wrapArticle(html, page.route, { area: page.area, tags: page.tags.join(',') }, errors);
+      const kb = kbPages.get(page.route);
+      if (kb !== undefined) html = stampRelations(html, page.route, relationsOf(kb), refusals);
+      html = wrapArticle(html, page.route, { area: page.area, tags: page.tags.join(','), place: page.place }, errors);
       html = shieldChrome(html);
       html = mergeNextSteps(html);
       html = publicUrls(html, root);
@@ -1117,11 +1281,8 @@ export const spec: GateSpec = {
       html = labelTaskCheckboxes(html);
       // The facts live on the article block, never on <body>: body is classed,
       // which makes it decoration. Scrub any copy, so a re-run converges.
-      html = html.replace(
-        /<body\b([^>]*)>/i,
-        (_all: string, rest: string) => `<body${rest.replace(/\s+data-(?:page|area|tags)(?:="[^"]*")?/gi, '')}>`,
-      );
-      writeFileSync(page.file, html);
+      html = html.replace(/<body\b([^>]*)>/i, (_all: string, rest: string) => `<body${rest.replace(BODY_FACTS, '')}>`);
+      transformed.push({ file: page.file, html });
 
       index.push({
         route: page.route,
@@ -1137,6 +1298,16 @@ export const spec: GateSpec = {
         headings: headings(html, knowledgeRegion(html)),
       });
     }
+
+    if (refusals.length > 0) {
+      for (const e of [...refusals, ...errors]) ctx.fail(`${shown}${e.route}`, e.what);
+      return '';
+    }
+    for (const [name, text] of chunks) {
+      mkdirSync(assetsDir, { recursive: true });
+      writeFileSync(path.join(assetsDir, name), text);
+    }
+    for (const { file, html } of transformed) writeFileSync(file, html);
 
     if (errors.length > 0) {
       for (const e of errors) ctx.fail(`${shown}${e.route}`, e.what);

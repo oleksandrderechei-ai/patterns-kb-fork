@@ -124,8 +124,9 @@ node scripts/kb.mjs explain <id> --text "…" --example "<code>" \
   --example-lang typescript --example-caption "How does …?"          # sketch example
 ```
 
-`--text` takes `[label](path.md)` for a link. `--costs` takes the bullets as a JSON array of
-`{lead, note}`; leave it out and the writer keeps the page's own list, pass `'[]'` to drop it.
+`--text` takes `[label](path.md)` for a link, and a cost note takes one the same way.
+`--costs` takes the bullets as a JSON array of `{lead, note}`; leave it out and the writer keeps
+the page's own list, pass `'[]'` to drop it.
 `kb.mjs get <id> --block explain --json` dumps the current text, costs and example in the
 shape the writer takes. The writer replaces the whole block and refuses a shape KB-014
 rejects (a bold run-in label, two paragraphs, a missing costs list on a pattern, a bullet

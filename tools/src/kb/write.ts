@@ -546,7 +546,8 @@ const costsCheck = (v: unknown): string | null =>
 /**
  * The explain block: `--text` and `--example`, both empty to remove the block.
  * `--costs '[{"lead":"…","note":"…"}]'` writes the costs list between them;
- * left out it keeps the page's own, and `[]` drops it.
+ * left out it keeps the page's own, and `[]` drops it. A `[label](path.md)` in
+ * `--text` or in a cost's note is written as a link; every other bracket stays text.
  * With `--example-lang` the example is a fenced sketch in that language and
  * `--example-caption` names the question it answers. A shape KB-014 rejects
  * is refused before anything is written.

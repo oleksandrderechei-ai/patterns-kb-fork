@@ -140,6 +140,13 @@ describe('gen-site-docs', () => {
     expect(sb.read(`${CONTENT}/index.mdx`)).toBe('hand-written home\n');
   });
 
+  it('mirrors an escaped link as the text it is: the target of `\\[Beta\\](./beta.md)` stays as written beside a real link', async () => {
+    docsTree(sb);
+    sb.write('docs/patterns/caching/alpha.md', `${frontmatter('Alpha')}\n# Alpha\n\nA \\[Beta\\](./beta.md) is text, a [Beta](./beta.md) is a link.\n`);
+    expectPass(await sb.run(spec));
+    expect(sb.read(`${CONTENT}/patterns/caching/alpha.md`)).toContain('A \\[Beta\\](./beta.md) is text, a [Beta](/patterns/caching/beta.html) is a link.');
+  });
+
   it('writes the same bytes twice over', async () => {
     docsTree(sb);
     expectPass(await sb.run(spec));
@@ -182,6 +189,19 @@ describe('the pieces', () => {
     for (const t of ['https://x.io/a', 'mailto:a@b.c', '#top', '/abs.html', '']) expect(rewriteTarget(t, 'docs', routes)).toBe(t);
     expect(rewriteTarget('a.md#f', 'docs', routes)).toBe('/a.html#f');
     expect(rewriteTarget('b.md', 'docs', routes)).toBe(`${REPO_BLOB}/docs/b.md`);
+  });
+
+  it('rewrites a link, but not the target after an escaped bracket: an odd run of backslashes before the `]` makes it text', () => {
+    const body = [
+      'Real [x](a.md), escaped \\[x\\](a.md), and one more [y](a.md).',
+      'Two backslashes leave the bracket a link, [z\\\\](a.md); three escape it, \\[z\\\\\\](a.md).',
+      'In a span, `\\[x\\](a.md)` and `[x](a.md)` nothing moves.',
+    ].join('\n');
+    expect(transformBody(body, 'docs', new Map([['docs/a.md', '/a.html']])).split('\n')).toEqual([
+      'Real [x](/a.html), escaped \\[x\\](a.md), and one more [y](/a.html).',
+      'Two backslashes leave the bracket a link, [z\\\\](/a.html); three escape it, \\[z\\\\\\](a.md).',
+      'In a span, `\\[x\\](a.md)` and `[x](a.md)` nothing moves.',
+    ]);
   });
 
   it('strips only the first H1 outside a fence, and rewrites nothing inside one', () => {

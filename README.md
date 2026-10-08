@@ -49,8 +49,10 @@ node scripts/kb.mjs get circuit-breaker --block usage              # one block, 
 node scripts/kb.mjs related circuit-breaker                        # typed neighbours + notes
 ```
 
-Every claim has a stable id, so it can be cited precisely:
-`…/circuit-breaker.md#tradeoffs-con-2`.
+Every claim has an id, so it can be cited precisely: `…/circuit-breaker.md#tradeoffs-con-2`.
+Programs read a page as JSON, with `node scripts/kb.mjs record circuit-breaker` or the site's
+`<page>.json`; what they can rely on is in the
+[retrieval contract](docs/concepts/retrieval-contract.md).
 
 ---
 

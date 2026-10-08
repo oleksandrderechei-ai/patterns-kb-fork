@@ -401,13 +401,23 @@ describe('check-site-portable, check 8: the files of the retrieval contract', ()
       ]);
     });
 
+    it('names a missing copy of the schema of what kb.mjs prints, and the link to it that llms.txt holds', async () => {
+      sb.rm(`${DIST}/schema/kb-cli-1.json`);
+      const r = await sb.run(spec);
+      expectFail(r);
+      expect(found(r)).toEqual([
+        `${FAIL}${DIST}/schema/kb-cli-1.json: is missing — site-portable writes it; run make site-build`,
+        `${FAIL}${DIST}/llms.txt: links schema/kb-cli-1.json, and no such file was built`,
+      ]);
+    });
+
     it('names every schema when the schema folder is gone, and each link of llms.txt into it', async () => {
       sb.rm(`${DIST}/schema`);
       const r = await sb.run(spec);
       expectFail(r);
       expect(found(r)).toEqual([
         ...['kb-cli-1', 'kb-graph-1', 'kb-index-1', 'kb-record-1'].map((name) => `${FAIL}${DIST}/schema/${name}.json: is missing — site-portable writes it; run make site-build`),
-        ...['kb-record-1', 'kb-index-1', 'kb-graph-1'].map((name) => `${FAIL}${DIST}/llms.txt: links schema/${name}.json, and no such file was built`),
+        ...['kb-record-1', 'kb-index-1', 'kb-graph-1', 'kb-cli-1'].map((name) => `${FAIL}${DIST}/llms.txt: links schema/${name}.json, and no such file was built`),
       ]);
     });
 

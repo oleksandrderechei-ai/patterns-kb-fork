@@ -25,7 +25,7 @@ CQRS gives changes and questions separate models. A command model changes state 
 
 - **The query side lags.** A user can write and read the old value, so show a pending state or send read-your-own-writes to the command model.
 - **Unrebuildable read model.** Make the code that builds it safe to replay and able to restart from the start.
-- **Lost events.** One lost event leaves the query model wrong for good, so publish through an \[outbox\](../distributed/coordination/outbox.md) and watch the lag.
+- **Lost events.** One lost event leaves the query model wrong for good, so publish through an [outbox](../distributed/coordination/outbox.md) and watch the lag.
 
 **Example.** A shop takes 50 orders a second and serves 2,000 order-list views a second, a 40-to-1 skew. The command side keeps orders normalised across 5 tables to guard stock. The query side keeps one flat row per order, so a list view is a single lookup instead of a 5-table join. The row appears about 200 ms after the order, so a customer redirected to the list at 50 ms would not see it. The checkout response carries the new order, and the page shows it as pending. A full rebuild from 20 million events at 10,000 a second takes 2,000 seconds, about 33 minutes.
 

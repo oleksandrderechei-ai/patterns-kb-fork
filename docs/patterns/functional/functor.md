@@ -22,7 +22,7 @@ Transforming a value trapped in a container means checking every case first, whe
 
 A functor is a container with a map operation. It applies your function to the value inside and returns the same kind of container, so you transform the value without opening the container. An array and an optional value are functors, and a promise is one only for callbacks that return plain values; the word names a shape, not one class. Without it you repeat the unwrapping and re-wrapping at every call site. Two laws keep map trustworthy: mapping the identity function changes nothing, and mapping f then g equals one map of both. Choose it over unwrapping and checking by hand when the value may be missing, late or many, and you want to transform it without repeating that check in every step.
 
-- **Nested containers.** A function that itself returns a container gives one inside another, so use flatMap, which flattens them (see \[monad\](monad.md)).
+- **Nested containers.** A function that itself returns a container gives one inside another, so use flatMap, which flattens them (see [monad](monad.md)).
 - **No combining.** Map cannot join two separate containers, so use zip or an applicative, which applies a wrapped function to wrapped values.
 - **Unchecked laws.** Most type systems skip them, so test them for your own type.
 - **Per-type interface.** Languages without generics need the interface written again for each type.

@@ -92,6 +92,7 @@ import { STATUSES } from './lib/page-block.js';
 import { markers } from './lib/generated.js';
 import { formatHtml } from './site/site-format.js';
 import { builtPage, builtSite, docsTree, formattedSite } from './site/site-fixtures.js';
+import { writeParitySite } from './site/parity-fixtures.js';
 import { OUT as SYNONYMS_PAGE, render as renderSynonyms, SRC as SYNONYMS } from './gen/gen-search-synonyms.js';
 
 /** A page clean for both accessibility gates: a language, one title, words in <main>. */
@@ -521,6 +522,11 @@ describe('kb.gates', () => {
       'site-portable': {
         clean: (s) => builtSite(s),
         plant: (s) => edit(s, 'site/dist/patterns/caching/beta.html', '<p>Beta.</p>', '<p><a href="/x.html">x</a></p>'),
+      },
+      // The HTML, the record and the markdown of the parity fixture's twelve pages; the plant has a page say a word differently.
+      'site-parity': {
+        clean: (s) => writeParitySite(s),
+        plant: (s) => edit(s, 'site/dist/principles/boundary.html', 'Check each value once, at the edge.', 'Check each value twice, at the edge.'),
       },
       'site-absence': {
         clean: (s) => formattedSite(s),

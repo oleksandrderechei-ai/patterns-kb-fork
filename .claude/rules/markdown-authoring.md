@@ -121,9 +121,9 @@ visible text rather than a link, and one written in by hand is destroyed by the 
 `kb.mjs production`/`wild` call on that page. They pass inline code through as the single
 exception, because their items name parameters and API calls. `relationships` is generated from
 the relation records and already carries typed links. The one exception is the `explain`
-paragraph: `kb.mjs explain --text` turns `[label](path.md)` into a link, and the dump
-(`kb.mjs get <id> --block explain --json`) hands the link back in the same form. Everywhere
-else is hand-written prose, and that is where a prose link belongs.
+block: `kb.mjs explain --text` and each `--costs` note turn `[label](path.md)` into a link, and
+the dump (`kb.mjs get <id> --block explain --json`) hands the link back in the same form.
+Everywhere else is hand-written prose, and that is where a prose link belongs.
 
 ## Prose markup — the inline vocabulary
 

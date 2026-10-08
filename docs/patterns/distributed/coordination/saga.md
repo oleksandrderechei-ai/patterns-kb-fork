@@ -26,7 +26,7 @@ A saga splits a business process that crosses several services into a chain of s
 
 - **Undo is a business decision.** A refund is not an un-charge. Agree each reversal with its owner; place the irreversible step as late as possible.
 - **Replays.** Key steps and undos by saga id and make them safe to repeat.
-- **Two writes per step.** Saving and announcing can fail apart. Announce through an \[outbox\](outbox.md).
+- **Two writes per step.** Saving and announcing can fail apart. Announce through an [outbox](outbox.md).
 - **Readers see the middle.** Mark the order provisional until the saga finishes.
 
 **Example.** Checkout runs three steps for order o-31. It charges 60 at 0 s and reserves stock at 0.4 s, which fails because the last item sold. The saga runs the undo for the charge, a refund of 60 keyed by saga id o-31, so a replayed refund pays only once. While the charge stands, the order shows as pending so no other screen reads it as paid. The customer's statement shows a charge and a refund rather than nothing, which is the cost. If the refund call itself fails, you retry it, and past a retry limit it goes to a queue that an operator watches.

@@ -19,6 +19,7 @@ import {
   jsonLdText,
   metaTags,
   pageMeta,
+  placeOfFile,
   readKinds,
   type MetaEntry,
 } from './page-meta';
@@ -75,6 +76,39 @@ describe('metaTags', () => {
     ]);
     expect(metaTags(pageMeta(entry()))).toHaveLength(4);
   });
+
+  it('adds the kind, band and group of a page of the knowledge base after its tags, before its aliases', () => {
+    const meta = pageMeta(entry({ tags: ['resilience'], aliases: ['CB'] }));
+    const place = { kind: 'pattern', band: 'distributed', group: 'distributed-resilience' };
+    const tags = metaTags(meta, place);
+    expect(tags.map(([name]) => name)).toEqual([
+      'kb:area',
+      'kb:status',
+      'kb:owner',
+      'kb:tags',
+      'kb:kind',
+      'kb:band',
+      'kb:group',
+      'kb:alias',
+    ]);
+    expect(Object.fromEntries(tags)).toMatchObject({
+      'kb:kind': 'pattern',
+      'kb:band': 'distributed',
+      'kb:group': 'distributed-resilience',
+    });
+  });
+
+  it('states no place for a page that is no page of the knowledge base, whether it is passed none or nothing', () => {
+    const meta = pageMeta(entry({ aliases: ['CB'] }));
+    expect(metaTags(meta, null)).toEqual(metaTags(meta));
+    expect(metaTags(meta).map(([name]) => name)).toEqual([
+      'kb:area',
+      'kb:status',
+      'kb:owner',
+      'kb:tags',
+      'kb:alias',
+    ]);
+  });
 });
 
 describe('jsonLd', () => {
@@ -108,18 +142,20 @@ describe('jsonLd', () => {
   });
 });
 
+/** One area of a structure for the cases below: its rows, and whatever else a case sets. */
+const area = (
+  id: string,
+  pages: { slug: string; source: string; route: string }[],
+  over: Partial<StructureArea> = {},
+): StructureArea => ({
+  id,
+  label: id,
+  hub: { description: id, intro: id, tags: [] },
+  pages: pages.map((p) => ({ ...p, label: p.slug })),
+  ...over,
+});
+
 describe('alternatesOf', () => {
-  const area = (
-    id: string,
-    pages: { slug: string; source: string; route: string }[],
-    over: Partial<StructureArea> = {},
-  ): StructureArea => ({
-    id,
-    label: id,
-    hub: { description: id, intro: id, tags: [] },
-    pages: pages.map((p) => ({ ...p, label: p.slug })),
-    ...over,
-  });
   // A page of the knowledge base, a page of the tree that is none, a page a generator writes and a
   // row of an unpublished area: the four shapes a row takes.
   const structure: Structure = {
@@ -193,6 +229,100 @@ describe('alternatesOf', () => {
       markdown: null,
       record: null,
     });
+  });
+});
+
+describe('placeOfFile', () => {
+  const structure: Structure = {
+    areas: [
+      area('patterns', []),
+      area('distributed', [], { nestUnder: 'patterns' }),
+      area(
+        'distributed-resilience',
+        [
+          {
+            slug: 'circuit-breaker',
+            source: 'docs/patterns/distributed/resilience/circuit-breaker.md',
+            route: '/patterns/distributed/resilience/circuit-breaker.html',
+          },
+        ],
+        { nestUnder: 'distributed' },
+      ),
+      area('hazards', [
+        { slug: 'storm', source: 'docs/hazards/storm.md', route: '/hazards/storm.html' },
+      ]),
+      area('concepts', [
+        { slug: 'guide', source: 'docs/concepts/guide.md', route: '/concepts/guide.html' },
+      ]),
+      area('map', [{ slug: 'stack', source: 'generated', route: '/map/stack.html' }], {
+        nav: 'link',
+        generated: 'tools/src/site/gen-map-pages.ts',
+      }),
+    ],
+  };
+  const kinds = [
+    { id: 'pattern', folder: 'patterns' },
+    { id: 'hazard', folder: 'hazards' },
+  ];
+  const at = (rel: string): ReturnType<typeof placeOfFile> =>
+    placeOfFile(`/repo/site/src/content/docs/${rel}`, structure, kinds);
+
+  it('gives a pattern the area under the patterns root as its band and the area that lists it as its group', () => {
+    expect(at('patterns/distributed/resilience/circuit-breaker.md')).toEqual({
+      kind: 'pattern',
+      band: 'distributed',
+      group: 'distributed-resilience',
+    });
+  });
+
+  it('gives a page of any other kind that kind as its band and as its group', () => {
+    expect(at('hazards/storm.md')).toEqual({ kind: 'hazard', band: 'hazard', group: 'hazard' });
+  });
+
+  it('gives no place to a page of no kind, a generated page, a hub, the home page or a path that names no page', () => {
+    for (const rel of [
+      'concepts/guide.md',
+      'map/stack.mdx',
+      'patterns/index.mdx',
+      'index.mdx',
+      'nowhere/at-all.md',
+    ]) {
+      expect(at(rel), rel).toBeNull();
+    }
+    for (const none of [null, undefined, '']) {
+      expect(placeOfFile(none, structure, kinds), String(none)).toBeNull();
+    }
+  });
+
+  it('gives no place to any page when the tree has no kinds, which is a tree with no content model', () => {
+    expect(placeOfFile('/repo/site/src/content/docs/hazards/storm.md', structure, [])).toBeNull();
+  });
+
+  it('has a place exactly where alternatesOf has a record, so a head states both or neither', () => {
+    for (const rel of [
+      'patterns/distributed/resilience/circuit-breaker.md',
+      'hazards/storm.md',
+      'concepts/guide.md',
+      'map/stack.mdx',
+      'index.mdx',
+    ]) {
+      const file = `/repo/site/src/content/docs/${rel}`;
+      expect(placeOfFile(file, structure, kinds) !== null, rel).toBe(
+        alternatesOf(file, structure, kinds).record !== null,
+      );
+    }
+  });
+
+  it('reads the real structure and content model when it is given none: a pattern has its place, the home page none', () => {
+    expect(
+      placeOfFile('site/src/content/docs/patterns/distributed/resilience/circuit-breaker.md'),
+    ).toEqual({ kind: 'pattern', band: 'distributed', group: 'distributed-resilience' });
+    expect(placeOfFile('site/src/content/docs/hazards/retry-storm.md')).toEqual({
+      kind: 'hazard',
+      band: 'hazard',
+      group: 'hazard',
+    });
+    expect(placeOfFile('site/src/content/docs/index.mdx')).toBeNull();
   });
 });
 

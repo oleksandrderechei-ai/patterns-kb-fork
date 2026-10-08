@@ -40,19 +40,20 @@ git config core.hooksPath .githooks
 ### Build
 
 `make site-build` runs lint, the site's unit tests, the generators, the type check and Astro,
-then the post-build passes, then the six site gates. From nothing (`make site-clean` first) it
+then the post-build passes, then the seven site gates. From nothing (`make site-clean` first) it
 takes about two minutes. It ends with one line per gate and a total:
 
 | Gate line | What it proves |
 | --- | --- |
 | Site built links | every link and fragment lands on a built file and anchor, every link to a repository file on GitHub names a file in the tree, every page sits in exactly one hub, in reading order |
-| Site portability | every page opens from a folder: relative links, the manifest `index.json` and the search payload `search-index.js` present, and each page's markdown source beside it, byte-equal to its file under `docs/` |
+| Site portability | every page opens from a folder: relative links, the manifest `index.json` and the search payload `search-index.js` present, each page's markdown source beside it, byte-equal to its file under `docs/`, and for a page of the KB its JSON record beside it, byte-equal to what `kb.mjs record` prints, with `graph.json`, the schemas, `llms.txt`, `llms-full.txt` and the links in each head to them ([the contract](retrieval-contract.md)) |
+| Site and markdown agree | the HTML, the record and the markdown of every page of the KB say the same thing: the same facts and relations, the same ids in the same order with the same words, and `index.json` and `graph.json` say what the records say |
 | Site accessibility floor | the static checks: `lang`, one H1 first, named graphics, focus rings, and page chrome under 80% of the page |
 | Site noise and data layer | the formatter's fixed point, one script and one stylesheet per page, facts only on class-free data blocks |
 | Site accessibility in a browser | axe-core over every page in Chromium, in both themes |
-| Site size budget | every page, the bundle, the search payload and the manifest inside the sizes in `BUDGETS` (`tools/src/gates/check-site-budget.ts`); what a host adds is in [Hosting the site](hosting-the-site.md) |
+| Site size budget | every page, the bundle, the search payload, the manifest, every record, `graph.json`, `llms.txt` and `llms-full.txt` inside the sizes in `BUDGETS` (`tools/src/gates/check-site-budget.ts`); what a host adds is in [Hosting the site](hosting-the-site.md) |
 
-A clean build ends `✓ 6 gates, no findings`. A red line names the page and the fix, and the
+A clean build ends `✓ 7 gates, no findings`. A red line names the page and the fix, and the
 command exits non-zero, but `site/dist/` is still written, so you can open what failed.
 
 ### Open it the way an offline reader does

@@ -23,7 +23,7 @@ Without an expiry, a claim outlives its holder: a worker crashes and the shard s
 
 A lease is a grant of a resource for a fixed time. The holder must renew it before the time runs out, and if it stops renewing, the grant lapses and the resource can go to someone else. The grantor, the process that hands the resource out, records who holds it and until when, and promises not to grant it again before then. Choose it over a lock with no expiry when the holder can crash without cleaning up, because a lock nobody releases stays held until a person finds it. A lease is the time-bound core of a [distributed lock](distributed-lock.md).
 
-- **Stale holder.** A holder that pauses past the deadline still believes it owns the resource. Have the resource check a \[fencing token\](fencing-token.md).
+- **Stale holder.** A holder that pauses past the deadline still believes it owns the resource. Have the resource check a [fencing token](fencing-token.md).
 - **The term is a bind.** Short loses leases to jitter, long leaves a dead holder's resource idle. Set it from your measured worst pause.
 - **Cut-off holders stop.** A healthy holder cut off from the grantor must stop at the deadline. Check your own clock before every step.
 

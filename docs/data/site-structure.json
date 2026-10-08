@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-02",
+  "updated": "2026-10-08",
   "note": "Every published page, the area it sits in and its place in reading order (spec: kb.data.structure). An area is one hub: `nestUnder` names its parent, `hub` holds what the hub page says about itself, and `pages` lists its rows in reading order. A row's `slug` is the page's file name, `source` its markdown under docs/, and `route` its HTML path on the site, kept so every inbound URL survives (dialect D-02). A page's `area` frontmatter key is the id of the area that lists it. The `map` area is the one exception: its `generated` key names the program that writes its page at build time, and its row's `source` is `generated`, since no page under docs/ holds it. An area's optional `nav` key is closed: `link` makes a single-page area with no hub, shown as one top-level sidebar link to its only row, and `none` leaves the area unpublished (its rows, its hub and its sidebar group stay off the site, while the pages keep their `area` and their place in the docs map). The `map` area is `link`; its last area, reference, lists the hand-written pages under docs/reference/ and docs/concepts/ and is `none`. The single source, edited by hand (kb.mjs new adds a new page's row): the hub generator, gen-map (make map, or make gen) and the structure gate read it, the AREAS tuple in site/src/lib/types.ts lists its area ids in order, and moving a page means changing it and learning-paths.json together.",
   "areas": [
     {
@@ -935,6 +935,7 @@
         { "slug": "working-in-this-repo", "label": "Working in this repo", "source": "docs/concepts/working-in-this-repo.md", "route": "/reference/working-in-this-repo.html" },
         { "slug": "testing-the-site", "label": "Testing the site", "source": "docs/concepts/testing-the-site.md", "route": "/reference/testing-the-site.html" },
         { "slug": "hosting-the-site", "label": "Hosting the site", "source": "docs/concepts/hosting-the-site.md", "route": "/reference/hosting-the-site.html" },
+        { "slug": "retrieval-contract", "label": "Retrieval contract", "source": "docs/concepts/retrieval-contract.md", "route": "/reference/retrieval-contract.html" },
         { "slug": "gates", "label": "Check gates", "source": "docs/reference/gates.md", "route": "/reference/gates.html" },
         { "slug": "glossary", "label": "Glossary", "source": "docs/reference/glossary.md", "route": "/reference/glossary.html" },
         { "slug": "page-rules", "label": "Page rules", "source": "docs/reference/page-rules.md", "route": "/reference/page-rules.html" },

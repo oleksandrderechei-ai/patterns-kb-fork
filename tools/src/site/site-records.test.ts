@@ -108,7 +108,7 @@ describe('llms.txt', () => {
 
   it('lists the files that describe the whole site under Contract, each with a link relative to the root', () => {
     const at = lines.indexOf('## Contract');
-    expect(lines.slice(at, at + 9)).toEqual([
+    expect(lines.slice(at, at + 10)).toEqual([
       '## Contract',
       '',
       '- [index.json](index.json): every page with its kind and the address of its record (kb-index/1)',
@@ -116,9 +116,16 @@ describe('llms.txt', () => {
       '- [schema/kb-record-1.json](schema/kb-record-1.json): what each key of a page record means',
       '- [schema/kb-index-1.json](schema/kb-index-1.json): what each key of index.json means',
       '- [schema/kb-graph-1.json](schema/kb-graph-1.json): what each key of graph.json means',
+      '- [schema/kb-cli-1.json](schema/kb-cli-1.json): what the `--json` output of each `kb.mjs` read command means (kb-cli/1)',
       '- [llms-full.txt](llms-full.txt): the markdown of every page in one file, each page after a `<!-- kb:page id=… route=… -->` line',
       '',
     ]);
+  });
+
+  it('links each schema file the repo publishes, so that a reader finds every one of them from here', () => {
+    const published = readSchemas(REPO_ROOT).map((s) => `schema/${s.name}`);
+    const linked = lines.filter((l) => l.startsWith('- [schema/')).map((l) => /\]\(([^)]+)\)/.exec(l)?.[1]);
+    expect(linked.sort()).toEqual(published.sort());
   });
 
   it('heads each kind with its plural, once, and lists its pages under it in the order given: title, markdown, description', () => {

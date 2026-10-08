@@ -14,9 +14,10 @@
  *   3. every link rewritten: a published page's source becomes its route,
  *      root-absolute with its fragment kept; any other repository path becomes
  *      its GitHub URL; external, fragment-only and root-absolute targets stay;
- *      code spans and fences are never touched (mirror-and-hubs-C2). The
- *      post-build portability pass makes every route relative to the page
- *      that links it, so the mirror need not know how deep a page sits.
+ *      code spans, fences and the text of an escaped `\](target)` are never
+ *      touched (mirror-and-hubs-C2). The post-build portability pass makes
+ *      every route relative to the page that links it, so the mirror need not
+ *      know how deep a page sits.
  *
  * A page with no frontmatter, or one missing a required key, is a finding
  * naming the file and every missing key, before Astro runs
@@ -81,6 +82,14 @@ export function normalizePath(reldir: string, p: string): string {
 /** A target the mirror leaves as written: a scheme, `//`, a fragment or a root-absolute path. */
 const KEPT = /^(?:[a-z][a-z0-9+.-]*:|\/|#)/i;
 
+/**
+ * What the mirror looks for on a line: a code span, consumed whole so the link
+ * branch never sees inside one, or the `](target)` that ends a link. The
+ * backslashes before the `]` are captured, because an odd number of them
+ * escapes it: `\[a\](b.md)` is text, and its target is not a target.
+ */
+const LINK_END = /(`+)[^`]*?\1|(\\*)\]\(([^)\s]+)\)/g;
+
 /** One link target, given the source → route map of the published pages. */
 export function rewriteTarget(target: string, reldir: string, routes: ReadonlyMap<string, string>): string {
   if (target === '' || KEPT.test(target)) return target;
@@ -122,11 +131,10 @@ export function transformBody(body: string, reldir: string, routes: ReadonlyMap<
       continue;
     }
     if (out.length === 0 && /^[ \t]*$/.test(raw)) continue;
-    // A code span is quoted, not linked: the alternation consumes each span
-    // whole, so the link branch never sees what is inside one.
+    // A code span is quoted and an escaped `]` is text: neither is linked.
     out.push(
-      raw.replace(/(`+)[^`]*?\1|\]\(([^)\s]+)\)/g, (m: string, _tick: string | undefined, t: string | undefined) =>
-        t === undefined ? m : `](${rewriteTarget(t, reldir, routes)})`,
+      raw.replace(LINK_END, (m: string, _tick: string | undefined, slashes: string | undefined, t: string | undefined) =>
+        t === undefined || (slashes as string).length % 2 === 1 ? m : `${slashes as string}](${rewriteTarget(t, reldir, routes)})`,
       ),
     );
   }

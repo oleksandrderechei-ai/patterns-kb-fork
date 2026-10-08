@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse } from 'parse5';
 
 import { SCHEMA_DIR } from '../contract/contract.js';
+import { pageFindings } from '../gates/check-site-absence.js';
 import { Corpus } from '../kb/corpus.js';
 import { graphOf, recordOf } from '../kb/record.js';
 import { serialize } from '../lib/kb-record.js';
@@ -19,6 +20,8 @@ import { readSchemas } from './site-records.js';
 import {
   STARLIGHT_CHROME,
   type IndexEntry,
+  type PageError,
+  type RelationFact,
   manifestOrder,
   dataAttrs,
   dropEmptyStyles,
@@ -34,9 +37,12 @@ import {
   markdownRoute,
   publicSitemap,
   publicUrls,
+  readPage,
   rewriteLinks,
   shieldChrome,
   spec,
+  stampRelations,
+  wrapArticle,
   wrapScrollableTables,
 } from './site-portable.js';
 import type { Structure } from '../lib/site-routes.js';
@@ -291,6 +297,172 @@ describe('dataAttrs', () => {
 
   it('reads a single-quoted value too', () => {
     expect(dataAttrs("t='a \"b\"'")).toEqual(['data-t="a &quot;b&quot;"']);
+  });
+});
+
+describe('wrapArticle', () => {
+  const region = (inner: string): string => `<main><div class="sl-markdown-content" data-kb-region>${inner}</div></main>`;
+  const facts = { area: 'caching', tags: 'a,b', place: null };
+  const place = { kind: 'pattern', band: 'distributed', group: 'distributed-resilience' };
+
+  it('wraps the region in an article carrying the route, the area and the tags, and nothing else on a page outside the knowledge base', () => {
+    const errors: PageError[] = [];
+    expect(wrapArticle(region('<p>x</p>'), '/a/b.html', facts, errors)).toBe(
+      '<main><div class="sl-markdown-content" data-kb-region><article data-page="/a/b.html" data-area="caching" data-tags="a,b"><p>x</p></article></div></main>',
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it('adds the kind, the band and the group after those three on a page of the knowledge base, each escaped like the rest', () => {
+    const html = wrapArticle(region('<p>x</p>'), '/a/b.html', { ...facts, place: { kind: 'pattern', band: 'a"b', group: 'g&h' } }, []);
+    expect(html).toContain(
+      '<article data-page="/a/b.html" data-area="caching" data-tags="a,b" data-kind="pattern" data-band="a&quot;b" data-group="g&amp;h"><p>x</p></article>',
+    );
+  });
+
+  it('replaces the block an earlier run wrote, so a second wrap changes nothing and a page that lost its place loses the three facts', () => {
+    const once = wrapArticle(region('<p>x</p>'), '/a/b.html', { ...facts, place }, []);
+    expect(wrapArticle(once, '/a/b.html', { ...facts, place }, [])).toBe(once);
+    expect(wrapArticle(once, '/a/b.html', facts, [])).toBe(wrapArticle(region('<p>x</p>'), '/a/b.html', facts, []));
+  });
+
+  it('names a page with no knowledge region and returns it as it came', () => {
+    const errors: PageError[] = [];
+    const bare = '<main><p>x</p></main>';
+    expect(wrapArticle(bare, '/a/b.html', facts, errors)).toBe(bare);
+    expect(errors).toEqual([{ route: '/a/b.html', what: 'no knowledge region: no one element carries data-kb-region to wrap in the article block' }]);
+  });
+});
+
+describe('stampRelations', () => {
+  const ROUTE = '/patterns/a/page.html';
+  const rel = (verb: string, to: string): RelationFact => ({ verb, to, route: `/patterns/b/${to}.html` });
+  const link = (to: string): string => `<a href="../b/${to}.html">${to}</a>`;
+  /** A page whose relationships section holds `list`, with a list of its own before the section and one after it. */
+  const page = (list: string): string =>
+    '<p>Intro.</p><ul><li><a href="../b/outside.html">Before</a></li></ul>' +
+    '<section data-block="relationships"><div class="sl-heading-wrapper level-h2"><h2 id="relationships">How it relates</h2></div>' +
+    `<p id="relationships-p-1"><strong>Combines with</strong></p>${list}</section>` +
+    '<section data-block="next"><ul><li><a href="../b/outside.html">After</a></li></ul></section>';
+  const RELATIONS = [rel('combines-with', 'one'), rel('prevents-hazard', 'two')];
+  const LIST = `<ul><li>${link('one')} — first</li><li>${link('two')}</li></ul>`;
+
+  it('stamps the n-th item with the verb and the target page of the n-th relation, and touches nothing outside the section', () => {
+    const refusals: PageError[] = [];
+    expect(stampRelations(page(LIST), ROUTE, RELATIONS, refusals)).toBe(
+      page(
+        `<ul><li data-verb="combines-with" data-to="one">${link('one')} — first</li>` +
+          `<li data-verb="prevents-hazard" data-to="two">${link('two')}</li></ul>`,
+      ),
+    );
+    expect(refusals).toEqual([]);
+  });
+
+  it('keeps an item’s own attributes, replaces a stamp an earlier run wrote whatever its quoting, and leaves a name that only starts like one', () => {
+    const list = `<ul><li id="r1" data-verb="old" data-total="9">${link('one')}</li><li data-to='old' data-verb=old >${link('two')}</li></ul>`;
+    expect(stampRelations(page(list), ROUTE, RELATIONS, [])).toBe(
+      page(
+        `<ul><li id="r1" data-total="9" data-verb="combines-with" data-to="one">${link('one')}</li>` +
+          `<li data-verb="prevents-hazard" data-to="two">${link('two')}</li></ul>`,
+      ),
+    );
+  });
+
+  it('changes nothing a second time', () => {
+    const once = stampRelations(page(LIST), ROUTE, RELATIONS, []);
+    expect(stampRelations(once, ROUTE, RELATIONS, [])).toBe(once);
+  });
+
+  it('reads a link’s target as the page now links it: its folder, with a query or a fragment cut off', () => {
+    const list = `<ul><li><a href="../b/one.html#why">one</a></li><li><a href="../b/./two.html?x=1">two</a></li></ul>`;
+    const refusals: PageError[] = [];
+    expect(stampRelations(page(list), ROUTE, RELATIONS, refusals)).toContain('<li data-verb="prevents-hazard" data-to="two">');
+    expect(refusals).toEqual([]);
+  });
+
+  it('leaves a page with no relationships section and no relations as it was, and refuses one that has relations', () => {
+    const none = '<p>Intro.</p><ul><li><a href="../b/outside.html">Before</a></li></ul>';
+    const refusals: PageError[] = [];
+    expect(stampRelations(none, ROUTE, [], refusals)).toBe(none);
+    expect(refusals).toEqual([]);
+    expect(stampRelations(none, ROUTE, RELATIONS, refusals)).toBe(none);
+    expect(refusals.map((r) => r.what)).toEqual([
+      'its relationships block lists 0 item(s) and its record holds 2 relation(s) — the block is stale: run make gen, then make site-build',
+    ]);
+  });
+
+  it('refuses a block with fewer or more items than the record has relations, and returns the page as it came', () => {
+    const cases: [string, string][] = [
+      [`<ul><li>${link('one')}</li></ul>`, 'lists 1 item(s) and its record holds 2'],
+      [`<ul><li>${link('one')}</li><li>${link('two')}</li><li>${link('three')}</li></ul>`, 'lists 3 item(s) and its record holds 2'],
+    ];
+    for (const [list, said] of cases) {
+      const refusals: PageError[] = [];
+      const html = page(list);
+      expect(stampRelations(html, ROUTE, RELATIONS, refusals), said).toBe(html);
+      expect(refusals, said).toEqual([
+        { route: ROUTE, what: `its relationships block ${said} relation(s) — the block is stale: run make gen, then make site-build` },
+      ]);
+    }
+  });
+
+  it('refuses an item whose first link opens another page than its relation’s, or no page, naming the first such item only', () => {
+    const swapped = page(`<ul><li>${link('one')}</li><li>${link('three')}</li></ul>`);
+    const refusals: PageError[] = [];
+    expect(stampRelations(swapped, ROUTE, RELATIONS, refusals)).toBe(swapped);
+    expect(refusals).toEqual([
+      {
+        route: ROUTE,
+        what:
+          'item 2 of its relationships block opens /patterns/b/three.html, and relation 2 of its record, prevents-hazard two, is for /patterns/b/two.html — ' +
+          'the block and the record disagree: run make gen, then make site-build',
+      },
+    ]);
+
+    const bare = page('<ul><li>one, without a link</li><li>two</li></ul>');
+    const none: PageError[] = [];
+    expect(stampRelations(bare, ROUTE, RELATIONS, none)).toBe(bare);
+    expect(none.map((r) => r.what)).toEqual([
+      'item 1 of its relationships block opens no page, and relation 1 of its record, combines-with one, is for /patterns/b/one.html — ' +
+        'the block and the record disagree: run make gen, then make site-build',
+    ]);
+  });
+
+  it('reads the first link of an item, and no link of its note', () => {
+    const list = `<ul><li>${link('one')} — see ${link('two')}</li><li>${link('two')} — see ${link('one')}</li></ul>`;
+    const refusals: PageError[] = [];
+    expect(stampRelations(page(list), ROUTE, RELATIONS, refusals)).toContain('data-to="two">');
+    expect(refusals).toEqual([]);
+  });
+});
+
+describe('readPage, the place of a page of the knowledge base', () => {
+  const head = (metas: string): string =>
+    `<!doctype html><html><head><meta name="kb:area" content="a"><meta name="kb:owner" content="o">${metas}</head><body><div data-kb-region><p>x</p></div></body></html>`;
+  const KIND = '<meta name="kb:kind" content="pattern">';
+  const BAND = '<meta name="kb:band" content="distributed">';
+  const GROUP = '<meta name="kb:group" content="distributed-resilience">';
+  const read = (metas: string, found: string[] = []): ReturnType<typeof readPage> =>
+    readPage('/dist/a.html', '/a.html', head(metas), (what) => found.push(what));
+
+  it('reads the three facts a head states together, and none on a page that states none', () => {
+    expect(read(KIND + BAND + GROUP)?.place).toEqual({ kind: 'pattern', band: 'distributed', group: 'distributed-resilience' });
+    expect(read('')?.place).toBeNull();
+  });
+
+  it('refuses a head that states some of the three, or states one empty, naming the ones it lacks', () => {
+    const cases: [string, string][] = [
+      [KIND + BAND, 'kb:group'],
+      [BAND, 'kb:kind, kb:group'],
+      [KIND + BAND + '<meta name="kb:group" content="">', 'kb:group'],
+    ];
+    for (const [metas, lacks] of cases) {
+      const found: string[] = [];
+      expect(read(metas, found), lacks).toBeNull();
+      expect(found, lacks).toEqual([
+        `the head states part of a place, without ${lacks} — a page of the knowledge base states kb:kind, kb:band, kb:group together and any other page none; site/src/components/Head/Head.astro emits them`,
+      ]);
+    }
   });
 });
 
@@ -620,6 +792,9 @@ function find(el: El, pick: (e: El) => boolean): El | undefined {
 }
 
 const hasAttr = (name: string) => (e: El): boolean => (e.attrs ?? []).some((a) => a.name === name);
+
+/** Every element under `el` with this tag, in document order. */
+const within = (el: El, tag: string): El[] => elementKids(el).flatMap((c) => [...(c.tagName === tag ? [c] : []), ...within(c, tag)]);
 
 describe('blocks-O1', () => {
   let sb: Sandbox;
@@ -1262,5 +1437,141 @@ describe('the pass ships the contract files', () => {
     const r = await sb.run(spec);
     expectFail(r, `${file}: missing page facts: kb:area`);
     expect(r.err).not.toContain('no HTML was built');
+  });
+});
+
+describe('the pass states where each page sits, and which relation each relationship item shows', () => {
+  let sb: Sandbox;
+  beforeEach(() => {
+    sb = makeSandbox();
+    rawKbSite(sb);
+  });
+  afterEach(() => sb.cleanup());
+
+  const BREAKER = 'site/dist/patterns/distributed/resilience/breaker.html';
+  const STORM_ITEM = '<li><a href="/hazards/storm.html">Storm</a> — Fails fast</li>';
+  const HTML = (): string[] => [...sb.snapshot().keys()].filter((f) => f.startsWith('site/dist/') && f.endsWith('.html'));
+  const articleOf = (file: string): El => {
+    const region = find(parse(sb.read(file)) as unknown as El, hasAttr('data-kb-region')) as El;
+    return elementKids(region)[0] as El;
+  };
+
+  it('gives the article block of each page of the knowledge base its kind, band and group, as its record says, and every other page its three facts alone', async () => {
+    expectPass(await sb.run(spec));
+    const corpus = new Corpus(sb.dir);
+    for (const page of corpus.listing) {
+      const record = recordOf(corpus, page.slug);
+      const article = articleOf(`site/dist${page.route}`);
+      expect((article.attrs ?? []).map((a) => a.name), page.slug).toEqual(['data-page', 'data-area', 'data-tags', 'data-kind', 'data-band', 'data-group']);
+      expect((article.attrs ?? []).slice(3), page.slug).toEqual([
+        { name: 'data-kind', value: record.kind },
+        { name: 'data-band', value: record.band },
+        { name: 'data-group', value: record.group },
+      ]);
+    }
+    // A theme filed under another area still states the theme's own place.
+    expect(sb.read('site/dist/themes/loop.html')).toContain('data-kind="theme" data-band="theme" data-group="theme">');
+    for (const file of ['site/dist/reference/notes.html', 'site/dist/index.html']) {
+      expect((articleOf(file).attrs ?? []).map((a) => a.name), file).toEqual(['data-page', 'data-area', 'data-tags']);
+    }
+  });
+
+  it('keeps the place off <body>, and off any copy a page held there', async () => {
+    sb.write(BREAKER, sb.read(BREAKER).replace('<body>', '<body data-kind="x" data-band data-group="y" data-page-head="kept">'));
+    expectPass(await sb.run(spec));
+    expect(sb.read(BREAKER)).toContain('<body data-page-head="kept">');
+  });
+
+  it('stamps each item of each relationships block with the verb and target of its record’s relation, in order, and no other list item', async () => {
+    expectPass(await sb.run(spec));
+    const corpus = new Corpus(sb.dir);
+    let stamped = 0;
+    for (const page of corpus.listing) {
+      const doc = parse(sb.read(`site/dist${page.route}`)) as unknown as El;
+      const section = find(doc, (e) => e.tagName === 'section' && (e.attrs ?? []).some((a) => a.name === 'data-block' && a.value === 'relationships'));
+      const items = section === undefined ? [] : within(section, 'li');
+      const relations = recordOf(corpus, page.slug).relations;
+      expect(
+        items.map((li) => li.attrs),
+        page.slug,
+      ).toEqual(relations.map((r) => [{ name: 'data-verb', value: r.verb }, { name: 'data-to', value: r.to }]));
+      stamped += items.length;
+      expect(within(doc, 'li').filter(hasAttr('data-to')), page.slug).toHaveLength(items.length);
+    }
+    // Both sides of every edge of the fixture: each shows its own row.
+    expect(stamped).toBe(corpus.listing.reduce((sum, page) => sum + recordOf(corpus, page.slug).relations.length, 0));
+    expect(stamped).toBeGreaterThan(5);
+    expect(sb.read(BREAKER)).toContain('<li data-verb="prevents-hazard" data-to="storm"><a href="../../../hazards/storm.html">Storm</a> — Fails fast</li>');
+  });
+
+  it('writes pages the data-layer gate accepts: one article of three or six facts, and the stamps on class-free items', async () => {
+    expectPass(await sb.run(spec));
+    expect(HTML()).toHaveLength(14);
+    for (const file of HTML()) expect(pageFindings(sb.read(file), file === 'site/dist/index.html'), file).toEqual([]);
+  });
+
+  it('refuses a block that lists fewer items than the record has relations, naming the page, and writes nothing', async () => {
+    sb.write(BREAKER, sb.read(BREAKER).replace(STORM_ITEM, ''));
+    const before = sb.snapshot();
+    const r = await sb.run(spec);
+    expectFail(r);
+    expect(r.err.trim().split('\n')).toEqual([
+      `[site-pass] FAIL ${BREAKER}: its relationships block lists 1 item(s) and its record holds 2 relation(s) — the block is stale: run make gen, then make site-build`,
+    ]);
+    expect(sb.snapshot()).toEqual(before);
+  });
+
+  it('refuses an item whose link opens another page than its relation’s, or none, and writes nothing', async () => {
+    const swapped = '<li><a href="/patterns/distributed/resilience/retry.html">Storm</a> — Fails fast</li>';
+    sb.write(BREAKER, sb.read(BREAKER).replace(STORM_ITEM, swapped));
+    const before = sb.snapshot();
+    const r = await sb.run(spec);
+    expectFail(r);
+    expect(r.err.trim().split('\n')).toEqual([
+      `[site-pass] FAIL ${BREAKER}: item 2 of its relationships block opens /patterns/distributed/resilience/retry.html, and relation 2 of its record, prevents-hazard storm, ` +
+        'is for /hazards/storm.html — the block and the record disagree: run make gen, then make site-build',
+    ]);
+    expect(sb.snapshot()).toEqual(before);
+
+    sb.write(BREAKER, sb.read(BREAKER).replace(swapped, '<li>Storm — Fails fast</li>'));
+    const linkless = sb.snapshot();
+    expectFail(await sb.run(spec), 'item 2 of its relationships block opens no page');
+    expect(sb.snapshot()).toEqual(linkless);
+  });
+
+  it('refuses a page of the knowledge base whose block is gone, though its record lists relations', async () => {
+    const html = sb.read(BREAKER);
+    sb.write(BREAKER, html.slice(0, html.indexOf('<div class="sl-heading-wrapper level-h2"><h2 id="relationships">')) + html.slice(html.indexOf('<!-- relationships:end -->') + '<!-- relationships:end -->'.length));
+    const r = await sb.run(spec);
+    expectFail(r, `${BREAKER}: its relationships block lists 0 item(s) and its record holds 2 relation(s)`);
+  });
+
+  it('reports every refusal and every other finding of the run together, and writes nothing, not even a chunk of script', async () => {
+    const snippet =
+      '<script aria-hidden="true">(() => { const storedTheme = typeof localStorage !== \'undefined\' && localStorage.getItem(\'starlight-theme\'); })();</script>';
+    const file = 'site/dist/hazards/storm.html';
+    // A page that would write the shared chunk, one refusal and one section fact with no heading.
+    sb.write(file, sb.read(file).replace('</head>', `${snippet}</head>`).replace('<p>', '<!--meta block=loose--><p>'));
+    sb.write(BREAKER, sb.read(BREAKER).replace(STORM_ITEM, ''));
+    const before = sb.snapshot();
+    const r = await sb.run(spec);
+    expectFail(r);
+    expect(r.err.trim().split('\n')).toEqual([
+      `[site-pass] FAIL ${BREAKER}: its relationships block lists 1 item(s) and its record holds 2 relation(s) — the block is stale: run make gen, then make site-build`,
+      `[site-pass] FAIL ${file}: a <!--meta--> section fact with no heading above it — it goes on the line after a heading; dropped`,
+    ]);
+    expect(sb.snapshot()).toEqual(before);
+  });
+
+  it('refuses a head that states part of a place, naming the page and what it lacks, and writes nothing', async () => {
+    sb.write(BREAKER, sb.read(BREAKER).replace('<meta name="kb:band" content="distributed">', ''));
+    const before = sb.snapshot();
+    const r = await sb.run(spec);
+    expectFail(r);
+    expect(r.err.trim().split('\n')).toEqual([
+      `[site-pass] FAIL ${BREAKER}: the head states part of a place, without kb:band — a page of the knowledge base states kb:kind, kb:band, kb:group together and any other page none; ` +
+        'site/src/components/Head/Head.astro emits them',
+    ]);
+    expect(sb.snapshot()).toEqual(before);
   });
 });

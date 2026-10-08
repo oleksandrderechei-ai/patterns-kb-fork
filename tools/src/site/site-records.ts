@@ -134,13 +134,19 @@ export function isReserved(address: string): boolean {
 // llms.txt and llms-full.txt
 // ---------------------------------------------------------------------------
 
-/** The files that describe the whole site, under a heading of their own in llms.txt, each with what it is. */
+/**
+ * The files that describe the whole site, under a heading of their own in
+ * llms.txt, each with what it is: the two indexes, the schema of every file
+ * the site serves, the schema of what `kb.mjs` prints for a reader that has
+ * the repository too, and the markdown of every page in one file.
+ */
 const CONTRACT_LINKS: readonly (readonly [file: string, what: string])[] = [
   ['index.json', `every page with its kind and the address of its record (${CONTRACTS.index})`],
   ['graph.json', `every page and every typed link between pages (${CONTRACTS.graph})`],
   [`schema/${SCHEMA_BASES.record}.json`, 'what each key of a page record means'],
   [`schema/${SCHEMA_BASES.index}.json`, 'what each key of index.json means'],
   [`schema/${SCHEMA_BASES.graph}.json`, 'what each key of graph.json means'],
+  [`schema/${SCHEMA_BASES.cli}.json`, `what the \`--json\` output of each \`kb.mjs\` read command means (${CONTRACTS.cli})`],
   ['llms-full.txt', 'the markdown of every page in one file, each page after a `<!-- kb:page id=… route=… -->` line'],
 ];
 
