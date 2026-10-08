@@ -241,7 +241,7 @@
       "definition": "Collection-like interface over data storage",
       "route": "/patterns/enterprise/repository.html",
       "requires": [],
-      "related": ["unit-of-work", "data-mapper", "aggregate", "service-layer", "fake-object", "entity", "identity-map", "specification", "query-object", "cqrs"]
+      "related": ["unit-of-work", "data-mapper", "aggregate", "service-layer", "fake-object", "entity", "identity-map", "specification", "query-object", "cqrs", "managed-services"]
     },
     {
       "id": "specification",
@@ -641,7 +641,7 @@
       "definition": "A token grants temporary, limited access to a resource directly",
       "route": "/patterns/distributed/routing/valet-key.html",
       "requires": [],
-      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing"]
+      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing", "identity-as-perimeter"]
     },
     {
       "id": "api-routing",
@@ -681,7 +681,7 @@
       "definition": "Stand the new version up beside the old, then move traffic across",
       "route": "/patterns/distributed/routing/blue-green-deployment.html",
       "requires": [],
-      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "containerization", "deployment-stamp", "web-queue-worker", "rolling-deployment", "container-orchestration"]
+      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "containerization", "deployment-stamp", "web-queue-worker", "rolling-deployment", "container-orchestration", "design-for-operations"]
     },
     {
       "id": "canary-release",
@@ -2561,7 +2561,7 @@
       "definition": "Two of everything, failing independently, with a rule for who decides",
       "route": "/principles/redundancy.html",
       "requires": [],
-      "related": ["replication", "sharding", "load-balancer", "quorum-consensus", "leader-election", "stateless-service", "self-healing", "failure-mode-analysis", "build-for-business", "regions", "defense-in-depth", "bulkhead", "scale-out"]
+      "related": ["replication", "sharding", "load-balancer", "quorum-consensus", "leader-election", "stateless-service", "self-healing", "failure-mode-analysis", "build-for-business", "regions", "defense-in-depth", "bulkhead", "scale-out", "identity-as-perimeter"]
     },
     {
       "id": "failure-mode-analysis",
@@ -2601,7 +2601,7 @@
       "definition": "Operators are users of your system, and their needs are requirements",
       "route": "/principles/design-for-operations.html",
       "requires": [],
-      "related": ["health-endpoint", "correlation-identifier", "secure-logger", "sidecar", "load-shedding", "least-astonishment", "failure-mode-analysis", "managed-services", "resources"]
+      "related": ["health-endpoint", "correlation-identifier", "secure-logger", "sidecar", "load-shedding", "least-astonishment", "failure-mode-analysis", "managed-services", "resources", "blue-green-deployment"]
     },
     {
       "id": "managed-services",
@@ -2609,7 +2609,7 @@
       "definition": "Run only what your users pay you for; rent the rest",
       "route": "/principles/managed-services.html",
       "requires": [],
-      "related": ["object-storage", "distributed-cache", "api-gateway", "message-queue", "stateless-service", "kiss", "yagni", "design-for-operations", "identity-as-perimeter"]
+      "related": ["object-storage", "distributed-cache", "api-gateway", "message-queue", "stateless-service", "kiss", "yagni", "design-for-operations", "identity-as-perimeter", "repository"]
     },
     {
       "id": "identity-as-perimeter",
@@ -2617,7 +2617,7 @@
       "definition": "A verified identity grants access; where the packet came from does not",
       "route": "/principles/identity-as-perimeter.html",
       "requires": [],
-      "related": ["federated-identity", "authentication-enforcer", "authorization-enforcer", "secure-session-manager", "gatekeeper", "least-privilege", "service-mesh", "managed-services", "fallacies-of-distributed-computing", "defense-in-depth"]
+      "related": ["federated-identity", "authentication-enforcer", "authorization-enforcer", "secure-session-manager", "gatekeeper", "least-privilege", "service-mesh", "managed-services", "fallacies-of-distributed-computing", "defense-in-depth", "valet-key", "redundancy"]
     },
     {
       "id": "design-for-evolution",

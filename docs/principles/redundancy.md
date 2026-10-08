@@ -75,6 +75,7 @@ The case that catches teams out is redundancy that is real and still useless. Tw
 - [Regions & Availability](../capabilities/regions.md) — Regions and zones are where this principle gets priced.
 - [Defense in Depth](./defense-in-depth.md) — Redundant controls count only if they do not fail together.
 - [Design to Scale Out](./scale-out.md) — Adding instances is the usual way to get the spare capacity
+- [Identity Is the Perimeter](./identity-as-perimeter.md) — Identity issuance stops every login when it fails, so it is a first candidate for a second copy
 
 **Alternative to**
 

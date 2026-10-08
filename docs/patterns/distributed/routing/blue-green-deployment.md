@@ -246,6 +246,7 @@ await db.dropColumn("orders", "customer_id");
 - [Deployment Stamp](./deployment-stamp.md) — Ephemeral green is a freshly provisioned stamp
 - [Web-Queue-Worker](../../architecture/web-queue-worker.md) — Both halves swap together, so size for two versions running during the switch
 - [Container Orchestration](../coordination/container-orchestration.md) — Managed or in-cluster, the orchestrator is where the switch is declared.
+- [Design for Operations](../../../principles/design-for-operations.md) — A release that can be undone in one routing change is what operators need from a deploy
 
 **Alternative to**
 

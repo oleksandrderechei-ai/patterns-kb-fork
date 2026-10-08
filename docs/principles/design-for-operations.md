@@ -21,9 +21,14 @@ The people who run your system are its users, and what they need is a requiremen
 ## Explained
 <!--meta block=explain-->
 
-Design for operations means treating the people who run your system as users with requirements: someone who has never read the source must be able to answer three questions from its output, is it healthy, what changed, and what do I do. Anything only the author can answer ends in a phone call. It covers more than logs. Releasing without downtime, rolling back a bad release, changing configuration without a rebuild, checking it at start-up and running two versions side by side during a rollout are all decided while you write the code, and cost far more to add after interfaces ship. Choose it over adding monitoring later when you will run the system for years or someone else will. It has costs. Unread instrumentation still bills for storage, so emit only what someone will act on. Alerts nobody acts on teach the on-call to ignore the channel, so page only on what a user can feel. Runbooks rot because nothing compiles them, so attach each to its alert and prefer a script that works or fails visibly.
+Treat the people who run your system as users with requirements. Someone who has never read the source must be able to answer, from its output, three questions: is it healthy, what changed, and what do I do. Zero-downtime release, rollback, start-up-checked configuration and two versions serving at once are decided while you write the code, and cost far more to add after interfaces ship. Choose it over adding monitoring later when you will run the system for years or someone else will.
 
-**Example.** A checkout service pages the on-call at 2 am: errors are up. With no request id, tracing one failed order across 6 services means joining logs by timestamp, and it takes an hour. With a correlation id stamped at the edge and carried on every hop, one search shows the failure in the tax service in 5 minutes. The health endpoint answered 200 while the connection pool was exhausted, so the team makes it test the database. The cost is cleanup: the team had 140 alerts and nobody acted on 90 of them, so they delete those 90 and keep the 50 that match symptoms a user can feel.
+- **Storage bill.** Unread instrumentation still costs storage, so emit only what someone will act on.
+- **Alert fatigue.** Alerts nobody acts on teach the on-call to ignore the channel, so page only on what a user can feel.
+- **Stale runbooks.** Nothing compiles a runbook, so attach each to its alert and prefer a script that works or fails visibly.
+- **Deep checks.** A health check that tests a shared dependency can pull every instance at once, so keep liveness shallow.
+
+**Example.** A checkout service pages the on-call at 2 am: errors are up. With no request id, tracing one failed order across 6 services means joining logs by timestamp, and takes an hour. With a correlation id stamped at the edge and carried on every hop, one search finds the failure in the tax service in 5 minutes. The health endpoint answered 200 while the connection pool was exhausted, so the team adds a readiness check on the database, and keeps liveness shallow so a database outage cannot pull every instance. The cost is cleanup: nobody acted on 90 of 140 alerts, so they delete those 90 and keep the 50 that match symptoms a user can feel.
 
 ## Why it helps
 <!--meta block=rationale-->
@@ -37,13 +42,14 @@ Operability also decides what you dare to do. A team that can release in minutes
 
 Treat each operational question as a feature with an owner:
 
-- Expose health as something a machine can ask about. A [Health Endpoint](../patterns/distributed/resilience/health-endpoint.md) that reports whether the instance can actually serve — dependencies reachable, migrations applied — lets a load balancer pull a broken instance out before a user meets it.
-- Read configuration from the environment and check it at start-up. A setting that changes without a rebuild is a five-minute fix during an incident, and one that fails loudly at boot never becomes a wrong number in next week’s report.
+- Expose health as something a machine can ask about. A [Health Endpoint](../patterns/distributed/resilience/health-endpoint.md) reports whether the instance can serve. Keep liveness shallow. Make readiness check what this instance needs (dependencies reachable, migrations applied) with a short timeout, and test shared dependencies there only, so their outage does not eject the whole fleet.
+- Read configuration from the environment and check it at start-up. A setting that changes with a restart, not a rebuild, is a five-minute fix during an incident, and one that fails loudly at boot catches missing or malformed values before they serve traffic. A valid but wrong value still needs review.
 - Stamp every request with an identifier and carry it across every hop. One [Correlation Identifier](../patterns/messaging/correlation-identifier.md) reassembles a single user’s journey out of ten services’ logs; without it, a cross-service diagnosis is a manual join on timestamps that nobody finishes.
 - Decide what may be written down before you write it down. A [Secure Logger](../patterns/security/secure-logger.md) that redacts credentials and personal data where the line is emitted keeps your diagnostic trail from becoming the breach you have to disclose.
-- Make rollback the cheap path, and let two versions coexist. If a rollout can only go forward, every release is a bet; if old and new can serve together — schema changes additive, messages tolerant of fields they do not know — you stop a bad release in the time it takes to shift traffic.
-- Push the cross-cutting operational machinery out of each service. Running telemetry, credential rotation and traffic policy in a [Sidecar](../patterns/distributed/routing/sidecar.md) beside the process gives every service the same operational surface without every team building its own, and leaves one place to fix when that surface changes.
-- Give the operator a lever to pull under pressure. [Load Shedding](../patterns/distributed/resilience/load-shedding.md), a switch that disables an expensive feature, a read-only mode: each turns an outage into a degraded service, and each has to exist before the night you need it.
+- Make rollback the cheap path, and let two versions coexist. If a rollout can only go forward, every release is a bet; if old and new can serve together (schema changes additive, messages tolerant of fields they do not know), you stop a bad release in the time it takes to shift traffic, as long as the new version has written nothing the old cannot read. Split a breaking change into expand, migrate, contract, and drop the old path once no old version serves traffic.
+- Push the cross-cutting operational machinery out of each service. Running telemetry, credential rotation and traffic policy in a [Sidecar](../patterns/distributed/routing/sidecar.md) beside the process gives every service the same operational surface without every team building its own, and leaves one place to fix when that surface changes. Each sidecar is another process to size, upgrade and watch, and another thing that can fail.
+- Give the operator a lever to pull under pressure. [Load Shedding](../patterns/distributed/resilience/load-shedding.md), a switch that disables an expensive feature, a read-only mode: each can turn an outage into a degraded service, if it exists before the night you need it and has been exercised since. Name who may pull it without approval.
+- Record what changed. Stamp every signal with the code version and config version, and log each deploy and config change, so the question “what changed” is answered from output.
 
 The test is not whether the information exists somewhere. It is whether a person who did not write the system can find it in the minutes the incident allows.
 
@@ -74,5 +80,6 @@ Runbooks rot faster than code, because nothing compiles them. A confident wrong 
 - [Analyse Failure Modes](./failure-mode-analysis.md) — What you decided to detect is what the system has to emit
 - [Prefer Managed Services](./managed-services.md) — You still operate what you bought, only at a different layer
 - [Resource Organisation](../capabilities/resources.md) — The estate layout is where this principle becomes concrete.
+- [Blue-Green Deployment](../patterns/distributed/routing/blue-green-deployment.md) — Shifting traffic back to the old copy is the cheap rollback this principle asks for
 
 <!-- relationships:end -->

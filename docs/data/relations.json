@@ -14370,6 +14370,34 @@
       "b": "scale-out",
       "note_a": "Affinity trades free instance replacement for session locality",
       "note_b": "Pinning a client to one backend restores the machine dependence scale-out removes"
+    },
+    {
+      "a": "blue-green-deployment",
+      "verb": "combines-with",
+      "b": "design-for-operations",
+      "note_a": "A release that can be undone in one routing change is what operators need from a deploy",
+      "note_b": "Shifting traffic back to the old copy is the cheap rollback this principle asks for"
+    },
+    {
+      "a": "repository",
+      "verb": "combines-with",
+      "b": "managed-services",
+      "note_a": "A repository is the seam that lets a rented store be replaced",
+      "note_b": "The interface your own code owns is a repository; swapping the rented store means one adapter"
+    },
+    {
+      "a": "valet-key",
+      "verb": "combines-with",
+      "b": "identity-as-perimeter",
+      "note_a": "Valet Key hands a third party a scoped credential; identity as perimeter is the rule it applies",
+      "note_b": "A narrow, expiring credential for one object is the same identity-scoping move applied to data"
+    },
+    {
+      "a": "identity-as-perimeter",
+      "verb": "combines-with",
+      "b": "redundancy",
+      "note_a": "The issuer is a single point of failure; run it redundantly and decide what survives its outage",
+      "note_b": "Identity issuance stops every login when it fails, so it is a first candidate for a second copy"
     }
   ],
   "group_order": {

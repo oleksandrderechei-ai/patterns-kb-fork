@@ -227,6 +227,7 @@ const uploadUrl = `https://blobs.example.com/${resource}?exp=${key.expiresAt}&ac
 - [Least Privilege](../../security/least-privilege.md) — A scoped, expiring key is least privilege in action
 - [Claim Check](../../messaging/claim-check.md) — A pre-signed URL is a claim check that carries its own access grant.
 - [Agent Sandboxing](../../security/agent-sandboxing.md) — The agent is a client that should hold only a short-lived token.
+- [Identity Is the Perimeter](../../../principles/identity-as-perimeter.md) — Valet Key hands a third party a scoped credential; identity as perimeter is the rule it applies
 
 **Demonstrated by**
 
