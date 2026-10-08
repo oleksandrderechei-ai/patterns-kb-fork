@@ -108,5 +108,6 @@ Pick the lightest mechanism the contention allows: optimistic when conflicts are
 - [Parking Lot](../designs/parking-lot.md) — A check-then-act on a shared set: two entrances claim one parking bay.
 - [Elevator](../designs/elevator.md) — An elevator controller handling concurrent hall calls can double-assign an idle car or corrupt a car's stop set mid-tick.
 - [Rate Limiter](../designs/design-rate-limiter.md) — The Rate Limiter design shows this race in a token bucket and fixes it with a per-bucket lock.
+- [File System](../designs/file-system.md) — The file system's create path is a worked case: both threads find the name free and both add it.
 
 <!-- relationships:end -->

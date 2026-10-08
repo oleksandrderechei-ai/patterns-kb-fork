@@ -14650,6 +14650,20 @@
       "b": "resource-leak",
       "note_a": "A bucket or log is kept for every clientId that ever called, so the maps grow until idle keys are evicted.",
       "note_b": "The Rate Limiter design leaks one bucket per client id until idle keys are evicted."
+    },
+    {
+      "a": "file-system",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "create is a check-then-act race: two threads both see a name free and one silently overwrites the other, corrupting the shared tree.",
+      "note_b": "The file system's create path is a worked case: both threads find the name free and both add it."
+    },
+    {
+      "a": "file-system",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "move holds two folder locks, so two moves in opposite directions wait on each other until locks are taken in a fixed order.",
+      "note_b": "Moving between two folders under per-folder locks is a worked case."
     }
   ],
   "group_order": {

@@ -21,13 +21,13 @@ An in-memory file system has one Unix-style root, folders that nest arbitrarily 
 ## Explained
 <!--meta block=explain-->
 
-An in-memory file system is a tree where every file and folder shares one base type holding its name and a link to its parent folder, a folder keeps its children in a map keyed by name, and one outer object parses every path string so callers never touch the tree. The full path is computed by walking up the parent links instead of being stored, so renaming or moving a folder changes one entry, not every file beneath it. The map makes lookup constant-time at any folder size and makes two siblings with one name impossible. Leave search and path caching until asked, since each is an index you must keep in sync.
+An in-memory file system is a tree where every file and folder shares one base type holding its name and a link to its parent folder. A folder keeps its children in a map keyed by name, and one outer object parses every path string so callers never touch the tree. The full path is computed by walking up the parent links instead of being stored, so renaming or moving a folder changes one entry, not every file beneath it. The map makes each lookup near-constant-time per path segment (average case) at any folder size, and a duplicate sibling name is caught by one key check. Leave search and path caching until asked, since each is an index you must keep in sync.
 
 - **Paired links.** Parent and child links must change together, or the computed path is wrong. A rename removes the old key and adds the new.
 - **Cycles.** A move can make a folder its own descendant. Walk up from the destination and refuse if you meet the moved entry.
 - **Lock order.** One lock per folder lets different folders work at once; take two locks in a fixed order so opposite moves cannot deadlock.
 
-**Example.** A folder /home holds 10,000 entries below it. If every entry stored its path as text, renaming /home to /house would rewrite 10,000 strings. With parent links it changes one name, and each entry's path is computed on demand by walking up about 10 to 20 levels. Now move /home into /home/user/stuff: the walk goes from /home/user/stuff up to user, then reaches /home, the entry being moved, so the system refuses.
+**Example.** A folder /home holds 10,000 entries below it. If every entry stored its path as text, renaming /home to /house would rewrite 10,000 strings. With parent links it changes one name, and each entry's path is computed on demand by walking up about 10 to 20 levels. Now move /home to /home/user/stuff/home: the walk starts at the new parent /home/user/stuff, goes up to user, then reaches /home, the entry being moved, so the system refuses.
 
 ## Requirements
 <!--meta block=requirements-->
@@ -56,7 +56,7 @@ Out of scope: search, relative paths (`../`, `./`), permissions and ownership, t
 
 Three classes and one shared base — plus one thing that looks like an entity but isn't:
 
-- **FileSystem** — the orchestrator and the only public surface. It owns the root, parses path strings, and exposes the whole API. External code never holds a Folder or a File directly.
+- **FileSystem** — the orchestrator and the only public surface. It owns the root, parses path strings, and exposes the whole API. External code never navigates the tree: it passes path strings. Entry values returned by get, list and create are handles to be treated as read-only; callers do not call addChild or removeChild.
 - **FileSystemEntry** — the abstract base every node shares: a `name`, a `parent` pointer, `getPath()`, and an abstract `isDirectory()`. It exists because a File and a Folder have the same identity and differ only in containment.
 - **Folder** — the composite. A private `name → entry` map of children, exposed only through `addChild`, `removeChild`, `getChild`, and `getChildren`.
 - **File** — the leaf. A name and a string `content`, with no children and no containment logic.
@@ -154,7 +154,7 @@ getPath():                       # on FileSystemEntry
 Path resolution is a sequence of by-name child lookups: to reach `/home/user/docs` you find `home` in the root, then `user`, then `docs`. The collection type inside a folder decides how fast that is.
 
 - **A list of children.** `getChild(name)` is a linear scan. A folder holding 10,000 files is up to 10,000 comparisons per segment, multiplied across every level of every path — it fails the responsiveness bar outright.
-- **A map from name to entry (chosen).** Lookup is O(1) no matter the fan-out, so a folder with ten children and one with ten thousand resolve equally fast. The map earns a bonus: because its keys are unique, it is the "no two siblings share a name" rule — the data structure enforces the invariant for free, with no extra check.
+- **A map from name to entry (chosen).** Lookup is O(1) no matter the fan-out, so a folder with ten children and one with ten thousand resolve equally fast. The map earns a bonus: because its keys are unique, it is the "no two siblings share a name" rule — the map makes a duplicate name detectable with one key lookup; create, rename and move must still make that check and raise on a collision.
 
 Each path segment is one map lookup, so depth costs steps and fan-out costs nothing.
 
@@ -204,7 +204,11 @@ flowchart TB
 
 ### 6 · Making it thread-safe
 
-As written the design assumes a single thread, and the create path is a classic check-then-act [race](../hazards/race-condition.md): two threads both see a name is free, both add it, and one silently overwrites the other. The pragmatic fix is a [monitor](../patterns/concurrency/monitor-object.md) — wrap each public method in `synchronized(this)`. It is correct and simple, but it serialises unrelated work: two creates in different folders block each other for no reason. Fine-grained locks (one per folder, taken only on the folder being changed) restore that concurrency, but they make move dangerous — it holds two folder locks, and two moves in opposite directions [deadlock](../hazards/deadlock.md). The remedy is lock ordering: always acquire the two folder locks in a fixed order, such as by path string, regardless of which is source and which is destination. Reads are the easy win: `get` and `list` mutate nothing, so a [read-write lock](../patterns/concurrency/rw-lock.md) lets them run concurrently and reserves exclusivity only for writers.
+As written the design assumes a single thread, and the create path is a classic check-then-act [race](../hazards/race-condition.md): two threads both see a name is free, both add it, and one silently overwrites the other. The pragmatic fix is a [monitor](../patterns/concurrency/monitor-object.md) — wrap each public method in `synchronized(this)`. It is correct and simple, but it serialises unrelated work: two creates in different folders block each other for no reason.
+
+Fine-grained locks (one per folder, taken only on the folder being changed) restore that concurrency, but they make move dangerous — it holds two folder locks, and two moves in opposite directions [deadlock](../hazards/deadlock.md). The remedy is lock ordering: always acquire the two folder locks in a fixed order by a stable key, such as an immutable per-entry id, regardless of which is source and which is destination. Path strings are a poor key: a concurrent rename or move changes them while locks are held. Re-run the cycle check after both locks are held, since another thread may have re-parented a folder meanwhile.
+
+Reads are the easy win: `get` and `list` mutate nothing, so a [read-write lock](../patterns/concurrency/rw-lock.md) lets them run concurrently and reserves exclusivity only for writers.
 
 ### 7 · Adding search later
 
@@ -216,8 +220,8 @@ Search is out of scope but the obvious next ask, and the base class makes it che
 ### What it buys
 <!--meta polarity=pro-->
 
-- Parent pointers make rename and move O(1) — no path-rewriting cascade through the subtree.
-- The name → entry map gives O(1) child lookup at any fan-out and enforces sibling-name uniqueness for free.
+- Parent pointers make rename O(1) and move O(depth of the destination) for the cycle check, both independent of subtree size — no path-rewriting cascade through the subtree.
+- The name → entry map gives O(1) child lookup at any fan-out and makes a sibling-name collision cheap to detect: one key lookup, which create, rename and move must make and raise on.
 - One shared base ends the duplicated identity code and lets every operation treat files and folders uniformly.
 - A single facade owns path parsing, so callers never navigate the tree or hold folder references.
 
@@ -242,6 +246,11 @@ Search is out of scope but the obvious next ask, and the base class makes it che
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Race Condition](../hazards/race-condition.md) — create is a check-then-act race: two threads both see a name free and one silently overwrites the other, corrupting the shared tree.
+- [Deadlock](../hazards/deadlock.md) — move holds two folder locks, so two moves in opposite directions wait on each other until locks are taken in a fixed order.
 
 **Demonstrates**
 
