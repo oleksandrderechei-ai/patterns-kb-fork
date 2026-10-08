@@ -272,6 +272,7 @@ setInterval(() => withLeaderLock('sweeper', () => sweepOnce(db, notify)), 30_000
 - [YouTube](../../../designs/youtube.md) — A video stuck mid-pipeline emits no event; the sweep is what notices
 - [Robinhood](../../../designs/robinhood.md) — a submission that succeeded while its follow-up write did not announces nothing — only a scan finds it
 - [Persona Identification & Sanction Check (V2)](../../../designs/persona-identification-v2.md) — the component that makes silence actionable: it turns a passed deadline into a terminal, an escalation or a caveat rather than a wait
+- [Payment System](../../../designs/payment-system.md) — the payment system's reconciliation consumer is a sweeper over pending attempts, settled against the network's records
 
 **Implemented by**
 

@@ -307,7 +307,7 @@ async function runFlow(flowId: string, personaId: string): Promise<void> {
 **Demonstrated by**
 
 - [Robinhood](../../../designs/robinhood.md) — consistency across services with no shared transaction is held by ordered steps plus a reconciler, not an atomic commit
-- [Persona Identification & Sanction Check](../../../designs/persona-identification.md) — sequencing a persona's identity check and sanction screening as local transactions with explicit failure terminals, no transaction manager spanning the vendors
+- [Persona Identification & Sanction Check](../../../designs/persona-identification.md) — sequencing a persona's identity check and sanction screening as local transactions with explicit failure states, no transaction manager spanning the vendors
 - [Persona Identification & Sanction Check (V2)](../../../designs/persona-identification-v2.md) — a long-running flow whose compensation is a recorded terminal rather than a rollback across third parties
 
 **Implemented by**

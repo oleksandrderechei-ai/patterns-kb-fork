@@ -78,7 +78,7 @@ This design checks a person's identity and screens them against sanction lists, 
   - Each additional obligation attaches to the recorded history of the mandatory flow without redesigning it.
   - A new jurisdiction or vendor changes configuration and cadences, not the shape of the system.
 - **Consistency**
-  - The flow's recorded state and what the client was told must never diverge.
+  - The flow's recorded state and what the client was told must never diverge across a failover; after a restore from the last archived segment (dive 4) the gap is bounded by the RPO stated in the runbook.
   - Behaviour is asynchronous end to end; when speed and correctness pull apart, correctness wins.
   - [Idempotency](../patterns/messaging/idempotency.md): a repeated or replayed input, whether a create, a vendor callback or a delivery, leaves the flow in the same state as its first arrival.
 - **Latency**
@@ -107,7 +107,7 @@ This design checks a person's identity and screens them against sanction lists, 
 
 ### Out of scope {#requirements-outofscope}
 
-- **Cancelling a flow in flight** — a started flow runs to a terminal or is abandoned.
+- **Cancelling a flow in flight** — a started flow runs to a finished state or is abandoned.
 - **Status polling in flight** — a flow idles for days between vendor calls, so live updates would report almost nothing; recovery is webhook replay plus the dashboard, not a second read path.
 - **Human review of a possible match** — it happens on the client's side of the webhook; assumed, not given: each vendor returns a hit or a clear, never a raw match score.
 - **Cross-region failover** — regional isolation for residency is in scope; surviving the loss of a region is not.
@@ -115,7 +115,7 @@ This design checks a person's identity and screens them against sanction lists, 
 ## Right-sizing
 <!--meta block=sizing-->
 
-**The problem:** a flow that waits days on people and vendors, ~75 person-flows a day today (assumed: ~100 merchant onboardings a week, ×5 person checks) against a design target of 10k a day. **The shape:** event-driven, decided by the waits and not by the volume: a request thread cannot be held for a day, a verdict must reach the client exactly once across crashes, and the regulator asks for the history itself, so every wait is a durable row and every state change an appended event. Current state is materialised on the flow row instead of folded from the log on each read, because the audit duty wants append-only history and no requirement wants replay-on-read. **The stores:** four per region, operational Postgres (flows, history, queue, outbox, inbox), a separate encrypted vault for personal data, object storage for documents and a small [shared cache](../patterns/caching/distributed-cache.md) holding circuit-breaker state; residency makes each region a full stack, so every number below is per region and a new region multiplies stacks, not load.
+**The problem:** a flow that waits days on people and vendors, ~75 person-flows a day today (assumed: ~100 merchant onboardings a week, ×5 person checks) against a design target of 10k a day. **The shape:** event-driven, decided by the waits and not by the volume: a request thread cannot be held for a day, a verdict must reach the client at least once across crashes, each repeat recognisable by its eventId, and the regulator asks for the history itself, so every wait is a durable row and every state change an appended event. Current state is materialised on the flow row instead of folded from the log on each read, because the audit duty wants append-only history and no requirement wants replay-on-read. **The stores:** four per region, operational Postgres (flows, history, queue, outbox, inbox), a separate encrypted vault for personal data, object storage for documents and a small [shared cache](../patterns/caching/distributed-cache.md) holding circuit-breaker state; residency makes each region a full stack, so every number below is per region and a new region multiplies stacks, not load.
 
 ### Required capabilities — what the shape above forces, before any product is named {#sizing-h-capabilities}
 
@@ -135,7 +135,7 @@ This design checks a person's identity and screens them against sanction lists, 
 
 | Axis | How it is worked out | Result | Routes to |
 | --- | --- | --- | --- |
-| **Writes** | ~42 rows per flow (12 inserts: flow, person, document, link, ~5 transitions, ~3 outbox/inbox; ~8 task rows claimed and completed, so touched twice; ~8 `sanctions_check` writes; one row each for the verification session, the idempotency key and the delivery record) × 10k flows/day, ×2 for business-hours and campaign bunching. A single primary is untroubled below ~100/s and tops out around 10k–50k/s, two rungs above this design. | **5 row-writes/s into Postgres**, **~10/s peak** | NFR: scale |
+| **Writes** | ~42 rows per flow (12 inserts: flow, person, document, link, ~5 transitions, ~3 outbox/inbox; ~8 task rows claimed and completed, so touched twice; ~8 `sanctions_check` writes; one row each for the verification session, the idempotency key and the delivery record; this is the floor with no retries, and each retry adds one task-row write) × 10k flows/day, ×2 for business-hours and campaign bunching. As a rule of thumb for one primary on commodity hardware, ~100/s is comfortable and 10k–50k/s is the ceiling, two rungs above this design. | **5 row-writes/s into Postgres**, **~10/s peak** | NFR: scale |
 | **Storage** | ~1 KB metadata × 5 years; ID photos 2 MB × 10k/day held for 1-year retention, expired by lifecycle rule. | **18 GB** metadata, **7 TB** of photos | NFR: scale; compliance |
 | **Waiting (Little's law)** | ~24 h mean submission wait. Inert rows the claim query never scans, resolved by the 48-hour link expiry and a scheduled [sweeper](../patterns/distributed/coordination/sweeper.md) that re-invites or escalates a failure event. | **~10k open flows** parked | NFR: consistency |
 | **Re-screening load (additional tier)** | ~3.6M concluded persons after a year × quarterly cadence ≈ 40k re-checks/day, each fanning out a leg per sanction list (~160k legs/day) at ~10 row-writes per re-check (a transition, a task and a result per list, one outbox row). The book roughly doubles the write rate of live intake: a second workload of the same size, so the batch needs its own capacity story. | **~2 outbound vendor calls/s**, **4–5 row-writes/s into Postgres, sustained** | NFR: scale |
@@ -165,7 +165,7 @@ This design checks a person's identity and screens them against sanction lists, 
 
 ### When this stops being right → NFR: scale {#sizing-h-limits}
 
-The queue-in-Postgres wears out first. Every update leaves a dead copy of the row behind for a background cleanup (autovacuum) to reclaim, and each task row is written three times: claimed, retried, completed. Past roughly 2M sustained requests the garbage outruns the cleanup, the `task` table bloats and the claim query slows. **The signal: dead-tuple ratio on `task` and age of the oldest pending row, climbing together.** The exits in order, each priced above: index and prune the task table, add a read replica, move the queue to a broker (the outbox survives untouched), then shard by `client_id`, which also pins a client's rows to its region. All are safely deferred, because resilience is bought by protocol, not infrastructure.
+The queue-in-Postgres wears out first. Every update leaves a dead copy of the row behind for a background cleanup (autovacuum) to reclaim, and each task row is written three times: claimed, retried, completed. Past the broker trigger above, roughly 100k flows a day sustained (about 50 row-writes/s at ~42 rows per flow), the garbage outruns the cleanup, the `task` table bloats and the claim query slows. **The signal: dead-tuple ratio on `task` and age of the oldest pending row, climbing together.** The exits in order, each priced above: index and prune the task table, add a read replica, move the queue to a broker (the outbox survives untouched), then shard by `client_id`, which also pins a client's rows to its region. All are safely deferred, because resilience is bought by protocol, not infrastructure.
 
 ## Core entities & data design
 <!--meta block=entities-->
@@ -245,9 +245,9 @@ The schema keeps two things apart so that no convention has to: business truth (
   ```sql summary="schema — flow"
   CREATE TYPE flow_state AS ENUM (
     'initiated', 'awaiting_submission', 'awaiting_id_verification', 'awaiting_sanctions_check',
-    'clear', 'cleared_with_caveat', 'sanctioned', 'invalid_id',  -- the terminal branch
-    'expired');                                    -- abandoned: the sweeper's terminal
-  -- 'cleared_with_caveat' is its own terminal because the client acts differently on it: every
+    'clear', 'cleared_with_caveat', 'sanctioned', 'invalid_id',  -- the finished branch
+    'expired');                                    -- abandoned: the sweeper's final state
+  -- 'cleared_with_caveat' is its own finished state because the client acts differently on it: every
   -- BLOCKING list reported and an ADVISORY one could not be reached (dive 3).
 
   CREATE TABLE flow (
@@ -263,7 +263,7 @@ The schema keeps two things apart so that no convention has to: business truth (
   -- At most ONE open flow per (client, email); a second create finds this index.
   CREATE UNIQUE INDEX one_open_flow ON flow (client_id, email_mac)
     WHERE state NOT IN ('clear', 'cleared_with_caveat', 'sanctioned', 'invalid_id', 'expired');
-  -- 'expired' is why that state exists: an abandoned flow never reaches a terminal on its own,
+  -- 'expired' is why that state exists: an abandoned flow never reaches a finished state on its own,
   -- so without it the pair stays open for ever and every repeated create returns a dead flow.
   ```
 - **FlowTransition** — Append-only history of every state change. The state machine is the source of truth; the audit view is a projection over this table, never a second place to write. {#entities-entity-5}
@@ -336,7 +336,7 @@ The schema keeps two things apart so that no convention has to: business truth (
     PRIMARY KEY (flow_id, round, list)     -- round, or a re-screen counts January's answers
     -- … checked_at, provider, policy_version …
   );
-  -- The collector counts TERMINAL OUTCOMES within its round (dive 3):
+  -- The collector counts FINAL OUTCOMES within its round (dive 3):
   --   SELECT count(*) FROM sanctions_check
   --   WHERE flow_id = $flow AND round = $round AND outcome IS NOT NULL;
   -- A leg's outcome is recorded UNCONDITIONALLY, never guarded on the flow's state:
@@ -475,10 +475,10 @@ Every client-facing state-changing call returns 202, because work is recorded du
   POST /flows/flow_9c31/webhook/replay
 
   202 Accepted
-  # Re-emits the flow's terminal event with the SAME eventId, so the client's dedup absorbs
+  # Re-emits the flow's final event with the SAME eventId, so the client's dedup absorbs
   # it whether or not the original ever arrived (dive 12, Q8).
 
-  409 Conflict   { "error": "flow not terminal" }   nothing to replay yet
+  409 Conflict   { "error": "flow not finished" }   nothing to replay yet
   ```
 - **`POST /persons/{ref}/relationship:close`** — The client records that the relationship ended, and every recurring obligation for that person stops. It is the only thing that bounds the recurring book, and the cheapest lever on the vendor bill. {#interface-endpoint-4}
 
@@ -492,7 +492,7 @@ Every client-facing state-changing call returns 202, because work is recorded du
   # One transaction: stamp closed_at, NULL rescreen_due_at and reverify_due_at, and set
   # retain_until from now() on the jurisdiction's schedule (dive 6).
   # Idempotent by construction, so the Idempotency-Key is belt to the braces.
-  # A flow already in flight for that person runs to its terminal.
+  # A flow already in flight for that person runs to its finished state.
 
   409 Conflict   { "error": "no open relationship" }   nothing to close
   ```
@@ -639,7 +639,7 @@ Every path names only components on the board above.
 | Self-serve re-invitation | An Identification API endpoint invalidates prior keys and issues a fresh one, behind the gateway's per-flow limit. | re-invite |
 | Verification through the given provider | Worker fleet (IDV pool) → vendor; the callback re-enters through the API into the inbox and drives a guarded transition. | verify |
 | Sanctions only after verification passes | The state machine gates it: the fan-out tasks are written only by the transition into Awaiting Sanctions Check. | screen after verify |
-| The verdict waits for the slowest list | The collector in the Worker fleet transitions only when every leg holds a terminal outcome. | slowest list |
+| The verdict waits for the slowest list | The collector in the Worker fleet transitions only when every leg holds a final outcome. | slowest list |
 | The result on a webhook | Outbox row → Worker fleet (dispatcher) → client endpoint. | result |
 | A repeated delivery is recognisable | The stable `eventId` on the outbox row travels with every redelivery. | recognisable repeat |
 | Failure reaches the client | The sweeper escalates through the same outbox path as any result. | failure event |
@@ -711,11 +711,11 @@ flowchart LR
 
 **The flow enum holds only the five-state model's business states; every operational fact lives on task rows.** Retry counts, locks and backoff timestamps change constantly and mean nothing to a client or an auditor, and folding them into the enum turns a readable contract into a dozen-value tangle where "what happened to this person" and "what is the queue doing" cannot be told apart. The seam pays three ways: the client-visible vocabulary never changes when retry mechanics do, the transition history stays a clean append-only account of business fact, and the audit requirement is met by projection rather than a second write path that could disagree. One writer of truth (the state machine), any number of readers.
 
-The state model is the contract everything serialises into: five business states with an explicit terminal branch, and **Invalid ID exits before sanctions ever runs**, because screening an unverified identity is spend without meaning. **No terminal is permanent**: two jurisdiction-driven clocks re-enter a cleared flow, a sanctions recheck at the screening step and an expired or revoked document back at the invite, because only the person can supply a new document.
+The state model is the contract everything serialises into: five business states with an explicit finished branch, and **Invalid ID exits before sanctions ever runs**, because screening an unverified identity is spend without meaning. **No finished state is permanent**: two jurisdiction-driven clocks re-enter a cleared flow, a sanctions recheck at the screening step and an expired or revoked document back at the invite, because only the person can supply a new document.
 
-Both clocks reuse the same machinery. A scheduled job re-enters `Clear` flows at Awaiting Sanctions Check when the cadence comes due, appending a `sanctions_recheck` transition. Re-entry collides with the duplicate-invite rule: `one_open_flow` indexes only non-terminal rows, so while a flow sits at `Clear` the client may start a second flow for the same person, and moving the old one back to an open state would violate the index, roll the transition back and retry until the task dead-letters, failing a compliance obligation silently for exactly the people onboarded twice. So the clock skips a flow that a newer flow for the same `(client_id, email_mac)` has superseded: the obligation follows the person, and the newest flow's clock already carries it. A list update does not wait for the calendar: a vendor's delta stamps `recheck_due_at = now()` across the affected book, and the same sweep picks those rows up, so event and cadence funnel into one due-date column. History stays append-only: the flow moves again, its past does not change.
+Both clocks reuse the same machinery. A scheduled job re-enters `Clear` flows at Awaiting Sanctions Check when the cadence comes due, appending a `sanctions_recheck` transition. Re-entry collides with the duplicate-invite rule: `one_open_flow` indexes only open rows, so while a flow sits at `Clear` the client may start a second flow for the same person, and moving the old one back to an open state would violate the index, roll the transition back and retry until the task dead-letters, failing a compliance obligation silently for exactly the people onboarded twice. So the clock skips a flow that a newer flow for the same `(client_id, email_mac)` has superseded: the obligation follows the person, and the newest flow's clock already carries it. A list update does not wait for the calendar: a vendor's delta stamps `recheck_due_at = now()` across the affected book, and the same sweep picks those rows up, so event and cadence funnel into one due-date column. History stays append-only: the flow moves again, its past does not change.
 
-**That delta mechanism needs jitter, or the calendar produces a herd nothing can drain.** Stamping `now()` across 40k flows × four lists makes 160k legs due at one instant, days of draining at the contracted rate against a compliance clock. Reserved capacity per class (dive 1) stops the herd starving live flows but does not shrink it. So the stamp is `now()` plus a deterministic offset computed from the flow id, spreading the book across the window the cadence still allows. Computing it from the id, not randomising, means a re-run of the delta does not reshuffle the queue, and the spread is reproducible when someone asks why a flow was screened when it was.
+**That delta mechanism needs jitter, or the calendar produces a herd nothing can drain.** Stamping `now()` across 40k flows × four lists makes 160k legs due at one instant, about 22 hours of draining at ~2 calls a second, longer at a rate contracted for live volume, against a compliance clock. Reserved capacity per class (dive 1) stops the herd starving live flows but does not shrink it. So the stamp is `now()` plus a deterministic offset computed from the flow id, spreading the book across the window the cadence still allows. Computing it from the id, not randomising, means a re-run of the delta does not reshuffle the queue, and the spread is reproducible when someone asks why a flow was screened when it was.
 
 **"Configuration, not a code change" only holds if the configuration lives somewhere a deploy is not.** The list roster per jurisdiction, each list's `criticality`, the recheck cadences, the vendor quotas and the fallback weights are what the evolvability requirement says a new jurisdiction or vendor may change alone. Held in the deployed artifact they are source, and a new jurisdiction becomes a release across every regional stack. So they sit in an [external configuration store](../patterns/distributed/coordination/external-configuration-store.md), versioned, audited and rollback-able like code, and workers refetch on a short interval, because a central store nobody refetches from is a slower file with more failure modes. Secrets stay out, the way `webhook_secret_ref` already does.
 
@@ -723,7 +723,7 @@ Both clocks reuse the same machinery. A scheduled job re-enters `Clear` flows at
 
 **The machine's shape also survives its own deploys.** A new task kind or flow state ships reader-first: workers that understand it deploy before the writer that emits it, and the claim's `kind = ANY($kinds)` is the guard, so a mixed-version fleet never picks up work it cannot run. The enum extends before any transition writes the new value, and old code's guarded transitions keep updating zero rows on states they never learned.
 
-```mermaid caption="Where can the flow end, and how does it come back? Four terminals, none permanent: a recheck re-enters at screening, an expired document at the invite."
+```mermaid caption="Where can the flow end, and how does it come back? Four finished states, none permanent: a recheck re-enters at screening, an expired document at the invite."
 stateDiagram-v2
     [*] --> Initiated
     Initiated --> AwaitingSubmission: invite emailed
@@ -800,17 +800,17 @@ SELECT $flow, 'check_list:' || l FROM unnest($sanction_lists) AS l;
 COMMIT;   -- all five facts, or none of them
 ```
 
-**The only fan-out in the flow concludes exactly once, and its legs run in parallel.** Sanctions is gated on a verified identity: screening unverified data is vendor spend that produces noise, so running it beside ID verification is deliberately rejected (dive 12, Q3). The concurrency lives inside the step. The concluding transaction inserts one `check_list` task per list ([Scatter-Gather](../patterns/messaging/scatter-gather.md)), sanctions-pool replicas claim the legs independently, and each leg owns its deadline, retry budget and result row, so a slow list never delays a fast one. The join is where the guarded transition is not enough. Each completing leg records its outcome, counts terminal outcomes against the list count and transitions when the count is full. Under the default `READ COMMITTED`, two legs finishing at the same instant each see their own uncommitted insert and not the other's, so both count one short and **neither** transitions: the flow hangs with every leg reported. The guarded update stops two conclusions, not zero, and the version check is the wrong instrument because the bug is a phantom read, not a lost update. So the completing transaction takes `SELECT … FROM flow WHERE id = $flow FOR UPDATE` before it counts: the second leg blocks, re-reads, sees the first's result, counts full and concludes. One row lock, held for the length of a count, on a step that runs once per flow.
+**The only fan-out in the flow concludes exactly once, and its legs run in parallel.** Sanctions is gated on a verified identity: screening unverified data is vendor spend that produces noise, so running it beside ID verification is deliberately rejected (dive 12, Q3). The concurrency lives inside the step. The concluding transaction inserts one `check_list` task per list ([Scatter-Gather](../patterns/messaging/scatter-gather.md)), sanctions-pool replicas claim the legs independently, and each leg owns its deadline, retry budget and result row, so a slow list never delays a fast one. The join is where the guarded transition is not enough. Each completing leg records its outcome, counts final outcomes against the list count and transitions when the count is full. Under the default `READ COMMITTED`, two legs finishing at the same instant each see their own uncommitted insert and not the other's, so both count one short and **neither** transitions: the flow hangs with every leg reported. The guarded update stops two conclusions, not zero, and the version check is the wrong instrument because the bug is a phantom read, not a lost update. So the completing transaction takes `SELECT … FROM flow WHERE id = $flow FOR UPDATE` before it counts: the second leg blocks, re-reads, sees the first's result, counts full and concludes. One row lock, held for the length of a count, on a step that runs once per flow.
 
-**And it counts within its round.** Each fan-out issues a fresh `round` that its legs carry, because a re-screen would otherwise reuse the first screen's rows: the first leg back would count every list as reported against last quarter's verdicts, conclude early on stale answers, and then swallow a real hit arriving late, whose guarded transition finds the flow already terminal. That is the one failure this design must never have, so `round` is in the primary key. The verdict is `Sanctioned` on any hit and `Clear` only when every list answered and none hit. "Hit" is the vendor's adjudicated verdict (the out-of-scope entry on match review), and a re-screen fans out the same way, keyed to its `sanctions_recheck` transition.
+**And it counts within its round.** Each fan-out issues a fresh `round` that its legs carry, because a re-screen would otherwise reuse the first screen's rows: the first leg back would count every list as reported against last quarter's verdicts, conclude early on stale answers, and then swallow a real hit arriving late, whose guarded transition finds the flow already finished. That is the one failure this design must never have, so `round` is in the primary key. The verdict is `Sanctioned` on any hit and `Clear` only when every list answered and none hit. "Hit" is the vendor's adjudicated verdict (the out-of-scope entry on match review), and a re-screen fans out the same way, keyed to its `sanctions_recheck` transition.
 
-**A leg that can never answer must still be able to end, because "all legs in" is policy, not a consistency requirement.** A two-valued verdict leaves an unanswered leg no terminal, so a vendor's permanent failure, a list withdrawn or a contract lapsed, becomes our permanent outage. So the leg outcome is three-valued, `hit`, `clear` or `unavailable`, and "all legs in" means every leg holds a terminal outcome. The sweeper stamps `unavailable` when a leg's task exhausts its retries, turning a hang into a decision (con 5). The decision is configuration: each list carries a `criticality` of `blocking` or `advisory` per jurisdiction. **Blocking and unavailable holds the flow and escalates**, since on the list a regulator asks about, late beats wrong. **Advisory and unavailable concludes `cleared_with_caveat`**, records the missed list and schedules a re-screen for when it returns. Reading an unanswered check as clean is the one reading [scatter-gather](../patterns/messaging/scatter-gather.md) rules out by name, so the gap rides on the verdict where the client must read it.
+**A leg that can never answer must still be able to end, because "all legs in" is policy, not a consistency requirement.** A two-valued verdict leaves an unanswered leg no way to finish, so a vendor's permanent failure, a list withdrawn or a contract lapsed, becomes our permanent outage. So the leg outcome is three-valued, `hit`, `clear` or `unavailable`, and "all legs in" means every leg holds a final outcome. The sweeper stamps `unavailable` when a leg's task exhausts its retries, turning a hang into a decision (con 5). The decision is configuration: each list carries a `criticality` of `blocking` or `advisory` per jurisdiction. **Blocking and unavailable holds the flow and escalates**, since on the list a regulator asks about, late beats wrong. **Advisory and unavailable concludes `cleared_with_caveat`**, records the missed list and schedules a re-screen for when it returns. Reading an unanswered check as clean is the one reading [scatter-gather](../patterns/messaging/scatter-gather.md) rules out by name, so the gap rides on the verdict where the client must read it.
 
 **Answering without a list does not abandon the consistency and partition tolerance (CP) stance.** A partition to one vendor is a **missing input**, not a conflicting write: no second writer of this flow's state exists, so answering availability-style risks none of the divergence the C choice prevents. What became configurable is which inputs a conclusion requires, and the caveated verdict names the ones it did without.
 
 **A leg that reports after the flow concluded is the one report this system must never drop.** Leg C dead-letters, the flow concludes without it, and three hours later C's callback carries a `hit`. The inbox insert succeeds, since the `provider_request_id` is new, but the guarded transition finds `state ≠ awaiting_sanctions_check`, updates zero rows and ACKs with no effect: the guard that prevents a double-apply is a silent drop. So the leg's outcome is written **unconditionally**, in its own statement, decoupled from the transition. A late `hit` then stamps `recheck_due_at = now()`, the re-screening sweep re-enters the flow at Awaiting Sanctions Check, and the corrected verdict leaves through the same webhook as the first, as the requirements promise.
 
-```mermaid caption="How do several lists become one answer? One task per list, one guarded transition when every leg is terminal; a late leg is recorded and re-enters as a re-screen."
+```mermaid caption="How do several lists become one answer? One task per list, one guarded transition when every leg has finished; a late leg is recorded and re-enters as a re-screen."
 flowchart LR
     F["Flow at Awaiting Sanctions Check"] ==>|"one task per list"| LA["Leg — list A"]
     F ==>|"one task per list"| LB["Leg — list B"]
@@ -818,7 +818,7 @@ flowchart LR
     LA -->|"outcome: hit / clear / unavailable"| COL["Collector"]
     LB -->|"outcome"| COL
     LC -->|"outcome"| COL
-    COL -->|"every leg terminal → ONE guarded transition"| T["Clear / Cleared with Caveat / Sanctioned"]
+    COL -->|"every leg finished → ONE guarded transition"| T["Clear / Cleared with Caveat / Sanctioned"]
     LC -.->|"late outcome, recorded unconditionally"| R["Re-screen: recheck_due_at = now()"]
     R -.->|"corrected verdict, same webhook"| COL
 ```
@@ -837,7 +837,7 @@ flowchart LR
 
 **The quota ceiling is priced per second and per month, and backoff clears only one.** The token bucket turns a burst into a wait that ends. A contracted monthly cap breaks that: legs three and four of a fan-out reach it on the 28th and cannot succeed until the reset, so retrying on a growing backoff spends the month rediscovering the same answer. Quota exhaustion is its own class, **non-retryable-today**: `run_after` is deferred to the reset date and the escalation fires **once at class level**, because on a delta day the per-leg alternative raises 40k alarms and buries the one that matters.
 
-**A vendor that takes the work and never calls back is invisible to every mechanism above.** The send task completed, so nothing looks stuck: no expired lock, no exhausted retries. Only the flow-level SLA (service-level agreement) notices, hours later. So the send writes its own deadline: an `await_callback:<vendor>` task, inserted in the send's transaction, with `run_after` at the answer time the vendor's contract promises. The callback's transaction completes that task, so a normal vendor leaves no trace. A silent one leaves it to come due, and the claiming worker finds the leg with no terminal outcome and treats it as the vendor failure it is. Silence becomes a task expiry in minutes instead of an SLA breach in hours, at one row per outbound call.
+**A vendor that takes the work and never calls back is invisible to every mechanism above.** The send task completed, so nothing looks stuck: no expired lock, no exhausted retries. Only the flow-level SLA (service-level agreement) notices, hours later. So the send writes its own deadline: an `await_callback:<vendor>` task, inserted in the send's transaction, with `run_after` at the answer time the vendor's contract promises. The callback's transaction completes that task, so a normal vendor leaves no trace. A silent one leaves it to come due, and the claiming worker finds the leg with no final outcome and treats it as the vendor failure it is. Silence becomes a task expiry in minutes instead of an SLA breach in hours, at one row per outbound call.
 
 **Those deadlines are per vendor, and the flow's own SLA is worked out from them.** One jurisdiction's roster can hold a list that answers in 200 ms beside one that returns a batch file the next day, so a single flow deadline is too tight for one and useless for the other. Awaiting Sanctions Check counts as overdue only when its **slowest configured list** is, a figure read from the roster in the config store: four synchronous lists escalate in minutes, and a 24-hour batch list pages nobody at hour two.
 
@@ -1097,9 +1097,9 @@ Both, deliberately: prevented at claim by `SKIP LOCKED`, tolerated at commit by 
 > The claim lock stops the common race. The zombie case slips past it: a worker stalls, its lock expires, the sweeper re-queues, a second worker finishes, then the zombie wakes and writes. The transition's `WHERE state = expected AND version = seen` makes that late write update zero rows, and the residual repeated vendor call is collapsed by the outbound idempotency key (dive 3).
 
 **Q3 — ID verification fails. Do you still run sanctions, and is Sanctioned distinct from Invalid ID?**\
-No sanctions on a failed ID, and yes, distinct terminals, because the client acts differently on each.
+No sanctions on a failed ID, and yes, distinct finished states, because the client acts differently on each.
 
-> **Terminal semantics**
+> **Finished-state semantics**
 >
 > Screening data that failed verification spends vendor quota to produce a result nobody can act on, so Invalid ID branches out of Awaiting ID Verification and the sanctions step never starts. Invalid ID means fix the submission, possibly re-invite; Sanctioned means a compliance decision. A generic "failed" throws away the bit the client pays for.
 
@@ -1168,7 +1168,7 @@ By making each race a deterministic test: the guards are SQL, so the races repla
 ### What it gives up
 <!--meta polarity=con-->
 
-- **Postgres is the single point of failure.** Consistency was chosen over availability, so an outage stalls every write until the standby takes over (see dive 4).
+- **Postgres is the single point of failure.** Consistency was chosen over availability, so an outage stalls every write until the standby takes over; the synchronous standby also adds a round trip to every commit, and writes stop if the standby is lost (see dive 4).
 - **Throughput is capped by vendor contracts** and their ~6h/week downtime, a procurement lever and not an engineering one (see dive 4).
 - **PII concentrates blast radius** in one vault and one database (see dive 6 and dive 7).
 - **Each region is an island, by requirement.** A regional outage is downtime for that region's clients, region-scale loss means a documented restore, and N regions multiply cost and config drift (see dive 7).
@@ -1214,7 +1214,7 @@ By making each race a deterministic test: the guards are SQL, so the races repla
 
 **Orchestration & state**
 
-- [Saga](../patterns/distributed/coordination/saga.md) — verify, screen and notify are local transactions sequenced by the state machine, with explicit failure terminals instead of a transaction manager spanning the vendors
+- [Saga](../patterns/distributed/coordination/saga.md) — verify, screen and notify are local transactions sequenced by the state machine, with explicit failure states instead of a transaction manager spanning the vendors
 - [Workflow Orchestration](../patterns/distributed/coordination/workflow-orchestration.md) — the flow row plus its task queue is a hand-rolled durable orchestrator — every transition is persisted, so a crash or deploy resumes mid-flow instead of restarting it
 - [Outbox](../patterns/distributed/coordination/outbox.md) — every state transition commits with its outbox event in one Postgres transaction, closing the write-then-crash-before-publish gap
 - [Inbox](../patterns/distributed/coordination/inbox.md) — every vendor callback lands as an inbox row unique on flow, step and the provider's own request id, in the same transaction as its effect — so a duplicate that arrives before the outbox write still collides
@@ -1266,6 +1266,10 @@ By making each race a deterministic test: the guards are SQL, so the races repla
 **Alternative to**
 
 - [Persona Identification & Sanction Check (V2)](./persona-identification-v2.md) — the same brief argued from the delivery contract — read it when the grading is on exactly-once in effect, the four dedup boundaries and the recovery ladder rather than on the storage core
+
+**Exposed to**
+
+- [Poison Message](../hazards/poison-message.md) — a malformed vendor response is the case the retry budget exists for: attempts and max_attempts stop it burning a worker slot, and the dead row is what an operator reads
 
 **Demonstrates**
 

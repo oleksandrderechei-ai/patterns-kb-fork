@@ -85,5 +85,6 @@ Finally, hide what you cannot remove. If a slow server at the front is the cause
 - [Resequencer](../patterns/messaging/resequencer.md) — It holds all later messages until the missing earlier one arrives
 - [WebSocket](../patterns/messaging/websocket.md) — One multiplexed ordered connection lets one slow message delay all the others behind it
 - [Active Object](../patterns/concurrency/active-object.md) — An active object's one scheduler thread makes every slow request block the queue behind it
+- [Persona Identification & Sanction Check (V2)](../designs/persona-identification-v2.md) — a design that accepts the blocking on purpose: a per-flow delivery lane bounded by an attempt budget
 
 <!-- relationships:end -->
