@@ -297,7 +297,7 @@
       "definition": "Flat object for carrying data across a boundary",
       "route": "/patterns/enterprise/dto.html",
       "requires": [],
-      "related": ["value-object", "service-layer", "bff", "api-versioning", "repr", "interface-segregation", "immutability"]
+      "related": ["value-object", "service-layer", "bff", "api-versioning", "repr", "interface-segregation", "immutability", "encapsulation"]
     },
     {
       "id": "gateway",
@@ -2489,7 +2489,7 @@
       "definition": "Keep state private so its invariants have exactly one owner",
       "route": "/principles/encapsulation.html",
       "requires": [],
-      "related": ["aggregate", "value-object", "law-of-demeter", "command-query-separation", "hyrums-law", "make-illegal-states-unrepresentable"]
+      "related": ["aggregate", "value-object", "law-of-demeter", "command-query-separation", "hyrums-law", "make-illegal-states-unrepresentable", "dto"]
     },
     {
       "id": "postels-law",

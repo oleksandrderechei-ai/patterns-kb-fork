@@ -14286,6 +14286,13 @@
       "b": "shotgun-surgery",
       "note_a": "Each concern in one place means a change to it is one edit.",
       "note_b": "Concerns kept apart stop a single change fanning out across files."
+    },
+    {
+      "a": "dto",
+      "verb": "combines-with",
+      "b": "encapsulation",
+      "note_a": "Encapsulation says which types should not be DTOs: those with rules to protect.",
+      "note_b": "The carrier it exempts: a DTO is a bag of fields crossing a boundary, so decide which types own state and which only carry it."
     }
   ],
   "group_order": {
