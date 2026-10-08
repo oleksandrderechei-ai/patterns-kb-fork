@@ -94,5 +94,6 @@ Where you must use real time, bound it. Keep clocks synced with a time service y
 - [Sliding Window](../patterns/distributed/coordination/sliding-window.md) — Wall-clock windows move their edge by the skew, so two hosts count different events.
 - [Unique ID Generation](../patterns/distributed/coordination/unique-id-generation.md) — Ids ordered by wall clock mislead when node clocks disagree.
 - [CRDT](../patterns/distributed/coordination/crdt.md) — Skewed clocks make a last-write-wins register keep the wrong value.
+- [WhatsApp](../designs/whatsapp.md) — A chat service stamps each message with server receipt time, so skew between its servers can show a message above a later one.
 
 <!-- relationships:end -->

@@ -1,6 +1,6 @@
 ---
 title: WhatsApp
-description: "Deliver a message in under 500 ms to whoever is online, store it for whoever is not, across billions of persistent connections"
+description: "Deliver a message in under 500 ms to whoever is online, store it for whoever is not, across hundreds of millions of persistent connections"
 area: designs-intermediate
 owner: Oleksandr Derechei
 tags: [messaging, availability, durability, latency]
@@ -24,7 +24,7 @@ A chat service delivers a message in real time to whoever is online and durably 
 A chat service holds one long-lived connection per device, writes each message to storage before it tries to deliver it, and then pushes it live through a [publish-subscribe](../patterns/messaging/pubsub.md) channel keyed by recipient, so the sender never needs to know which server holds the recipient. The server keeps the message until the device acknowledges it, so an offline recipient gets it on reconnect. Choose this when latency is the product and the write rate is ordinary: about 100,000 writes a second, split by user, is routine for a managed key-value store. The real bill is the connection fleet, 200 million live sockets over many hosts. Without the stored copy, a message pushed to a phone that just lost signal is gone.
 
 - **Lossy live push.** The push is at-most-once. Number messages per chat and send the latest number with the heartbeat to expose gaps.
-- **Loose ordering.** Strict order is refused. Stamp each message with server receive time; one may sit above a later one.
+- **Loose ordering.** Strict order is refused. Stamp server receipt time; clock skew between hosts can put one message above a later one.
 - **Device multiplier.** Each device adds an inbox write per message. Cap devices per account; compute online status from socket state.
 
 **Example.** 200 million users send 20 messages a day: 4 billion a day, about 40,000 a second, and about 100,000 writes a second counting inbox rows. Alice sends to Bob, who has 2 devices, so 1 message row and 2 inbox rows are written first. His phone gets the push and acks; his laptop is off, so its row waits. If the phone's ack is lost the server resends, and the phone drops the repeat by message id. If it sees numbers 41 then 43 on the heartbeat, it asks for 42.
@@ -47,7 +47,7 @@ Out of scope, named to keep the design narrow: voice and video calling, business
 
 - **Latency** — delivery under 500&nbsp;ms to online recipients.
 - **Deliverability** — messages must eventually reach every recipient; none may be silently lost.
-- **Scale** — billions of users at high throughput.
+- **Scale** — about 1B users, 200M connected at once, high throughput.
 - **Frugal storage** — messages live on central servers no longer than necessary.
 - **Resilience** — the system tolerates the failure of any single component.
 
@@ -56,9 +56,9 @@ Out of scope: an exhaustive treatment of end-to-end encryption, and spam or scra
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Writes.** Assume ~20 messages per active user per day across 200M active users — roughly 4B messages/day, about **40k messages/sec**. Each message becomes one write to the `Message` table plus one `Inbox` write per recipient. Because 1:1 chats dominate, [fan-out](../patterns/messaging/fan-out.md) is small on average; even accounting for groups the total lands near **100k writes/sec**. Partitioned by `userId`, that is comfortably inside a managed key-value store like DynamoDB.
+**Writes.** Assume ~20 messages per active user per day across 200M active users — roughly 4B messages/day, about **40k messages/sec**. Each message becomes one write to the `Message` table plus one `Inbox` write per recipient. Because 1:1 chats dominate, [fan-out](../patterns/messaging/fan-out.md) is small on average; even accounting for groups the total lands near **100k writes/sec** (100k ÷ 40k is 2.5 inbox writes per message; one message to a 100-member group on up to 3 clients each is about 300). Partitioned by `userId`, that is comfortably inside a managed key-value store like DynamoDB.
 
-**Connections.** Of ~1B users, budget for **~200M connected at once**. A single well-tuned socket host historically carried 1–2M live connections, so the fleet is **hundreds of chat servers** — not one. That number is the source of the central problem: sender and recipient will usually be on different hosts.
+**Connections.** Of ~1B users, budget for **~200M connected at once**. A single well-tuned socket host historically carried 1–2M live connections, so the fleet is **100 to 200 chat servers at minimum, hundreds with headroom**. Sender and recipient will usually be on different hosts.
 
 **Storage.** Messages are small and short-lived (30-day retention), so the durable footprint is bounded by retention, not by history. Media is the heavy part, and it is deliberately pushed out of this budget onto object storage.
 
@@ -71,27 +71,28 @@ A handful of records, most of them thin:
 - **Client** — a single device belonging to a user. One user may have several (phone, laptop, tablet), so delivery targets a client, not just a user.
 - **Chat** — a conversation of 2–100 participants; primary key is the chat id.
 - **ChatParticipant** — the membership join. Partition key `chatId`, sort key `participantId` lists a chat's members; a global secondary index keyed the other way lists a user's chats.
-- **Message** — the payload plus a server-stamped receipt time and a chat sequence number.
+- **Message** — the payload plus a server-stamped receipt time and a chat sequence number. The sequence number comes from an atomic per-chat counter incremented on write, so one writer orders each chat; a very busy chat makes that counter a hot key.
 - **Inbox** — a per-client holding queue of message ids not yet acknowledged by that device.
 
 ## The interface
 <!--meta block=interface-->
 
-Representational state transfer (REST) is the wrong tool. Chat is high-frequency and bidirectional — the server must push to the client as often as the client pushes to the server — and a request/response protocol has no way to do that. Instead each client opens one persistent **WebSocket over Transport Layer Security (TLS)** and both sides send framed commands over it. The connection is the primitive; the request/response verbs below travel inside it.
+Representational state transfer (REST) is the wrong tool. Chat is high-frequency and bidirectional — the server must push to the client as often as the client pushes to the server — and a request/response protocol has no way to do that. Instead each client opens one persistent **WebSocket over Transport Layer Security (TLS)** and both sides send framed commands over it. The connection is the primitive; the request/response verbs below travel inside it. `createAttachment { body, hash } -> { attachmentId }` is an HTTPS upload to the attachment service, not a socket command; the socket carries only the attachmentId.
 
 ```javascript summary="Socket commands — client ↔ server"
 // client -> server
 createChat            { participants:[], name }        -> { chatId }
 sendMessage           { chatId, message, attachments } -> { status, messageId }
-createAttachment      { body, hash }                   -> { attachmentId }
 modifyChatParticipants{ chatId, userId, op }           -> "SUCCESS" | "FAILURE"
+ack                   { messageId }                    -> (none)
+sync                  { chatId, afterSeq }             -> { messages }
 
 // server -> client  (pushed)
 chatUpdate  { chatId, participants }              -> "RECEIVED"
 newMessage  { chatId, userId, message, attachments } -> "RECEIVED"
 ```
 
-The detail that makes durability work is the `ack`. Every server-to-client push demands a matching acknowledgement from the client. Until that ack arrives, the server assumes the message has not landed and keeps it. That single rule — deliver, wait for ack, only then forget — is what turns "we sent it" into "they got it." The cost of it is duplicates: a push whose ack is lost in transit is resent, so a client can be handed the same message twice. That is fine because applying a message is [idempotent](../patterns/messaging/idempotency.md) — a client writes it into the chat keyed by message id, and a second copy of an id it already holds is dropped rather than shown twice.
+The detail that makes durability work is the `ack`. Every server-to-client push demands a matching acknowledgement from the client. Until that ack arrives, the server assumes the message has not landed and keeps it. That single rule — deliver, wait for ack, only then forget — is what turns "we sent it" into "they got it." The cost of it is duplicates: a push whose ack is lost in transit is resent, so a client can be handed the same message twice. That is fine because applying a message is [idempotent](../patterns/messaging/idempotency.md) — a client writes it into the chat keyed by message id, and a second copy of an id it already holds is dropped rather than shown twice. The client generates the messageId in sendMessage and the server drops a repeat of an id it already stored, so a retry after a lost response writes the message once. After a reconnect or a gap on the heartbeat, the client calls sync with the last sequence number it holds.
 
 ## How the system is built
 <!--meta block=architecture-->
@@ -192,8 +193,8 @@ sequenceDiagram
 <!--meta polarity=pro-->
 
 - Sub-500&nbsp;ms delivery to online users over persistent sockets, with pub/sub hiding which server holds the recipient.
-- No message is ever lost: write-to-inbox-before-publish plus the deliver-then-ack loop guarantees eventual delivery across offline gaps.
-- Scales to billions by sharding connections across hundreds of hosts; adding servers only changes channel subscriptions, not application logic.
+- No message is lost while it sits in the inbox: write-to-inbox-before-publish plus the deliver-then-ack loop redelivers until acked or the 30-day retention ends.
+- Scales to about 200M live sockets by sharding connections across hundreds of hosts; adding servers only changes channel subscriptions, not application logic.
 - Media stays off the chat and database path, so large binaries never slow message delivery.
 
 ### What it gives up
@@ -217,6 +218,10 @@ sequenceDiagram
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Clock Skew](../hazards/clock-skew.md) — Order is by server-receipt time, so skew between chat servers lets a message sit above a later one.
 
 **Demonstrates**
 

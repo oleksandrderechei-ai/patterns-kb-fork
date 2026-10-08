@@ -14496,6 +14496,13 @@
       "b": "cache-stampede",
       "note_a": "The baseline TTL expires a hot region's feed and every reader misses at once.",
       "note_b": "A design whose TTL baseline expires a hot region's feed at once; CDC precompute removes the expiry."
+    },
+    {
+      "a": "whatsapp",
+      "verb": "exposed-to",
+      "b": "clock-skew",
+      "note_a": "Order is by server-receipt time, so skew between chat servers lets a message sit above a later one.",
+      "note_b": "A chat service stamps each message with server receipt time, so skew between its servers can show a message above a later one."
     }
   ],
   "group_order": {
