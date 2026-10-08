@@ -86,5 +86,8 @@ Find hot keys with per-key read counters or sampled access logs, and compare eac
 - [Read-Through](../patterns/caching/read-through.md) — An evicted or expired hot key sends every reader to one synchronous load on the source
 - [Distributed Cache](../patterns/caching/distributed-cache.md) — One node of the shared tier takes all of a viral key's reads while the rest idle
 - [Bitly](../designs/bitly.md) — One link carries most of the read load
+- [Instagram](../designs/instagram.md) — A design where one celebrity post concentrates fan-out load on one key.
+- [Ad Click Aggregator](../designs/ad-click-aggregator.md) — A design where one ad draws most clicks and overloads one stream shard.
+- [Facebook News Feed](../designs/fb-news-feed.md) — A design where one viral post concentrates reads on one cache key.
 
 <!-- relationships:end -->

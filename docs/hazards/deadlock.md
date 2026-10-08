@@ -92,5 +92,7 @@ The deeper escape is to **not share the locks at all**: confine each piece of st
 - [Two-Phase Commit](../patterns/distributed/coordination/two-phase-commit.md) — Participants holding locks while waiting on the coordinator can wait in a cycle
 - [Backpressure](../patterns/concurrency/backpressure.md) — A cycle of stages with full bounded buffers deadlocks when each waits on the other's slow-down signal
 - [Read-Write Lock](../patterns/concurrency/rw-lock.md) — Two readers that each try to upgrade a read hold wait on each other forever
+- [Inventory Management](../designs/inventory-management.md) — the inventory transfer avoids it with sorted-id lock order and reentrant locks
+- [BookMyShow](../designs/bookmyshow.md) — A seat-booking design where finer-grained per-seat locks bring the risk.
 
 <!-- relationships:end -->

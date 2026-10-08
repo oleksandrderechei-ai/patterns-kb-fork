@@ -22,7 +22,7 @@ Stock sits in hundreds of micro distribution centers inside the cities they serv
 ## Explained
 <!--meta block=explain-->
 
-Gopuff answers what you can buy from copies of the stock that the order path never touches, and takes each order in one transaction that claims the physical units, so a unit sells once. It works because browsing outnumbers buying 200 to one, so you keep browsing on a cache and read-only copies, and keep the one writable database per region for orders. Reachability is decided by drive time to the few nearby warehouses, not by distance. Choose it over one table where reads and orders share a database, because 20,000 reads a second would otherwise land on the machine that arbitrates orders. Under a surge, browsing is shed first and ordering never.
+Gopuff answers what you can buy from copies of the stock that the order path never touches, and takes each order in one transaction that claims the physical units, so a unit sells once. It works because browsing outnumbers buying 200 to one, so you keep browsing on a cache and read-only copies, and keep the one writable database per region for orders. Reachability is decided by drive time to the few nearby warehouses, not by distance. Choose it over one table where reads and orders share a database, because 20,000 reads a second would otherwise land on the machine that arbitrates orders. Under a surge, browsing is shed first and the order path is protected.
 
 - **Leader failure.** A failed regional leader stops ordering there, so keep browsing off it and the outage stays partial.
 - **Hot rows.** Orders on one item fight over a row and aborts waste work, so retry with random delays.
@@ -79,7 +79,7 @@ Three things fall out of the arithmetic. Almost nobody is buying compared with t
 - Fan-out per read: a city address resolves to **5–15 in-range DCs** (assumed: urban density puts a handful of depots inside an hour's drive), so one query scans one partition for a dozen DC ids — never the 10k-row table. → NFR: fast reads.
 - Inventory rows: 10k DCs × ~3k stocked lines each (assumed: a micro-DC carries a convenience assortment, not the 100k-item catalog) ≈ **30M rows ≈ 3&nbsp;GB** with indexes. The full cross product would be a billion rows and never exists, because a DC stocks what fits in it. → NFR: scale.
 - Cache working set: an answer is keyed by (cell, keyword, page); assume 20k active cells in a busy hour and ~30 query shapes each ≈ 600k entries × ~4&nbsp;KB ≈ **2.4&nbsp;GB hot** — one cache node's memory, with room for the assumption to be wrong several times over. → NFR: fast reads.
-- Hit ratio: 20k reads/s over a 60&nbsp;s TTL (time to live) is 1.2M requests per window against ~600k keys, concentrated on the busiest cells — budget **~80%**, leaving **~4k queries/s** for two or three replicas per region at the ~2k indexed queries/s a well-provisioned node sustains. Ten points off that ratio doubles replica load, which makes it the dial that sizes the tier. → NFR: fast reads.
+- Hit ratio: 20k reads/s over a 60&nbsp;s TTL (time to live) is 1.2M requests per window against ~600k keys, concentrated on the busiest cells — budget **~80%**, leaving **~4k queries/s** for two or three replicas per region at the ~2k indexed queries/s a well-provisioned node sustains. Ten points off that ratio doubles replica load, which makes it the dial that sizes the tier. At the 60k/s peak, misses are ≈ 12k queries/s, three times the 4k/s mean; at ~2k/s per node that is about six replicas, so size the tier for the peak. → NFR: fast reads.
 - Drive-time calls: unpruned, every query would ask about 10k DCs — 2×10⁸ calls/s, a rate no vendor sells. Pruned to ~10 candidates and memoized per (cell, 5-minute bucket), it falls to the cells going cold each bucket: 20k ÷ 300&nbsp;s ≈ **70 calls/s**. Per-call pricing makes the prune a contract term rather than an optimisation. → FR: availability by location.
 - Contention is per row, not per node: 350 orders/s over ten regions is ~35/s at a leader and idle by any capacity measure, while a promoted item can draw **tens of claims a second onto one (DC, item) row family**. That number, not the transaction rate, decides the isolation strategy. → NFR: strong consistency.
 - Retention: inventory is bounded by shelves and stays near 3&nbsp;GB, while orders accumulate at ~**10&nbsp;GB/day** in the same store that arbitrates ordering. Ninety days is ~0.9&nbsp;TB; older orders belong in cold storage, or the hot path drags a year of history through its buffer cache. → NFR: scale.
@@ -343,11 +343,11 @@ Two reflexes are wrong here and worth rejecting out loud. [Autoscaling](../patte
 ### Strengths
 <!--meta polarity=pro-->
 
-- **A unit is sold exactly once.** The reservation, the order and the state change commit together, so no application code holds a lock (see dive 1).
+- **A ledger unit is sold exactly once.** The reservation, the order and the state change commit together, so no application code holds a lock (see dive 1); a shelf miscount is caught at pick time (con-4).
 - **Browsing never touches the arbiter.** Availability is answered from a cache and regional replicas, so 20k queries/s cost the order path nothing (see dive 3).
 - **The drive-time bill is set by a prune.** Ten thousand depots become ten candidates before a single external call is made (see dive 2).
 - **No unit can be held by nobody.** Every reservation carries an expiry and one sweeper is the only actor that releases it (see dive 4).
-- Contention stays inside a region, so one city's surge cannot slow another city's ordering.
+- Contention stays inside a region, so one region's surge cannot slow another region's ordering; cities within a region share its leader.
 - A retried order is the same order — the idempotency key returns the first result instead of reserving a second set of units.
 - The inventory ledger is small enough to be boring: ~30M rows and ~3&nbsp;GB, with no shard map to maintain.
 
@@ -356,7 +356,7 @@ Two reflexes are wrong here and worth rejecting out loud. [Autoscaling](../patte
 
 - **The regional leader is a single point of failure for buying.** A failover stops ordering in that region while availability keeps answering from replicas.
 - **Aborts rise with contention, not with load.** A promoted item concentrates claims on a few rows, and every serialization failure is work already paid for (see dive 1).
-- **A listing is not a reservation.** A cached, replica-served count can show an item seconds after its last unit is claimed, and the customer finds out at checkout (see dive 3).
+- **A listing is not a reservation.** A cached, replica-served count can show an item for up to the 60 s cache TTL after its last unit is claimed, and the customer finds out at checkout (see dive 3).
 - **The ledger can disagree with the shelf.** A missing unit is discovered by a human at pick time, and the correction is always after the fact (see dive 4).
 - Colocating orders and inventory couples their scaling and forfeits a best-fit store per concern.
 - All-or-nothing orders reject the whole basket when one line is gone — coherent, and blunt.
@@ -394,6 +394,12 @@ Two reflexes are wrong here and worth rejecting out loud. [Autoscaling](../patte
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Cache Stampede](../hazards/cache-stampede.md) — Entries written during a ramp share a TTL, so hot cells expire together and every miss fans out to the replicas.
+- [Connection-Pool Exhaustion](../hazards/connection-pool-exhaustion.md) — Each new service instance opens its own pool against one writable leader, so a surge exhausts connections before CPU.
+- [Stale Cache](../hazards/stale-cache.md) — Cached, replica-served counts run up to a minute behind, so checkout is the authority and answers 409.
 
 **Demonstrates**
 

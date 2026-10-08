@@ -231,7 +231,7 @@ async function consume(
 - [Tinder](../../../designs/tinder.md) — the profile-store-to-search-index sync is a change data capture (CDC) pipeline trading a small lag for decoupled writes
 - [Ticketmaster](../../../designs/ticketmaster.md) — syncing a search-optimised store to the system-of-record in near-real time is a canonical change data capture (CDC) pipeline
 - [Payment System](../../../designs/payment-system.md) — the design's whole durability guarantee rests on capturing changes below the application, exactly what change data capture (CDC) provides
-- [CamelCamelCamel](../../../designs/camelcamelcamel.md) — turning price-table writes into a stream of change events is change data capture (CDC) producing events from the log rather than from application code
+- [CamelCamelCamel](../../../designs/camelcamelcamel.md) — CamelCamelCamel streams price-row inserts from its Postgres log to a Kafka topic that drives price-drop alerts
 
 **Implemented by**
 

@@ -2322,7 +2322,7 @@
       },
       "bot-detection": {
         "role": "Precision@Recall90, precision-recall (PR)-area under the curve (AUC), and importance sampling under rare prevalence",
-        "tour": "Offline metrics are Precision@Recall90, precision-recall (PR)-area under the curve (AUC), and impact-weighted variants; online tests use importance sampling to measure a sub-1% prevalence class without astronomical sample sizes, plus a maintained red-team set of sophisticated evasion patterns.",
+        "tour": "Offline metrics are Precision@Recall90, area under the precision-recall curve (PR-AUC), and impact-weighted variants; online tests use importance sampling to measure a sub-1% prevalence class (weight each sampled account by the inverse of its sampling probability when computing precision) without very large sample sizes, plus a maintained red-team set of sophisticated evasion patterns.",
         "fluency": "Precision@Recall90, precision-recall (PR)-area under the curve (AUC), and importance sampling under rare prevalence"
       },
       "video-recommendations": {
@@ -2366,7 +2366,7 @@
       },
       "bot-detection": {
         "role": "Self-supervised pretraining, drift, and survivorship bias",
-        "tour": "Each branch is pretrained self-supervised on abundant unlabelled data, then fine-tuned on a few thousand trusted labels — the only way a large model generalises when investigator labels are so scarce. Time-stratified validation guards against the drift and survivorship bias baked into an adversarial domain.",
+        "tour": "Each branch is pretrained self-supervised on abundant unlabelled data, then fine-tuned on a few thousand trusted labels — the usual way a large model generalises when investigator labels are so scarce. Time-stratified validation guards against the drift and survivorship bias baked into an adversarial domain.",
         "fluency": "Self-supervised pretraining, drift, and survivorship bias"
       },
       "video-recommendations": {

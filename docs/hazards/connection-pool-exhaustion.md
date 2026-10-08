@@ -102,5 +102,6 @@ Size it from the downstream's real concurrency limit, not from your request rate
 - [Object Pool](../patterns/gof/extra/object-pool.md) — A fixed pool whose borrowers slow down runs dry while traffic stays flat
 - [Thread Pool](../patterns/concurrency/thread-pool.md) — A bounded pool with an unbounded wait hangs requests silently
 - [Semaphore](../patterns/concurrency/semaphore.md) — A counted permit with no acquire timeout parks callers behind slow holders
+- [Gopuff](../designs/gopuff.md) — A design where surge-scaled service instances all open pools against one regional leader.
 
 <!-- relationships:end -->

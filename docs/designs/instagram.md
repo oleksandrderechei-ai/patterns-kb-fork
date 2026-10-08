@@ -25,7 +25,7 @@ Instagram builds each follower's feed when someone posts, not when the follower 
 
 - **Celebrity fan-out.** An account with 200 million followers means 200 million writes, so above a threshold merge its posts at read time.
 - **Two feed paths.** The threshold leaves two paths and slower reads for people who follow many giants, so retune it as the network grows.
-- **Feed store loss.** Feeds sit in Redis, so run it with persistence and failover and rebuild a lost feed from the posts database.
+- **Feed store loss.** Feeds sit in Redis, so run replicas with persistence; rebuild a lost feed on its next read, at about 10,000 candidate reads.
 - **Delay.** A new post may take up to 2 minutes to appear, which the availability goal accepts.
 
 **Example.** A user follows 1,000 accounts that each post about 10 times a day, so one refresh would gather about 10,000 candidate posts; at 150,000 refreshes a second that cannot work. Instead, an ordinary author with 500 followers causes 500 list writes in the background. A celebrity with 200 million followers is over a 100,000 threshold, so no list is written, and at read time the follower's page merges that celebrity's latest posts with the stored list. Media is 100 million posts a day x 2 MB = 200 TB a day.
@@ -55,11 +55,11 @@ Out of scope, named on purpose to keep the design narrow: likes and comments, se
 
 **Feed reads.** 500M DAU (daily active users) × ~5 refreshes/day ≈ 2.5&nbsp;billion feed generations per day ≈ ~29k/s on average. Traffic is spiky and time-zone-clustered, so budget for a peak of **150k+ feed requests/second**. That number is the one the read path must survive.
 
-**The cost of computing at read time.** A user following 1,000 accounts, each posting ~10 times a day, has ~10,000 candidate posts behind a single refresh. Fetching those on demand means many database reads per refresh — and DynamoDB batch reads cap at 100 items, so even one refresh needs ~100 parallel batch calls. Multiply by 150k/s and read-time assembly is hopeless. The computation has to move to write time.
+**The cost of computing at read time.** A user following 1,000 accounts, each posting ~10 times a day, has ~10,000 candidate posts behind a single refresh. Fetching those on demand means many database reads per refresh — and DynamoDB batch reads cap at 100 items, so even one refresh needs ~100 parallel batch calls. Multiply by 150k/s and read-time assembly cannot keep up. The computation has to move to write time.
 
-**Writes.** 100M posts/day ≈ **~1,200 posts/second** on average. Small next to reads — but each post can fan out to a poster's entire follower set, so the write path is where amplification hides.
+**Writes.** 100M posts/day ≈ **~1,200 posts/second** on average. Small next to reads — but each post can fan out to a poster's entire follower set, so the write path is where amplification hides. Fan-out writes per second = 1,200 posts/s × average followers per author, so an ordinary author with 500 followers adds 500 list writes.
 
-**Storage.** Media dominates: at ~2&nbsp;MB average, 100M posts/day ≈ **200&nbsp;TB/day** of bytes, roughly **750&nbsp;PB over ten years**. Metadata is a rounding error by comparison — ~1&nbsp;KB/post ≈ **100&nbsp;GB/day**. The media number forces object storage plus cold tiers; the metadata number fits any scalable key-value store.
+**Storage.** Media dominates: at ~2&nbsp;MB average, 100M posts/day ≈ **200&nbsp;TB/day** of bytes, roughly **750&nbsp;PB over ten years**. Metadata is a rounding error by comparison — ~1&nbsp;KB/post ≈ **100&nbsp;GB/day**. The media number forces object storage plus cold tiers; the metadata number fits any scalable key-value store. The 200 TB/day counts originals only; per-upload variants add to it.
 
 ## Core entities
 <!--meta block=entities-->
@@ -78,8 +78,8 @@ A small representational state transfer (REST) surface — one verb per requirem
 
 ```http summary="HTTP — post, follow, feed"
 POST /posts
-{ "media": "<photo or video>", "caption": "My cool photo!" }
-→ 201 { "post_id": "p_123", "upload_url": "https://s3...<pre-signed, 1h>" }
+{ "media_type": "video", "media_size": 52428800, "caption": "My cool photo!" }
+→ 201 { "post_id": "p_123", "upload_url": "https://s3...<one pre-signed URL per part, or a multipart upload id>" }
 
 POST /follows
 { "followed_id": "u_456" }          // follower_id comes from the auth token, not the body
@@ -126,7 +126,7 @@ flowchart TB
 
 ### 1 · A feed under 500&nbsp;ms
 
-The naïve design assembles the feed on read: look up who you follow, query each of their recent posts, merge, sort by time, return. It is correct and it does not scale. Three things go wrong at once — **read amplification** (one refresh spawns dozens of reads, times 150k/s), **repeated work** (a single popular post is independently re-fetched by millions of separate feeds), and **unpredictable latency** (your feed is only as fast as the busiest account you follow). Deferring the computation to read time is fighting the requirement head-on.
+The naïve design assembles the feed on read: look up who you follow, query each of their recent posts, merge, sort by time, return. It is correct and it does not scale. Three things go wrong at once — **read amplification** (one refresh needs about 100 parallel batch calls, times 150k/s), **repeated work** (a single popular post is independently re-fetched by millions of separate feeds), and **unpredictable latency** (your feed is only as fast as the busiest account you follow).
 
 So flip it: compute the feed **when someone posts**, not when a follower reads — a [fan-out](../patterns/messaging/fan-out.md) on write. On a new post, look up the poster's followers (via a secondary index keyed by `followed_id`) and prepend the new post id to each follower's feed. Because a post can have millions of followers, this is a long-running job that must be asynchronous: the post is durably stored, a job is dropped on a [message queue](../patterns/messaging/message-queue.md), and workers do the fan-out off the critical path. Each follower's feed is a Redis sorted set — `feed:{user_id}`, members are post ids, scores are timestamps — an incrementally maintained [materialized view](../patterns/distributed/coordination/materialized-view.md) of "what this user should see," ready to slice in a single call.
 
@@ -140,15 +140,16 @@ for f in followers:
     redis.zremrangebyrank(f"feed:{f}", 0, -1001)          # keep newest ~1000
 
 # on read
-ids   = redis.zrevrange(f"feed:{user}", start, start + limit)   # top N by score
+ids   = redis.zrevrange(f"feed:{user}", start, start + limit - 1)   # top N by score
+# use the last score as the cursor for keyset paging
 metas = redis.hmget("post:meta", ids)                          # cache-aside
 miss  = [i for i, m in zip(ids, metas) if m is None]
 metas += dynamo.batch_get_item(miss)                          # only the misses
 ```
 
-One flaw remains, and it is the whole game: **write amplification, the "[celebrity problem](../hazards/hot-key.md)."** A user with 200M followers posts once and the fan-out is 200M Redis writes — a self-inflicted [thundering herd](../hazards/thundering-herd.md) that stalls the queue and slows every other poster. The fix is a **hybrid**: fan out on write for ordinary accounts, but for anyone over a threshold (say **100k followers**) skip the fan-out entirely and store the post only. At read time, the Feed Service serves the precomputed feed and merges in the recent posts of the handful of celebrities you follow, fetched live. Most accounts get instant precomputed feeds; the few enormous ones get a cheap real-time merge. The threshold needs tuning — too low and write amplification returns, too high and too many users pay the read-time merge cost.
+One flaw remains: **write amplification, the "[celebrity problem](../hazards/hot-key.md)."** A user with 200M followers posts once and the fan-out is 200M Redis writes — a self-inflicted [thundering herd](../hazards/thundering-herd.md) that stalls the queue and slows every other poster. The fix is a **hybrid**: fan out on write for ordinary accounts, but for anyone over a threshold (say **100k followers**) skip the fan-out entirely and store the post only. At read time, the Feed Service serves the precomputed feed and merges in the recent posts of the handful of celebrities you follow, fetched live. Most accounts get instant precomputed feeds; the few enormous ones get a live merge of their recent posts. The threshold needs tuning — too low and write amplification returns, too high and too many users pay the read-time merge cost.
 
-Storing feeds in Redis invites the durability question. The honest answer is to run it as a real datastore: append-only-file persistence so a crash loses at most a second of writes, Sentinel for automatic failover, and Cluster to shard feeds across nodes. If a feed is lost, it can be rebuilt from the source of truth in the Posts DB — the sorted set is a cache of a derivation, not the derivation itself.
+Storing feeds in Redis invites the durability question. Run it as a real datastore: append-only-file persistence with everysec fsync, so a crash loses up to about a second of writes, Redis Cluster to shard feeds, with a replica per shard for automatic failover. If a feed is lost, it can be rebuilt from the source of truth in the Posts DB — the sorted set is a cache of a derivation, not the derivation itself. A lost feed is rebuilt lazily on its owner's next read, at about 10,000 candidate reads.
 
 ### 2 · Rendering media instantly
 
@@ -175,7 +176,7 @@ sequenceDiagram
 
 ### 3 · Holding at 500M DAU
 
-Scale here is not one trick but the sum of the choices above. Precomputed hybrid feeds keep the read path a single Redis slice regardless of how many people a user follows. The CDN keeps media latency flat as the audience globalizes. Chunked, direct uploads keep large writes off the app tier. Metadata sits in a store [sharded](../patterns/distributed/routing/sharding.md) by user id, with a composite `(created_at, post_id)` sort key so a user's posts come back already in chronological order. And cost is managed by **tiering**: warm bytes sit at the edge and in cache, cold media ages down to cheaper storage such as Glacier — walking the ladder from CDN → memory → solid-state drive (SSD) → hard disk drive (HDD) → tape as access frequency drops. Every service tier autoscales horizontally behind a [load balancer](../patterns/distributed/routing/load-balancer.md) on CPU and memory pressure.
+Precomputed hybrid feeds keep the read path a single Redis slice plus one live read per celebrity the user follows. The CDN keeps media latency flat as the audience globalizes. Chunked, direct uploads keep large writes off the app tier. Metadata sits in a store [sharded](../patterns/distributed/routing/sharding.md) by user id, with a composite `(created_at, post_id)` sort key so a user's posts come back already in chronological order. And cost is managed by **tiering**: warm bytes sit at the edge and in cache, cold media ages down to cheaper storage such as Glacier — walking the ladder from CDN → memory → solid-state drive (SSD) → hard disk drive (HDD) → tape as access frequency drops. Every service tier autoscales horizontally behind a [load balancer](../patterns/distributed/routing/load-balancer.md) on CPU and memory pressure.
 
 ```mermaid caption="The celebrity hybrid: ordinary authors fan out to followers' feeds on write; huge accounts (≥ 100k) skip the fan-out storm and are merged into each feed live at read time."
 flowchart TB
@@ -193,8 +194,8 @@ flowchart TB
 ### What it buys
 <!--meta polarity=pro-->
 
-- Feeds return from a single Redis slice, comfortably under 500&nbsp;ms even for users following thousands of accounts.
-- Read-time cost is paid once, at write time, instead of re-computed on every one of 2.5B daily refreshes.
+- Feeds return from one Redis slice; the 500&nbsp;ms budget holds while hydration misses and the celebrity merge fit inside it.
+- Read-time cost is paid per follower at write time, instead of re-computed on each of 2.5B daily refreshes.
 - Media is served from an edge near the viewer, and multi-gigabyte uploads bypass the app tier entirely.
 - Every tier scales horizontally and independently, matched to a lopsided read/write load.
 
@@ -203,7 +204,7 @@ flowchart TB
 
 - The celebrity split forces a hybrid with a follower threshold that must be tuned and re-tuned as the network grows.
 - Two feed paths (precomputed plus live celebrity merge) run in parallel — more storage, more moving parts, uneven latency for users who follow many celebrities.
-- Feeds are eventually consistent: a new post may take up to ~2 minutes to surface for every follower.
+- Feeds are eventually consistent: a new post may take up to ~2 minutes to reach followers on the precomputed path.
 - Keeping feeds in Redis demands real durability engineering, and per-upload media variants multiply storage cost.
 
 ## What's expected at each level
@@ -219,6 +220,11 @@ flowchart TB
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Hot Key](../hazards/hot-key.md) — A 200M-follower account concentrates one post's traffic on a single fan-out job and its cached entries.
+- [Thundering Herd](../hazards/thundering-herd.md) — One celebrity post triggers 200M feed writes at once and stalls the queue; the follower threshold is the mitigation.
 
 **Demonstrates**
 

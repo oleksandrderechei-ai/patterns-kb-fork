@@ -16,7 +16,7 @@ A ticket-booking system lets a shopper search for a film, pick a screening at a 
 ## Understanding the problem
 <!--meta block=description-->
 
-A shopper searches films, picks a screening, sees the free seats and books several in one transaction that returns a confirmation code; a cancel releases them. Search is a plain substring match, seats come from a fixed grid, and payment always succeeds. The page is object placement: who owns seat state, how availability is stored, and how concurrent bookings of one seat resolve to a single winner.
+A shopper searches films, picks a screening, sees the free seats and books several in one transaction that returns a confirmation code; a cancel releases them. Search is a plain substring match, seats come from a fixed grid, and payment is out of scope. The question is which object owns seat state, how availability is stored, and how concurrent bookings of one seat give one winner.
 
 ## Explained
 <!--meta block=explain-->
@@ -78,10 +78,12 @@ class BookingSystem:
 
 `book` creates the `Reservation` up front — it is only a data object at that point — then hands it to the target `Showtime` for atomic validation and storage. If the screening rejects it, the reservation is never registered, so a failed booking leaves no trace anywhere.
 
+Both rejections raise `ValueError` today. A caller that retries only on a taken seat needs a distinct `SeatUnavailable` error carrying the taken seat ids, kept apart from the malformed-id error.
+
 ## How the system is built
 <!--meta block=architecture-->
 
-Responsibility flows one way. `BookingSystem` holds the theaters and a set of lookup indexes — `showtimesById`, `reservationsById`, and a film-to-screenings map — built once at construction so search, booking, and cancellation are index lookups rather than nested scans over every theater. Each `Showtime` owns its own `reservations` list, which is the single source of truth for both what has been booked and which seats are free. `Theater` and `Movie` are thin data holders; `Reservation` is a data record that points back at the screening that owns it.
+Responsibility flows one way. `BookingSystem` holds the theaters and a set of lookup indexes — `showtimesById`, `reservationsById`, and a film-to-screenings map — built once at construction so search, booking, and cancellation are index lookups rather than nested scans over every theater. Each `Showtime` owns its own `reservations` list, which is the single source of truth for both what has been booked and which seats are free. `Theater` and `Movie` are thin data holders; `Reservation` is a data record that points back at the screening that owns it. Writes to the shared indexes happen after `Showtime.book` returns and are guarded by a `BookingSystem`-level lock or a concurrent map; the screening lock covers only seat state.
 
 ```mermaid caption="The orchestrator routes; each Showtime owns its seat state and its own lock. Availability is computed from the reservations list — there is no separate booked-seats field to keep in sync."
 classDiagram
@@ -138,7 +140,7 @@ A `Reservation` already carries its own seat list, so the screening's `reservati
 
 The naïve `book` checks each seat, then appends the reservation. Between the check and the append sits a classic check-then-act window: two threads both read seat `A5` as free, both append, and the seat is sold twice. The requirement demands one winner, so the check and the store must happen as one indivisible step.
 
-The default answer wraps the whole sequence in a lock the `Showtime` owns — validate the seat ids, confirm every requested seat is free, then append — all mutually exclusive. Because `book`, `cancel`, and `isAvailable` all run under the same per-screening lock, the object is a self-contained [monitor](../patterns/concurrency/monitor-object.md): only one booking touches a given screening at a time, while different screenings never contend. This is deliberate [pessimistic](../patterns/distributed/coordination/pessimistic-locking.md) control — you assume a collision and hold the lock across the read-and-write rather than gambling on optimistic retries. The critical section is a short scan-and-append, so a coarse per-screening lock costs almost nothing.
+The default answer wraps the whole sequence in a lock the `Showtime` owns — validate the seat ids, confirm every requested seat is free, then append — all mutually exclusive. Because `book`, `cancel`, and `isAvailable` all run under the same per-screening lock, the object is a self-contained [monitor](../patterns/concurrency/monitor-object.md): only one booking touches a given screening at a time, while different screenings never contend. This is deliberate [pessimistic](../patterns/distributed/coordination/pessimistic-locking.md) control — you assume a collision and hold the lock across the read-and-write rather than gambling on optimistic retries. The critical section is a short scan-and-append, so a coarse per-screening lock is held briefly, since the scan covers at most 546 seats per screening. The lock must be reentrant, or `book` must call an unlocked inner availability check, because `book` calls `isAvailable` while holding it. The monitor lives in one process; across several app nodes the check-and-append moves into the datastore as a conditional write or row lock. To decide when to go per-seat, watch lock wait time on one screening during an opening-night burst.
 
 The validation is all-or-nothing: every seat is checked before any state changes, so a request for `["A5","A6","A7"]` where A6 is taken throws immediately and A5 is never claimed. A finer design gives each seat its own lock so bookings for different seats of a packed opening night proceed in parallel — real throughput, but it promotes `Seat` from a string to a class with a lock and a `bookedBy` field, and demands sorted lock acquisition to avoid [deadlock](../hazards/deadlock.md). That is the answer to a measured hot-screening bottleneck, not the starting point.
 
@@ -178,7 +180,7 @@ Two decisions keep the object graph honest. First, `Seat` and `Screen` stay plai
 
 ### 4 · Extending toward a real checkout
 
-Today's `book` is instantaneous — succeed or fail on the spot. A real flow needs to hold seats while the shopper pays. That turns seat status from a binary into a three-way [state](../patterns/gof/behavioral/state.md) — free, held, or booked — with a `holds` map alongside `reservations`: `isAvailable` now rejects a seat claimed by either a reservation or a non-expired hold, `holdSeats` and `confirmHold` run under the same per-screening lock (no new lock type), and an expiry sweep returns abandoned holds to the pool. The hold timeout is a business dial — too short cancels people mid-payment, too long freezes seats other buyers want — the kind of policy a strategy would eventually own. Immutability guards the records underneath all of this: `Movie` has no setters, and `Reservation` defensively copies its seat list on the way in and the way out, so shared references can never mutate a booking from the outside ([immutability](../patterns/functional/immutability.md)).
+Today's `book` is instantaneous — succeed or fail on the spot. A real flow needs to hold seats while the shopper pays. That turns seat status from a binary into a three-way [state](../patterns/gof/behavioral/state.md) — free, held, or booked — with a `holds` map alongside `reservations`: `isAvailable` now rejects a seat claimed by either a reservation or a non-expired hold, `holdSeats` and `confirmHold` run under the same per-screening lock (no new lock type), and an expiry sweep returns abandoned holds to the pool. Expiry is checked lazily: `isAvailable` treats a hold past its expiry time as free, so the sweep only reclaims memory and no expired hold blocks a seat between sweeps. The hold timeout is a business dial — too short cancels people mid-payment, too long freezes seats other buyers want — the kind of policy a strategy would eventually own. Set it from how long the payment step takes, plus a margin. Immutability guards the records underneath all of this: `Movie` has no setters, and `Reservation` defensively copies its seat list on the way in and the way out, so shared references can never mutate a booking from the outside ([immutability](../patterns/functional/immutability.md)).
 
 ```mermaid caption="In the checkout extension, how does a seat hold end? confirmHold books it; otherwise the expiry sweep releases it — so an abandoned cart never freezes a seat forever."
 stateDiagram-v2
@@ -197,13 +199,13 @@ stateDiagram-v2
 
 - One source of truth for seats: availability is computed from reservations, so there is no second field to fall out of sync.
 - A per-screening lock makes booking atomic and correct under concurrency, while different screenings never contend.
-- A pure orchestrator plus lookup indexes turns search, booking, and cancellation into O(1) routing rather than nested scans.
+- Lookup indexes make booking and cancellation by id hash lookups instead of nested scans; search still scans film titles, then reads screenings from the film map.
 
 ### What it gives up
 <!--meta polarity=con-->
 
 - A coarse per-screening lock serialises a packed opening night; per-seat locking recovers the throughput but adds a Seat class and deadlock-avoiding lock order.
-- Computing availability means an O(booked-seats) scan per check instead of an O(1) set lookup.
+- Computing availability means an O(booked-seats) scan per check instead of an O(1) set lookup. A k-seat booking repeats the scan k times, and listing free seats rebuilds all 546 seats on each call.
 - The denormalised indexes are fast to read but must be updated on every structural change, and past screenings accumulate in memory with no cleanup in this in-memory build.
 
 ## What's expected at each level
@@ -219,6 +221,10 @@ stateDiagram-v2
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Deadlock](../hazards/deadlock.md) — Per-seat locking needs sorted lock acquisition, or two multi-seat bookings can wait on each other.
 
 **Demonstrates**
 

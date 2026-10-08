@@ -2820,13 +2820,6 @@
     {
       "a": "camelcamelcamel",
       "verb": "demonstrates",
-      "b": "change-data-capture",
-      "note_a": "database triggers on price inserts emit change events automatically, so no collection service has to remember to publish",
-      "note_b": "turning price-table writes into a stream of change events is change data capture (CDC) producing events from the log rather than from application code"
-    },
-    {
-      "a": "camelcamelcamel",
-      "verb": "demonstrates",
       "b": "eda",
       "note_a": "notifications flip from a two-hour polling scan to reacting to each price-change event the instant it lands",
       "note_b": "replacing full-table poll scans with per-event who-cares reaction is the event-driven shift that meets the sub-hour alert service level agreement (SLA)"
@@ -9284,13 +9277,6 @@
       "note_b": "Immutable mappings let three cache tiers stack with no consistency argument at each boundary"
     },
     {
-      "a": "camelcamelcamel",
-      "verb": "demonstrates",
-      "b": "materialized-view",
-      "note_a": "A nightly job precomputes daily, weekly and monthly price summaries so the chart reads a few dozen rows",
-      "note_b": "A scheduled rebuild turns an expensive aggregation into a cheap keyed read, at the price of staleness"
-    },
-    {
       "a": "chatgpt",
       "verb": "demonstrates",
       "b": "message-queue",
@@ -14454,6 +14440,118 @@
       "b": "defense-in-depth",
       "note_a": "Defense in depth asks for this check behind the gateway too",
       "note_b": "An access check inside each service is a layer that stands alone"
+    },
+    {
+      "a": "instagram",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "A 200M-follower account concentrates one post's traffic on a single fan-out job and its cached entries.",
+      "note_b": "A design where one celebrity post concentrates fan-out load on one key."
+    },
+    {
+      "a": "instagram",
+      "verb": "exposed-to",
+      "b": "thundering-herd",
+      "note_a": "One celebrity post triggers 200M feed writes at once and stalls the queue; the follower threshold is the mitigation.",
+      "note_b": "A design where one celebrity post fires a burst of fan-out writes that arrive together."
+    },
+    {
+      "a": "ad-click-aggregator",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "A viral ad floods one ad_id partition; mitigated by salting the key for known-hot ads only.",
+      "note_b": "A design where one ad draws most clicks and overloads one stream shard."
+    },
+    {
+      "a": "fb-news-feed",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "A viral post's reads land on one postID; the replicated post cache spreads them across replicas.",
+      "note_b": "A design where one viral post concentrates reads on one cache key."
+    },
+    {
+      "a": "yelp",
+      "verb": "demonstrates",
+      "b": "inverted-index",
+      "note_a": "name matching rides a full-text inverted index, not a B-tree scan",
+      "note_b": "the name leg of a three-filter local search: match, geo and category in one query"
+    },
+    {
+      "a": "google-news",
+      "verb": "exposed-to",
+      "b": "cache-stampede",
+      "note_a": "The baseline TTL expires a hot region's feed and every reader misses at once.",
+      "note_b": "A design whose TTL baseline expires a hot region's feed at once; CDC precompute removes the expiry."
+    },
+    {
+      "a": "whatsapp",
+      "verb": "exposed-to",
+      "b": "clock-skew",
+      "note_a": "Order is by server-receipt time, so skew between chat servers lets a message sit above a later one.",
+      "note_b": "A chat service stamps each message with server receipt time, so skew between its servers can show a message above a later one."
+    },
+    {
+      "a": "gopuff",
+      "verb": "exposed-to",
+      "b": "cache-stampede",
+      "note_a": "Entries written during a ramp share a TTL, so hot cells expire together and every miss fans out to the replicas.",
+      "note_b": "A design whose ramp-written availability entries share a 60 s TTL and expire together."
+    },
+    {
+      "a": "gopuff",
+      "verb": "exposed-to",
+      "b": "connection-pool-exhaustion",
+      "note_a": "Each new service instance opens its own pool against one writable leader, so a surge exhausts connections before CPU.",
+      "note_b": "A design where surge-scaled service instances all open pools against one regional leader."
+    },
+    {
+      "a": "gopuff",
+      "verb": "exposed-to",
+      "b": "stale-cache",
+      "note_a": "Cached, replica-served counts run up to a minute behind, so checkout is the authority and answers 409.",
+      "note_b": "A design whose cached listing can show an item for up to its 60 s TTL after the last unit is claimed."
+    },
+    {
+      "a": "fb-live-comments",
+      "verb": "demonstrates",
+      "b": "server-sent-events",
+      "note_a": "one-way comment stream over plain HTTP with Last-Event-ID reconnect, chosen over WebSocket for a read-heavy, write-light viewer",
+      "note_b": "a live comment feed pushes events to millions of viewers and replays the gap from the last event id"
+    },
+    {
+      "a": "fb-live-comments",
+      "verb": "exposed-to",
+      "b": "hot-partition",
+      "note_a": "one mega-stream's comments and connections overload the server that owns its video's channel",
+      "note_b": "a live-comment design that hashes on liveVideoId concentrates one viral stream on one server"
+    },
+    {
+      "a": "camelcamelcamel",
+      "verb": "demonstrates",
+      "b": "change-data-capture",
+      "note_a": "the database's write-ahead log is read for each price insert and published as a change event, so no collection service has to remember to publish",
+      "note_b": "CamelCamelCamel streams price-row inserts from its Postgres log to a Kafka topic that drives price-drop alerts"
+    },
+    {
+      "a": "inventory-management",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "the check-then-move transfer and an unlocked addStock are read-modify-write races; the per-warehouse lock closes them",
+      "note_b": "the inventory transfer shows the check-then-act race and its lock fix"
+    },
+    {
+      "a": "inventory-management",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "two opposite-direction transfers each hold one warehouse lock and wait on the other unless locks are taken in sorted id order",
+      "note_b": "the inventory transfer avoids it with sorted-id lock order and reentrant locks"
+    },
+    {
+      "a": "bookmyshow",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "Per-seat locking needs sorted lock acquisition, or two multi-seat bookings can wait on each other.",
+      "note_b": "A seat-booking design where finer-grained per-seat locks bring the risk."
     }
   ],
   "group_order": {

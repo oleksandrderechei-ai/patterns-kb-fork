@@ -219,4 +219,8 @@ createServer((req, res) => {
 - [Long Polling](./long-polling.md) — Long polling is the fallback when a proxy or client cannot hold a stream.
 - [WebSocket](./websocket.md) — Pick server-sent events (SSE) when data only flows server to client and you want reconnect for free.
 
+**Demonstrated by**
+
+- [Facebook Live Comments](../../designs/fb-live-comments.md) — a live comment feed pushes events to millions of viewers and replays the gap from the last event id
+
 <!-- relationships:end -->

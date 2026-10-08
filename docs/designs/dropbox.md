@@ -21,7 +21,7 @@ A cloud file service stores files, makes them reachable from any device, shares 
 ## Explained
 <!--meta block=explain-->
 
-A file service for huge files keeps the bytes off your own servers: your server only checks permissions and signs a short-lived link, and the client sends or fetches the bytes directly from [blob storage](../patterns/distributed/routing/object-storage.md), which stores files as whole objects. The client cuts large files into 5 to 10 MB chunks, so a dropped connection resumes from the first missing chunk. Choose this over passing files through your servers whenever a file cannot cross one request, since a pass-through tier pays for every byte moved while a signing tier pays only per file. Favouring availability over consistency means a few seconds of sync lag is fine.
+A file service for huge files keeps the bytes off your own servers: your server only checks permissions and signs a short-lived link, and the client sends or fetches the bytes directly from [blob storage](../patterns/distributed/routing/object-storage.md), which stores files as whole objects. The client cuts large files into 5 to 10 MB chunks, so a dropped connection resumes from the first missing chunk. Choose this over passing files through your servers whenever a file cannot cross one request, since a pass-through tier pays for every byte moved while a signing tier pays per chunk signed, not per byte moved. Favouring availability over consistency means a few seconds of sync lag is fine.
 
 - **No inline scanning.** You cannot scan or convert a file as it passes. Start that work from storage's upload-complete notice.
 - **Bearer links.** A signed link works for anyone who holds it, so expire it in minutes.
@@ -56,11 +56,11 @@ Out of scope: per-user storage quotas, file versioning, and virus scanning.
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Transfer time.** A single 50GB upload over a 100&nbsp;Mbps link takes 50&nbsp;GB × 8 bits/byte ÷ 100&nbsp;Mbps ≈ **4,000&nbsp;seconds — about 1.1 hours**. No client or server timeout tolerates a request open that long, so one big `PUT` is off the table before anything else.
+**Transfer time.** A single 50GB upload over a 100&nbsp;Mbps link takes 50&nbsp;GB × 8 bits/byte ÷ 100&nbsp;Mbps ≈ **4,000&nbsp;seconds — about 1.1 hours**. Most gateways and proxies time out long before 1.1 hours, so one large `PUT` cannot work.
 
 **Payload caps.** Managed front doors cap request bodies hard — Amazon API Gateway at 10&nbsp;MB, not raisable. A 50GB body cannot cross that boundary even in principle, which forces the file to be broken into pieces.
 
-**Chunk count.** At 5–10&nbsp;MB per chunk, a 50GB file is roughly **5,000–10,000 chunks**, each independently retryable and small enough to fit any gateway limit.
+**Chunk count.** At 5–10&nbsp;MB per chunk, a 50GB file is roughly **5,000–10,000 chunks**, each independently retryable and sent straight to storage, so the gateway cap never applies to them. At 5&nbsp;MB a 50GB file is 10,000 parts, exactly the S3 multipart limit of 10,000 parts, so pick the chunk size by file size.
 
 **What the backend actually carries.** Because the bytes travel client-to-storage directly, the app tier only handles metadata operations — small and frequent. The service sizes on control-plane calls, not on terabytes of file traffic, which is what makes 50GB files affordable at all.
 
@@ -130,10 +130,10 @@ flowchart TB
 
 A single request is impossible (the 1.1-hour and 10&nbsp;MB limits above), and even if it weren't, it would give no progress and no way to resume. The answer is **chunking on the client** — 5–10&nbsp;MB pieces. Chunking must happen client-side: doing it on the server would require the whole file to reach the server first, which is the very thing we are avoiding, and it is a common candidate mistake to get this backwards.
 
-- **Multipart mechanics.** The client asks the backend to begin an upload; the backend calls storage's `CreateMultipartUpload`, gets an `uploadId`, and returns one presigned URL per chunk (keyed by `uploadId` + `partNumber`). Chunks then upload in parallel or in sequence to their own URLs.
-- **Progress and resume.** Progress is simply the fraction of chunks finished. Resumability comes from persisting each chunk's status in `FileMetadata.chunks`, so a dropped connection resumes from the first unfinished chunk rather than byte zero.
-- **Trust but verify.** The client `PATCH`es chunk status for a snappy progress bar, but a buggy or malicious client could claim chunks are done that aren't, corrupting its own file into a hard-to-debug state. So before flipping the file to `uploaded`, the backend verifies against storage itself — `ListParts` and ETags — instead of trusting the client's word, and only calls `CompleteMultipartUpload` once every part checks out. Retrying is safe throughout: a re-reported or re-uploaded chunk is a no-op, which is [idempotency](../patterns/messaging/idempotency.md) doing the heavy lifting for resume.
-- **Identity by content, not name.** Filenames collide across users and uploads; a SHA-256 fingerprint of the content does not. The fingerprint drives deduplication (identical content already stored need not be re-uploaded) and resume detection (which parts already exist), while the UUID `fileId` stays the row's unique key.
+- **Multipart mechanics.** The client asks the backend to begin an upload; the backend calls storage's `CreateMultipartUpload`, gets an `uploadId`, and returns one presigned URL per chunk (keyed by `uploadId` + `partNumber`). Chunks then upload in parallel or in sequence to their own URLs. Unfinished multipart uploads keep their stored parts and keep costing until aborted, so set a bucket lifecycle rule that aborts incomplete multipart uploads after a set number of days.
+- **Progress and resume.** Progress is simply the fraction of chunks finished. Resumability comes from persisting each chunk's status in `FileMetadata.chunks`, so a dropped connection resumes from the first unfinished chunk rather than byte zero. Presigned part URLs issued at the start can expire before a long transfer ends, so a resume asks the backend for new URLs for the unfinished parts only.
+- **Verify before commit.** The client `PATCH`es chunk status to drive a progress bar. A buggy or malicious client could claim unfinished chunks are done, so before flipping the file to `uploaded` the backend checks storage with `ListParts` and ETags, then calls `CompleteMultipartUpload` once every part checks out. Retries are safe because a re-reported or re-uploaded chunk is a no-op ([idempotency](../patterns/messaging/idempotency.md)).
+- **Identity by content, not name.** Filenames collide across users and uploads; a SHA-256 fingerprint of the content does not. The fingerprint drives deduplication (identical content already stored need not be re-uploaded) and resume detection (which parts already exist), while the UUID `fileId` stays the row's unique key. Cross-user dedup leaks existence: skipping an upload because the hash is already stored tells a client that some user holds that file, so scope dedup to one user's own files or require proof that the client holds the bytes.
 
 ### 2 · Making uploads, downloads, and sync fast
 
@@ -195,8 +195,8 @@ sequenceDiagram
 ### What it buys
 <!--meta polarity=pro-->
 
-- The app tier never touches file bytes, so a 50GB transfer costs the backend only a couple of small metadata calls, and upload/download scale with storage and the edge rather than with the servers.
-- Chunking delivers resumable, parallel, progress-tracked uploads and cheap delta sync that moves only what changed.
+- The app tier never touches file bytes, so backend cost scales with chunk count (about 5,000 signed URLs and status updates for a 50GB file at 10 MB chunks), not with bytes moved, and upload and download scale with storage and the edge rather than with the servers.
+- Chunking delivers resumable, parallel, progress-tracked uploads. Delta sync that moves only what changed is cheap only with content-defined chunking, because fixed-size chunks shift every boundary after an insert.
 - Direct-to-blob writes plus CDN reads keep latency low for users anywhere in the world.
 
 ### What it gives up

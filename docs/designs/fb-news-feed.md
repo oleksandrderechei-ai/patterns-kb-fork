@@ -24,7 +24,7 @@ A news feed pulls recent posts from a user's follows into one reverse-chronologi
 A news feed builds each reader's list ahead of time: when someone posts, background workers add the post id to a stored list for every follower ([fan-out on write](../patterns/messaging/fan-out.md)), so reading a feed is one lookup however many accounts the reader follows. Choose this over assembling the feed at read time once readers follow thousands of accounts, because one request would otherwise fan out into thousands of queries. The lists are cheap: 200 ids at 10 bytes is 2 KB a user. Set the cutoff for skipping precomputation by measuring your follower counts.
 
 - **Celebrity writes.** A post from an account with 90 million followers means 90 million writes. Skip those accounts and merge their posts at read time.
-- **Shallow paging.** Scrolling past the stored 200 posts falls back to the slow query. You bet nobody scrolls that far.
+- **Shallow paging.** Scrolling past the stored 200 posts falls back to the slow query; the design bets few readers go that deep.
 - **Hot cache shard.** One viral post can overload its shard. Keep full cache copies on several machines, accepting colder starts and fewer posts cached.
 
 **Example.** You follow 2,000 accounts, one of them with 90 million followers. A friend with 300 followers posts: 300 list updates run in the background. The big account posts: workers skip it, so there are 0 list updates instead of 90 million. When you open the feed, one lookup returns your 200 stored ids and one live query adds the big account's recent posts, merged by time. Storage for all of it is 2 KB x 2 billion users, about 4 TB. A viral post read 500 times a second splits across 10 cache copies at 50 each.
@@ -53,11 +53,11 @@ Out of scope: likes, comments, and private or restricted-visibility posts. Users
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Reads dominate.** With a large fraction of 2B users opening the feed several times a day, the read path faces on the order of hundreds of thousands of feed assemblies per second at peak. The saving grace is that almost everyone reads only the first handful of items before losing interest — so caching the top of each feed pays off enormously.
+**Reads dominate.** With a large fraction of 2B users opening the feed several times a day, the read path faces on the order of hundreds of thousands of feed assemblies per second at peak. The saving grace is that almost everyone reads only the first handful of items before losing interest. Caching the top of each feed pays off enormously.
 
-**Writes amplify.** A post is one write until you ask who must see it. An author with F followers turns a single post into F feed updates. For an ordinary account that is a few hundred; for a mega-account with 90M+ followers it is 90M writes for one post — the number that breaks the naive design and forces everything downstream.
+**Writes amplify.** A post is one write until you ask who must see it. An author with F followers turns a single post into F feed updates. For an ordinary account that is a few hundred; for a mega-account with 90M+ followers it is 90M writes for one post — the number that breaks the naive design and forces everything downstream. To land inside the one-minute window, a 90M-follower post needs about 1.5M feed writes a second and a 1M-follower post about 17k a second. Set the skip cutoff where the write rate your workers sustain no longer meets that.
 
-**Storage is the easy part.** Precompute each user's feed as a list of ~200 post IDs at ~10&nbsp;bytes each ≈ 2&nbsp;KB/user; across 2B users that is roughly **4&nbsp;TB** — trivial for a modern fleet. At a fraction of a cent per user per month against something like ~$100/year of ad revenue per active user, the storage spend is a rounding error next to the latency it buys.
+**Storage is the easy part.** Precompute each user's feed as a list of ~200 post IDs at ~10&nbsp;bytes each ≈ 2&nbsp;KB/user; across 2B users that is roughly **4&nbsp;TB** — trivial for a modern fleet. Taking a fraction of a cent per user per month (an assumption) against about $100 a year of ad revenue per active user (an assumption), storage is small next to the latency it buys. The 4&nbsp;TB is one copy of the ids; multiply by the replication factor.
 
 ## Core entities
 <!--meta block=entities-->
@@ -86,7 +86,7 @@ GET /feed?pageSize={n}&cursor={oldestSeenTimestamp}
 → 200 { "items": [ Post ], "nextCursor": "..." }
 ```
 
-The follow verb is a **PUT** on purpose: following someone twice must be the same as following them once. Pagination uses a **cursor** rather than a page number — because the feed is strictly chronological, the timestamp of the oldest post you have already seen is all the state a page needs, and each request returns the next n posts older than it.
+The follow verb is a **PUT** on purpose: following someone twice must be the same as following them once. Pagination uses a **cursor** rather than a page number — because the feed is strictly chronological, the timestamp of the oldest post you have already seen is all the state a page needs, and each request returns the next n posts older than it. Two posts can share a timestamp, so the cursor carries the oldest seen postId as well; a request past the 200th post is served by the slow path.
 
 ## How the system is built
 <!--meta block=architecture-->
@@ -126,8 +126,8 @@ Assembling a feed at read time fans out on read: one request explodes into a que
 Precomputing feeds means a single post from a high-follower account must be written into millions of feed records, all inside the one-minute staleness window.
 
 - **Bad — blast synchronously.** Have the Post Service push all the fan-out writes itself at creation time. It collapses on connection limits and the latency budget, and load lands wildly unevenly — one host drowning in millions of writes while the rest idle — which is exactly what you cannot scale.
-- **Good — async workers.** Enqueue `{ postId, creatorId }` and let a fleet of [competing consumers](../patterns/messaging/competing-consumers.md) drain the [queue](../patterns/messaging/message-queue.md), each looking up the author's followers and prepending the post to their feeds. The queue smooths the burst so post creation never blocks. At-least-once delivery means a message can be redelivered, so the prepend must be [idempotent](../patterns/messaging/idempotency.md) — applying the same post to a feed twice has to be a no-op. Worker load still varies enormously between a small account and a giant one, so very large fan-outs may be split into smaller tasks.
-- **Great — hybrid feeds.** Stop precomputing for the extreme accounts. Flag specific follow edges as "not precomputed" (a Justin-Bieber-scale account with 90M+ followers), and the workers simply skip them. At read time the Feed Service merges the precomputed feed with the recent posts of those few celebrity accounts, fetched live. In other words, choose [fan-out](../patterns/messaging/fan-out.md)-on-write for the many ordinary authors and fan-out-on-read for the handful of giants — the precomputation threshold is a tunable knob. The price is more work at read time and a more complex Feed Service.
+- **Good — async workers.** Enqueue `{ postId, creatorId }` and let a fleet of [competing consumers](../patterns/messaging/competing-consumers.md) drain the [queue](../patterns/messaging/message-queue.md), each looking up the author's followers and prepending the post to their feeds. The queue smooths the burst so post creation never blocks. At-least-once delivery means a message can be redelivered, so the prepend must be [idempotent](../patterns/messaging/idempotency.md) — applying the same post to a feed twice has to be a no-op. Worker load still varies enormously between a small account and a giant one, so very large fan-outs may be split into smaller tasks. Make the prepend a no-op by skipping it when the postId is already in the feed. Alarm on queue age against the one-minute staleness window.
+- **Great — hybrid feeds.** Stop precomputing for the extreme accounts. Flag specific follow edges as "not precomputed" (a Justin-Bieber-scale account with 90M+ followers), and the workers simply skip them. At read time the Feed Service merges the precomputed feed with the recent posts of those few celebrity accounts, fetched live. In other words, choose [fan-out](../patterns/messaging/fan-out.md)-on-write for the many ordinary authors and fan-out-on-read for the handful of giants — the precomputation threshold is a tunable knob. The price is more work at read time and a more complex Feed Service. Each read looks up which followed accounts are flagged, fetches their recent posts live and merges by time, so read cost grows with the number of flagged accounts a user follows; cap or batch those live queries.
 
 The async option moves fan-out off the write path, and the hybrid skips the biggest accounts.
 
@@ -163,7 +163,7 @@ flowchart TB
 ### What it buys
 <!--meta polarity=pro-->
 
-- Feed reads collapse to a single lookup plus cache hydration, holding under 500&nbsp;ms no matter how many accounts a user follows.
+- Feed reads collapse to a single lookup plus cache hydration, holding under 500&nbsp;ms however many accounts a user follows, as long as the user follows only a few skipped celebrity accounts and the post cache is warm.
 - The queue absorbs write bursts, so a post is created in milliseconds while fan-out happens off the critical path.
 - Hybrid fan-out means a celebrity post costs one write, not ninety million, and a replicated cache spreads viral reads without coordination.
 
@@ -187,6 +187,10 @@ flowchart TB
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Hot Key](../hazards/hot-key.md) — A viral post's reads land on one postID; the replicated post cache spreads them across replicas.
 
 **Demonstrates**
 

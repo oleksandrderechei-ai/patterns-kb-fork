@@ -44,7 +44,7 @@ Out of scope: managing the friend graph, authentication, and likes or comments �
 ### Non-functional
 <!--meta requirement=nfr-->
 
-- **Availability** — heavily favoured over consistency: a few seconds of staleness is fine, a dropped recording is not.
+- **Availability** — heavily favoured over consistency: a few seconds of staleness is fine; a dropped recording is not, though losing up to 10 seconds of trailing points on a crash is accepted.
 - **Offline** — tracking must work end-to-end with zero connectivity.
 - **Live accuracy** — the athlete's own stats update every second, exactly, during the workout.
 - **Scale** — 10&nbsp;million activities in progress at once.
@@ -52,9 +52,9 @@ Out of scope: managing the friend graph, authentication, and likes or comments �
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Write path.** The naïve version pings the server with a GPS point every few seconds — for a 30-minute run at a point every ~3&nbsp;seconds that is ~600 tiny writes per activity. Recording locally and syncing once at the end collapses those 600 into **one** request, cutting backend write volume by roughly **600×** before any scaling work begins.
+**Write path.** The naïve version pings the server with a GPS point every few seconds — for a 30-minute run at a point every ~3&nbsp;seconds that is ~600 tiny writes per activity. Recording locally and syncing once at the end collapses those 600 into **one** request, cutting backend write volume by roughly **600×** before any scaling work begins. Upload rate. 100M uploads a day is about 1,160 a second on average, about 17 MB/s at 15 KB each; the peak is not sized here.
 
-**Storage.** Assume ~100M daily actives, one activity each, so ~100M new activities/day ≈ **36.5&nbsp;billion/year**. Metadata (type, user, timestamps, status) is ~100&nbsp;bytes — a rounding error. The route dominates: ~600 points, each a lat + lon + timestamp ≈ 24&nbsp;bytes, so ~**15&nbsp;KB/activity**. 15&nbsp;KB × 36.5B ≈ **~550&nbsp;TB/year**. That number, not the request rate, drives the storage design.
+**Storage.** Assume ~100M daily actives, one activity each, so ~100M new activities/day ≈ **36.5&nbsp;billion/year**. Metadata (type, user, timestamps, status) is ~100&nbsp;bytes — a rounding error. The route dominates: ~600 points, each a lat + lon + timestamp ≈ 24&nbsp;bytes, so ~**15&nbsp;KB/activity**. 15&nbsp;KB × 36.5B ≈ **~550&nbsp;TB/year**. That number, not the request rate, drives the storage design. The 3-second cadence blends 2 seconds cycling and 5 seconds running. A pure run is 1,800 / 5 = 360 points, about 9 KB; a pure ride is 1,800 / 2 = 900 points, about 22 KB. The 550 TB figure scales with the mix.
 
 **Concurrency.** Ten million "concurrent" activities sounds terrifying but costs the server almost nothing: while each one is being tracked it lives on a phone, and the only write lands when it finishes. Concurrency is a client-side number here, not a backend one.
 
@@ -78,7 +78,7 @@ POST /activities                       → Activity
 { "type": "RUN" | "RIDE" }
 
 PATCH /activities/:id                   → Activity     # lifecycle transition
-{ "state": "STARTED" | "PAUSED" | "COMPLETE" }
+{ "state": "STARTED" | "PAUSED" | "RESUMED" | "COMPLETE" }
 
 POST /activities/:id/routes             → Activity     # append a GPS point
 { "location": { "lat": 40.7, "lon": -74.0, "ts": "..." } }
@@ -87,14 +87,14 @@ GET /activities?mode=USER|FRIENDS&page=&pageSize=  → Partial<Activity>[]
 GET /activities/:id                     → Activity     # full detail, for the map
 ```
 
-The list endpoint returns a thin projection — distance, duration, date per row — so a feed page stays small; the full coordinate array loads only when a single activity is opened for its map. In the offline-first design that follows, the per-point `POST /routes` mostly disappears into a single batched sync.
+The list endpoint returns a thin projection — distance, duration, date per row — so a feed page stays small; the full coordinate array loads only when a single activity is opened for its map. In the offline-first design that follows, the phone makes the activity id, so `POST /activities` carries it and recording needs no network. One upload, `POST /activities/:id/routes` with a points array, replaces the per-point call: each point is keyed by its `ts`, a long ride sends several chunks, and the server discards points it already holds.
 
 ## How the system is built
 <!--meta block=architecture-->
 
 The backend is deliberately plain: one stateless **Activity Service** in front of a relational store. No microservice fan-out — offloading the write path to the phone leaves too little server work to justify it, and there is no read/write skew across paths worth splitting. During a workout the **phone runs the show**. On-device location services (Core Location on iOS, the fused location provider on Android) sample GPS on a fixed cadence — about every 2&nbsp;seconds cycling, every 5&nbsp;running — append each point to an in-memory buffer, and update distance incrementally with the Haversine formula between consecutive points. Nothing leaves the device until the activity is done; when it completes and the phone has a connection, the buffer flushes to the service in one batched upload, which appends the route and metadata to the store. Reads — your own feed and a friend's — are ordinary paginated queries filtered to `state = COMPLETE`; opening one hands its coordinate array to a map-tiles API to draw the line.
 
-Elapsed time hides a subtlety. Subtracting start-from-now keeps counting through pauses, so instead the activity carries a **status log** — `STARTED`, `PAUSED`, `RESUMED`, `STOPPED` with timestamps — and active time is the sum of the running intervals. Storing the events and computing the number from them, rather than mutating a running counter, is [event-sourcing](../patterns/architecture/event-sourcing.md) in miniature: it makes "moving time vs. total time" fall out for free and leaves an audit trail of the workout.
+Elapsed time hides a subtlety. Subtracting start-from-now keeps counting through pauses, so instead the activity carries a **status log** — `STARTED`, `PAUSED`, `RESUMED`, `COMPLETE` with timestamps — and active time is the sum of the running intervals. Storing the events and computing the number from them, rather than mutating a running counter, is [event-sourcing](../patterns/architecture/event-sourcing.md) in miniature: it makes "moving time vs. total time" come directly from the log and leaves an audit trail of the workout.
 
 ```mermaid caption="The phone records the whole activity locally; the server sees one batched write on completion, plus light paginated reads. Live-viewer polling is the only path that touches the server mid-activity."
 flowchart TB
@@ -136,7 +136,7 @@ Route rows dominate; metadata is negligible. Hundreds of terabytes a year is too
 
 The extension is that friends follow an activity as it happens, not just its summary. That reintroduces the very pings the offline design removed: location goes up every 2–5&nbsp;seconds so the server can persist it and fan it out to watchers, while the athlete's own screen still runs off local state.
 
-- **Push is over-engineering here.** The tempting answer is a real-time tier — WebSockets or SSE (server-sent events) plus a pub/sub broadcast — but two facts make plain polling the better tool. Updates are predictable: the next one is known to land within 2–5&nbsp;seconds, unlike chat where a message can arrive at any instant. And precision doesn't matter: a few seconds of lag is fine for a spectator. So the watcher's phone simply polls the same endpoint on the same cadence, offset a couple of seconds for latency.
+- **Polling beats push here.** Updates land every 2-5 seconds, so unlike chat the next one is predictable, and a few seconds of lag is fine for a spectator. A real-time tier (WebSockets or SSE plus pub/sub) is not needed: the watcher's phone polls the same endpoint on that cadence, offset a couple of seconds. Cost: each watcher adds 0.2-0.5 requests a second.
 - **Smart buffering.** Deliberately display the position one or two intervals behind (5–10&nbsp;seconds) and interpolate between points, turning a jerky sequence of jumps into smooth continuous motion — trading a little real-time accuracy for a live-stream feel and absorbing network jitter for free.
 
 The two phones meet only at the Activity Service:
@@ -194,8 +194,8 @@ sequenceDiagram
 ### What it buys
 <!--meta polarity=pro-->
 
-- Tracking lives entirely on the phone: no network dependency during a workout, exact live stats for free, and roughly 600× less backend traffic.
-- One batched sync per activity, not a point every few seconds, so 10M concurrent activities barely touch the server.
+- Tracking lives entirely on the phone: no network dependency during a workout, exact live stats for free, and roughly 600× less backend traffic while nobody watches live.
+- One batched sync per activity, not a point every few seconds, so 10M concurrent activities barely touch the server unless live sharing is on.
 - Time-sharding plus cold tiering keeps hundreds of TB/year affordable while the hot working set stays small.
 
 ### What it gives up
@@ -204,6 +204,7 @@ sequenceDiagram
 - Durability is bounded by the persistence interval — an unexpected shutdown can lose the last ~10 seconds of a route.
 - Nothing a friend sees is live until the athlete finishes, unless live-sharing is switched on — which re-adds the very pings the design worked to remove.
 - Polling wastes requests when nothing has changed, and smart buffering means "live" is really a few seconds behind.
+- Sharding by completion date sends every new write to the newest shard. 100M uploads a day is about 1,160 a second on average, all landing on today's partition; the peak is not sized here.
 - The client is now complex — buffering, local persistence, resume, chunked retriable upload — moving hard bugs onto the least controllable part of the stack, across many device and OS versions.
 
 ## What's expected at each level

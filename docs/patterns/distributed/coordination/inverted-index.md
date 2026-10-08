@@ -182,6 +182,7 @@ search("waterproof jacket");                                 // [1]
 **Demonstrated by**
 
 - [Facebook Post Search](../../../designs/fb-post-search.md) — Shows the index at work, with in-memory lists for a write-heavy firehose of posts and likes
+- [Yelp](../../../designs/yelp.md) — the name leg of a three-filter local search: match, geo and category in one query
 
 **Implemented by**
 
