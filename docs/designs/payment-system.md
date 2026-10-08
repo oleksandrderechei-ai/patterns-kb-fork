@@ -50,7 +50,7 @@ Out of scope, and named to keep the design narrow: refunds, saved payment method
 
 **Throughput.** Peak is ~10,000 transactions/sec. Every charge is a write, so the operational store must absorb roughly **10k writes/sec** — right at the edge of a single well-tuned relational instance, and the reason the write path gets its own scaling story below.
 
-**Event volume.** Each charge produces about three change events: the intent create, the attempt record written before the network call, and the outcome update. At 10,000 charges/sec that is ~30,000 events/sec. A single Kafka partition comfortably sustains ~5,000–10,000 messages/sec, so **3–6 partitions** at a replication factor of 3 cover it with fault-tolerant headroom.
+**Event volume.** Each charge produces about three change events: the intent create, the attempt record written before the network call, and the outcome update. At 10,000 charges/sec that is ~30,000 events/sec. A single Kafka partition comfortably sustains ~5,000–10,000 messages/sec, so 3–6 partitions carry it and **6–12 partitions** at a replication factor of 3 give 2× headroom.
 
 **Storage.** A transaction row is ~500 bytes. 10,000 rows/sec × 500 bytes ≈ 5&nbsp;MB/sec ≈ 430&nbsp;GB/day ≈ **160&nbsp;TB/year**. That figure, not the request rate, is what forces a retention-and-archival plan: hot data stays in the operational DB, anything past a few months moves to cold storage.
 

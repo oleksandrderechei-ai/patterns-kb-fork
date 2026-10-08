@@ -202,7 +202,7 @@ Every operation lives forever by default, and a hot document can reach millions 
 - Operational transformation needs a central ordering server, which rules out true peer-to-peer or rich offline editing — the CRDT territory.
 - A scaling event is disruptive: sockets are force-reconnected and a document's operations must migrate to the new owner.
 - Cross-store atomicity leans on a hand-managed `documentVersionId` because the operations store lacks multi-row transactions — orchestration that hides subtle races.
-- Owner failure: a crashed owner drops its sockets, and its documents reconnect and replay the log on a new owner; the page leaves detection time open.
+- A crashed owner drops its sockets, and its documents reconnect and replay the log on a new owner; the page leaves detection time open.
 
 ## What's expected at each level
 <!--meta block=levels-->

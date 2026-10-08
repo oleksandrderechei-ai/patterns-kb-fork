@@ -135,7 +135,7 @@ This design checks a person's identity and screens them against sanction lists, 
 
 | Axis | How it is worked out | Result | Routes to |
 | --- | --- | --- | --- |
-| **Writes** | ~42 rows per flow (12 inserts: flow, person, document, link, ~5 transitions, ~3 outbox/inbox; ~8 task rows claimed and completed, so touched twice; ~8 `sanctions_check` writes; one row each for the verification session, the idempotency key and the delivery record; the no-retry floor, each retry adds one task-row write) × 10k flows/day, ×2 for business-hours and campaign bunching. As a rule of thumb for one primary on commodity hardware, ~100/s is comfortable and 10k–50k/s is the ceiling, two rungs above this design. | **5 row-writes/s into Postgres**, **~10/s peak** | NFR: scale |
+| **Writes** | ~42 rows per flow (12 inserts: flow, person, document, link, ~5 transitions, ~3 outbox/inbox; ~8 task rows claimed and completed, so touched twice; ~8 `sanctions_check` writes; one row each for the verification session, the idempotency key and the delivery record; this is the floor with no retries, and each retry adds one task-row write) × 10k flows/day, ×2 for business-hours and campaign bunching. As a rule of thumb for one primary on commodity hardware, ~100/s is comfortable and 10k–50k/s is the ceiling, two rungs above this design. | **5 row-writes/s into Postgres**, **~10/s peak** | NFR: scale |
 | **Storage** | ~1 KB metadata × 5 years; ID photos 2 MB × 10k/day held for 1-year retention, expired by lifecycle rule. | **18 GB** metadata, **7 TB** of photos | NFR: scale; compliance |
 | **Waiting (Little's law)** | ~24 h mean submission wait. Inert rows the claim query never scans, resolved by the 48-hour link expiry and a scheduled [sweeper](../patterns/distributed/coordination/sweeper.md) that re-invites or escalates a failure event. | **~10k open flows** parked | NFR: consistency |
 | **Re-screening load (additional tier)** | ~3.6M concluded persons after a year × quarterly cadence ≈ 40k re-checks/day, each fanning out a leg per sanction list (~160k legs/day) at ~10 row-writes per re-check (a transition, a task and a result per list, one outbox row). The book roughly doubles the write rate of live intake: a second workload of the same size, so the batch needs its own capacity story. | **~2 outbound vendor calls/s**, **4–5 row-writes/s into Postgres, sustained** | NFR: scale |
@@ -165,7 +165,7 @@ This design checks a person's identity and screens them against sanction lists, 
 
 ### When this stops being right → NFR: scale {#sizing-h-limits}
 
-The queue-in-Postgres wears out first. Every update leaves a dead copy of the row behind for a background cleanup (autovacuum) to reclaim, and each task row is written three times: claimed, retried, completed. Past the broker trigger above, roughly 100k flows a day sustained (about 50 row-writes/s at ~42 rows per flow) the garbage outruns the cleanup, the `task` table bloats and the claim query slows. **The signal: dead-tuple ratio on `task` and age of the oldest pending row, climbing together.** The exits in order, each priced above: index and prune the task table, add a read replica, move the queue to a broker (the outbox survives untouched), then shard by `client_id`, which also pins a client's rows to its region. All are safely deferred, because resilience is bought by protocol, not infrastructure.
+The queue-in-Postgres wears out first. Every update leaves a dead copy of the row behind for a background cleanup (autovacuum) to reclaim, and each task row is written three times: claimed, retried, completed. Past the broker trigger above, roughly 100k flows a day sustained (about 50 row-writes/s at ~42 rows per flow), the garbage outruns the cleanup, the `task` table bloats and the claim query slows. **The signal: dead-tuple ratio on `task` and age of the oldest pending row, climbing together.** The exits in order, each priced above: index and prune the task table, add a read replica, move the queue to a broker (the outbox survives untouched), then shard by `client_id`, which also pins a client's rows to its region. All are safely deferred, because resilience is bought by protocol, not infrastructure.
 
 ## Core entities & data design
 <!--meta block=entities-->
@@ -1168,7 +1168,7 @@ By making each race a deterministic test: the guards are SQL, so the races repla
 ### What it gives up
 <!--meta polarity=con-->
 
-- **Postgres is the single point of failure.** Consistency was chosen over availability, so an outage stalls every write until the standby takes over ; the synchronous standby also adds a round trip to every commit, and writes stop if the standby is lost (see dive 4).
+- **Postgres is the single point of failure.** Consistency was chosen over availability, so an outage stalls every write until the standby takes over; the synchronous standby also adds a round trip to every commit, and writes stop if the standby is lost (see dive 4).
 - **Throughput is capped by vendor contracts** and their ~6h/week downtime, a procurement lever and not an engineering one (see dive 4).
 - **PII concentrates blast radius** in one vault and one database (see dive 6 and dive 7).
 - **Each region is an island, by requirement.** A regional outage is downtime for that region's clients, region-scale loss means a documented restore, and N regions multiply cost and config drift (see dive 7).
@@ -1214,7 +1214,7 @@ By making each race a deterministic test: the guards are SQL, so the races repla
 
 **Orchestration & state**
 
-- [Saga](../patterns/distributed/coordination/saga.md) — verify, screen and notify are local transactions sequenced by the state machine, with explicit failure terminals instead of a transaction manager spanning the vendors
+- [Saga](../patterns/distributed/coordination/saga.md) — verify, screen and notify are local transactions sequenced by the state machine, with explicit failure states instead of a transaction manager spanning the vendors
 - [Workflow Orchestration](../patterns/distributed/coordination/workflow-orchestration.md) — the flow row plus its task queue is a hand-rolled durable orchestrator — every transition is persisted, so a crash or deploy resumes mid-flow instead of restarting it
 - [Outbox](../patterns/distributed/coordination/outbox.md) — every state transition commits with its outbox event in one Postgres transaction, closing the write-then-crash-before-publish gap
 - [Inbox](../patterns/distributed/coordination/inbox.md) — every vendor callback lands as an inbox row unique on flow, step and the provider's own request id, in the same transaction as its effect — so a duplicate that arrives before the outbox write still collides

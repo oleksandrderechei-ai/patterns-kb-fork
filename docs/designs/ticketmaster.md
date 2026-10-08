@@ -57,7 +57,7 @@ Out of scope: viewing one's own past bookings, admins creating events, and surge
 
 **Reads are the number that hurts.** At the on-sale moment, a large fraction of 10&nbsp;million users load and re-poll the seat map. With a 100:1 read-to-write ratio and heavy refreshing, peak reads land **on the order of hundreds of thousands per second** for one event — that is the load caching and the edge have to absorb so the database never feels it.
 
-**Storage is easy.** One ticket row per seat per event; a few thousand events at tens of thousands of seats each is on the order of tens of millions of rows . That fits a single relational primary with read replicas. The dataset does not force sharding; the contention forces the locking.
+**Storage is easy.** One ticket row per seat per event; a few thousand events at tens of thousands of seats each is on the order of tens of millions of rows. That fits a single relational primary with read replicas. The dataset does not force sharding; the contention forces the locking.
 
 ## Core entities
 <!--meta block=entities-->
@@ -190,7 +190,7 @@ sequenceDiagram
 ### What it buys
 <!--meta polarity=pro-->
 
-- A seat held by a TTL lock in Redis stops two buyers holding it at once and auto-releases if the buyer abandons checkout, with no long-lived database lock; if the TTL lapses mid-payment, the database check in the third item is the guard.
+- A seat held by a TTL lock in Redis stops two buyers holding it at once and auto-releases if the buyer abandons checkout, with no long-lived database lock; if the TTL lapses mid-payment, the database check is the guard.
 - View and search scale out independently behind a read-through cache, the edge, and stateless services, absorbing the on-sale burst.
 - The database's optimistic-concurrency check is the final guard, so a seat is never sold twice even if the lock store fails.
 

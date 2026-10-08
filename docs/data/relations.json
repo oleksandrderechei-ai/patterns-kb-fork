@@ -2694,15 +2694,15 @@
       "a": "persona-identification",
       "verb": "demonstrates",
       "b": "saga",
-      "note_a": "verify, screen and notify are local transactions sequenced by the state machine, with explicit failure terminals instead of a transaction manager spanning the vendors",
-      "note_b": "sequencing a persona's identity check and sanction screening as local transactions with explicit failure terminals, no transaction manager spanning the vendors",
+      "note_a": "verify, screen and notify are local transactions sequenced by the state machine, with explicit failure states instead of a transaction manager spanning the vendors",
+      "note_b": "sequencing a persona's identity check and sanction screening as local transactions with explicit failure states, no transaction manager spanning the vendors",
       "group_a": "Orchestration & state"
     },
     {
       "a": "persona-identification-v2",
       "verb": "demonstrates",
       "b": "saga",
-      "note_a": "verify, screen and notify are local transactions sequenced by appends, with explicit failure terminals instead of a transaction manager spanning the vendors",
+      "note_a": "verify, screen and notify are local transactions sequenced by appends, with explicit failure states instead of a transaction manager spanning the vendors",
       "note_b": "a long-running flow whose compensation is a recorded terminal rather than a rollback across third parties",
       "group_a": "Flow progression and fan-in"
     },

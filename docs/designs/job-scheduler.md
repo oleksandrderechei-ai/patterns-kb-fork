@@ -83,7 +83,7 @@ POST /jobs
 → 202 { "job_id": "job_8f21" }        # stored PENDING, first execution enqueued
 
 GET /jobs?user_id={id}&status={status}&start_time={t0}&end_time={t1}
-→ 200 Execution[]                            # this user's executions, filtered and paged
+→ 200 Execution[]                      # this user's executions, filtered and paged
 ```
 
 Create returns **202 Accepted**, not 200: the job is durably recorded, but its actual run happens later and asynchronously.
@@ -181,7 +181,7 @@ stateDiagram-v2
 - At-least-once pushes idempotency onto every task author; a non-idempotent job will eventually double-execute.
 - The hourly execution partition is a hot spot that only write-sharding tames — and sharding then forces fan-out reads across every shard.
 - Leaning on a managed queue (SQS `DelaySeconds`, visibility timeouts) buys simplicity at the cost of portability; a self-hosted stack must rebuild delay, retries and leasing by hand.
-- Late recovery. A run recovered after a crash fires about 30 seconds after it was lost, and a retry waits 5, 25 or 125 seconds. The 2-second bound covers first attempts only.
+- A run recovered after a crash fires about 30 seconds after it was lost, and a retry waits 5, 25 or 125 seconds. The 2-second bound covers first attempts only.
 
 ## What's expected at each level
 <!--meta block=levels-->

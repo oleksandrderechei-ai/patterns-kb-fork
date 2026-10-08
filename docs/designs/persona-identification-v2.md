@@ -1390,7 +1390,7 @@ failover           promote the standby with commits in flight
 
 **Flow progression and fan-in**
 
-- [Saga](../patterns/distributed/coordination/saga.md) — verify, screen and notify are local transactions sequenced by appends, with explicit failure terminals instead of a transaction manager spanning the vendors
+- [Saga](../patterns/distributed/coordination/saga.md) — verify, screen and notify are local transactions sequenced by appends, with explicit failure states instead of a transaction manager spanning the vendors
 - [Workflow Orchestration](../patterns/distributed/coordination/workflow-orchestration.md) — an append-only record plus a task table is a hand-rolled durable orchestrator: a crash or a deploy resumes mid-flow rather than restarting it
 - [Scatter-Gather](../patterns/messaging/scatter-gather.md) — screening fans one leg per list and only the leg that finds none outstanding within its own round concludes the flow
 

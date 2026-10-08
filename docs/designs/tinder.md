@@ -128,7 +128,7 @@ def pair_key(a, b):
 # if both sides are "yes" → it's a match, notify immediately
 ```
 
-A faster variant keeps the same co-location trick but in Redis: combine the two ids into one key so [consistent hashing](../patterns/distributed/routing/consistent-hashing.md) maps both swipes to the same hash slot (or the same shard under consistent hashing), then run set-my-swipe-and-read-yours inside one Lua script, which Redis executes atomically and in memory. Cassandra stays the system of record; Redis holds only recent swipes and expires them aggressively, so losing a Redis node risks missing a very recent match, and a Redis miss reads Cassandra first, so no durable data is lost.
+A faster variant keeps the same co-location trick but in Redis: combine the two ids into one key so both swipes land on the same shard (one hash slot in Redis Cluster, or one node on a [consistent hashing](../patterns/distributed/routing/consistent-hashing.md) ring), then run set-my-swipe-and-read-yours inside one Lua script, which Redis executes atomically and in memory. Cassandra stays the system of record; Redis holds only recent swipes and expires them aggressively, so losing a Redis node risks missing a very recent match, and a Redis miss reads Cassandra first, so no durable data is lost.
 
 ```mermaid caption="How is a mutual match detected atomically when two people swipe right at the same instant?"
 sequenceDiagram

@@ -383,7 +383,7 @@ That asymmetry is what makes the exits in Right-sizing affordable: cold-tiering 
 <!--meta polarity=con-->
 
 - **Publish latency is unbounded from the uploader's side.** A long video waits behind the fleet, and the API promises only a state field (see dive 2).
-- **Losing the edge has no graceful version.** The origin is sized for ~5% of egress, so a CDN outage is a 20× overload rather than a degradation. At 99.9% playback availability (requirements-nfr-4) the budget is about 43 minutes a month, and a second edge starts with an empty cache, so the origin still takes a burst of misses at failover (see dive 3).
+- **Losing the edge has no graceful version.** The origin is sized for ~5% of egress, so a CDN outage is a 20× overload rather than a degradation. At the 99.9% playback availability target the budget is about 43 minutes a month, and a second edge starts with an empty cache, so the origin still takes a burst of misses at failover (see dive 3).
 - **The client is a heavy participant.** Splitting, part bookkeeping, manifest parsing and rendition choice live in code you ship but do not run (see dive 1).
 - **The storage bill compounds and the revenue does not.** ~1.7&nbsp;PB a day is never deleted, while income tracks only today's watches (named in Right-sizing).
 - View totals trail by one flush interval and lose an instance's unflushed window when it dies (see dive 4).

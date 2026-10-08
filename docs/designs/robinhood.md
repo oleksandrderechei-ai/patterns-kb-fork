@@ -67,8 +67,7 @@ Three entities carry the design:
 
 - **User** — the trader. Identity travels in a session token / JWT (JSON Web Token) header, never in the request body, so a client can't tamper with whose order it is.
 - **Symbol** — a tradable stock (a ticker like `AAPL`): its current price and metadata, mirrored from the exchange's feed rather than owned here.
-- **Order** — a buy/sell instruction: `position` (buy/sell), `symbol`, `numShares`, `priceInCents`, type (market/limit), a `state` that walks `pending → submitted → filled / cancelled / failed`, and the `externalOrderId` the exchange returns. Money is stored as integer cents — a floating-point `price` would eventually round a trade wrong.
-- **Client order id** — a key the client generates and sends with each order, so the exchange can be asked about an order by it and a retry never places it twice.
+- **Order** — a buy/sell instruction: `position` (buy/sell), `symbol`, `numShares`, `priceInCents`, type (market/limit), a `state` that walks `pending → submitted → filled / cancelled / failed`, and the `externalOrderId` the exchange returns. It also carries a `clientOrderId`, a key the client generates, so the exchange can be asked about the order by it and a retry never places it twice. Money is stored as integer cents — a floating-point `price` would eventually round a trade wrong.
 
 ## The interface
 <!--meta block=interface-->

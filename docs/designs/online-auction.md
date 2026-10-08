@@ -52,7 +52,7 @@ Out of scope, named up front to keep the design narrow: search, category filteri
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Bid throughput.** Say each of 10M live auctions draws ~100 bids over a ~1-week life. That is 10M × 100 ÷ 7 days about 143M bids/day, about **1,650 bids/sec** on average. Bidding is bursty — auctions cluster their action into the final minutes and the evening — so design for a peak roughly 10× the mean, about 16k at the mean times ten; call it **~15k bids/sec**, rounded. That write rate, on a single hot scalar per auction, is the number the architecture has to survive.
+**Bid throughput.** Say each of 10M live auctions draws ~100 bids over a ~1-week life. That is 10M × 100 ÷ 7 days about 143M bids/day, about **1,650 bids/sec** on average. Bidding is bursty — auctions cluster their action into the final minutes and the evening — so design for a peak roughly 10× the mean, call it **~15k bids/sec** (10 × 1,650 is about 16.5k, rounded down to a round number). That write rate, on a single hot scalar per auction, is the number the architecture has to survive.
 
 **Storage.** An auction row is ~1&nbsp;KB; a bid is ~500 bytes. At 10M × 52 weeks ≈ 520M auctions/year, storage is ≈ 520M × (1&nbsp;KB + 100 × 500&nbsp;B) ≈ **~25&nbsp;TB/year**. Real, but not the pressing constraint — modern solid-state drives (SSDs) swallow it and replication covers durability. Write throughput, not disk, is what forces the interesting choices.
 
@@ -96,7 +96,7 @@ The bid response is a **202 Accepted**, not a 200: the bid is safely captured, b
 ## How the system is built
 <!--meta block=architecture-->
 
-Split listing from bidding into two services with opposite shapes. The **Auction Service** is read-tuned and thin — create and fetch listings. The **Bid Service** is write-tuned and does the hard part: it never touches the database on the request path. A bid is dropped into a durable log the instant it arrives, acknowledged, and adjudicated asynchronously by a consumer that owns the auction's true high. That same consumer, on accepting a new high, publishes it so every real-time connection watching the item — wherever it is hosted — learns the new number. The split matters because bidding traffic (about 1,650 bids/sec) is about 100× listing traffic (520M listings a year, about 16 a second), and the two want to be tuned and scaled independently.
+Split listing from bidding into two services with opposite shapes. The **Auction Service** is read-tuned and thin — create and fetch listings. The **Bid Service** is write-tuned and does the hard part: it never touches the database on the request path. A bid is dropped into a durable log the instant it arrives, acknowledged, and adjudicated asynchronously by a consumer that owns the auction's true high. That same consumer, on accepting a new high, publishes it so every real-time connection watching the item — wherever it is hosted — learns the new number. The split matters because bid writes (about 1,650 a second) are about 100× listing writes (520M a year, about 16 a second), and the two want to be tuned and scaled independently.
 
 ```mermaid caption="A bid is durable at the queue before it is judged; the consumer holds the true high in the auction row and broadcasts each new one through pub/sub so every SSE server sees it."
 flowchart TB
