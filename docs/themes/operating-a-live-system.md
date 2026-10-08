@@ -19,21 +19,18 @@ A system nobody touches still changes: keys expire, quotas fill, a message nothi
 ## Explained
 <!--meta block=explain-->
 
-Operating a live system means making the routine changes a running system needs, such as renewing keys, resizing, replaying failed messages and raising quotas, through the same automated path as a deployment, never by hand on a live machine. A hand change is invisible to anyone who was not there, is undone by the next deployment and cannot be reviewed or reversed. Split the work by how often it happens. Frequent changes get full automation: resizing on a signal, running maintenance on a clock, and scanning for work that silently never happened. Rare and dangerous ones get a written procedure that you rehearse, because a restore script nobody has run is a plan, not a capability. Automation acts on whatever signal it is given, including a wrong one, so a person still checks the signals it trusts. Urgent changes tempt people to bypass the pipeline, so build a fast path inside it. Credentials hurt most when they are long-lived and widely shared: give out narrow tokens that expire on their own, so there is no fleet-wide rotation to coordinate.
+Operating a live system means making the routine changes a running system needs, such as renewing keys, resizing, replaying failed messages and raising quotas, through the same automated path as a deployment, never by hand on a live machine. A hand change is invisible to anyone who was not there, is often undone by the next deployment and cannot be reviewed or reversed. Split the work by how often it happens. Frequent changes get full automation: resizing on a signal, running maintenance on a clock, and scanning for work that silently never happened. Rare and dangerous ones get a written procedure that you rehearse, because a restore script nobody has run is a plan, not a capability. Automation acts on whatever signal it is given, including a wrong one, so a person still checks the signals it trusts. Urgent changes tempt people to bypass the pipeline, so build a fast path inside it. Credentials cause the most trouble when long-lived and widely shared: give out narrow tokens that expire on their own, so there is no fleet-wide rotation to coordinate.
 
-**Example.** Forty copies of a service share one database password. Rotating it by hand means adding the new password, restarting in 4 batches of 10 at 2 minutes each, then retiring the old one. That takes 8 minutes, and if you retire the old password after batch 3, the 10 copies not yet restarted fail. With tokens that expire after 15 minutes, nothing is rotated and no step is coordinated. The cost is that the token service becomes critical: if it is down for 15 minutes, every copy loses access.
+**Example.** Forty copies of a service share one database password. Rotating it by hand means adding the new password, restarting in 4 batches of 10 at 2 minutes each, then retiring the old one. That takes 8 minutes, and if you retire the old password after batch 3, the 10 copies not yet restarted fail. With tokens that expire after 15 minutes, the shared password is gone, and the token service's own signing key still rotates, but in one place, not forty. The cost is that the token service becomes critical: if it is down for 15 minutes, every copy loses access.
 
 ## The tradespace
 <!--meta block=tradespace-->
 
-The first trade is between acting automatically and acting correctly. An automated response is fast, consistent and available at three in the morning, and it acts on whatever signal it was given — including a signal that is wrong. A human is slow and can tell that the graph is lying, and is only present for a third of the day.
+The first trade is between acting automatically and acting correctly. An automated response is fast, consistent and available at three in the morning, and it acts on whatever signal it was given, even a wrong one, so give it a ceiling, a cooldown and an alarm when it fires repeatedly. A human is slow, can tell that the graph is lying, and is not always on call, so a response at three in the morning may wait.
 
-The second is between the pipeline and the console. Making every change go through the pipeline makes it reviewable, repeatable and reversible, and it makes urgent changes slower, which is precisely when the temptation to reach for the console is strongest. The resolution is a fast path inside the pipeline rather than a policy nobody follows during an incident, because a change made outside it is gone at the next deployment and nobody will know why the symptom returned.
+The second is between the pipeline and the console. Making every change go through the pipeline makes it reviewable, repeatable and reversible, and it makes urgent changes slower, which is when the temptation to reach for the console is strongest. The resolution is a fast path inside the pipeline that skips the slow checks, never the audit record or the rollback, because a change made outside it is often gone at the next deployment and nobody will know why the symptom returned.
 
-The third is what to automate at all. Every automated procedure is code to maintain, and one that runs rarely is code nobody has exercised — a restore script that has never been run is a plan rather than a capability. Frequent operations earn full automation, rare ones earn a written and rehearsed procedure, and the mistake is treating a rare dangerous operation as though writing the script were the same as being able to perform it.
-
-**Automate what happens often; rehearse what happens rarely; and never let either bypass the pipeline.**
-
+The third is what to automate at all. Every automated procedure is code to maintain, and one that runs rarely is code nobody has exercised. Frequent operations earn full automation, rare ones earn a written and rehearsed procedure, and the mistake is treating a rare dangerous operation as though writing the script were the same as being able to perform it.
 ## The tour
 <!--meta block=tour-->
 
@@ -43,11 +40,11 @@ The third is what to automate at all. Every automated procedure is code to maint
 
 ### [Autoscaling](../patterns/distributed/routing/autoscaling.md) {#tour-autoscaling}
 
-The most frequent operational change, and the one nobody should be making by hand. Resizing on a signal keeps a growing backlog or a morning ramp from becoming an incident, and it keeps off-peak hours from being charged at peak. Its limits are where the operational failures live: it cannot add what a quota will not allow.
+The most frequent operational change, and the one nobody should be making by hand. Resizing on a signal keeps a growing backlog or a morning ramp from becoming an incident, and it keeps off-peak hours from being charged at peak. It fails where a quota will not let it add more, so check quota headroom against peak scale-out; a resize also takes time to land, which the scaling signal has to beat.
 
 ### [Dead Letter Channel](../patterns/messaging/dead-letter-channel.md) {#tour-dead-letter-channel}
 
-Messages that fail every attempt end up somewhere visible instead of blocking the queue or vanishing. It is the clearest example of a manual operation designed for on purpose: the system stops trying, and a person inspects, corrects and replays — which means the replay tooling has to exist before the first message arrives.
+Messages that fail every attempt end up somewhere visible instead of blocking the queue or vanishing. It is the clearest example of a manual operation designed for on purpose: the system stops trying, and a person inspects, corrects and replays. The replay tooling has to exist before the first message arrives, and replay is safe only if the consumer is idempotent; replayed messages may arrive out of order.
 
 ### [Feature Flag](../patterns/distributed/routing/feature-flag.md) {#tour-feature-flag}
 
@@ -55,11 +52,11 @@ The fastest lever an operator has. Shedding an expensive path or disabling a mis
 
 ### [Health Endpoint Monitoring](../patterns/distributed/resilience/health-endpoint.md) {#tour-health-endpoint}
 
-The same endpoint the router polls is also a manual control: make it report unhealthy and traffic drains away without touching the router configuration. That is how a region is emptied for maintenance, and it is a safer lever than editing routing rules under pressure.
+The same endpoint the router polls is also a manual control: make it report unhealthy and traffic drains away without touching the router configuration. That is how a region is emptied for maintenance, and it is a safer lever than editing routing rules under pressure. It holds only if the router drains on an unhealthy report, the remaining regions can absorb the load, and the maintenance is flagged so alerts do not page. Never drain the last healthy region.
 
 ### [Valet Key](../patterns/distributed/routing/valet-key.md) {#tour-valet-key}
 
-Rotation hurts in proportion to how long a credential lives and how many components hold it. Issuing narrow tokens that expire on their own converts a coordinated fleet-wide procedure into something that happens continuously and unremarkably, which is the only reliable fix for the class of outage caused by an expired secret.
+Rotation hurts in proportion to how long a credential lives and how many components hold it. Issuing narrow tokens that expire on their own turns a coordinated fleet-wide procedure into a routine nobody has to coordinate, which removes the cause of outages from an expired secret; a scheduled renewal still covers credentials that cannot be short-lived.
 
 ### [Scheduling](../patterns/concurrency/scheduling.md) {#tour-scheduling}
 
@@ -67,7 +64,7 @@ Retention trimming, certificate renewal, index maintenance and report generation
 
 ### [Sweeper](../patterns/distributed/coordination/sweeper.md) {#tour-sweeper}
 
-The hardest failures to notice are the ones with no error: a job that was never picked up, a reservation that was never released, a callback that never arrived. A process that periodically scans for work that should have completed by now is the only thing that finds them, and it turns a class of silent inconsistency into an ordinary retry.
+The hardest failures to notice are the ones with no error: a job that was never picked up, a reservation that was never released, a callback that never arrived. A process that periodically scans for work that should have completed by now is the most direct way to find them, and it turns a class of silent inconsistency into an ordinary retry.
 
 <!-- tour:end -->
 
@@ -91,3 +88,16 @@ The hardest failures to notice are the ones with no error: a job that was never 
 - [Health Modeling](./health-modeling.md) — Supplies the signals these operations react to, and the verdict that decides whether one is needed at all.
 - [Securing Availability](./securing-availability.md) — Why the shared long-lived credential is the rotation that hurts, and what removes the need for it.
 - [Observability](./observability.md) — The raw telemetry an operator reads once an automated response has done what it can.
+
+## How it relates
+<!--meta block=relationships-->
+
+<!-- relationships:start -->
+
+<!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Continuous Delivery](./continuous-delivery.md) — Hand-run changes go through the same automated path as a release.
+
+<!-- relationships:end -->

@@ -14755,6 +14755,20 @@
       "b": "global-traffic-and-ingress",
       "note_a": "This theme says when to keep one front door, and how to keep it unbypassable.",
       "note_b": "Choose one entry point, an API gateway, when every request must be screened the same way."
+    },
+    {
+      "a": "metrics-monitoring",
+      "verb": "combines-with",
+      "b": "observability",
+      "note_a": "The case study's metrics are one of the three records this theme joins.",
+      "note_b": "Metrics are the cheap, pre-aggregated record; the case study works through ingesting and alerting on them."
+    },
+    {
+      "a": "continuous-delivery",
+      "verb": "combines-with",
+      "b": "operating-a-live-system",
+      "note_a": "Routine operations reuse this delivery path.",
+      "note_b": "Hand-run changes go through the same automated path as a release."
     }
   ],
   "group_order": {

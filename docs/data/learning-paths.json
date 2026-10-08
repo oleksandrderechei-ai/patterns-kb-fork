@@ -1323,7 +1323,7 @@
       },
       "operating-a-live-system": {
         "role": "Find the work that failed by not happening",
-        "tour": "The hardest failures to notice are the ones with no error: a job that was never picked up, a reservation that was never released, a callback that never arrived. A process that periodically scans for work that should have completed by now is the only thing that finds them, and it turns a class of silent inconsistency into an ordinary retry.",
+        "tour": "The hardest failures to notice are the ones with no error: a job that was never picked up, a reservation that was never released, a callback that never arrived. A process that periodically scans for work that should have completed by now is the most direct way to find them, and it turns a class of silent inconsistency into an ordinary retry.",
         "fluency": "Find the work that failed by never happening"
       }
     },
@@ -1364,7 +1364,7 @@
       },
       "scale-units-and-stamps": {
         "role": "Draw the compartment around the whole unit",
-        "tour": "The isolation argument, at the largest scale it is usually drawn. Partitioning by thread pool contains a slow dependency; partitioning by unit contains a bad cluster, an exhausted quota or a degraded region — and the compartment holds only because the units share nothing that can fail for both.",
+        "tour": "Bulkhead at the largest scale. Partitioning by thread pool contains a slow dependency; partitioning by unit contains a bad cluster, an exhausted quota or a degraded region, and the compartment holds only while units share as little as possible; the global data tier is the exception, see Replication.",
         "fluency": "The compartment drawn around an entire environment"
       }
     },
@@ -1381,7 +1381,7 @@
       },
       "observability": {
         "role": "Its state is a key health signal",
-        "tour": "Beyond protecting callers from a failing dependency, a circuit breaker's open, closed, or half-open state is itself one of the most useful signals a system exposes — it names exactly which dependency is unhealthy right now, no dashboard archaeology required.",
+        "tour": "Beyond protecting callers from a failing dependency, a circuit breaker's open, closed, or half-open state is itself one of the most useful signals a system exposes — it names exactly which dependency is unhealthy right now, once the state is exported as a metric.",
         "fluency": "Breaker state (open/closed) is a first-class health signal."
       },
       "microservices-design": {
@@ -1475,7 +1475,7 @@
       },
       "operating-a-live-system": {
         "role": "Take a region out deliberately",
-        "tour": "The same endpoint the router polls is also a manual control: make it report unhealthy and traffic drains away without touching the router configuration. That is how a region is emptied for maintenance, and it is a safer lever than editing routing rules under pressure.",
+        "tour": "The same endpoint the router polls is also a manual control: make it report unhealthy and traffic drains away without touching the router configuration. That is how a region is emptied for maintenance, and it is a safer lever than editing routing rules under pressure. It holds only if the router drains on an unhealthy report, the remaining regions can absorb the load, and the maintenance is flagged so alerts do not page. Never drain the last healthy region.",
         "fluency": "Drain a region deliberately, without touching the router"
       }
     },
@@ -1620,12 +1620,12 @@
       },
       "scale-units-and-stamps": {
         "role": "Right-size the unit against its own demand",
-        "tour": "Units serve different regions and different hours, so each scales in when its own demand falls rather than holding peak capacity all night. Without it the arrangement multiplies the bill by the unit count and gets nothing back for it.",
+        "tour": "Units serve different regions and different hours, so each scales in when its own demand falls rather than holding peak capacity all night. Without it every unit holds peak capacity all night, so the bill grows with unit count whatever the load. Scale-in must stop at the floor failover needs, or scale-out time becomes the outage.",
         "fluency": "Right-size each unit against its own regional demand"
       },
       "operating-a-live-system": {
         "role": "Let capacity follow demand without a person",
-        "tour": "The most frequent operational change, and the one nobody should be making by hand. Resizing on a signal keeps a growing backlog or a morning ramp from becoming an incident, and it keeps off-peak hours from being charged at peak. Its limits are where the operational failures live: it cannot add what a quota will not allow.",
+        "tour": "The most frequent operational change, and the one nobody should be making by hand. Resizing on a signal keeps a growing backlog or a morning ramp from becoming an incident, and it keeps off-peak hours from being charged at peak. It fails where a quota will not let it add more, so check quota headroom against peak scale-out; a resize also takes time to land, which the scaling signal has to beat.",
         "fluency": "The routine change nobody should be making by hand"
       }
     },
@@ -1738,7 +1738,7 @@
       },
       "scale-units-and-stamps": {
         "role": "Make the bundle one deployable thing",
-        "tour": "The unit itself: compute, ingress and buffering provisioned from one template and addressed as a whole, so growth is another stamp and recovery is deleting a bad one. Everything else in this tour is either a precondition for it or a consequence of it.",
+        "tour": "The unit itself: compute, ingress and buffering provisioned from one template and addressed as a whole, so growth is another stamp and recovery is deleting a bad one.",
         "fluency": "The unit itself — deployed, sized and destroyed as one"
       },
       "continuous-validation": {
@@ -1885,7 +1885,7 @@
       },
       "scale-units-and-stamps": {
         "role": "Split what the unit cannot hold",
-        "tour": "The unit boundary caps compute, and data has ceilings of its own — a partition size limit, a per-key throughput limit. Splitting by key is how the shared store keeps up with a growing fleet of units, and a badly chosen key concentrates their traffic on one partition regardless of how well the compute is spread.",
+        "tour": "The unit boundary caps compute, and data has ceilings of its own: a partition size limit, a per-key throughput limit. Splitting by key is how the shared store keeps up with a growing fleet of units, and a badly chosen key concentrates their traffic on one partition regardless of how well the compute is spread.",
         "fluency": "The data ceilings a compute boundary does not cover"
       },
       "data-platform": {
@@ -1963,7 +1963,7 @@
       },
       "operating-a-live-system": {
         "role": "Make rotation a non-event",
-        "tour": "Rotation hurts in proportion to how long a credential lives and how many components hold it. Issuing narrow tokens that expire on their own converts a coordinated fleet-wide procedure into something that happens continuously and unremarkably, which is the only reliable fix for the class of outage caused by an expired secret.",
+        "tour": "Rotation hurts in proportion to how long a credential lives and how many components hold it. Issuing narrow tokens that expire on their own turns a coordinated fleet-wide procedure into a routine nobody has to coordinate, which removes the cause of outages from an expired secret; a scheduled renewal still covers credentials that cannot be short-lived.",
         "fluency": "Turn rotation into a non-event"
       }
     },
@@ -2112,7 +2112,7 @@
     "/patterns/messaging/correlation-identifier.html": {
       "observability": {
         "role": "Stitch one request across services",
-        "tour": "A single id generated at the edge and propagated through every downstream call turns a scatter of per-service log lines into one traceable story — the thread that makes distributed tracing and cross-service debugging possible at all.",
+        "tour": "A single id generated at the edge and propagated through every downstream call turns a scatter of per-service log lines into one traceable story — the thread that makes distributed tracing and cross-service debugging far easier.",
         "fluency": "Stitch one request across services"
       },
       "microservices-design": {
@@ -2144,7 +2144,7 @@
       },
       "operating-a-live-system": {
         "role": "Collect what needs a person to look at it",
-        "tour": "Messages that fail every attempt end up somewhere visible instead of blocking the queue or vanishing. It is the clearest example of a manual operation designed for on purpose: the system stops trying, and a person inspects, corrects and replays — which means the replay tooling has to exist before the first message arrives.",
+        "tour": "Messages that fail every attempt end up somewhere visible instead of blocking the queue or vanishing. It is the clearest example of a manual operation designed for on purpose: the system stops trying, and a person inspects, corrects and replays. The replay tooling has to exist before the first message arrives, and replay is safe only if the consumer is idempotent; replayed messages may arrive out of order.",
         "fluency": "A manual operation designed for on purpose"
       }
     },
@@ -2259,7 +2259,7 @@
     "/patterns/messaging/wire-tap.html": {
       "observability": {
         "role": "Observe message flow without changing it",
-        "tour": "Copying messages off a channel to an inspection point lets you watch what's actually flowing between services without touching the producer or consumer — observability added at the transport layer, at zero risk to the transaction itself.",
+        "tour": "Copying messages off a channel to an inspection point lets you watch what's actually flowing between services without touching the producer or consumer — observability added at the transport layer, with little effect on the transaction, though a tap adds channel load and copies payloads that need the same redaction as logs.",
         "fluency": "Observe message flow without changing it"
       },
       "health-modeling": {
@@ -2428,7 +2428,7 @@
     "/patterns/security/secure-logger.html": {
       "observability": {
         "role": "Audit without leaking secrets",
-        "tour": "Logging is only safe to turn up when it can't leak credentials, tokens, or personally identifiable information (PII). A secure logger redacts or masks sensitive fields before they reach disk, so teams can log generously without creating a compliance incident.",
+        "tour": "Logging is only safe to turn up when it can't leak credentials, tokens, or personally identifiable information (PII). A secure logger redacts or masks sensitive fields before they reach disk, so generous logging is safer, though only the fields it is set up to catch are redacted.",
         "fluency": "Audit without leaking secrets"
       },
       "health-modeling": {

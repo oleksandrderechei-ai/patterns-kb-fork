@@ -2348,6 +2348,14 @@
       "related": ["trie"]
     },
     {
+      "id": "metrics-monitoring",
+      "label": "Metrics & Monitoring",
+      "definition": "Ingest five million metric points a second, serve dashboards over weeks of history, and fire alerts within a minute",
+      "route": "/designs/metrics-monitoring.html",
+      "requires": [],
+      "related": ["observability"]
+    },
+    {
       "id": "parking-lot",
       "label": "Parking Lot",
       "definition": "Assign a compatible spot, issue a ticket, and price the stay — an object-oriented design about where each piece of state belongs",
@@ -2420,6 +2428,22 @@
       "related": ["cloud-native"]
     },
     {
+      "id": "observability",
+      "label": "Observability",
+      "definition": "Knowing what a running system is actually doing",
+      "route": "/themes/observability.html",
+      "requires": [],
+      "related": ["metrics-monitoring"]
+    },
+    {
+      "id": "continuous-delivery",
+      "label": "Continuous Delivery",
+      "definition": "Shipping each service on its own schedule, safely and often",
+      "route": "/themes/continuous-delivery.html",
+      "requires": [],
+      "related": ["operating-a-live-system"]
+    },
+    {
       "id": "global-traffic-and-ingress",
       "label": "Global Traffic & Ingress",
       "definition": "Getting every request to a healthy region, and screening it on the way in",
@@ -2450,6 +2474,14 @@
       "route": "/themes/continuous-validation.html",
       "requires": [],
       "related": ["health-modeling"]
+    },
+    {
+      "id": "operating-a-live-system",
+      "label": "Operating a Live System",
+      "definition": "The changes a running system needs, made without a hand on the box",
+      "route": "/themes/operating-a-live-system.html",
+      "requires": [],
+      "related": ["continuous-delivery"]
     },
     {
       "id": "dry",

@@ -13,8 +13,8 @@ source: docs/data/relations.json
 # Prerequisites
 
 A **prerequisite record** is one page with the pages to read before it and the pages to
-read beside it. There are 352 records: 44 of them name something to read first, through 51
-requires edges, and 977 pairs of pages are related both ways.
+read beside it. There are 356 records: 44 of them name something to read first, through 51
+requires edges, and 979 pairs of pages are related both ways.
 
 Everything here is built from [`relations.json`](../data/relations.json), through its
 second form [`prerequisites.json`](../data/prerequisites.json). **Read first** lists a
@@ -331,6 +331,7 @@ record reached.
 | Page | What it is | Read first | Related |
 | --- | --- | --- | --- |
 | [Top-K](../designs/top-k.md) | Rank the exact top K most-viewed items over rolling windows, from a firehose of billions of events, in tens of milliseconds | — | [Trie](../patterns/distributed/coordination/trie.md) |
+| [Metrics & Monitoring](../designs/metrics-monitoring.md) | Ingest five million metric points a second, serve dashboards over weeks of history, and fire alerts within a minute | — | [Observability](../themes/observability.md) |
 | [Parking Lot](../designs/parking-lot.md) | Assign a compatible spot, issue a ticket, and price the stay — an object-oriented design about where each piece of state belongs | — | [Amazon Locker](../designs/amazon-locker.md) |
 | [Amazon Locker](../designs/amazon-locker.md) | Match a package to a compartment, issue a one-time code that expires in a week — an object-oriented design about where occupancy and access control live | — | [Parking Lot](../designs/parking-lot.md) |
 | [Persona Identification & Sanction Check](../designs/persona-identification.md) | A long-running identity-and-sanctions flow that waits on people and vendors for days, yet never tells the client a wrong or half-finished verdict | — | [Persona Identification & Sanction Check (V2)](../designs/persona-identification-v2.md) |
@@ -345,10 +346,13 @@ record reached.
 | [Consistency & Replication](../themes/consistency-and-replication.md) | Keeping copies of data in agreement across nodes | — | [Data Platform](../themes/data-platform.md) |
 | [Cloud Native](../themes/cloud-native.md) | What the platform provides once your workload is packaged the way it expects | — | [Twelve-Factor](../themes/twelve-factor.md), [Data Platform](../themes/data-platform.md) |
 | [Twelve-Factor](../themes/twelve-factor.md) | What a platform requires of an application before it can run it for you | — | [Cloud Native](../themes/cloud-native.md) |
+| [Observability](../themes/observability.md) | Knowing what a running system is actually doing | — | [Metrics & Monitoring](../designs/metrics-monitoring.md) |
+| [Continuous Delivery](../themes/continuous-delivery.md) | Shipping each service on its own schedule, safely and often | — | [Operating a Live System](../themes/operating-a-live-system.md) |
 | [Global Traffic & Ingress](../themes/global-traffic-and-ingress.md) | Getting every request to a healthy region, and screening it on the way in | — | [Health Modeling](../themes/health-modeling.md), [API Gateway](../patterns/distributed/routing/api-gateway.md) |
 | [Data Platform](../themes/data-platform.md) | Choosing and configuring the stores that hold state when the compute is disposable | — | [Cloud Native](../themes/cloud-native.md), [Consistency & Replication](../themes/consistency-and-replication.md), [CAP Theorem](../themes/cap-theorem.md) |
 | [Health Modeling](../themes/health-modeling.md) | Turning a wall of metrics into one answer a router and an operator can act on | — | [Global Traffic & Ingress](../themes/global-traffic-and-ingress.md), [Continuous Validation](../themes/continuous-validation.md) |
 | [Continuous Validation](../themes/continuous-validation.md) | Proving a release is safe before it takes traffic, and while it does | — | [Health Modeling](../themes/health-modeling.md) |
+| [Operating a Live System](../themes/operating-a-live-system.md) | The changes a running system needs, made without a hand on the box | — | [Continuous Delivery](../themes/continuous-delivery.md) |
 
 ## Principles
 
