@@ -92,5 +92,7 @@ Find hot keys with per-key read counters or sampled access logs, and compare eac
 - [Distributed Rate Limiter](../designs/distributed-rate-limiter.md) — A rate limiter's own shard becomes the hot key, so adding shards does not raise one client's ceiling.
 - [Distributed Cache](../designs/design-distributed-cache.md) — A sharded cache places each key on one node, so one hot key still saturates that node.
 - [Top-K](../designs/top-k.md) — A skewed view stream concentrates writes on a few video counters.
+- [Robinhood](../designs/robinhood.md) — a hot symbol's price channel puts one tick in front of millions of streams, so the servers watching it take the load
+- [Job Scheduler](../designs/job-scheduler.md) — a design that buckets executions by hour hits this on the current bucket
 
 <!-- relationships:end -->

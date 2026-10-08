@@ -54,9 +54,9 @@ Out of scope, named to keep the design narrow: after-hours trading, ETFs / optio
 
 **Orders.** 20M DAU (daily active users) × 5 trades ≈ 100M orders/day ≈ **~1,200 orders/sec** on average. Trading is bursty — the opening bell and volatility spikes push this an order of magnitude higher, so budget for **tens of thousands/sec** at peak. Each one is consistency-critical and must clear in under 200&nbsp;ms.
 
-**Prices.** At peak, on the order of **tens of millions of concurrent stream connections**, each watching a handful of symbols. A few dozen symbols are hot; a single tick on one of them may have to reach millions of open connections at once — the design's real fan-out problem.
+**Prices.** At peak, a large share of the 20M daily users hold **an open stream at once**, each watching a handful of symbols. A few dozen symbols are hot; a single tick on one of them may have to reach millions of open connections at once — the design's real fan-out problem.
 
-**Upstream connections.** The number that must stay small. Naïvely, 20M clients polling every 200&nbsp;ms would be ~100M requests/sec at the exchange. The whole point of the system is to collapse that to roughly **one feed subscription per symbol** — O(thousands), not O(clients).
+**Upstream connections.** The number that must stay small. Naïvely, 20M clients polling every 200&nbsp;ms would be ~100M requests/sec at the exchange. The system collapses that to roughly **one feed subscription per symbol**: a few thousand, not one per client.
 
 **Storage.** An order is a few hundred bytes. 100M/day × ~300&nbsp;B ≈ 30&nbsp;GB/day ≈ **~11&nbsp;TB/year** — enough that the order store is partitioned, not single-node.
 
@@ -67,7 +67,7 @@ Three entities carry the design:
 
 - **User** — the trader. Identity travels in a session token / JWT (JSON Web Token) header, never in the request body, so a client can't tamper with whose order it is.
 - **Symbol** — a tradable stock (a ticker like `AAPL`): its current price and metadata, mirrored from the exchange's feed rather than owned here.
-- **Order** — a buy/sell instruction: `position` (buy/sell), `symbol`, `numShares`, `priceInCents`, type (market/limit), a `state` that walks `pending → submitted → filled / cancelled / failed`, and the `externalOrderId` the exchange returns. Money is stored as integer cents — a floating-point `price` would eventually round a trade wrong.
+- **Order** — a buy/sell instruction: `position` (buy/sell), `symbol`, `numShares`, `priceInCents`, type (market/limit), a `state` that walks `pending → submitted → filled / cancelled / failed`, and the `externalOrderId` the exchange returns. It also carries a `clientOrderId`, a key the client generates, so the exchange can be asked about the order by it and a retry never places it twice. Money is stored as integer cents — a floating-point `price` would eventually round a trade wrong.
 
 ## The interface
 <!--meta block=interface-->
@@ -85,7 +85,7 @@ GET /subscribe?symbols=AAPL,META            # Server-Sent Events, one long-lived
    data: { "ticker": "META", "priceInCents": 52210 }
 
 POST /order
-{ "position": "buy", "symbol": "META", "priceInCents": 52210, "numShares": 10 }
+{ "position": "buy", "symbol": "META", "priceInCents": 52210, "numShares": 10, "clientOrderId": "c_71…" }
 → 200 Order { "id": "ord_9f…", "state": "submitted", "externalOrderId": "X-…" }
 
 DELETE /order/ord_9f…
@@ -97,7 +97,7 @@ GET /orders?cursor=…                         # paginated, scoped to the caller
 # Identity is read from the Authorization header (JWT), never the body.
 ```
 
-`priceInCents` is an integer on purpose. Prices arrive over SSE (server-sent events) — a persistent, one-way, HTTP push — rather than by polling, because the client only ever receives price data and never sends any back; a bidirectional WebSocket would buy nothing here.
+Prices arrive over SSE (server-sent events) — a persistent, one-way, HTTP push — rather than by polling, because the client only ever receives price data and never sends any back; a bidirectional WebSocket would buy nothing here.
 
 ## How the system is built
 <!--meta block=architecture-->
@@ -147,13 +147,13 @@ The fix is a small secondary index: a key-value store mapping `externalOrderId �
 
 ### 3 · Keeping orders consistent across a boundary you don't own
 
-Placing an order touches three systems that can't share one transaction — the order store, the exchange, and the KV index — so the workflow is ordered so that a failure at any step is recoverable, a [saga](../patterns/distributed/coordination/saga.md) completed forward rather than an atomic commit:
+Placing an order touches three systems that can't share one transaction — the order store, the exchange, and the KV index — so the workflow is ordered so that a failure at any step is recoverable, a [saga](../patterns/distributed/coordination/saga.md) (a chain of local steps, each with a recovery path) completed forward rather than an atomic commit:
 
 - **Persist first.** Write the order as `pending` before anything else, so there is a durable record even if a later step dies.
 - **Submit.** Call the exchange synchronously; it returns the `externalOrderId`.
 - **Record.** Write the KV index entry and move the order to `submitted`, then answer the client.
 
-Each failure has a defined resolution. A failed initial write just fails the request. A failed submission marks the order `failed`. The dangerous case is a submission that succeeded but whose follow-up write did not — the exchange now holds an order the store doesn't know the id of. A background clean-up job handles it: it scans stalled `pending` orders and asks the exchange about them using the client-supplied order id it sent along, an [idempotency](../patterns/messaging/idempotency.md) key that lets it query — and safely re-submit if needed — without ever double-placing. Cancellation mirrors the shape: flip to `pending_cancel` first, then cancel upstream, then confirm, and let the same clean-up drive any stuck cancel to completion. The clean-up reconciler is what lets the system favour consistency across a boundary it can only talk to, never control.
+Each failure has a defined resolution. A failed initial write just fails the request. A submission the exchange rejects marks the order `failed`; one with an unknown outcome, such as a timeout, stays `pending` for the clean-up job. The dangerous case is a submission that succeeded but whose follow-up write did not — the exchange now holds an order the store doesn't know the id of. A background clean-up job handles it: it scans stalled `pending` orders and asks the exchange about them using the client-supplied order id it sent along, an [idempotency](../patterns/messaging/idempotency.md) key that lets it query — and safely re-submit if needed — without ever double-placing. Cancellation mirrors the shape: flip to `pending_cancel` first, then cancel upstream, then confirm, and let the same clean-up drive any stuck cancel to completion.
 
 ```mermaid caption="How placing an order stays recoverable across the store, exchange, and index."
 sequenceDiagram
@@ -184,7 +184,7 @@ sequenceDiagram
 ### What it buys
 <!--meta polarity=pro-->
 
-- One feed subscription per symbol serves millions of screens — billions of would-be polls collapse to a single upstream connection.
+- One feed subscription per symbol serves millions of screens — about 100M polls a second collapse to a few thousand subscriptions.
 - Push over SSE and Redis pub/sub delivers ticks well under 200&nbsp;ms, with load self-balancing to actual demand.
 - Every order has a durable record before it ever reaches the exchange, so no fill is silently lost and stuck orders reconcile.
 
@@ -192,7 +192,7 @@ sequenceDiagram
 <!--meta polarity=con-->
 
 - Sticky SSE sessions make the symbol service stateful — rebalancing or a node failure drops connections clients must re-establish.
-- The order path spans three systems with no distributed transaction, so correctness leans on an eventual clean-up rather than an atomic commit.
+- The order path spans three systems with no distributed transaction, so correctness leans on an eventual clean-up rather than an atomic commit; until the sweep runs, a stalled order shows pending and misses the 200 ms target.
 - The lone price processor and the narrow exchange egress are concentrated dependencies; either failing stalls all prices or all order submission.
 
 ## What's expected at each level
@@ -208,6 +208,11 @@ sequenceDiagram
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Dual-Write Inconsistency](../hazards/dual-write-inconsistency.md) — the exchange accepts the order but our write of its id fails; the client order id and the sweeper contain it
+- [Hot Key](../hazards/hot-key.md) — a few dozen hot symbols draw one tick toward millions of open streams; watchers spread across many servers
 
 **Demonstrates**
 
