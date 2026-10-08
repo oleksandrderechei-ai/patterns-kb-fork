@@ -16,7 +16,7 @@ Do not build a capability until a real, present requirement asks for it. The fut
 ## What it says
 <!--meta block=description-->
 
-“You Aren't Gonna Need It.” Implement a capability when a real requirement demands it, not when you foresee it might be useful. It comes from Extreme Programming on the C3 project, where Kent Beck answered “we're going to need it” with it; Ron Jeffries popularised the reasoning. The target is speculative generality: the parameter no caller passes, the interface with one implementation. Most imagined futures never arrive, and the ones that do rarely match the guess.
+“You Aren't Gonna Need It.” Implement a capability when a real requirement demands it, not when you foresee it might be useful. It comes from Extreme Programming on the C3 project, where Kent Beck answered “we're going to need it” with it; Ron Jeffries popularised the reasoning. The target is speculative generality: the parameter no caller passes, the interface with one implementation. Imagined futures often fail to arrive, and when one does it can differ from the guess.
 
 ## Explained
 <!--meta block=explain-->
@@ -37,21 +37,42 @@ Worse, unused abstraction constrains. A generalized seam built for the wrong fut
 
 Let present requirements — not imagined ones — pull capability into being:
 
-- Build for the case in front of you. When a second real case appears, generalize then, informed by two concrete points instead of one hypothetical.
+- Build for the case in front of you. When a second real case appears and the two share a shape, generalize then; a third case settles any doubt. Two concrete points beat one hypothetical.
 - Resist the parameter, hook, or config flag with exactly one value today. Add it when a second caller genuinely needs a second value.
-- Prefer designs that are cheap to extend later over structures that are expensive to unwind. Deferring is only safe when the door stays easy to open.
-- When you catch yourself saying “we might need…”, treat it as a signal to stop, not to start. Write down the possibility; do not yet build for it.
+- Prefer designs that are cheap to extend later: keep call sites few, name things for today's behaviour, test behaviour rather than structure, and refactor as you go. Deferring is safe only while the door stays easy to open.
+- When you catch yourself saying “we might need…”, stop. Write down the possibility and the trigger that would justify building it, for example a second customer asking. Do not build for it yet.
+- Spot it in review: ask each new abstraction for its second real caller. Typical tells are an interface with one implementer, a parameter every caller passes the same value, a config key nothing reads, a hook with no subscriber, a 'for future use' comment. With no second caller, ask for the plain version.
 
 The rule of thumb: implement what today's requirement demands, and no more — but keep the code simple enough that tomorrow's requirement is cheap to add.
+
+## In code
+<!--meta block=sketch-->
+
+```typescript summary="TypeScript — a speculative exporter, then the one plain function the team shipped"
+// Before: interface, registry and format switch for a JSON export nobody has asked for.
+interface Exporter { write(rows: string[][]): string }
+class CsvExporter implements Exporter {
+  write(rows: string[][]) { return rows.map(r => r.join(",")).join("\n"); }
+}
+const exporters: Record<string, Exporter> = { csv: new CsvExporter() };
+function exportRows(rows: string[][], format: string = "csv") {
+  return exporters[format].write(rows);   // every caller passes "csv"
+}
+
+// After: one real caller, one function. Split it when a second format is actually requested.
+function exportCsv(rows: string[][]) {
+  return rows.map(r => r.join(",")).join("\n");
+}
+```
 
 ## Taken too far
 <!--meta block=overreach-->
 
-YAGNI defers speculation, not judgement. Used as a blanket excuse to skip a need you genuinely already know is coming — or to omit a load-bearing seam that would be far cheaper to place now than to retrofit — it stops being discipline and becomes short-termism. Some structure is not speculative: it is the honest architecture the known requirements demand, and refusing it guarantees expensive rework, not savings.
+YAGNI defers speculation, not judgement. Used as a blanket excuse to skip a need you genuinely already know is coming, or to omit a load-bearing seam (a point where parts join and can be swapped) that would be far cheaper to place now than to retrofit, it stops being discipline and becomes short-termism. Some structure is not speculative: it is what the known requirements demand, and refusing it risks expensive rework, not savings, when the seam is costly to retrofit.
 
-Deferring also has a bill to pay elsewhere, and it comes due on the practices that keep the door open: refactoring as you go, tests you trust enough to change code behind, and integrating often enough that the change is small. Effort spent on those is not a YAGNI violation — it is what makes deferring cheap. Skip them and every deferred decision lands in a codebase that got harder to change while you waited, which is rework rather than savings.
+Deferring also has a bill to pay elsewhere, and it comes due on the practices that keep the door open: refactoring as you go, tests you trust enough to change code behind, and integrating often enough that the change is small. Effort spent on those is not a YAGNI violation. It is what makes deferring cheap. Skip them and every deferred decision lands in a codebase that got harder to change while you waited, which is rework rather than savings.
 
-The distinction that matters is cost asymmetry. Choices that are cheap to change later are exactly the ones YAGNI says to defer. But some decisions are cheap now and ruinous later — a data-model or persistence-format choice, a public API contract, a security boundary — and reversing them once data and callers exist is enormously expensive. There, “we aren't gonna need it” is the wrong lens; you weigh the cost of getting it wrong, and you decide deliberately rather than defaulting to defer.
+The distinction that matters is the cost of changing later. Choices that are cheap to change later are exactly the ones YAGNI says to defer. But some decisions are cheap now and ruinous later: a data-model or persistence-format choice, a public API contract, a security boundary. Reversing them once data and callers exist is enormously expensive. There, “we aren't gonna need it” is the wrong lens; you weigh the cost of getting it wrong, and you decide deliberately rather than defaulting to defer. Will callers or stored data exist before you can change it? If yes, decide now.
 
 ## How it relates
 <!--meta block=relationships-->
