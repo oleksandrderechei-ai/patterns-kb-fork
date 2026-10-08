@@ -89,6 +89,7 @@ If you are already inside one, extract at the edges. Take the service with the f
 - [API Versioning](../patterns/distributed/routing/api-versioning.md) — Versioned contracts remove the lockstep release that makes services a monolith
 - [Conway's Law](../principles/conways-law.md) — Layer-owned services are Conway's law at work, and the cure starts in the org.
 - [Outbox](../patterns/distributed/coordination/outbox.md) — Writing the event and the state change in one local transaction is what lets a service publish instead of call, so the synchronous chain can go.
+- [High Cohesion, Low Coupling](../principles/high-cohesion-low-coupling.md) — Services cut by reason to change can release alone, so they are not tied together.
 
 **Threatens**
 

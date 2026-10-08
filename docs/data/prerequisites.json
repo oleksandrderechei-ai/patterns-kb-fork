@@ -2489,7 +2489,7 @@
       "definition": "Keep state private so its invariants have exactly one owner",
       "route": "/principles/encapsulation.html",
       "requires": [],
-      "related": ["aggregate", "value-object", "law-of-demeter", "command-query-separation", "hyrums-law", "make-illegal-states-unrepresentable", "dto"]
+      "related": ["aggregate", "value-object", "law-of-demeter", "command-query-separation", "hyrums-law", "make-illegal-states-unrepresentable", "dto", "high-cohesion-low-coupling"]
     },
     {
       "id": "postels-law",
@@ -2521,7 +2521,7 @@
       "definition": "Keep what changes together in one module, and keep modules knowing little about each other",
       "route": "/principles/high-cohesion-low-coupling.html",
       "requires": [],
-      "related": ["separation-of-concerns", "law-of-demeter", "dependency-inversion", "bounded-context", "single-responsibility"]
+      "related": ["separation-of-concerns", "law-of-demeter", "dependency-inversion", "bounded-context", "single-responsibility", "encapsulation"]
     },
     {
       "id": "convention-over-configuration",

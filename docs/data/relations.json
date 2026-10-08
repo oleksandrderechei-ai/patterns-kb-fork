@@ -14300,6 +14300,20 @@
       "b": "postels-law",
       "note_a": "Negotiating an explicit version replaces sniffing the shape, and lets you later stop accepting the old one.",
       "note_b": "Tolerant readers let a version change roll out additively, but only an explicit version lets you retire the old shape."
+    },
+    {
+      "a": "high-cohesion-low-coupling",
+      "verb": "prevents-hazard",
+      "b": "distributed-monolith",
+      "note_a": "Boundaries drawn where changes stay inside them stop services having to release together.",
+      "note_b": "Services cut by reason to change can release alone, so they are not tied together."
+    },
+    {
+      "a": "encapsulation",
+      "verb": "combines-with",
+      "b": "high-cohesion-low-coupling",
+      "note_a": "A small, well-cut module is easier to keep hidden behind its interface.",
+      "note_b": "Hiding internals keeps a narrow interface narrow, so coupling stays low."
     }
   ],
   "group_order": {

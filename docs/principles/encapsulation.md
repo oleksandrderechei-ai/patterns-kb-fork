@@ -95,6 +95,7 @@ Two real costs to weigh rather than deny. Serialization and mapping tooling gene
 - [Hyrum's Law](./hyrums-law.md) — Hiding internals leaves less for callers to depend on
 - [Make Illegal States Unrepresentable](./make-illegal-states-unrepresentable.md) — Hiding the fields behind checked construction keeps every instance valid
 - [DTO](../patterns/enterprise/dto.md) — The carrier it exempts: a DTO is a bag of fields crossing a boundary, so decide which types own state and which only carry it.
+- [High Cohesion, Low Coupling](./high-cohesion-low-coupling.md) — A small, well-cut module is easier to keep hidden behind its interface.
 
 **Prevents**
 
