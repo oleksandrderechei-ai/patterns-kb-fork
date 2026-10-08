@@ -641,7 +641,7 @@
       "definition": "A token grants temporary, limited access to a resource directly",
       "route": "/patterns/distributed/routing/valet-key.html",
       "requires": [],
-      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing", "identity-as-perimeter"]
+      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing", "identity-as-perimeter", "object-stores"]
     },
     {
       "id": "api-routing",
@@ -665,7 +665,7 @@
       "definition": "Moves service-to-service networking into a managed proxy layer",
       "route": "/patterns/distributed/routing/service-mesh.html",
       "requires": [],
-      "related": ["api-gateway", "retry-backoff", "timeout-deadline", "circuit-breaker", "load-balancer", "identity-as-perimeter", "distributed-tracing", "shadow-traffic", "fault-injection"]
+      "related": ["api-gateway", "retry-backoff", "timeout-deadline", "circuit-breaker", "load-balancer", "identity-as-perimeter", "distributed-tracing", "shadow-traffic", "fault-injection", "load-balancers-and-gateways"]
     },
     {
       "id": "sticky-session",
@@ -849,7 +849,7 @@
       "definition": "Many customers on shared infrastructure, with a tenant key and a choice of how much each tenant shares",
       "route": "/patterns/distributed/routing/multi-tenancy.html",
       "requires": [],
-      "related": ["deployment-stamp", "sharding", "defense-in-depth", "rate-limiter", "bulkhead"]
+      "related": ["deployment-stamp", "sharding", "defense-in-depth", "rate-limiter", "bulkhead", "identity-providers"]
     },
     {
       "id": "geode",
@@ -1505,7 +1505,7 @@
       "definition": "Undeliverable messages land somewhere visible, not lost",
       "route": "/patterns/messaging/dead-letter-channel.html",
       "requires": ["message-queue"],
-      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter", "recipient-list", "resequencer", "polling-consumer", "content-enricher", "routing-slip", "load-leveling"]
+      "related": ["retry-backoff", "idempotency", "sweeper", "content-based-router", "fail-fast", "pubsub", "competing-consumers", "message-encoding", "message-router", "message-translator", "splitter", "recipient-list", "resequencer", "polling-consumer", "content-enricher", "routing-slip", "load-leveling", "message-brokers"]
     },
     {
       "id": "correlation-identifier",
@@ -2748,12 +2748,44 @@
       "related": []
     },
     {
+      "id": "object-stores",
+      "label": "Object stores",
+      "definition": "Six blob stores behind one API — three you rent, three you run",
+      "route": "/comparisons/object-stores.html",
+      "requires": [],
+      "related": ["valet-key"]
+    },
+    {
       "id": "relational-databases",
       "label": "Relational databases",
       "definition": "Which SQL engine to run — the license, the scale story and who operates it for you",
       "route": "/comparisons/relational-databases.html",
       "requires": [],
       "related": ["sharding"]
+    },
+    {
+      "id": "message-brokers",
+      "label": "Message brokers & streams",
+      "definition": "Kafka, RabbitMQ, NATS, Pulsar, Redpanda and the managed queues — consumed or replayed decides it",
+      "route": "/comparisons/message-brokers.html",
+      "requires": [],
+      "related": ["dead-letter-channel"]
+    },
+    {
+      "id": "load-balancers-and-gateways",
+      "label": "Load balancers, proxies & gateways",
+      "definition": "What sits in front of your services — the cloud's own balancer, NGINX, HAProxy, Traefik, Envoy or an API gateway",
+      "route": "/comparisons/load-balancers-and-gateways.html",
+      "requires": [],
+      "related": ["service-mesh"]
+    },
+    {
+      "id": "identity-providers",
+      "label": "Identity providers",
+      "definition": "Self-hosted Keycloak, Authentik, Ory and ZITADEL against the managed answers from your cloud, Auth0 and Okta",
+      "route": "/comparisons/identity-providers.html",
+      "requires": [],
+      "related": ["multi-tenancy"]
     }
   ]
 }

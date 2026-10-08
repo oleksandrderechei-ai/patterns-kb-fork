@@ -1041,7 +1041,7 @@
       "a": "relational-databases",
       "verb": "implements",
       "b": "write-ahead-log",
-      "note_a": "Every engine here writes its intent to a log before the page, which is what makes crash recovery and replication possible at all.",
+      "note_a": "PostgreSQL, MySQL, MariaDB and CockroachDB log intent before the page; SQLite does so only in its optional WAL mode. That log is what makes crash recovery and replication possible.",
       "note_b": "PostgreSQL's write-ahead log (WAL), InnoDB's redo log and SQLite's WAL mode are three shapes of one mechanism, and each exposes its own durability-versus-latency knob."
     },
     {
@@ -12445,7 +12445,7 @@
       "a": "relational-databases",
       "verb": "implements",
       "b": "replication",
-      "note_a": "How each engine serves reads from replicas, lag included.",
+      "note_a": "PostgreSQL, MySQL and MariaDB serve reads from lagging replicas; SQLite has none, and CockroachDB serves follower reads, slightly stale.",
       "note_b": "How each relational engine replicates for read scale.",
       "maps_a": "matrix-row-8",
       "maps_label_a": "Reads at scale"
@@ -14769,6 +14769,48 @@
       "b": "noisy-neighbour",
       "note_a": "A per-key bucket caps what one tenant can take, so a burst spends that tenant's own tokens.",
       "note_b": "A per-key token bucket gives each tenant a bounded burst."
+    },
+    {
+      "a": "object-stores",
+      "verb": "combines-with",
+      "b": "valet-key",
+      "note_a": "Every store here issues signed URLs, so clients upload and download directly and bytes skip your service.",
+      "note_b": "Object stores are where the signed URLs are issued; this page compares six of them."
+    },
+    {
+      "a": "application-platforms",
+      "verb": "implements",
+      "b": "containerization",
+      "note_a": "Container-native and self-hosted platforms run a standard container image, so the image is the unit you can carry to another platform.",
+      "note_b": "Application platforms take the image you build and run it for you, with routing, scaling and certificates attached."
+    },
+    {
+      "a": "message-brokers",
+      "verb": "combines-with",
+      "b": "dead-letter-channel",
+      "note_a": "Cloud queues give the dead-letter path as configuration; the comparison shows which brokers do.",
+      "note_b": "Every broker compared on message-brokers needs a dead-letter destination for messages that keep failing."
+    },
+    {
+      "a": "identity-providers",
+      "verb": "combines-with",
+      "b": "multi-tenancy",
+      "note_a": "Realms, organizations and per-tenant pools are this pattern's isolation choices, picked per product.",
+      "note_b": "Each identity product compared there picks its own tenant isolation: realms, organizations or one deployment per tenant."
+    },
+    {
+      "a": "workflow-orchestrators",
+      "verb": "implements",
+      "b": "scheduling",
+      "note_a": "Airflow and Prefect own the calendar and re-run a failed date.",
+      "note_b": "Airflow and Prefect are the batch schedulers that run this pattern; the workflow-orchestrators comparison picks between them."
+    },
+    {
+      "a": "load-balancers-and-gateways",
+      "verb": "combines-with",
+      "b": "service-mesh",
+      "note_a": "Envoy is usually taken through a mesh; the mesh supplies the control plane the comparison tells you not to hand-write.",
+      "note_b": "The proxies compared on load-balancers-and-gateways are what a mesh runs as its data plane; Envoy is the common one."
     },
     {
       "a": "uber",
