@@ -19,24 +19,22 @@ A test suite shows a change does what its author meant on a machine like product
 ## Explained
 <!--meta block=explain-->
 
-Continuous validation means you keep collecting evidence about a release after your tests pass, because tests cannot show how a change behaves under real load, real data and a slow dependency. There are three stages, and none replaces another. A smoke test on freshly built infrastructure proves it is wired up. A [canary](../patterns/distributed/routing/canary-release.md), which gives the new version a small weighted share of live traffic, proves it behaves like the old version under real conditions. [Deliberately injected faults](../patterns/distributed/resilience/fault-injection.md) prove that your timeouts and health checks work, which no healthy release ever tests. Each stage needs a reversal as cheap as going forward, such as setting the weight to zero. Choose a canary over more pre-release tests when only real traffic can show the problem.
+Continuous validation means you keep collecting evidence about a release after your tests pass, because tests cannot show how a change behaves under real load, real data and a slow dependency. There are three stages, and none replaces another. A smoke test on freshly built infrastructure proves it is wired up. A [canary](../patterns/distributed/routing/canary-release.md), which gives the new version a small weighted share of live traffic, compares its error rate and latency with the old version's under real conditions. [Deliberately injected faults](../patterns/distributed/resilience/fault-injection.md) prove that your timeouts and health checks work, which no healthy release ever tests. Each stage needs a reversal as cheap as going forward, such as setting the weight to zero. Choose a canary over more pre-release tests when only real traffic can show the problem.
 
-- **Exposed users.** A canary shows a bad version to some users, so state how many you accept before you start.
+- **Exposed users.** A canary shows a bad version to some users, so state how many you accept: weight × traffic × time to abort.
 - **Aging thresholds.** Traffic changes, so write thresholds as ratios against the live old version, with a minimum sample for quiet hours.
 - **Shared data.** Two versions share one store, so new code must ignore unknown fields and schema changes must add first, remove later.
 
-**Example.** A canary gets 5% of 1,000 requests a second, so 50 a second. The old version fails 0.5% of requests. The rule is: abort if the new version fails more than twice that, 1%, once 1,000 requests have been seen, which takes 20 s. The new version has a bug failing 3%. At 20 s it has served 30 failures against about 5 expected, so the gate sets the weight to zero. About 30 users saw an error. At night, with 5 requests a second, the same sample takes 200 s; without the minimum, one failure in two requests would read as 50% and abort a good release.
+**Example.** A canary gets 5% of 1,000 requests a second, so 50 a second. The old version fails 0.5% of requests. The rule is: abort if the new version fails more than twice that, 1%, once 1,000 requests are seen (20 s). The new version has a bug failing 3%. At 20 s it has served 30 failures against about 5 expected, so the gate sets the weight to zero. About 30 users saw an error. At night the canary gets 5 requests a second, so the same sample takes 200 s; without the minimum, one failure in two requests would read as 50% and abort a good release. Chance alone still aborts about 1 in 70 good releases.
 
 ## The tradespace
 <!--meta block=tradespace-->
 
-The first trade is confidence against speed. Every gate you add makes a bad release less likely and a good release slower, and past some point the slowness has its own cost: teams batch changes to amortise the ceremony, batches are harder to diagnose than single changes, and the failure rate goes back up. A validation process that makes shipping expensive eventually reduces safety.
+The first trade is confidence against speed. Every gate you add makes a bad release less likely and a good release slower, and the slowness has its own cost: teams can batch changes to pay the release cost once, batches are harder to diagnose than single changes, and the failure rate goes back up. Watch change size per release. A validation process that makes shipping expensive eventually reduces safety.
 
-The second is how much real risk the evidence is worth. A canary means some users get the bad version — fewer, not none — and that is the price of learning under production conditions. Mirroring traffic and discarding the responses exposes nobody and cannot tell you anything about correctness that a user would have noticed. Which one is right depends on whether an affected user is an inconvenience or an incident.
+The second is how much real risk the evidence is worth. A canary means some users get the bad version — fewer, not none — and that is the price of learning under production conditions. Mirroring traffic and discarding the responses exposes nobody and can compare answers and timing, but it cannot show how users react or whether a write behaves. Which one is right depends on whether an affected user is an inconvenience or an incident.
 
 The third is what the evidence costs to keep valid. A gate is only as good as its thresholds, and thresholds decay: they were set against last quarter's traffic shape and now they either fire on ordinary variance or sleep through a regression. Automated gates need the same maintenance as the code they guard, and an unmaintained gate that has never failed is indistinguishable from one that cannot.
-
-**Every gate buys confidence and spends release speed — and a process too slow to use is spent confidence too.**
 
 ## The tour
 <!--meta block=tour-->
@@ -47,15 +45,15 @@ The third is what the evidence costs to keep valid. A gate is only as good as it
 
 ### [Blue-Green Deployment](../patterns/distributed/routing/blue-green-deployment.md) {#tour-blue-green-deployment}
 
-The new version runs on its own complete infrastructure while the old one still serves, so it can be exercised for real before a user meets it — and the switch back costs one routing change. That reversal is what makes every later stage safe to attempt.
+The new version runs on its own complete infrastructure while the old one still serves, so it can be exercised for real before a user meets it — and the switch back costs one routing change while the data both versions touch stays compatible. That reversal is what makes every later stage safe to attempt.
 
 ### [Canary Release](../patterns/distributed/routing/canary-release.md) {#tour-canary-release}
 
-A weighted slice of live traffic goes to the candidate while the rest stays on the control, so its error rate and latency are compared against a baseline running in the same hour under the same load. It is the only stage that tests the change against conditions no environment reproduces.
+A weighted slice of live traffic goes to the candidate (the new version) while the rest stays on the control (the old one), so its error rate and latency are compared against a baseline running in the same hour under the same load. It is the stage that tests the change against real users' responses, which no environment reproduces.
 
 ### [Shadow Traffic](../patterns/distributed/routing/shadow-traffic.md) {#tour-shadow-traffic}
 
-Real requests are copied to the new version and its responses are thrown away, so no user sees it. You compare its answers and timing against the old version before any real traffic moves.
+Real requests are copied to the new version and its responses are thrown away, so no user sees it. You compare its answers and timing against the old version before any real traffic moves. Copied writes repeat their side effects, such as charges, emails and queue messages, so stub outbound calls or mirror read-only routes only.
 
 ### [Rolling Deployment](../patterns/distributed/routing/rolling-deployment.md) {#tour-rolling-deployment}
 
@@ -89,12 +87,14 @@ Comparing fresh output against a recorded known-good baseline catches unintended
 | If you need… | Evidence about | Reach for |
 | --- | --- | --- |
 | To exercise the new version before any user reaches it | Is it wired up | [Blue-Green Deployment](../patterns/distributed/routing/blue-green-deployment.md) |
-| To know whether it behaves under real load and real data | Candidate vs control | [Canary Release](../patterns/distributed/routing/canary-release.md) |
+| To know whether it behaves under real load and real data | Candidate vs control, users exposed | [Canary Release](../patterns/distributed/routing/canary-release.md) |
 | To find out whether the failure path works at all | The safeguards | [Fault Injection](../patterns/distributed/resilience/fault-injection.md) |
 | A release subject that is clean by construction | No drift | [Deployment Stamp](../patterns/distributed/routing/deployment-stamp.md) |
 | To ramp one behaviour rather than a whole build | One feature | [Feature Flag](../patterns/distributed/routing/feature-flag.md) |
 | Two versions serving their own callers during the overlap | Version routing | [API Routing](../patterns/distributed/routing/api-routing.md) |
 | To catch output that changed when nothing should have | Unintended diffs | [Golden Master](../patterns/testing/golden-master.md) |
+| To compare answers on real requests with no user exposed | Candidate vs control, responses discarded | [Shadow Traffic](../patterns/distributed/routing/shadow-traffic.md) |
+| To replace in place with no second fleet | Batch health after the first batch | [Rolling Deployment](../patterns/distributed/routing/rolling-deployment.md) |
 
 ## Related areas
 <!--meta block=siblings-->

@@ -1654,12 +1654,12 @@
       },
       "continuous-delivery": {
         "role": "Switch traffic in one move, with a way back",
-        "tour": "Stand the new version up complete, exercise it while it takes no live traffic, then move everyone across at once. Nobody ever meets a mix of versions, and recovery is moving the traffic back — the fastest rollback available anywhere on this page. You pay for it in capacity, briefly, twice over.",
+        "tour": "Stand the new version up complete, exercise it while it takes no live traffic, then move everyone across at once. Users meet one version at a time at the switch, and while both sets read compatible data, recovery is moving the traffic back, a fast and clean rollback. You pay for it in capacity, briefly, twice over.",
         "fluency": "Switch traffic in one move, with a way back"
       },
       "continuous-validation": {
         "role": "Prove it on real infrastructure before anyone arrives",
-        "tour": "The new version runs on its own complete infrastructure while the old one still serves, so it can be exercised for real before a user meets it — and the switch back costs one routing change. That reversal is what makes every later stage safe to attempt.",
+        "tour": "The new version runs on its own complete infrastructure while the old one still serves, so it can be exercised for real before a user meets it — and the switch back costs one routing change while the data both versions touch stays compatible. That reversal is what makes every later stage safe to attempt.",
         "fluency": "Prove the new version before anyone arrives"
       }
     },
@@ -1671,7 +1671,7 @@
       },
       "continuous-validation": {
         "role": "Compare against the version still serving",
-        "tour": "A weighted slice of live traffic goes to the candidate while the rest stays on the control, so its error rate and latency are compared against a baseline running in the same hour under the same load. It is the only stage that tests the change against conditions no environment reproduces.",
+        "tour": "A weighted slice of live traffic goes to the candidate (the new version) while the rest stays on the control (the old one), so its error rate and latency are compared against a baseline running in the same hour under the same load. It is the stage that tests the change against real users' responses, which no environment reproduces.",
         "fluency": "Compare the candidate against a live control"
       }
     },
@@ -3225,7 +3225,7 @@
     "/patterns/distributed/routing/shadow-traffic.html": {
       "continuous-validation": {
         "role": "Test a new version on mirrored live requests",
-        "tour": "Real requests are copied to the new version and its responses are thrown away, so no user sees it. You compare its answers and timing against the old version before any real traffic moves.",
+        "tour": "Real requests are copied to the new version and its responses are thrown away, so no user sees it. You compare its answers and timing against the old version before any real traffic moves. Copied writes repeat their side effects, such as charges, emails and queue messages, so stub outbound calls or mirror read-only routes only.",
         "fluency": "Copy live requests to a new version and discard its replies to test it safely."
       }
     },
