@@ -78,7 +78,7 @@ Fan-out makes the tail worse. A page that gathers answers from 100 servers is as
 <!--meta block=variations-->
 
 - **Delayed hedge** — Wait for a high percentile of normal latency, then send the second copy. It adds a few percent of load and gets most of the gain. The version in the paper's Bigtable measurement sent the second request after 10 ms and cut the 99.9th percentile of a 1,000-key read from 1,800 ms to 74 ms for about 2 percent more requests.
-- **Tied requests** — Send to two replicas at once, each told about the other, and have the replica that starts work first cancel the other copy. It removes the wait for the timer and the duplicate work, and it needs servers that can cancel a peer's queued copy.
+- **Tied requests** — Send to two replicas at once, each told about the other, and have the replica that starts work first cancel the other copy. It removes the wait for the timer and cuts most duplicate work: the peer's copy is dropped if still queued, but both can run if they start within one network delay of each other. It needs servers that can cancel a peer's queued copy.
 - **Immediate duplicate** — Send both copies at the same moment and take the first answer. Latency is lowest and load doubles, so it fits only small, critical reads.
 - **Budgeted hedging** — Allow hedges only while a [token bucket](./token-bucket.md) has tokens, so the extra load has a hard ceiling whatever the latency does.
 - **Backup tasks for stragglers** — A batch job starts a second copy of the last few unfinished tasks on other machines. [MapReduce](../coordination/mapreduce.md) did this to stop one slow machine holding a whole job open. It is the same idea at task level, with a longer time scale.
@@ -101,6 +101,7 @@ Fan-out makes the tail worse. A page that gathers answers from 100 servers is as
 - **Duplicates side effects** — a hedged write can run twice, so hedge only reads and operations that are [idempotent](../../messaging/idempotency.md).
 - **Does nothing for correlated slowness** — a slow shared database or a slow query is slow on every replica, so the second copy waits as long as the first.
 - **Needs working cancellation** — without it the losing copy runs to the end, and the duplicate work stays, so pass a cancel signal through and test that servers honour it.
+- **Multiplies copies across tiers** — a fan-out tier whose backends also hedge sends many more requests than either would alone, so hedge at one tier or share one budget down the call chain.
 
 ## When to use it
 <!--meta block=usage-->
@@ -122,7 +123,7 @@ Fan-out makes the tail worse. A page that gathers answers from 100 servers is as
 ## Code sketch
 <!--meta block=sketch-->
 
-```typescript summary="TypeScript — send to replica 0, hedge to replica 1 after a delay, return the first answer and cancel the rest"
+```typescript summary="TypeScript — send to the first replica, hedge to another after a delay, return the first answer and cancel the rest"
 async function hedged<T>(
   replicas: string[],
   call: (replica: string, signal: AbortSignal) => Promise<T>,
@@ -137,7 +138,16 @@ async function hedged<T>(
 
   const primary = attempt(replicas[0]);
   const secondary = new Promise<T>((resolve, reject) => {
-    const fire = () => attempt(replicas[1]).then(resolve, reject);
+    let fired = false;
+    const fire = () => {
+      if (fired) return;
+      fired = true;
+      // a replica other than replicas[0]; skip hedging if there is only one
+      const other = replicas.find((r) => r !== replicas[0]);
+      if (other === undefined) { primary.then(resolve, reject); return; }
+      // gate: spend a budget token before sending; no token, no copy
+      attempt(other).then(resolve, reject);
+    };
     const timer = setTimeout(fire, hedgeDelayMs);          // slow: hedge at the delay
     primary.then(
       () => clearTimeout(timer),                           // fast: no copy is sent
@@ -156,8 +166,8 @@ async function hedged<T>(
 ## In the wild
 <!--meta block=wild-->
 
-- **The Tail at Scale (Dean and Barroso, 2013)** — The Communications of the ACM paper that named hedged and tied requests. Its Bigtable measurement cut the 99.9th percentile of a 1,000-key read from 1,800 ms to 74 ms for about 2 percent more requests. {#wild-tail-at-scale}
-- **gRPC hedging policy** — The service config can set a hedging policy with `maxAttempts` and `hedgingDelay`: later attempts go out after the delay without waiting for the earlier ones to fail, and the first good response wins. {#wild-grpc-hedging}
+- **The Tail at Scale (Dean and Barroso, 2013)** — The Communications of the ACM paper that named hedged and tied requests. Its Bigtable measurement is under Delayed hedge above. {#wild-tail-at-scale}
+- **gRPC hedging policy** — The service config can set a hedging policy with `maxAttempts` (capped at 5), `hedgingDelay` and `nonFatalStatusCodes`: later attempts go out after the delay without waiting for a failure. A non-fatal status lets the other attempts continue; any other status or the first OK response ends the call and cancels the rest. Retry throttling applies to hedges too. {#wild-grpc-hedging}
 - **Apache Cassandra speculative retry** — A per-table `speculative_retry` option makes the coordinator send a read to another replica when the first is slower than a set percentile or time, which is a delayed hedge. {#wild-cassandra}
 
 ## In production
@@ -166,10 +176,11 @@ async function hedged<T>(
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **hedge delay** — the wait before the second copy goes out, usually a high percentile of measured latency; lower cuts more tail and adds more load
+- **hedge delay** — the wait before the second copy goes out, a high percentile of measured latency (the sketch uses p95; the Bigtable run used 10 ms); lower cuts more tail and adds more load. Measure it on first-attempt latency only, not on the hedged result, or the delay drifts down as hedging improves the tail
 - **maximum attempts** — how many copies may be in flight for one request; each extra copy adds load for a smaller gain
-- **hedge budget** — a cap on the share of requests allowed to hedge, often as a token bucket, so the extra load has a ceiling
+- **hedge budget** — a cap on the share of requests allowed to hedge, often a token bucket refilled per request, so the extra load has a ceiling; size it just above the share of requests slower than the delay percentile (about 5 percent at p95; the Bigtable run added about 2 percent)
 - **eligible operations** — which calls may hedge; reads and idempotent calls only
+- **replica choice** — the copy goes to a different replica, not one on the first one's host or zone; skip hedging when no other replica is healthy
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -183,7 +194,7 @@ async function hedged<T>(
 <!--meta polarity=failure-->
 
 - **overload amplification** — the backend slows under load, more requests pass the hedge delay, more copies are sent and the backend slows further
-- **correlated slowness** — every replica is slow for one shared reason, so hedging doubles the load with no gain in latency
+- **correlated slowness** — every replica is slow for one shared reason, so most requests pass the hedge delay and load approaches double with no gain in latency
 - **cancel not honoured** — the losing copy runs to the end, so the duplicate work stays and capacity is wasted
 - **stale delay** — the hedge delay was set once, the latency profile moved, and the policy now hedges nearly everything or nothing
 
