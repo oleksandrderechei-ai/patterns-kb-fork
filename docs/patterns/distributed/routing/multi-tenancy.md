@@ -219,6 +219,7 @@ type Run = (dsn: string, stmts: [string, unknown[]][]) => Promise<unknown>;
 - [Defense in Depth](../../../principles/defense-in-depth.md) — Tenant isolation needs layers: edge identity, application context and a database row policy.
 - [Rate Limiter](../resilience/rate-limiter.md) — A per-tenant limit caps what one tenant takes from a shared part.
 - [Bulkhead](../resilience/bulkhead.md) — Separate pools per tenant class give the silo and bridge tiers their runtime isolation.
+- [Identity providers](../../../comparisons/identity-providers.md) — Each identity product compared there picks its own tenant isolation: realms, organizations or one deployment per tenant.
 
 **Prevents**
 

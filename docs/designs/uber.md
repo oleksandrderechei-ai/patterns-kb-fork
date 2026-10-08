@@ -16,7 +16,7 @@ A ride-sharing platform quotes a fare, matches the rider to a nearby available d
 ## Understanding the problem
 <!--meta block=description-->
 
-A rider requests a ride, and the system finds a nearby available driver, offers the trip and guides both to the destination. The hard part is the moving substrate: 10 million drivers broadcast their position continuously, matching must finish in seconds, and a driver can only do one thing at a time. The page walks through ingesting the location stream, searching it geographically, and handing off so no driver is offered two rides.
+A rider requests a ride, and the system finds a nearby available driver, offers the trip and guides both to the destination. The hard part is constantly moving drivers: 10 million drivers broadcast their position continuously, matching must finish within about a minute, and a driver can only do one thing at a time. Three problems: ingesting location pings, searching them geographically, and never offering one driver two rides.
 
 ## Explained
 <!--meta block=explain-->
@@ -27,7 +27,7 @@ Uber matches a rider to a nearby driver while 10 million drivers report their po
 - **Surge bursts.** 100,000 requests from one spot overload matching. Hold them in a durable [queue](../patterns/messaging/message-queue.md) so each request waits its turn.
 - **Fall-through engine.** Moving to the next driver after a decline must survive a crash. A [durable workflow](../patterns/distributed/coordination/workflow-orchestration.md) saves progress, but you now run that engine.
 
-**Example.** 2 million pings a second times 86,400 seconds is about 173 billion writes a day. At 1.25 dollars per million writes, that is about 216,000 dollars a day for a managed database, so the pings go to Redis. A rider at a concert requests a ride. The matcher searches 3 km and offers driver D1, locking D1 for 10 seconds. D1 stays silent, so the lock expires and D1 is free. The workflow offers D2, who accepts, and the lock is released. No second ride was ever offered to D1. The cost is the workflow engine to operate.
+**Example.** 2 million pings a second times 86,400 seconds is about 173 billion writes a day. At 1.25 dollars per million writes, that is about 216,000 dollars a day for a managed database, so the pings go to Redis. A rider at a concert requests a ride. The matcher searches 3 km and offers driver D1, locking D1 for 10 seconds. D1 stays silent, so the lock expires and D1 is free. The workflow offers D2, who accepts, and the lock is released. No second ride was ever offered to D1. If D1 accepts at 10.0 seconds, after the lock expired, the ride-state check rejects the accept. The cost is the workflow engine to operate.
 
 ## Requirements
 <!--meta block=requirements-->
@@ -130,7 +130,7 @@ flowchart TB
 The naïve design fails twice over: 2M writes/sec buries any general-purpose database, and even if it did not, a proximity query over raw latitude/longitude is a full table scan — a B-tree on two independent columns cannot index a 2D neighbourhood, so "who is within 3&nbsp;km" degrades to reading everything.
 
 - **Batch into a geospatial store.** The first real improvement is to coalesce updates over a short window and [batch](../patterns/concurrency/batching.md)-write them, cutting the transaction count sharply, and to store them in a spatial index — a quad-tree, or PostgreSQL with the PostGIS extension. This works, but the batch interval buys throughput at the cost of staleness: the stored position now lags the car, and the matcher can pick a driver who has already moved on.
-- **Real-time in-memory geo — this design's answer.** Keep positions in an in-memory store with native geospatial support — Redis. A [geohash](../patterns/distributed/routing/geohash.md) encodes each driver's lat/long into a single 52-bit score in a sorted set keyed by `driverId`; `GEOADD` upserts a position (each write simply overwrites the last, so data is always current — no batching needed), and `GEOSEARCH` returns everyone within a radius in milliseconds. Storage stays tiny because stale drivers auto-expire, and durability — the usual worry with an in-memory store — barely bites here: drivers re-report every ~5 seconds, so even a total flush of the store rebuilds current state in seconds. Back it with snapshotting and a replica for failover and the risk is bounded.
+- **Real-time in-memory geo — this design's answer.** Keep positions in an in-memory store with native geospatial support, Redis. A [geohash](../patterns/distributed/routing/geohash.md) encodes each driver's lat/long into a single 52-bit score in a sorted set keyed by `driverId`. `GEOADD` upserts a position and each write overwrites the last, so data is always current and no batching is needed. `GEOSEARCH` returns everyone within a radius in milliseconds. A companion last-seen key per driver with a TTL, or a periodic sweep that `ZREM`s drivers silent for a few ping intervals, removes stale drivers and keeps storage small. `GEOSEARCH` also returns busy drivers, so remove a driver from the set on accept and re-add it at trip end, or over-fetch `COUNT` and filter by status. One geo key cannot take about 2M writes/s, so shard the set by region (see deep dive 5). Durability, the usual worry with an in-memory store, matters little here: drivers re-report every ~5 seconds, so even a total flush rebuilds current state in seconds. Back it with snapshotting and a replica for failover and the risk is bounded.
 
 ```text summary="Redis — upsert a position, then search it"
 # driver client pings; each GEOADD overwrites the prior position
@@ -148,7 +148,7 @@ The consistency requirement is really a locking problem: a driver gets a 10-seco
 
 - **In-memory timers per instance.** Each matcher marks a request "locked" and runs its own local countdown. With many instances there is no shared truth, so two can lock the same driver, and if an instance crashes mid-window the lock is simply lost. A cron to sweep orphaned locks papers over it but adds delay and complexity.
 - **A status column with a timeout.** Move the lock into the database and lean on its transactions so only one instance wins. Better, but the release still depends on an in-memory timeout somewhere — if that process dies, the driver can stay "outstanding" forever.
-- **Distributed lock with TTL — this design's answer.** Acquire a [distributed lock](../patterns/distributed/coordination/distributed-lock.md) in Redis keyed by `driverId`, with the TTL (time to live) set to the 10-second window. Winning the key means no other instance can offer that driver a ride; accept within the window and you release it and mark the ride `accepted`; stay silent and the key simply expires, freeing the driver with zero bookkeeping. The system now leans on the lock store's availability, but because every lock is short-lived, recovery from a hiccup is cheap.
+- **Distributed lock with TTL — this design's answer.** Acquire a [distributed lock](../patterns/distributed/coordination/distributed-lock.md) in Redis keyed by `driverId`, with the TTL (time to live) set to the 10-second window: `SET lock:driver:<driverId> <matcherToken> NX PX 10000`. Winning the key means no other instance can offer that driver a ride. Accept within the window and you release it only if the stored value equals your token, then mark the ride `accepted`. Stay silent and the key simply expires, freeing the driver with zero bookkeeping. A Redis failover can drop lock keys, so an accept also checks ride state in the Ride Service. The system now leans on the lock store's availability, but because every lock is short-lived, recovery from a hiccup is cheap.
 
 Two matcher instances race for the same driver, and the lock key decides:
 
@@ -176,8 +176,8 @@ sequenceDiagram
 
 Processing requests the instant they arrive is fine until 100k of them land at once and the matcher — or an instance of it — falls over, taking its in-flight work with it. The fix is to stop coupling arrival rate to processing rate.
 
-- **Queue between request and match (chosen).** Put a durable [message queue](../patterns/messaging/message-queue.md) — Kafka, or a managed equivalent — in front of the matcher. Requests are enqueued and drained at the matcher's own pace, which is textbook [queue-based load leveling](../patterns/distributed/resilience/load-leveling.md): the buffer absorbs the spike while the consumer works steadily, and [autoscaling](../patterns/distributed/routing/autoscaling.md) adds matcher instances when the backlog grows. Commit each message's offset only after a successful match, so an instance that dies mid-request leaves the message in the queue for another to pick up — nothing is lost.
-- **Refinements.** Partition the queue by geographic region so unrelated cities scale independently. And because strict FIFO (first in, first out) lets one slow request head-of-line-block the rest, order by a priority (proximity, driver rating) so the most matchable requests go first.
+- **Queue between request and match (chosen).** Put a durable [message queue](../patterns/messaging/message-queue.md) — Kafka, or a managed equivalent — in front of the matcher. Requests are enqueued and drained at the matcher's own pace. This is [queue-based load leveling](../patterns/distributed/resilience/load-leveling.md): the buffer absorbs the spike while the consumer works steadily, and [autoscaling](../patterns/distributed/routing/autoscaling.md) adds matcher instances when the backlog grows, so autoscale on consumer lag per partition. Commit each message's offset only after the durable workflow has started, so an instance that dies mid-request leaves the message in the queue for another to pick up — nothing is lost. The consumer only starts the durable workflow (deep dive 4) and then commits the offset. The workflow owns the long per-driver waits, so a consumer is not kicked out of its group for polling too slowly.
+- **Refinements.** Partition the queue by geographic region so unrelated cities scale independently. And because strict FIFO (first in, first out) lets one slow request head-of-line-block the rest, order by priority (proximity, driver rating). Partitions are FIFO only, so priority needs a separate topic per tier, or a priority queue in the matcher after consumption, with an aging rule so low-priority requests are not starved.
 
 ### 4 · When the chosen driver just doesn't answer
 
@@ -206,7 +206,7 @@ stateDiagram-v2
 <!--meta polarity=pro-->
 
 - Millions of location writes a second land in memory and answer proximity queries in milliseconds, at a fraction of a database's cost.
-- A TTL lock guarantees one-offer-per-driver across every matcher instance, with self-cleaning expiry and no timer bookkeeping.
+- A TTL lock gives one offer per driver across matcher instances while the lock key survives, with self-cleaning expiry and no timer bookkeeping. A lock-store failover can drop keys, so an accept also checks ride state.
 - The queue plus durable workflow means peaks are absorbed, not dropped, and a crashed matcher resumes without losing an in-flight ride.
 
 ### What it gives up
@@ -239,8 +239,8 @@ stateDiagram-v2
 - [Queue-Based Load Leveling](../patterns/distributed/resilience/load-leveling.md) — the request queue absorbs 100k-at-once demand spikes while the matcher drains at its own pace and autoscaling adds instances behind it
 - [API Gateway](../patterns/distributed/routing/api-gateway.md) — a single front door authenticates, rate-limits, and routes every rider and driver call to the correct internal service
 - [Sharding](../patterns/distributed/routing/sharding.md) — services, queues and stores are partitioned by region so riders reach nearby infrastructure and most proximity searches stay within a single shard
-- [Batching](../patterns/concurrency/batching.md) — Location updates are batched over a short window and written together, cutting the transaction count
 - [Scatter-Gather](../patterns/messaging/scatter-gather.md) — A proximity search that straddles a shard boundary near a city edge queries both shards and merges
 - [Consistent Hashing](../patterns/distributed/routing/consistent-hashing.md) — Services, queues and stores partitioned by region use a hash ring so load spreads and rebalancing survives a host change
+- [Batching](../patterns/concurrency/batching.md) — the rejected first option: coalescing location pings over a short window trades throughput for stale positions, so the chosen design overwrites in Redis instead
 
 <!-- relationships:end -->

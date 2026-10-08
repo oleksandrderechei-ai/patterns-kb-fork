@@ -22,9 +22,9 @@ A call that never answers holds a thread and a connection, and so does the next,
 ## Explained
 <!--meta block=explain-->
 
-A timeout limits how long you wait for one call, and a deadline limits the whole request, shared by every service it passes through. When the time is up you give up, free the thread and report the failure. A deadline is a clock time set once at the top and passed along with each call, so every service shrinks its own wait to what is left. Choose it over a separate timeout per call when one request crosses several services, because separate timeouts add up: a 500 ms budget becomes seconds when three services each wait a fresh 500 ms. An unbounded wait is a cost nobody priced, because a thread, a socket and a pool slot stay pledged to a dependency for as long as it stays silent.
+A timeout limits how long you wait for one call, and a deadline limits the whole request, shared by every service it passes through. When the time is up you give up, free the thread and report the failure. A deadline is a clock time set once at the top and passed along with each call, so every service shrinks its own wait to what is left. Choose it over a separate timeout per call when one request crosses several services, because separate timeouts add up: a 500 ms budget becomes seconds when three services each wait a fresh 500 ms. An unbounded wait costs a thread, a socket and a pool slot for as long as the dependency stays silent.
 
-- **Too tight aborts.** It aborts calls that would have succeeded, so base it on the dependency's measured p99 (the time 99 of 100 calls beat).
+- **Too tight aborts.** A limit at p99 aborts 1 call in 100. Set it above p99 or p99.9 and watch the abort rate.
 - **Giving up is not stopping.** A write may still land after you left, so use a unique key and a later check.
 - **Clock skew.** Hosts disagree on the time, so send the time remaining where you cannot trust clocks.
 
@@ -71,7 +71,7 @@ sequenceDiagram
 <!--meta block=variations-->
 
 - **Timeout vs. deadline** — A timeout resets with every retry; a deadline does not — three retries at a 200 ms timeout can burn 600 ms even though the caller only budgeted 300 ms total.
-- **Absolute vs. relative deadline** — Propagate a fixed wall-clock instant rather than a duration, so clock skew and processing delay between hops don't silently eat into the remaining budget.
+- **Absolute vs. relative deadline** — An absolute instant spends no budget on delay between hops but needs synchronized clocks. A remaining duration survives clock skew, but each hop must subtract its own elapsed time and the transit time is lost.
 - **Idle vs. total timeout** — An idle timeout bounds the gap between bytes on a connection; a total timeout bounds the whole operation — a slow trickle can satisfy the first while blowing through the second.
 - **Deadline propagation mechanisms** — Carried as a context value, a gRPC deadline, or an HTTP header, so every service in the chain enforces the same shared clock instead of inventing its own.
 
@@ -81,7 +81,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Guarantees no caller waits indefinitely** on a hung or unresponsive dependency.
+- **Bounds the wait** of every call that carries a limit, so no caller hangs forever on a silent dependency. Calls with no limit set, such as connect and handshake phases, and work that ignores cancellation stay outside the bound.
 - **Frees the thread**, socket, or connection-pool slot a stuck call would otherwise hold hostage.
 - **Propagated end-to-end**, it caps the total latency of an entire call chain, not just one hop.
 - **Costs almost nothing to add** — one value threaded through calls, no new infrastructure.
@@ -111,6 +111,7 @@ sequenceDiagram
 - **The operation is local**, in-process, and bounded by nature — there's nothing to time out on.
 - **The work is fire-and-forget** with no caller waiting on the result — there's no one to give up on its behalf.
 - **You need the underlying work truly cancelled**, not just ignored — pair it with real cancellation, or the call keeps running after you've stopped waiting on it.
+- **A dependency stays slow for minutes, not for one call** — A timeout alone pays the full wait on every request, so add [Circuit Breaker](circuit-breaker.md) to fail calls fast.
 
 ## Code sketch
 <!--meta block=sketch-->
@@ -120,19 +121,21 @@ class Deadline {
   private readonly at: number;
 
   constructor(ms: number) {
-    this.at = Date.now() + ms;
+    this.at = performance.now() + ms;
   }
 
   remaining(): number {
-    return Math.max(0, this.at - Date.now());
+    return Math.max(0, this.at - performance.now());
   }
 
   async run<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
     if (this.remaining() === 0) throw new Error("deadline already exceeded");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.remaining());
+    const expired = new Promise<never>((_, reject) =>
+      controller.signal.addEventListener("abort", () => reject(new Error("deadline exceeded"))));
     try {
-      return await fn(controller.signal);
+      return await Promise.race([fn(controller.signal), expired]);
     } finally {
       clearTimeout(timer);
     }
@@ -144,14 +147,15 @@ class Deadline {
 const deadline = new Deadline(20_000);
 const doc = await deadline.run(signal => idVendor.verify(personaId, flowId, signal));
 await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
-// Exhausting the budget aborts the leg and fails the task loudly, so it is
-// rescheduled rather than sitting on a worker slot until the lease expires.
+// Exhausting the budget rejects the wait and fails the task loudly, so it is
+// rescheduled. A fn that ignores signal keeps running, so the wait is bounded
+// and the work is not. performance.now is monotonic; across hosts send remaining() instead.
 ```
 
 ## In the wild
 <!--meta block=wild-->
 
-- **gRPC** — Deadlines are first-class and absolute: the client sets one, it travels with the request as the grpc-timeout header, a server can read the time remaining from its context, and a breach surfaces as the DEADLINE_EXCEEDED status — propagating through chained calls when the context is forwarded. {#wild-grpc}
+- **gRPC** — The client sets a deadline in its API. On the wire it travels as the relative time remaining in the `grpc-timeout` header, so each server rebuilds a local deadline and clock skew between hosts does not matter. A server can read the time remaining from its context, a breach surfaces as `DEADLINE_EXCEEDED`, and forwarding the context carries the budget through chained calls. {#wild-grpc}
 - **Go context** — context.WithTimeout and WithDeadline return a context whose Done channel closes when time runs out and whose Err reports context.DeadlineExceeded; threading it through a call tree gives every function a shared cancellation deadline to select on. {#wild-go-context}
 - **Envoy** — A per-route timeout (default 15s) bounds the whole proxied request so a hung upstream cannot hold the connection open indefinitely; a separate per-try timeout bounds each retry attempt and an idle timeout reaps quiet connections. {#wild-envoy}
 
@@ -166,6 +170,8 @@ await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
 - **Idle against total timeout** — Separate dials for the gap between bytes on a connection and for the whole operation. A slow trickle satisfies the first and blows through the second.
 - **Propagation mechanism** — How the remaining budget travels — a gRPC deadline, a context value, an HTTP header — and whether it carries an instant or a duration.
 - **Connection-phase timeouts** — Separate bounds on connect and on Transport Layer Security (TLS) handshake, which fail for different reasons than a slow response and are often left unset by client-library defaults.
+- **Headroom rule** — Timeout = measured p99 or p99.9 times a margin you choose. Check the timeout rate it produces and name the window the measurement covers.
+- **Minimum remaining budget** — Below it a hop fails fast without calling downstream. Subtract a reserve per hop for network and serialization.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -183,6 +189,8 @@ await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
 - **Abandoned but still running** — The caller stopped waiting; the remote side did not stop working, and may commit after the caller has reported failure.
 - **Clock skew on absolute deadlines** — A wall-clock instant propagated between hosts with unsynchronized clocks arrives early or late, so a hop gets a budget nobody intended.
 - **Synchronized expiry** — One shared dependency crossing the threshold makes every caller time out at the same instant, and their retries arrive together as a second wave.
+- **Inverted timeouts** — A callee's limit above its caller's budget keeps the callee working after the caller gave up. Keep each hop's limit below its caller's.
+- **Expired work still served** — A request that queued past its deadline is run anyway. Check the deadline at dequeue and drop it.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -226,6 +234,7 @@ await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
 - [Hedged Request](./hedged-request.md) — A hedge turns a slow call into a fast one before the timeout turns it into an error.
 - [Bulkhead](./bulkhead.md) — Bounds how long a call holds its compartment's permit
 - [Scatter-Gather](../../messaging/scatter-gather.md) — A fan-out call needs one deadline for the whole gather, not one per recipient.
+- [Load Shedding](./load-shedding.md) — A propagated deadline lets a server refuse work the caller has already abandoned.
 
 **Alternative to**
 
@@ -246,6 +255,7 @@ await deadline.run(signal => sanctionsVendor.screen(doc.name, flowId, signal));
 - [Metastable Failure](../../../hazards/metastable-failure.md) — Dropping expired requests stops the work done for callers who have left.
 - [Head-of-Line Blocking](../../../hazards/head-of-line-blocking.md) — A timeout stops a hung item from blocking the lane forever.
 - [Resource Leak](../../../hazards/resource-leak.md) — An acquire timeout turns a silent hang from a leak into a loud error; it does not return the lost resource.
+- [Retry Storm](../../../hazards/retry-storm.md) — A deadline shared by every retry caps one caller's total attempts; it does not spread callers apart, so pair it with jittered backoff.
 
 **Demonstrated by**
 

@@ -218,6 +218,7 @@ async function release(redis: Redis, key: string, token: string) {
 - [Sweeper](./sweeper.md) — when nothing else will notice the expired lease, a sweep reclaims it and returns the work to the pool
 - [Sequential Convoy](../../messaging/sequential-convoy.md) — The fallback mechanism when ordering must be enforced without broker support
 - [Lease](./lease.md) — A distributed lock is a lease held in a shared store, so a crashed holder frees it at the deadline.
+- [Request Coalescing](../resilience/request-coalescing.md) — A lock with an expiry lets one caller per key rebuild a value while the rest wait for it.
 
 **Alternative to**
 

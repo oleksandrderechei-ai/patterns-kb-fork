@@ -91,5 +91,6 @@ Make per-partition utilisation a first-class signal before you need it, and alar
 - [MapReduce](../patterns/distributed/coordination/mapreduce.md) — A reducer owning a skewed key is the batch form of one overloaded shard.
 - [Ad Click Aggregator](../designs/ad-click-aggregator.md) — Click aggregation keyed by ad_id hits it when one ad is hot.
 - [Facebook Live Comments](../designs/fb-live-comments.md) — a live-comment design that hashes on liveVideoId concentrates one viral stream on one server
+- [Payment System](../designs/payment-system.md) — a large merchant's burst on a merchant-keyed shard is the payment system's exposure
 
 <!-- relationships:end -->

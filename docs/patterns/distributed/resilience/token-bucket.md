@@ -21,13 +21,13 @@ Real traffic is spiky, so a strict constant-rate limiter refuses honest bursts, 
 ## Explained
 <!--meta block=explain-->
 
-A token bucket lets a caller send bursts while holding its long-run average to a set rate. Picture a bucket that holds up to C tokens and gains r tokens a second until it is full. Each request takes a token, and if the bucket is empty the request is refused or made to wait. A caller who has been quiet finds a full bucket and can spend it all at once, then is held to r a second. Capacity sets the biggest burst and the refill rate sets the average. Choose it over a fixed-window counter, which lets double the rate through across the edge between two windows. Choose it over a [leaky bucket](leaky-bucket.md) unless the target cannot take a burst at all. It is the algorithm most API rate limiters run.
+A token bucket lets a caller send bursts while holding its long-run average to a set rate. Picture a bucket that holds up to C tokens and gains r tokens a second until it is full. Each request takes a token, and if the bucket is empty the request is refused or made to wait. A caller who has been quiet finds a full bucket and can spend it all at once, then is held to r a second. Capacity sets the biggest burst and the refill rate sets the average. Choose it over a fixed-window counter, which lets double the rate through across the edge between two windows. Choose it over a [leaky bucket](leaky-bucket.md) unless the target cannot take a burst at all. Envoy, Go's x/time/rate and AWS API Gateway all run it.
 
 - **Per-copy buckets.** Each copy multiplies the allowed rate, so keep one shared bucket, which adds an atomic call to every request.
 - **Big bursts.** A big bucket can flatten a fragile downstream, so size capacity to what it absorbs.
 - **Tuning.** Both numbers need tuning, so start from measured traffic.
 
-**Example.** A bucket holds 100 tokens and refills 10 a second. A client quiet for 10 s finds it full at 100, not 200, because refill stops at capacity. It sends 100 requests at once and all pass. In the next second 50 more arrive: 10 pass on the new tokens and 40 are refused. Over any 60 s the most it can send is 100 plus 600, which is 700. If the downstream takes only 50 a second, the first burst is twice what it can absorb, so capacity should have been 50.
+**Example.** A bucket holds 100 tokens and refills 10 a second. A client quiet for 30 s finds it full at 100, not 300, because refill stops at capacity. It sends 100 requests at once and all pass. In the next second 50 more arrive: 10 pass on the new tokens and 40 are refused. Over any 60 s the most it can send is 100 plus 600, which is 700. If the downstream takes only 50 a second, the first burst is twice what it can absorb, so capacity should have been 50.
 
 ## How it works
 <!--meta block=structure-->
@@ -70,11 +70,12 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Token bucket vs. leaky bucket** — Both bound a rate, and which leaky bucket you mean decides the rest. Used as a queue, the leaky bucket holds arrivals and drains them at a strictly constant rate, so nothing bursty ever leaves it. Used as a meter it queues nothing and only marks each arrival as conforming or not — given the same parameters it admits exactly the traffic a token bucket would, because the smoothing comes from queueing the work, not from the accounting. Reach for the queue form when you need perfectly smooth output; for the token bucket when a burst is acceptable and desirable.
+- **Token bucket vs. leaky bucket** — Both bound a rate, and which leaky bucket you mean decides the rest. As a queue it holds arrivals and drains them at a strictly constant rate, so nothing bursty leaves it. This queue form is the strict twin. As a meter it queues nothing and only marks each arrival as conforming or not. With the same rate and size it admits exactly what a token bucket admits, because smoothing comes from queueing the work, not from the accounting. Use the queue form for perfectly smooth output, and the token bucket when a burst is fine.
 - **Lazy (on-demand) refill** — Instead of a background timer dripping tokens in, store a `lastRefill` timestamp and, on each request, add `elapsed × rate` tokens (capped at capacity). No thread, no scheduler — the standard implementation.
 - **Distributed / shared bucket** — Keep the token count in a shared store so a whole cluster enforces one global rate rather than one rate per replica. Correctness then rests on an atomic check-and-decrement (for example a Redis Lua script).
 - **Weighted / cost-based tokens** — Let an expensive request cost more than one token — by payload size, query complexity, or price tier — so the limit tracks real work rather than raw request count.
 - **Hierarchical buckets** — Layer buckets: a per-user bucket plus a global bucket, and a request must draw a token from every level it passes through. This bounds any single caller and the aggregate at once.
+- **GCRA (meter-form leaky bucket)** — The generic cell rate algorithm, from ATM traffic control, is the meter-form leaky bucket. It stores one timestamp per key, the earliest time the next request conforms, instead of a count plus a refill time.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -109,8 +110,8 @@ sequenceDiagram
 ### Avoid when
 <!--meta polarity=avoid-->
 
-- **You need a strictly constant output rate** with no bursts — a [queue](./load-leveling.md) or leaky bucket fits better.
-- **No contention on a single node** — a single-node process needs no rate governance at all.
+- **You need a strictly constant output rate** with no bursts: use the [leaky bucket](./leaky-bucket.md) in its queue form, or a [queue](./load-leveling.md), which delays arrivals instead of refusing them.
+- **No contention on a single node** — one process, one caller and nothing downstream to protect: a local limiter adds tuning and no protection. A per-caller limit or a fragile downstream still justifies one.
 - **The limit must be exact and global** but you cannot afford an atomic shared store — rethink the requirement.
 - **You actually want to buffer excess work** rather than shed it.
 
@@ -122,29 +123,32 @@ Guards against the overload that turns one traffic spike into a system-wide brow
 ```typescript summary="TypeScript — a token bucket with lazy refill"
 class TokenBucket {
   private tokens: number;
-  private lastRefill = Date.now();
+  private lastRefill = performance.now();
 
   constructor(
     private readonly capacity: number,     // burst size — the most you may spend at once
     private readonly refillPerSec: number, // steady-state rate
   ) { this.tokens = capacity; }            // start full
 
-  /** True if the request is allowed, false if it should be rate-limited. */
-  tryConsume(cost = 1): boolean {
+  /** Seconds to wait: 0 if the request is allowed now, more if it should be rate-limited. */
+  tryConsume(cost = 1): number {
+    // shared bucket: run these same steps inside one Redis EVAL script, and read the clock with TIME (the store's clock, not the client's)
+    if (cost > this.capacity) return Infinity; // cost above capacity can never pass
     // lazy refill: no timer — compute accrued tokens from elapsed time
-    const now = Date.now();
-    const elapsedSec = (now - this.lastRefill) / 1000;
+    const now = performance.now();
+    const elapsedSec = Math.max(0, now - this.lastRefill) / 1000;
     this.tokens = Math.min(this.capacity, this.tokens + elapsedSec * this.refillPerSec);
     this.lastRefill = now;
-    if (this.tokens < cost) return false;  // bucket empty → shed the request
+    if (this.tokens < cost) return (cost - this.tokens) / this.refillPerSec; // bucket empty → shed the request
     this.tokens -= cost;
-    return true;
+    return 0;
   }
 }
 
 // 10 requests/second sustained, bursts up to 20
 const bucket = new TokenBucket(20, 10);
-if (!bucket.tryConsume()) throw new Error("429 Too Many Requests");
+const wait = bucket.tryConsume();
+if (wait > 0) throw new Error("429, retry after " + Math.ceil(wait) + "s");
 ```
 
 ## In the wild
@@ -179,16 +183,17 @@ if (!bucket.tryConsume()) throw new Error("429 Too Many Requests");
 <!--meta polarity=failure-->
 
 - **Per-instance divergence** — Replicas each holding a local bucket collectively admit up to N× the intended global rate.
-- **Shared-store hot key** — A single key backing a global bucket becomes a contention and latency hotspot at high request volume.
+- **Shared-store hot key** — A single key backing a global bucket becomes a contention and latency hotspot at high request volume. Split one global bucket into k sub-buckets that each take 1/k of the rate and are picked at random, or have each node lease tokens in batches from the shared bucket. The limit becomes approximate.
 - **Oversized burst** — A capacity set too high lets a burst through that overwhelms a fragile downstream even though the average is within budget.
-- **Clock skew on lazy refill** — A coarse or non-monotonic clock distorts the elapsed-time calculation, leaking too many or too few tokens.
+- **Clock skew on lazy refill** — A coarse or non-monotonic clock distorts the elapsed-time calculation, leaking too many or too few tokens. Clamp elapsed at 0, read a monotonic clock locally, and in a shared store use the store's own clock (Redis `TIME`), not each client's.
+- **Shared store down or slow** — Callers must fail open (no limit, downstream exposed) or fail closed (every caller refused). Pick one per route, and fall back to a local bucket with a short timeout on the store call.
 
 ### Readiness checklist
 <!--meta polarity=check-->
 
 - Decide global vs. per-instance; if global, hold bucket state in an atomic shared store (e.g. a Redis check-and-decrement script).
-- Set capacity and refill rate from the downstream's measured capacity, not from a guess.
-- Return 429 with a Retry-After (or equivalent) so clients back off instead of retrying instantly.
+- Set capacity and refill rate from the downstream's measured capacity, not from a guess. Refill is the downstream's sustained safe rate minus headroom. Capacity is the most it absorbs in one burst, or refill times the longest burst you tolerate.
+- Return 429 with a Retry-After (or equivalent) so clients back off instead of retrying instantly. Wait = (cost − tokens) / refill rate, rounded up. A cost above capacity can never pass.
 - Emit throttle-rate and rejection metrics with alerts on sustained shedding.
 - Choose the bucket key deliberately and bound the number of buckets so memory stays finite.
 
@@ -226,6 +231,7 @@ if (!bucket.tryConsume()) throw new Error("429 Too Many Requests");
 **Prevents**
 
 - [Unbounded Queue](../../../hazards/unbounded-queue.md) — Rate-limit intake so the backlog can't outrun the consumer indefinitely
+- [Noisy Neighbour](../../../hazards/noisy-neighbour.md) — A per-key bucket caps what one tenant can take, so a burst spends that tenant's own tokens.
 
 **Demonstrated by**
 

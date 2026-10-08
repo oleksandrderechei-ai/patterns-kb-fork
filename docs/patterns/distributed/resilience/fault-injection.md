@@ -21,19 +21,19 @@ Your design says the system degrades gracefully when a dependency slows down, bu
 ## Explained
 <!--meta block=explain-->
 
-Fault injection breaks something on purpose while real traffic runs and checks whether the system did what you predicted. You write the prediction first, naming a normal measure and its bounds: orders keep completing, latency rises by under a second and the circuit breaker opens within 30 s. Then you cause the failure, limit how many users it can touch, and compare. A prediction that holds is evidence, and one that fails is a defect found with everyone awake. Without it, your timeout, retry and breaker have never been seen working, so the first test is the real outage. Choose it over a design review or unit tests when you need proof of behaviour under load, since neither runs the failure path with traffic. Expect the breaker to work and the alert or runbook to fail.
+Fault injection breaks something on purpose while real traffic runs and checks whether the system did what you predicted. You write the prediction first, naming a normal measure and its bounds: orders keep completing, latency rises by under a second and the circuit breaker opens within 30 s. Then you cause the failure, limit how many users it can touch, and compare. A prediction that holds is evidence, and one that fails is a defect found with everyone awake. Without it, your timeout, retry and breaker have never been seen working, so the first test is the real outage. Choose it over a design review or unit tests when you need proof of behaviour under load, since a design review does not run the failure path and unit tests rarely do with real load. In practice the breaker often works and the alert or runbook is where gaps appear.
 
 - **Real degradation.** You hurt a live system, so cap the share of users affected and abort when the normal measure leaves its bounds.
 - **Needs load.** An idle system shows no queueing or retry storm, so run it on real or synthetic traffic.
 - **Needs metrics.** Without per-dependency latency and error metrics, you cannot see the result, so build them first.
 - **Residue.** A fault can leave a firewall rule behind, so list every change and undo it.
 
-**Example.** The prediction: with the payment provider slowed to 3 s, orders still complete, checkout latency stays under 4 s and the breaker opens within 30 s. The test affects 5% of traffic, and aborts if errors pass 2% against a normal 0.1%. It runs 10 minutes at 200 orders a minute, so 10 orders a minute are slowed, about 100 in all. The breaker opens at 20 s as predicted. But no alert fires, because the alert watches errors and slow calls are not errors, and the fallback crashes because nobody had ever run it. Both are found with everyone awake.
+**Example.** The prediction: with the payment provider slowed to 3 s, orders still complete, checkout latency stays under 4 s and the breaker opens within 30 s. The test affects 5% of traffic and aborts if errors pass 2% against a normal 0.1%. It is planned for 10 minutes at 200 orders a minute, so 10 orders a minute are slowed, about 100 in all. The breaker opens at 20 s as predicted. Then the fallback crashes because nobody had ever run it, errors pass 2% and the abort ends the test. No alert fired during the slowdown, because the alert watches errors and slow calls are not errors. Both are found with everyone awake.
 
 ## How it works
 <!--meta block=structure-->
 
-```mermaid caption="What makes this an experiment rather than an outage? Steps 1 and 5. Without the prediction there is nothing to compare against, and step 2 is what makes the comparison meaningful — a fault applied to an idle system produces none of the queueing you were trying to observe."
+```mermaid caption="What makes this an experiment rather than an outage? Steps 1 and 5. Without the prediction there is nothing to compare against. Step 2 matters because a fault on an idle system produces none of the queueing you wanted to observe."
 flowchart LR
     Hyp["Hypothesis"]
     Runner["Experiment runner"]
@@ -70,7 +70,7 @@ sequenceDiagram
 
 The faults worth injecting map to the failures that actually happen. Added latency finds missing or over-generous timeouts. Returned errors find the retry that has no ceiling. Name-resolution failure simulates the whole class of connectivity loss without touching the dependency. Terminating instances tests whether the fleet notices and replaces them. Filling a disk, pinning a processor or exhausting a connection pool finds the resource limit nobody set. Each answers a different question, so an experiment names one fault rather than combining several.
 
-Blast radius has to be a property of the experiment, not of the operator's care. The controls that make production experiments defensible are a fault scoped to one instance or one small percentage of traffic, an automatic abort wired to the steady-state measure rather than to a human watching, and a rollback that is a single call and has been tested on its own. A fault that leaves residue is the specific hazard here — a name-resolution override or a firewall rule that outlives the experiment is an outage the runner will not report, because as far as it is concerned the experiment ended.
+Blast radius has to be a property of the experiment, not of the operator's care. The controls that make production experiments defensible are a fault scoped to one instance or one small percentage of traffic, an automatic abort wired to the steady-state measure rather than to a human watching, and a rollback that is a single call and has been tested on its own. Residue is the hazard here. A name-resolution override or firewall rule can outlive the experiment, and the runner will not report it.
 
 ## Variations
 <!--meta block=variations-->
@@ -79,7 +79,7 @@ Blast radius has to be a property of the experiment, not of the operator's care.
 - **Automated experiment in the pipeline** — The same experiments run unattended as a stage of the release pipeline, usually alongside a load test so the system is under pressure when the fault lands. It catches a resilience regression on the release that introduced it rather than months later.
 - **Pre-production versus production** — Running in a copy of the environment risks nothing and proves less, because the copy has different data, different scale and different traffic. Running in production is the only place the answer is definitive, and it is only defensible once the blast radius and the abort are mechanical.
 - **Randomised termination** — Instances are killed continuously and at random rather than as a designed experiment. It is the oldest form of the practice and it enforces one specific property — nothing may depend on a particular instance surviving — which is why it works without a hypothesis where the general form does not.
-- **Where the fault is applied** — In the platform (terminate an instance, sever a zone), in the network path (a proxy or [service mesh](../routing/service-mesh.md) adds latency or returns errors), or in the application itself behind a switch. Platform faults are realistic and coarse; mesh faults are precise and only reach traffic that goes through the mesh; in-application faults reach anything but require the failure path to be built into the code you are testing.
+- **Where the fault is applied** — In the platform (terminate an instance, sever a zone), in the network path (a proxy or [service mesh](../routing/service-mesh.md) adds latency or returns errors), or in the application itself behind a switch. Platform faults are realistic and coarse; mesh faults are precise and only reach traffic that goes through the mesh; in-application faults reach anything but require the failure path to be built into the code you are testing. A dependency you do not run, such as the payment provider, can only be faulted from your side (client, proxy or mesh), which tests your handling of it, not the provider. Partial faults such as packet loss or one slow endpoint find different defects than a dead dependency.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -128,6 +128,7 @@ Blast radius has to be a property of the experiment, not of the operator's care.
 ```typescript summary="TypeScript — the experiment, with its abort wired in"
 const experiment = {
   hypothesis: "Orders keep completing when payments adds 2s of latency",
+  // scope to the cohort the fault touches; a 1m window means abort lags up to 1m
   steadyState: () => metrics.successRate("checkout", { window: "1m" }),
   tolerance: 0.99,            // below this, the prediction has failed
   blastRadius: { instances: 1 },
@@ -135,23 +136,38 @@ const experiment = {
   duration: "5m",
 };
 
+// One shape on every path; window runs from injection start to fault removal.
 async function run(e: Experiment) {
   const before = await e.steadyState();
-  if (before < e.tolerance) return skip("system is not healthy to begin with");
+  const empty = { window: null, recoveryAt: null, faultRemovedAt: null };
+  if (before < e.tolerance) return { held: false, skipped: true, before, ...empty };
 
+  const startedAt = Date.now();
   await e.fault.inject(e.blastRadius);
+  let held = true;
+  let inconclusive = false;
   try {
     // The abort is mechanical. A human watching a dashboard is not an abort.
     await watchUntil(e.duration, async () => {
       if (await e.steadyState() < e.tolerance) throw new HypothesisFailed();
     });
-    return { held: true, before };
+    // Nothing reached the path under test, so a pass proves nothing.
+    inconclusive = (await e.fault.requestsAffected()) === 0;
+    held = !inconclusive;
+  } catch (err) {
+    if (!(err instanceof HypothesisFailed)) throw err;
+    held = false;
   } finally {
-    await e.fault.remove();   // always, on every path — residue is the real hazard
+    await e.fault.remove();   // always, on every path: residue is the real hazard
     await verifyRemoved(e.fault);
   }
+  const faultRemovedAt = Date.now();
+  const recoveryAt = await metrics.recoveredAt("checkout", e.tolerance);
+  return {
+    held, inconclusive, before, recoveryAt, faultRemovedAt,
+    window: { from: startedAt, to: faultRemovedAt },
+  };
 }
-
 ```
 
 ```typescript summary="TypeScript — the finding is usually about the response, not the mechanism"
@@ -180,7 +196,7 @@ async function report(e: Experiment, result: Result) {
 <!--meta block=wild-->
 
 - **Netflix Chaos Monkey** — The tool that named the practice: it terminates instances at random during working hours, which enforces one property continuously — nothing may depend on a particular instance staying alive. {#wild-chaos-monkey}
-- **AWS Fault Injection Service** — Runs experiment templates that inject faults such as instance termination, added API latency and resource exhaustion, with stop conditions bound to CloudWatch alarms so the experiment aborts itself when a metric leaves its bounds. {#wild-aws-fis}
+- **AWS Fault Injection Service** — Runs experiment templates that inject faults such as instance termination, API errors and throttling, network latency and resource exhaustion, with stop conditions bound to CloudWatch alarms so the experiment aborts itself when a metric leaves its bounds. {#wild-aws-fis}
 - **Azure Chaos Studio** — Runs fault experiments against Azure resources as a pipeline step, which is how the mission-critical reference architecture validates resiliency: chaos experiments execute alongside a load test so the injected fault lands on a system that is actually under pressure. {#wild-azure-chaos-studio}
 
 ## In production
@@ -190,23 +206,25 @@ async function report(e: Experiment, result: Result) {
 <!--meta polarity=knob-->
 
 - **Blast radius** — How much of the system the fault may reach — one instance, one percentage of traffic, one zone. It is the difference between an experiment and an outage, and it belongs in the experiment definition rather than in the operator judgement.
-- **Steady-state measure and tolerance** — The metric that says the system is normal and the bound it may not cross. Choose a user-facing measure such as checkout success rate; an infrastructure metric will stay green through a failure users can feel.
-- **Fault magnitude** — How much latency, what error rate, how many instances. Too small and nothing engages, too large and every mechanism trips at once and you cannot tell which one mattered.
+- **Steady-state measure and tolerance** — The metric that says the system is normal and the bound it may not cross. Choose a user-facing measure such as checkout success rate; an infrastructure metric will stay green through a failure users can feel. Set the tolerance from the measure's normal band over recent weeks, and include slow calls (a latency percentile), since an errors-only measure misses a slow dependency.
+- **Fault magnitude** — How much latency, what error rate, how many instances. Too small and nothing engages, too large and every mechanism trips at once and you cannot tell which one mattered. Start at the smallest fault that engages the mechanism (for example latency just above the caller's timeout), then step up and record each step.
 - **Duration** — How long the fault stays applied. It has to outlast the mechanism being tested — a breaker that opens after thirty seconds is untested by a twenty-second experiment.
 - **Schedule** — Whether experiments run on a cadence, as a release-pipeline stage, or only during a game day. Pipeline runs attribute a regression to the change that caused it; game days test the people.
+- **Abort latency** — Metric delay plus evaluation window plus the time to collect the breaches required. The experiment can run that long past tolerance, so size the blast radius and the window for it, and keep the window shorter than the duration.
+- **Ramp and freeze** — Widen the radius (one instance, then a percentage, then a zone) only after the smaller run held; block runs during incidents, deploys and on-call handovers.
 
 ### Signals to watch
 <!--meta polarity=signal-->
 
 - **The steady-state measure during the experiment** — The verdict on the hypothesis, and the input to the automatic abort. Everything else is diagnosis.
 - **Whether the mechanism engaged** — Breaker state changes, timeouts fired, retries attempted. A pass with nothing engaged means the fault never reached the path under test, which is a false result rather than a good one.
-- **Time to detect** — How long until an alert fired, measured from fault injection. A system that degraded correctly and told nobody has failed the experiment even though the hypothesis held.
+- **Time to detect** — How long until an alert fired, measured from fault injection. A system that degraded correctly and told nobody has failed the experiment even though the hypothesis held. Compare it against the alert's own paging target; exceeding it fails the experiment.
 - **Time to recover after the fault is removed** — Separates a system that absorbed the fault from one that was pushed into a state it cannot leave on its own, such as a full queue or a saturated pool.
 
 ### Failure modes under load
 <!--meta polarity=failure-->
 
-- **The abort does not fire** — The steady-state measure degrades past tolerance and the experiment keeps running because the stop condition was misconfigured or the metric was delayed. This is the failure that turns the practice into an incident.
+- **The abort does not fire** — The steady-state measure degrades past tolerance and the experiment keeps running because the stop condition was misconfigured or the metric was delayed. This is the failure that turns the practice into an incident. Dry-run each new experiment with a deliberately tripped tolerance in staging and confirm the abort and fault removal fire.
 - **The fault leaves residue** — A name-resolution override, a firewall rule or a paused process outlives the experiment. The runner reports a clean finish while the system is still broken, so nobody connects the outage to the experiment.
 - **No load, so no result** — The fault is applied to an idle or lightly loaded system, nothing queues, nothing saturates, and the experiment passes without testing anything.
 - **The measure is too coarse to see the damage** — An aggregate success rate hides a failure confined to one endpoint or one customer segment. The hypothesis holds and the users who were affected are invisible in the number.
@@ -248,6 +266,8 @@ async function report(e: Experiment, result: Result) {
 - [Timeout / Deadline](./timeout-deadline.md) — Added latency is the fastest way to find a missing or over-generous timeout
 - [Health Endpoint Monitoring](./health-endpoint.md) — The experiment checks whether the probe noticed, not just whether the code coped
 - [Analyse Failure Modes](../../../principles/failure-mode-analysis.md) — The analysis supplies the list of faults worth injecting
+- [Service Mesh](../routing/service-mesh.md) — A mesh proxy adds latency or errors for the experiment, so no application code needs a fault switch.
+- [Fallback](./fallback.md) — Injecting the dependency failure is the only way the fallback runs under load before an incident.
 
 **Prevents**
 

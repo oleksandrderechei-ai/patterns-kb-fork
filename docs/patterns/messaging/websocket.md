@@ -233,6 +233,10 @@ setInterval(() => {                                // heartbeat every 30 s
 - [Head-of-Line Blocking](../../hazards/head-of-line-blocking.md) — Can fall into head of line blocking when one multiplexed ordered connection lets one slow message delay all the others behind it
 - [Thundering Herd](../../hazards/thundering-herd.md) — Can fall into thundering herd when a deploy drops many sockets and every client reconnects at the same instant.
 
+**Demonstrated by**
+
+- [Google Docs](../../designs/google-docs.md) — Collaborative editing holds one socket per editor open to the document's owning server.
+
 **Implemented by**
 
 - [Networking](../../capabilities/networking.md) — Managed connection services hold the open sockets, so your backend handles messages rather than connections.

@@ -86,6 +86,64 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     channel handover cost, a spinlock threshold;
   - `kb.mjs explain` drops the period after a cost's bold lead when the lead is passed
     without one; the writer could add it, as the page shape expects.
+- From the kb-improve run on the ten remaining Resilience patterns (its pull request lists
+  every dropped finding):
+  - a decide row in `observability` that routes "which hop of one request took the time"
+    to `distributed-tracing`; today the row reaches only `correlation-identifier`;
+  - a retitle of `design-rate-limiter`, whose title matches the `rate-limiter` pattern's
+    and reads as a self-reference in its relationships;
+  - a sourcing pass for lines dropped as "needs a source": starting tail-sampling and
+    queue sizes (`distributed-tracing`), named fault tools and a stateful-fault con
+    (`fault-injection`), an idempotency-key rule and alert thresholds (`hedged-request`),
+    signal thresholds and a cost-weighted variation (`leaky-bucket`), a shed-rate alert
+    window (`load-shedding`), retention and map-size caps (`request-coalescing`), a pool
+    fill-time bound (`timeout-deadline`), a fill-level alert (`token-bucket`);
+  - edges drafted but over the cap: `distributed-tracing` to `secure-logger`,
+    `hedged-request` to `load-shedding` (alternative-to) and `circuit-breaker`; a
+    `hedged-request` to `metastable-failure` note that says "prevents" while the text says
+    it only avoids adding load; and the leaky-bucket edge on `rate-limiter`, typed
+    combines-with where `token-bucket` is has-variant;
+  - variations a senior reader expects, held back by the cap: parent-based sampling and
+    clock-skew and tail-sampling cons (`distributed-tracing`), hedge-on-fast-error and a
+    stale-replica con (`hedged-request`), a partitioned queue (`load-leveling`),
+    server-side deadline enforcement (`timeout-deadline`), the sum of per-key capacities
+    as the real burst (`token-bucket`);
+  - a second pass for the plan lines dropped as over the cap of 8, mostly wording,
+    em-dash and one-claim-per-item splits.
+- From the kb-improve run on the ten comparison pages (its pull request lists every dropped
+  finding):
+  - a gate for the cost-lead stop: nine of the ten comparisons shipped every explain cost as
+    one run-on sentence ("**Lead** Note"), and KB-014 passed them all;
+  - matrix rows readers asked for that need a source for every column: cold start after idle
+    (`application-platforms`), versioning and object lock (`object-stores`), out-of-band
+    change detection (`infrastructure-as-code`), "if it goes down" (`identity-providers`);
+  - claims to verify before they land: SeaweedFS read-after-write per replication mode,
+    Authentik dropping Redis in 2025.10, Auth0 password-hash export, Kong's OSS packaging
+    after 3.9, Meilisearch's enterprise-edition license split, Pulumi secrets in state;
+  - edges drafted but over the cap or unverified: `relational-databases` implements
+    `failover`, `key-value-stores` implements `lsm-tree`, `application-platforms`
+    alternative-to `container-orchestration`, `search-engines` combines-with
+    `change-data-capture`, `workflow-orchestrators` alternative-to `message-queue`,
+    `infrastructure-as-code` implements `containerization`;
+  - an owner call on how a comparison names a hazard its products carry: `exposed-to` is
+    barred from a comparison, so `search-engines` cannot point at `dual-write-inconsistency`.
+- From the kb-improve run over the 15 Advanced case-study pages (its pull request lists
+  every dropped finding):
+  - a sourcing pass for the 51 findings dropped as "needs a source": TTLs, thresholds,
+    retry caps, error codes, shard counts and lease timings readers asked for in the
+    deep dives and interfaces;
+  - a second pass for the 99 findings dropped as over the cap of 8;
+  - two owner design calls the pages leave open: how `robinhood`'s trade processor
+    handles a fill that lands before the order's id is indexed, and whether a `FAILED`
+    run ends a `job-scheduler` recurrence;
+  - edges drafted but over the cap: `online-chess` demonstrates `websocket` and
+    `long-polling`, `ticketmaster` demonstrates `conditional-write`, `leetcode`
+    demonstrates `async-request-reply` and `web-queue-worker`, `youtube` exposed-to
+    `hot-partition`;
+  - the `alternative-to` note between the two persona-identification pages does not say
+    what this side argues; fix the note in place in `relations.json`;
+  - an owner call on `video-recommendations`, a theme page filed in the Advanced
+    case-study area: move it with kb-move or keep it there.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 

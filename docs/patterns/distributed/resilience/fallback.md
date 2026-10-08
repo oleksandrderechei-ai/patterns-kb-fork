@@ -218,6 +218,7 @@ async function recommendations(userId: string): Promise<Result<string[]>> {
 - [Timeout / Deadline](./timeout-deadline.md) — A timeout or deadline decides when the live call is abandoned and the fallback takes over.
 - [Bulkhead](./bulkhead.md) — A refused bulkhead permit is one more trigger for the fallback.
 - [Null Object](../../gof/extra/null-object.md) — An empty-list or no-op default is a null object; count how often it runs
+- [Fault Injection](./fault-injection.md) — A fallback is unproven until a fault forces it to run.
 
 **Alternative to**
 

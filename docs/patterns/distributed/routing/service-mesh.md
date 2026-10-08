@@ -207,6 +207,8 @@ class MeshProxy {
 - [Identity Is the Perimeter](../../../principles/identity-as-perimeter.md) — The mesh issues and rotates the workload identity this depends on
 - [Distributed Tracing](../resilience/distributed-tracing.md) — Emitting a span per hop is one of the things a mesh gives you for free at the network layer
 - [Shadow Traffic](./shadow-traffic.md) — A mesh can mirror traffic to a second version
+- [Fault Injection](../resilience/fault-injection.md) — The mesh is one place to apply an injected fault, and it reaches only traffic that goes through the mesh.
+- [Load balancers, proxies & gateways](../../../comparisons/load-balancers-and-gateways.md) — The proxies compared on load-balancers-and-gateways are what a mesh runs as its data plane; Envoy is the common one.
 
 **Composed of**
 

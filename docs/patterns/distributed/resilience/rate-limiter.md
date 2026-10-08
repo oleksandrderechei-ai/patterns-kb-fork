@@ -62,11 +62,12 @@ flowchart LR
 <!--meta block=variations-->
 
 - **[Token Bucket](./token-bucket.md)** — Tokens accumulate at a fixed rate up to a cap; each request spends one, so bursts up to the bucket size are allowed as long as tokens remain.
-- **Leaky Bucket** — Requests queue and drain at a constant rate instead of bursting through — it smooths traffic into a steady outflow rather than admitting spikes.
+- **Leaky Bucket** — Requests drain at a constant rate, so spikes become a steady outflow. As a queue it delays requests and refuses only when the queue is full; as a meter it refuses at once with no queue.
 - **Fixed window counter** — Count requests per key inside a whole-second or whole-minute window. Simple, but a burst straddling the window boundary can momentarily double the intended rate.
 - **[Sliding window](../coordination/sliding-window.md) (log or counter)** — Weight the current and previous window by elapsed time, or keep a rolling log of timestamps, to smooth out the boundary problem at some extra memory cost.
-- **Distributed rate limiting** — Back the counter with a shared store — Redis, Memcached — so the limit holds across a fleet of instances instead of resetting per process.
+- **Distributed rate limiting** — Back the counter with a shared store, such as Redis or Memcached, so the limit holds across a fleet instead of resetting per process. The increment-and-check must be one atomic operation, or concurrent replicas overshoot.
 - **Client-side limiting** — Hold the counter in the caller and meter your own outgoing requests to fit under a ceiling someone else enforces — a paid API's quota, a scrape target's tolerance. The algorithms are identical; what changes is that the overflow waits instead of being refused, because the work still has to go through eventually.
+- **Two-tier limiting** — A local in-process limiter sits in front of a shared one, as in Envoy's local and global rate limiting. A small overshoot is accepted to cut calls to the store.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -122,10 +123,14 @@ class TokenBucket {
     this.tokens -= cost;
     return true;
   }
+
+  retryAfterSec(cost = 1): number { return Math.ceil((cost - this.tokens) / this.refillPerSec); }
 }
 
 // One bucket per key, so one tenant's onboarding burst cannot drain the
 // vendor quota every other tenant is queued behind.
+// In-process only: each replica enforces alone. Buckets are never evicted:
+// drop one once it is full after idle, and cap the key count.
 const buckets = new Map<string, TokenBucket>();
 function limiterFor(key: string, capacity: number, refillPerSec: number): TokenBucket {
   let b = buckets.get(key);
@@ -134,10 +139,16 @@ function limiterFor(key: string, capacity: number, refillPerSec: number): TokenB
 }
 
 // API edge: a tenant submitting personas for verification. Burst 100, refill 10/s.
-if (!limiterFor(`client:${clientId}`, 100, 10).tryConsume()) throw new Error("429 Too Many Requests");
+const client = limiterFor(`client:${clientId}`, 100, 10);
+if (!client.tryConsume()) throw new Error(`429 Retry-After ${client.retryAfterSec()}`);
 
 // The resend endpoint is bounded far tighter — a handful of links per flow per hour.
-if (!limiterFor(`resend:${flowId}`, 3, 3 / 3600).tryConsume()) throw new Error("429 Too Many Requests");
+const resend = limiterFor(`resend:${flowId}`, 3, 3 / 3600);
+if (!resend.tryConsume()) throw new Error(`429 Retry-After ${resend.retryAfterSec()}`);
+
+// Fleet-wide: do the same refill, check and subtract inside one Redis Lua script (EVAL),
+// which runs atomically. If the store is unreachable, follow the fail-open or
+// fail-closed rule chosen for this limit.
 ```
 
 ## In the wild
@@ -154,11 +165,12 @@ if (!limiterFor(`resend:${flowId}`, 3, 3 / 3600).tryConsume()) throw new Error("
 <!--meta polarity=knob-->
 
 - **Rate and window** — The requests per unit of time each key is allowed — the ceiling itself.
-- **Burst capacity** — How much unused allowance a caller may spend at once (token-bucket capacity, NGINX burst). Size it from real traffic, not from the sustained rate.
+- **Burst capacity** — How much unused allowance a caller may spend at once (token-bucket capacity, NGINX burst). Size it from real traffic, not from the sustained rate. Start from the caller's observed peak requests in one window, set capacity just above it, then tune from throttle rate per key.
 - **Key dimension** — What the count is attributed to — API key, authenticated user, IP, route, or a pair of them. IP alone is shared behind NAT and cheap to rotate.
 - **Algorithm** — Token bucket to admit bursts, leaky bucket to smooth them away, sliding window to close the fixed-window boundary gap.
-- **Reject behaviour** — What an over-rate caller gets: a status code, a Retry-After header, or a delay instead of a refusal.
+- **Reject behaviour** — What an over-rate caller gets: a status code, a Retry-After header, or a delay instead of a refusal. Add jitter to Retry-After so refused callers do not return in one wave.
 - **Counter placement** — In-process counters, or a shared store every replica reads. The first is free and enforces per replica; the second enforces fleet-wide and joins the request path.
+- **Request cost** — The tokens one call spends, so an expensive search costs more than a read and the limit tracks load, not count.
 
 ### Signals to watch
 <!--meta polarity=signal-->
@@ -174,9 +186,10 @@ if (!limiterFor(`resend:${flowId}`, 3, 3 / 3600).tryConsume()) throw new Error("
 
 - **Fixed-window boundary burst** — A burst straddling the window edge admits up to twice the intended rate in a short span, which is exactly when it hurts.
 - **Per-instance undercount** — Without a shared store each replica counts alone, so the fleet-wide limit is the configured one multiplied by the replica count.
-- **Counter store unreachable** — The limiter has to choose in the moment between admitting everything and refusing everything, and whichever it does was decided by whoever wrote the default.
+- **Counter store unreachable** — The limiter has to choose in the moment between admitting everything and refusing everything, and whichever it does was decided by whoever wrote the default. Fail open when the cap protects availability and the backend is healthy; fail closed when it guards a paid quota, cost or abuse; alarm on the fallback either way.
 - **Clock skew across instances** — Windows keyed to wall-clock time drift apart on hosts with unsynchronized clocks, so resets land at different moments and the effective rate wobbles.
 - **Rejection is not free** — At flood scale, identifying the caller and answering the 429 is itself work. A limiter alone does not survive a volumetric attack; the cheap refusals have to happen further out, at the connection or the edge.
+- **Non-atomic counter update** — Two replicas read the same count and both admit, so the fleet overshoots under concurrency. Make check-and-decrement one store operation: Redis `INCR`, or a Lua script run with `EVAL`.
 
 ### Readiness checklist
 <!--meta polarity=check-->
@@ -206,15 +219,15 @@ if (!limiterFor(`resend:${flowId}`, 3, 3 / 3600).tryConsume()) throw new Error("
 
 > **Why does a per-instance counter let more traffic through than the limit?**
 >
-> Each replica counts alone, so the real limit multiplies by the replica count, see [con 2](rate-limiter.md#tradeoffs-con-2).
+> Each replica counts alone, so the real limit multiplies by the replica count, see [tradeoffs-con-2](rate-limiter.md#tradeoffs-con-2).
 
 > **Why size the burst allowance from real traffic and not the steady rate?**
 >
-> Otherwise legitimate bursts are rejected along with abusive ones, see [con 1](rate-limiter.md#tradeoffs-con-1).
+> Otherwise legitimate bursts are rejected along with abusive ones, see [tradeoffs-con-1](rate-limiter.md#tradeoffs-con-1).
 
 > **When do you want a bulkhead instead of a limiter?**
 >
-> When the bottleneck is concurrent work in flight rather than request rate, see [avoid 2](rate-limiter.md#usage-avoid-2).
+> When the bottleneck is concurrent work in flight rather than request rate, see [usage-avoid-2](rate-limiter.md#usage-avoid-2).
 
 ## How it relates
 <!--meta block=relationships-->
@@ -232,6 +245,7 @@ if (!limiterFor(`resend:${flowId}`, 3, 3 / 3600).tryConsume()) throw new Error("
 - [Sliding Window](../coordination/sliding-window.md) — A sliding window closes the fixed-window boundary gap, at the cost of extra state per caller
 - [Leaky Bucket](./leaky-bucket.md) — A limiter can use a leaky bucket when the target cannot take any burst.
 - [Multi-Tenancy](../routing/multi-tenancy.md) — Keyed by tenant id, it is the pool model's fairness control.
+- [Retry with Backoff](./retry-backoff.md) — A 429 with a retry-after hint tells clients when to retry.
 
 **Alternative to**
 
@@ -246,6 +260,7 @@ if (!limiterFor(`resend:${flowId}`, 3, 3 / 3600).tryConsume()) throw new Error("
 
 - [Bulkhead](./bulkhead.md) — Isolate resources vs. cap request rate
 - [Backpressure](../../concurrency/backpressure.md) — Reject over-rate vs. ask upstream to slow
+- [Circuit Breaker](./circuit-breaker.md) — A limiter caps calls that would succeed; a breaker stops calls that would fail.
 
 **Prevents**
 

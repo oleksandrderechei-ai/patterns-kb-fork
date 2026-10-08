@@ -50,14 +50,14 @@ Out of scope: rich document structure (assume a plain text editor), access contr
 - **Durability & availability** — an acknowledged edit survives server restarts; documents stay reachable.
 - **Scale** — millions of concurrent editors across billions of documents, but a hard cap of 100 concurrent editors per document (beyond it, new arrivals join read-only).
 
-That 100-editor cap is a gift: it means no single document ever needs enormous write throughput, so the scaling story is about the number of documents and sockets, not the heat of any one document.
+The cap bounds write rate per document (100 editors at 3 edits/s is 300 ops/s), not fan-out: each edit goes to up to 99 sockets, about 30,000 messages/s, and read-only viewers past the cap add more. Scaling is about document and socket counts.
 
 ## Right-sizing
 <!--meta block=sizing-->
 
-**Connections, not edits, set the shape.** A single document is capped at 100 live editors, and even if each fires a few operations a second while actively typing, that is only a few hundred ops/sec per document — trivial for one server. The number that hurts is the fleet total: millions of concurrent WebSocket connections held open at once. One box terminates on the order of tens of thousands of sockets, so a few million held-open connections take a fleet of hundreds of servers before any document is even busy — small enough to run, large enough that no one of them can own every document.
+**Connections, not edits, set the shape.** A single document is capped at 100 live editors, and even if each fires a few operations a second while actively typing, that is only a few hundred ops/sec per document — trivial for one server. The number that hurts is the fleet total: millions of concurrent WebSocket connections held open at once. At 20,000 connections per server, 5 million connections is 250 servers before any document is even busy, so no single server can own every document.
 
-**Storage grows with history, not size.** The design stores edit operations, not document snapshots. Round a document to ~50&nbsp;KB of retained operations; billions of documents is on the order of **50&nbsp;TB** — a modest total. The sharp edge is a single long-lived document accumulating millions of operations: replaying all of them to every fresh joiner, and holding them in server memory, is the cost that bites, and it only grows.
+**Storage grows with history, not size.** The design stores edit operations, not document snapshots. Round a document to ~50&nbsp;KB of retained operations; that is about **50&nbsp;TB** per billion documents — a modest total. The sharp edge is a single long-lived document accumulating millions of operations: replaying all of them to every fresh joiner, and holding them in server memory, is the cost that bites, and it only grows.
 
 **Latency forbids the round trip.** Under-100&nbsp;ms visibility means a user cannot wait for a durable write to be acknowledged before seeing their own keystroke. Local edits must be applied optimistically and reconciled afterward — which is exactly why the same transform algorithm has to run on the client, not just the server.
 
@@ -85,7 +85,7 @@ WS  /docs/{docId}          # one long-lived bidirectional connection
 
 # client → server
 SEND { "type": "insert",       "pos": 5, "text": ", world" }
-SEND { "type": "delete",       "pos": 6, "len": 1 }
+SEND { "type": "delete",       "pos": 5, "len": 1 }
 SEND { "type": "updateCursor", "pos": 12 }
 
 # server → client
@@ -130,10 +130,10 @@ flowchart TB
 The core question: given two edits made against the same starting text but in ignorance of each other, how do all clients end up with the same result? Three answers, in ascending correctness.
 
 - **Send snapshots — wrong.** Each edit ships the whole document, last write wins. Two problems: transferring hundreds of KB per keystroke is absurd, and worse, concurrent edits clobber each other. Start with "Hello!"; A appends ", world" while B deletes "!"; whichever request lands second overwrites the other, and one person's change vanishes silently.
-- **Send edits — warmer, still wrong.** Transmit only operations: `INSERT(5, ", world")`, `DELETE(6)`. Far cheaper, but positions are relative to a document state. If B's `DELETE(6)` (meant for "!") arrives after A's insert has shifted everything right, it deletes the comma instead. Each edit is implicitly tied to the context it was made in.
-- **Operational transformation — right.** Reinterpret each incoming edit against the edits that already applied before it. One server establishes the canonical order; B's `DELETE(6)` is transformed to `DELETE(13)` once A's insert is in front of it, so it still removes the exclamation mark. Low memory, fast, and it is what real collaborative editors use — but it requires a central authority for ordering, which is precisely why a document is pinned to one server.
+- **Send edits — warmer, still wrong.** Transmit only operations: `INSERT(5, ", world")`, `DELETE(5)`. Far cheaper, but positions are relative to a document state. If B's `DELETE(5)` (meant for "!") arrives after A's insert has shifted everything right, it deletes the comma instead. Each edit is implicitly tied to the context it was made in.
+- **Operational transformation — right.** Reinterpret each incoming edit against the edits that already applied before it. One server establishes the canonical order; B's `DELETE(5)` is transformed to `DELETE(12)` once A's insert is in front of it, so it still removes the exclamation mark. Low memory per character, but the operation log still grows until compaction, and it requires a central authority for ordering, which is precisely why a document is pinned to one server.
 
-The alternative worth naming is a **CRDT**: make every operation commutative so order stops mattering and no central server is needed. Text CRDTs (conflict-free replicated data types) give each character a unique, infinitely-subdividable position id and keep deleted characters as hidden tombstones, so any merge order converges. That buys peer-to-peer and offline editing (Yjs is the well-known open-source implementation; Figma runs an industrial variant), but it pays in memory — the document only ever grows, tombstones and all. With a central server already in the design and a 100-editor cap, operational transformation is the lighter, better-fitting choice; CRDTs are the answer if the requirement shifts to peer-to-peer or heavy offline use.
+The alternative worth naming is a **CRDT**: make every operation commutative so order stops mattering and no central server is needed. Text CRDTs (conflict-free replicated data types) give each character a unique, infinitely-subdividable position id and keep deleted characters as hidden tombstones, so any merge order converges. That buys peer-to-peer and offline editing (Yjs is the well-known open-source implementation), but it pays in memory — the document keeps every deleted character as a tombstone, so it keeps growing. With a central server already in the design and a 100-editor cap, operational transformation is the lighter, better-fitting choice; CRDTs are the answer if the requirement shifts to peer-to-peer or heavy offline use.
 
 Two edits against the same text show why the server must transform one of them.
 
@@ -144,10 +144,10 @@ sequenceDiagram
     participant B as Editor B
     participant S as Document Service
     A->>S: INSERT(5, ", world")
-    B->>S: DELETE(6), meant for the exclamation mark
+    B->>S: DELETE(5), meant for the exclamation mark
     S->>S: apply insert first, set canonical order
-    S->>S: transform DELETE(6) to DELETE(13)
-    S-->>A: DELETE(13)
+    S->>S: transform DELETE(5) to DELETE(12)
+    S-->>A: DELETE(12)
     S-->>B: INSERT(5, ", world")
 ```
 
@@ -157,7 +157,9 @@ Two read paths hang off the socket. On **connect**, the owning server replays th
 
 ### 3 · Scaling to millions of sockets
 
-One Document Service instance is both a bottleneck and a single point of failure. The constraint that makes this tricky is that all sockets for a document must converge on one owner — they cannot be sprayed across the fleet by a plain [load balancer](../patterns/distributed/routing/load-balancer.md). The answer is a [consistent hash ring](../patterns/distributed/routing/consistent-hashing.md): each server owns a range of the hash space, ZooKeeper holds the ring configuration and coordinates membership, and `hash(documentId)` picks the owner. A client opens a plain HTTP connection to any server; if that server does not own the document's hash range it replies with a redirect to the one that does; the client connects there directly, the connection upgrades to a WebSocket, and that owner loads the operations and starts serving — a [document-pinned session](../patterns/distributed/routing/sticky-session.md) where every collaborator on one document deterministically shares a server. Consistent hashing keeps churn small: adding or removing a server reshuffles only a slice of documents rather than all of them. The cost is that a scaling event is not free — displaced sockets must be dropped and reconnected, and the moving document's operations must migrate to the new owner, so robust reconnect logic and hotspot monitoring are part of the deal. Terminating the sockets at the edge and exposing a plain internal API keeps the rest of the system from having to know about connections at all.
+One Document Service instance is both a bottleneck and a single point of failure. The constraint that makes this tricky is that all sockets for a document must converge on one owner — they cannot be sprayed across the fleet by a plain [load balancer](../patterns/distributed/routing/load-balancer.md). The answer is a [consistent hash ring](../patterns/distributed/routing/consistent-hashing.md): each server owns a range of the hash space, ZooKeeper holds the ring configuration and coordinates membership, and `hash(documentId)` picks the owner. A client opens a plain HTTP connection to any server; if that server does not own the document's hash range it replies with a redirect to the one that does; the client connects there directly, the connection upgrades to a WebSocket, and that owner loads the operations and starts serving — a [document-pinned session](../patterns/distributed/routing/sticky-session.md) where every collaborator on one document deterministically shares a server. Consistent hashing keeps churn small: adding or removing a server reshuffles only a slice of documents rather than all of them. The cost is that a scaling event is not free — displaced sockets must be dropped and reconnected, and the moving document's operations must migrate to the new owner, so clients need reconnect-with-backoff logic and you must watch for hot documents.
+
+When an owner dies, its sockets drop and ZooKeeper membership shows the loss. The ring assigns each of its documents to a new owner, which reloads the log from Cassandra, and the clients reconnect. The risk is split-brain: a stale ring view can leave two owners for one document, so the log write must be fenced, for example by a per-document epoch that the store rejects when it is out of date. How fast the loss is detected is an open gap, and this page gives no number.
 
 ```mermaid caption="How does every editor of one document land on the single server that owns and orders it?"
 sequenceDiagram
@@ -190,7 +192,7 @@ Every operation lives forever by default, and a hot document can reach millions 
 ### What it buys
 <!--meta polarity=pro-->
 
-- Concurrent edits always converge, and optimistic local application keeps typing feeling instant under the 100&nbsp;ms budget.
+- Concurrent edits converge once the owner has ordered them and the transform is correct, and optimistic local application keeps typing feeling instant under the 100&nbsp;ms budget.
 - Pinning a document to one server makes ordering and broadcast local and cheap, and consistent hashing keeps rebalancing incremental.
 - An append-only operation log gives durability and a natural audit trail; compaction stops it from growing without bound.
 
@@ -200,6 +202,7 @@ Every operation lives forever by default, and a hot document can reach millions 
 - Operational transformation needs a central ordering server, which rules out true peer-to-peer or rich offline editing — the CRDT territory.
 - A scaling event is disruptive: sockets are force-reconnected and a document's operations must migrate to the new owner.
 - Cross-store atomicity leans on a hand-managed `documentVersionId` because the operations store lacks multi-row transactions — orchestration that hides subtle races.
+- A crashed owner drops its sockets, and its documents reconnect and replay the log on a new owner; the page leaves detection time open.
 
 ## What's expected at each level
 <!--meta block=levels-->
@@ -224,5 +227,6 @@ Every operation lives forever by default, and a hot document can reach millions 
 - [Sticky Session](../patterns/distributed/routing/sticky-session.md) — every WebSocket for one document is pinned to the single server that owns and orders that document
 - [Materialized View](../patterns/distributed/coordination/materialized-view.md) — compaction collapses a document's long operation history into a precomputed snapshot under a new version marker
 - [API Gateway](../patterns/distributed/routing/api-gateway.md) — A create, read, update, delete (CRUD) service behind an application programming interface (API) gateway creates document metadata and hands back an id before editing starts
+- [WebSocket](../patterns/messaging/websocket.md) — Every editing socket stays open to the document's owning server, so each keystroke goes out and each peer's edit comes back with no polling.
 
 <!-- relationships:end -->

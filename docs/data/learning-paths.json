@@ -2327,7 +2327,7 @@
       },
       "video-recommendations": {
         "role": "Per-head offline metrics plus NDCG/MAP, and A/B on session watch time",
-        "tour": "Each prediction head is scored on its own; the final ranking uses normalized discounted cumulative gain (NDCG), mean average precision (MAP), and diversity, while the gold standard is an A/B test on session watch time and return rate. The catch is the novelty effect — a new model can look good simply because it is different — so experiments must run long enough for that to fade.",
+        "tour": "Each prediction head is scored on its own; the final ranking uses normalized discounted cumulative gain (NDCG), mean average precision (MAP), and diversity, while the final check is an A/B test on session watch time and return rate. The catch is the novelty effect — a new model can look good simply because it is different — so run each experiment until the lift against control stops shrinking.",
         "fluency": "Per-head offline metrics plus NDCG/MAP, and A/B on session watch time"
       }
     },
@@ -2371,7 +2371,7 @@
       },
       "video-recommendations": {
         "role": "Cold start for new users and videos, feedback loops, explore/exploit",
-        "tour": "The hardest problems are here: new users and videos with no behavioural history, popularity feedback loops and filter bubbles, and the explore/exploit balance between showing known-good content and surfacing something new. These are where staff-level answers spend their time.",
+        "tour": "The hard cases are new users and videos with no behavioural history, popularity feedback loops and filter bubbles, and the explore/exploit balance between showing known-good content and surfacing something new.",
         "fluency": "Cold start for new users and videos, feedback loops, explore/exploit"
       }
     },
