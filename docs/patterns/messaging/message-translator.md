@@ -196,6 +196,7 @@ function onLegacyOrder(raw: LegacyOrder, publish: (o: CanonicalOrder) => void) {
 - [Message Encoding](./message-encoding.md) — A translator converts between formats; the compatibility rules decide when a translation is needed at all
 - [Canonical Data Model](./canonical-data-model.md) — A translator converts an application's own format to and from the canonical one
 - [Dead Letter Channel](./dead-letter-channel.md) — A message the mapping cannot convert is moved aside, not retried.
+- [Design for Evolution](../../principles/design-for-evolution.md) — The translator is how a consumer takes a neighbour's schema change without touching its own code
 
 **Often confused with**
 

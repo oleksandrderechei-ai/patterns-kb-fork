@@ -223,6 +223,7 @@ class Client {
 - [Agent2Agent](../coordination/a2a.md) — The agent card is this pattern's record, published by the service rather than a registry
 - [Reverse Proxy](./reverse-proxy.md) — A reverse proxy is the router that does the lookup for callers, so they hold a fixed address
 - [API Gateway](./api-gateway.md) — A gateway resolves the service name to a live instance for callers outside the fleet
+- [Fallacies of Distributed Computing](../../../principles/fallacies-of-distributed-computing.md) — The sixth fallacy, topology never changes, is why a caller looks up peers instead of holding addresses
 
 **Requires**
 

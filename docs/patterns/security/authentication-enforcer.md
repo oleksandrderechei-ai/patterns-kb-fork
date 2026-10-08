@@ -211,6 +211,7 @@ function authenticationEnforcer(provider: AuthProvider) {
 - [Secure Session Manager](./secure-session-manager.md) — Authenticate, then carry a secure session
 - [Single Access Point](./single-access-point.md) — Authenticate at the one entry
 - [Identity Is the Perimeter](../../principles/identity-as-perimeter.md) — The enforcer is where the identity claim actually gets checked
+- [Defense in Depth](../../principles/defense-in-depth.md) — Its layers are only as independent as its checks
 
 **Enables**
 

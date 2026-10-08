@@ -198,6 +198,7 @@ class InMemoryUserRepository implements Repository<User> {
 - [Specification](./specification.md) — A repository can accept a specification as its query.
 - [Query Object](./query-object.md) — A repository often takes a query object for open-ended searches
 - [CQRS](../architecture/cqrs.md) — Under CQRS the write repository loads full aggregates and thin read repositories return projections
+- [Prefer Managed Services](../../principles/managed-services.md) — A repository is the seam that lets a rented store be replaced
 
 **Exposed to**
 

@@ -247,6 +247,7 @@ async function report(e: Experiment, result: Result) {
 - [Retry with Backoff](./retry-backoff.md) — Returning errors on purpose exposes a retry with no ceiling or no jitter
 - [Timeout / Deadline](./timeout-deadline.md) — Added latency is the fastest way to find a missing or over-generous timeout
 - [Health Endpoint Monitoring](./health-endpoint.md) — The experiment checks whether the probe noticed, not just whether the code coped
+- [Analyse Failure Modes](../../../principles/failure-mode-analysis.md) — The analysis supplies the list of faults worth injecting
 
 **Prevents**
 

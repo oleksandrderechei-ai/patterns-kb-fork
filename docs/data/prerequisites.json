@@ -241,7 +241,7 @@
       "definition": "Collection-like interface over data storage",
       "route": "/patterns/enterprise/repository.html",
       "requires": [],
-      "related": ["unit-of-work", "data-mapper", "aggregate", "service-layer", "fake-object", "entity", "identity-map", "specification", "query-object", "cqrs"]
+      "related": ["unit-of-work", "data-mapper", "aggregate", "service-layer", "fake-object", "entity", "identity-map", "specification", "query-object", "cqrs", "managed-services"]
     },
     {
       "id": "specification",
@@ -489,7 +489,7 @@
       "definition": "Retries transient failures with a growing delay",
       "route": "/patterns/distributed/resilience/retry-backoff.html",
       "requires": ["idempotency", "timeout-deadline"],
-      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control", "websocket", "fail-fast"]
+      "related": ["circuit-breaker", "dead-letter-channel", "scheduling", "compensating-transaction", "service-mesh", "load-shedding", "self-healing", "fault-injection", "hedged-request", "optimistic-concurrency-control", "websocket", "fail-fast", "fallacies-of-distributed-computing"]
     },
     {
       "id": "bulkhead",
@@ -497,7 +497,7 @@
       "definition": "Isolates resources so one failure can't sink all",
       "route": "/patterns/distributed/resilience/bulkhead.html",
       "requires": [],
-      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline", "multi-tenancy", "semaphore", "priority-queue"]
+      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline", "multi-tenancy", "semaphore", "priority-queue", "redundancy"]
     },
     {
       "id": "health-endpoint",
@@ -585,7 +585,7 @@
       "definition": "Break it on purpose, on a schedule, to prove it survives",
       "route": "/patterns/distributed/resilience/fault-injection.html",
       "requires": [],
-      "related": ["circuit-breaker", "bulkhead", "retry-backoff", "timeout-deadline", "health-endpoint"]
+      "related": ["circuit-breaker", "bulkhead", "retry-backoff", "timeout-deadline", "health-endpoint", "failure-mode-analysis"]
     },
     {
       "id": "distributed-tracing",
@@ -641,7 +641,7 @@
       "definition": "A token grants temporary, limited access to a resource directly",
       "route": "/patterns/distributed/routing/valet-key.html",
       "requires": [],
-      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing"]
+      "related": ["gatekeeper", "object-storage", "least-privilege", "claim-check", "agent-sandboxing", "identity-as-perimeter"]
     },
     {
       "id": "api-routing",
@@ -673,7 +673,7 @@
       "definition": "Pins each client to one backend for the life of its session",
       "route": "/patterns/distributed/routing/sticky-session.html",
       "requires": [],
-      "related": ["stateless-service", "websocket", "api-gateway", "consistent-hashing"]
+      "related": ["stateless-service", "websocket", "api-gateway", "consistent-hashing", "scale-out"]
     },
     {
       "id": "blue-green-deployment",
@@ -681,7 +681,7 @@
       "definition": "Stand the new version up beside the old, then move traffic across",
       "route": "/patterns/distributed/routing/blue-green-deployment.html",
       "requires": [],
-      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "containerization", "deployment-stamp", "web-queue-worker", "rolling-deployment", "container-orchestration"]
+      "related": ["canary-release", "load-balancer", "strangler-fig", "external-configuration-store", "containerization", "deployment-stamp", "web-queue-worker", "rolling-deployment", "container-orchestration", "design-for-operations"]
     },
     {
       "id": "canary-release",
@@ -713,7 +713,7 @@
       "definition": "Change a published contract while the callers built on the old one keep working",
       "route": "/patterns/distributed/routing/api-versioning.html",
       "requires": [],
-      "related": ["api-routing", "acl", "dto", "hyrums-law", "contract-testing", "postels-law"]
+      "related": ["api-routing", "acl", "dto", "hyrums-law", "contract-testing", "postels-law", "design-for-evolution"]
     },
     {
       "id": "async-request-reply",
@@ -729,7 +729,7 @@
       "definition": "Resolve a logical service name to an instance that is alive right now",
       "route": "/patterns/distributed/routing/service-discovery.html",
       "requires": ["health-endpoint"],
-      "related": ["load-balancer", "circuit-breaker", "sidecar", "ambassador", "a2a", "reverse-proxy", "api-gateway"]
+      "related": ["load-balancer", "circuit-breaker", "sidecar", "ambassador", "a2a", "reverse-proxy", "api-gateway", "fallacies-of-distributed-computing"]
     },
     {
       "id": "mcp",
@@ -785,7 +785,7 @@
       "definition": "Splits data across nodes by a partition key",
       "route": "/patterns/distributed/routing/sharding.html",
       "requires": [],
-      "related": ["replication", "mapreduce", "geohash", "vertical-partitioning", "functional-partitioning", "redundancy", "scale-out", "partition-around-limits", "index-table", "relational-databases", "unique-id-generation", "consistent-hashing", "multi-tenancy"]
+      "related": ["replication", "mapreduce", "geohash", "vertical-partitioning", "functional-partitioning", "redundancy", "scale-out", "partition-around-limits", "index-table", "relational-databases", "unique-id-generation", "consistent-hashing", "multi-tenancy", "minimize-coordination"]
     },
     {
       "id": "cdn",
@@ -993,7 +993,7 @@
       "definition": "A grant of a resource for a fixed time that the holder must renew; if it stops renewing, the grant lapses by itself and the resource is free to give away.",
       "route": "/patterns/distributed/coordination/lease.html",
       "requires": [],
-      "related": ["heartbeat", "leader-election", "pessimistic-locking", "fencing-token", "distributed-lock"]
+      "related": ["heartbeat", "leader-election", "pessimistic-locking", "fencing-token", "distributed-lock", "minimize-coordination"]
     },
     {
       "id": "fencing-token",
@@ -1105,7 +1105,7 @@
       "definition": "Keeps copies of data on multiple nodes for durability and reads",
       "route": "/patterns/distributed/coordination/replication.html",
       "requires": ["write-ahead-log"],
-      "related": ["sharding", "consistent-hashing", "read-through", "gossip-protocol", "redundancy"]
+      "related": ["sharding", "consistent-hashing", "read-through", "gossip-protocol", "redundancy", "build-for-business"]
     },
     {
       "id": "crdt",
@@ -1449,7 +1449,7 @@
       "definition": "Converts a message between two different formats",
       "route": "/patterns/messaging/message-translator.html",
       "requires": [],
-      "related": ["acl", "adapter", "content-based-router", "postels-law", "message-encoding", "messaging-bridge", "content-enricher", "canonical-data-model", "dead-letter-channel"]
+      "related": ["acl", "adapter", "content-based-router", "postels-law", "message-encoding", "messaging-bridge", "content-enricher", "canonical-data-model", "dead-letter-channel", "design-for-evolution"]
     },
     {
       "id": "messaging-bridge",
@@ -1873,7 +1873,7 @@
       "definition": "Centralizes verifying who is making the request",
       "route": "/patterns/security/authentication-enforcer.html",
       "requires": [],
-      "related": ["api-gateway", "federated-identity", "secure-session-manager", "single-access-point", "identity-as-perimeter"]
+      "related": ["api-gateway", "federated-identity", "secure-session-manager", "single-access-point", "identity-as-perimeter", "defense-in-depth"]
     },
     {
       "id": "authorization-enforcer",
@@ -1881,7 +1881,7 @@
       "definition": "Centralizes checking what a role is allowed to do",
       "route": "/patterns/security/authorization-enforcer.html",
       "requires": ["authentication-enforcer"],
-      "related": ["least-privilege", "secure-session-manager", "identity-as-perimeter", "intercepting-validator", "gatekeeper", "single-access-point"]
+      "related": ["least-privilege", "secure-session-manager", "identity-as-perimeter", "intercepting-validator", "gatekeeper", "single-access-point", "defense-in-depth"]
     },
     {
       "id": "secure-session-manager",
@@ -2380,6 +2380,14 @@
       "related": ["persona-identification"]
     },
     {
+      "id": "service-boundaries",
+      "label": "Service Boundaries",
+      "definition": "Deciding where one service ends and the next begins, and recognising the day you got it wrong",
+      "route": "/themes/service-boundaries.html",
+      "requires": [],
+      "related": ["conways-law"]
+    },
+    {
       "id": "dry",
       "label": "Don't Repeat Yourself (DRY)",
       "definition": "Every piece of knowledge has one authoritative home in the system",
@@ -2561,7 +2569,7 @@
       "definition": "Two of everything, failing independently, with a rule for who decides",
       "route": "/principles/redundancy.html",
       "requires": [],
-      "related": ["replication", "sharding", "load-balancer", "quorum-consensus", "leader-election", "stateless-service", "self-healing", "failure-mode-analysis", "build-for-business", "regions", "defense-in-depth"]
+      "related": ["replication", "sharding", "load-balancer", "quorum-consensus", "leader-election", "stateless-service", "self-healing", "failure-mode-analysis", "build-for-business", "regions", "defense-in-depth", "bulkhead", "scale-out", "identity-as-perimeter"]
     },
     {
       "id": "failure-mode-analysis",
@@ -2569,7 +2577,7 @@
       "definition": "Enumerate how each part can fail, and decide the response first",
       "route": "/principles/failure-mode-analysis.html",
       "requires": [],
-      "related": ["self-healing", "health-endpoint", "timeout-deadline", "bulkhead", "redundancy", "design-for-operations", "build-for-business", "regions", "fallacies-of-distributed-computing"]
+      "related": ["self-healing", "health-endpoint", "timeout-deadline", "bulkhead", "redundancy", "design-for-operations", "build-for-business", "regions", "fallacies-of-distributed-computing", "fault-injection"]
     },
     {
       "id": "minimize-coordination",
@@ -2577,7 +2585,7 @@
       "definition": "Work that needs no agreement is the only work that scales",
       "route": "/principles/minimize-coordination.html",
       "requires": [],
-      "related": ["distributed-lock", "leader-election", "saga", "outbox", "optimistic-concurrency-control", "idempotency", "event-sourcing", "cqrs", "scale-out", "fallacies-of-distributed-computing"]
+      "related": ["distributed-lock", "leader-election", "saga", "outbox", "optimistic-concurrency-control", "idempotency", "event-sourcing", "cqrs", "scale-out", "fallacies-of-distributed-computing", "sharding", "lease"]
     },
     {
       "id": "scale-out",
@@ -2585,7 +2593,7 @@
       "definition": "Grow by adding machines, and never depend on any one of them",
       "route": "/principles/scale-out.html",
       "requires": ["stateless-service"],
-      "related": ["load-balancer", "autoscaling", "competing-consumers", "sharding", "minimize-coordination", "partition-around-limits", "build-for-business"]
+      "related": ["load-balancer", "autoscaling", "competing-consumers", "sharding", "minimize-coordination", "partition-around-limits", "build-for-business", "redundancy", "sticky-session"]
     },
     {
       "id": "partition-around-limits",
@@ -2601,7 +2609,7 @@
       "definition": "Operators are users of your system, and their needs are requirements",
       "route": "/principles/design-for-operations.html",
       "requires": [],
-      "related": ["health-endpoint", "correlation-identifier", "secure-logger", "sidecar", "load-shedding", "least-astonishment", "failure-mode-analysis", "managed-services", "resources"]
+      "related": ["health-endpoint", "correlation-identifier", "secure-logger", "sidecar", "load-shedding", "least-astonishment", "failure-mode-analysis", "managed-services", "resources", "blue-green-deployment"]
     },
     {
       "id": "managed-services",
@@ -2609,7 +2617,7 @@
       "definition": "Run only what your users pay you for; rent the rest",
       "route": "/principles/managed-services.html",
       "requires": [],
-      "related": ["object-storage", "distributed-cache", "api-gateway", "message-queue", "stateless-service", "kiss", "yagni", "design-for-operations", "identity-as-perimeter"]
+      "related": ["object-storage", "distributed-cache", "api-gateway", "message-queue", "stateless-service", "kiss", "yagni", "design-for-operations", "identity-as-perimeter", "repository"]
     },
     {
       "id": "identity-as-perimeter",
@@ -2617,7 +2625,7 @@
       "definition": "A verified identity grants access; where the packet came from does not",
       "route": "/principles/identity-as-perimeter.html",
       "requires": [],
-      "related": ["federated-identity", "authentication-enforcer", "authorization-enforcer", "secure-session-manager", "gatekeeper", "least-privilege", "service-mesh", "managed-services", "fallacies-of-distributed-computing", "defense-in-depth"]
+      "related": ["federated-identity", "authentication-enforcer", "authorization-enforcer", "secure-session-manager", "gatekeeper", "least-privilege", "service-mesh", "managed-services", "fallacies-of-distributed-computing", "defense-in-depth", "valet-key", "redundancy"]
     },
     {
       "id": "design-for-evolution",
@@ -2625,7 +2633,7 @@
       "definition": "Expect every part to change, and keep each change local",
       "route": "/principles/design-for-evolution.html",
       "requires": [],
-      "related": ["strangler-fig", "bounded-context", "acl", "hexagonal", "eda", "postels-law", "architecture-documentation", "conways-law", "rule-of-three"]
+      "related": ["strangler-fig", "bounded-context", "acl", "hexagonal", "eda", "postels-law", "architecture-documentation", "conways-law", "rule-of-three", "api-versioning", "message-translator"]
     },
     {
       "id": "build-for-business",
@@ -2633,7 +2641,7 @@
       "definition": "The non-functional numbers are requirements, and the business owns them",
       "route": "/principles/build-for-business.html",
       "requires": [],
-      "related": ["yagni", "kiss", "redundancy", "failure-mode-analysis", "load-shedding", "scale-out", "architecture-documentation"]
+      "related": ["yagni", "kiss", "redundancy", "failure-mode-analysis", "load-shedding", "scale-out", "architecture-documentation", "replication"]
     },
     {
       "id": "architecture-documentation",
@@ -2649,7 +2657,7 @@
       "definition": "Eight false assumptions about networks, each with the design habit that replaces it",
       "route": "/principles/fallacies-of-distributed-computing.html",
       "requires": [],
-      "related": ["failure-mode-analysis", "minimize-coordination", "timeout-deadline", "identity-as-perimeter"]
+      "related": ["failure-mode-analysis", "minimize-coordination", "timeout-deadline", "identity-as-perimeter", "retry-backoff", "service-discovery"]
     },
     {
       "id": "defense-in-depth",
@@ -2657,7 +2665,7 @@
       "definition": "Independent layers of protection, so one failed or bypassed control is not a breach",
       "route": "/principles/defense-in-depth.html",
       "requires": [],
-      "related": ["multi-tenancy", "redundancy", "identity-as-perimeter", "single-access-point", "least-privilege", "intercepting-validator", "agent-sandboxing"]
+      "related": ["multi-tenancy", "redundancy", "identity-as-perimeter", "single-access-point", "least-privilege", "intercepting-validator", "agent-sandboxing", "authentication-enforcer", "authorization-enforcer"]
     },
     {
       "id": "conways-law",
@@ -2665,7 +2673,7 @@
       "definition": "A system copies the communication structure of the organisation that builds it",
       "route": "/principles/conways-law.html",
       "requires": [],
-      "related": ["bounded-context", "design-for-evolution", "vertical-slice", "context-map", "micro-frontends"]
+      "related": ["bounded-context", "design-for-evolution", "vertical-slice", "context-map", "micro-frontends", "service-boundaries"]
     },
     {
       "id": "compute",

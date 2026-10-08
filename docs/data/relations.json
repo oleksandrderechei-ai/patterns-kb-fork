@@ -14197,6 +14197,20 @@
       "note_b": "Callers depend on whatever you actually do, so a same-name behaviour change breaks them."
     },
     {
+      "a": "bulkhead",
+      "verb": "alternative-to",
+      "b": "redundancy",
+      "note_a": "Redundancy survives a loss; a bulkhead keeps the loss small. Pick by which costs less",
+      "note_b": "Limit what one failure can reach for the cost of a boundary, not a second copy of everything"
+    },
+    {
+      "a": "fault-injection",
+      "verb": "combines-with",
+      "b": "failure-mode-analysis",
+      "note_a": "The analysis supplies the list of faults worth injecting",
+      "note_b": "Injecting each mitigated fault is how a claimed response gets proven"
+    },
+    {
       "a": "retry-backoff",
       "verb": "combines-with",
       "b": "fail-fast",
@@ -14328,6 +14342,118 @@
       "b": "rule-of-three",
       "note_a": "The wait avoids merging two things that only look alike",
       "note_b": "Says when to remove duplication: on the third copy for look-alike code, at the second for one fact kept in sync."
+    },
+    {
+      "a": "sharding",
+      "verb": "combines-with",
+      "b": "minimize-coordination",
+      "note_a": "A key that spreads writes across shards removes the agreement between them",
+      "note_b": "Each shard owns its keys, so writes on different shards never ask each other for agreement"
+    },
+    {
+      "a": "lease",
+      "verb": "combines-with",
+      "b": "minimize-coordination",
+      "note_a": "Expiry removes the need to contact a dead holder; pair it with a fencing token",
+      "note_b": "Exclusivity that expires frees itself when the holder dies, with no talk to the holder"
+    },
+    {
+      "a": "redundancy",
+      "verb": "combines-with",
+      "b": "scale-out",
+      "note_a": "Adding instances is the usual way to get the spare capacity",
+      "note_b": "More instances only count as spares if any one can vanish unnoticed"
+    },
+    {
+      "a": "sticky-session",
+      "verb": "alternative-to",
+      "b": "scale-out",
+      "note_a": "Affinity trades free instance replacement for session locality",
+      "note_b": "Pinning a client to one backend restores the machine dependence scale-out removes"
+    },
+    {
+      "a": "blue-green-deployment",
+      "verb": "combines-with",
+      "b": "design-for-operations",
+      "note_a": "A release that can be undone in one routing change is what operators need from a deploy",
+      "note_b": "Shifting traffic back to the old copy is the cheap rollback this principle asks for"
+    },
+    {
+      "a": "repository",
+      "verb": "combines-with",
+      "b": "managed-services",
+      "note_a": "A repository is the seam that lets a rented store be replaced",
+      "note_b": "The interface your own code owns is a repository; swapping the rented store means one adapter"
+    },
+    {
+      "a": "valet-key",
+      "verb": "combines-with",
+      "b": "identity-as-perimeter",
+      "note_a": "Valet Key hands a third party a scoped credential; identity as perimeter is the rule it applies",
+      "note_b": "A narrow, expiring credential for one object is the same identity-scoping move applied to data"
+    },
+    {
+      "a": "identity-as-perimeter",
+      "verb": "combines-with",
+      "b": "redundancy",
+      "note_a": "The issuer is a single point of failure; run it redundantly and decide what survives its outage",
+      "note_b": "Identity issuance stops every login when it fails, so it is a first candidate for a second copy"
+    },
+    {
+      "a": "replication",
+      "verb": "combines-with",
+      "b": "build-for-business",
+      "note_a": "Replication mode is where the recovery-point number gets paid for",
+      "note_b": "The data-loss target decides sync or async replication, so ask it before choosing"
+    },
+    {
+      "a": "api-versioning",
+      "verb": "combines-with",
+      "b": "design-for-evolution",
+      "note_a": "Exhaust additive change first; design for evolution says what to design so most releases need no version",
+      "note_b": "Where an additive change is impossible, run both versions and date the old one's retirement the day you publish the new"
+    },
+    {
+      "a": "message-translator",
+      "verb": "combines-with",
+      "b": "design-for-evolution",
+      "note_a": "The translator is how a consumer takes a neighbour's schema change without touching its own code",
+      "note_b": "On a queue, translate a neighbour's message at the edge so one file changes when their schema moves"
+    },
+    {
+      "a": "retry-backoff",
+      "verb": "combines-with",
+      "b": "fallacies-of-distributed-computing",
+      "note_a": "The fallacies of distributed computing say which calls owe a retry and a deadline",
+      "note_b": "The capped, jittered retry the second habit asks for is this pattern"
+    },
+    {
+      "a": "service-discovery",
+      "verb": "combines-with",
+      "b": "fallacies-of-distributed-computing",
+      "note_a": "The sixth fallacy, topology never changes, is why a caller looks up peers instead of holding addresses",
+      "note_b": "Topology never changes is false, so peers are looked up at call time"
+    },
+    {
+      "a": "conways-law",
+      "verb": "combines-with",
+      "b": "service-boundaries",
+      "note_a": "Team lines are an input when you draw a service boundary",
+      "note_b": "Conway's law says team structure shapes the boundaries you draw"
+    },
+    {
+      "a": "authentication-enforcer",
+      "verb": "combines-with",
+      "b": "defense-in-depth",
+      "note_a": "Its layers are only as independent as its checks",
+      "note_b": "A per-service identity check is the layer this principle asks for"
+    },
+    {
+      "a": "authorization-enforcer",
+      "verb": "combines-with",
+      "b": "defense-in-depth",
+      "note_a": "Defense in depth asks for this check behind the gateway too",
+      "note_b": "An access check inside each service is a layer that stands alone"
     }
   ],
   "group_order": {
