@@ -10981,7 +10981,7 @@
       "a": "double-checked-locking",
       "verb": "alternative-to",
       "b": "lazy-initialization",
-      "note_a": "Hand-rolls lazy creation with an unlocked fast path",
+      "note_a": "A hand-written fast path that skips the lock; the once primitive that lazy-initialization names is safer where the language has one",
       "note_b": "Lazy initialization is the wider idea, and a once primitive is the safe way to do it"
     },
     {
@@ -11213,7 +11213,7 @@
       "verb": "alternative-to",
       "b": "fork-join",
       "note_a": "Keeps the same threads alive across phases and makes each wait for the others at the end of a phase",
-      "note_b": "Ends each task at the join and starts new ones for the next phase, so no thread waits idle through a phase"
+      "note_b": "Ends each task at the join and starts new ones for the next phase, so a finished worker takes new pieces instead of waiting for a phase to end"
     },
     {
       "a": "barrier",
@@ -11254,14 +11254,14 @@
       "a": "fork-join",
       "verb": "combines-with",
       "b": "mapreduce",
-      "note_a": "Splits one job across the cores of one machine and merges the results",
+      "note_a": "Same split and merge on one machine's cores; mapreduce does it across machines, where the join becomes a network shuffle",
       "note_b": "Applies the same split-and-merge idea across the machines of a cluster"
     },
     {
       "a": "fork-join",
       "verb": "often-confused-with",
       "b": "scatter-gather",
-      "note_a": "Splits work across threads in one process that share memory",
+      "note_a": "Splits work across threads in one process that share memory; scatter-gather sends a request to separate services over a network and collects the replies",
       "note_b": "Sends one request to many services over a network and collects the replies"
     },
     {
@@ -14664,6 +14664,48 @@
       "b": "deadlock",
       "note_a": "move holds two folder locks, so two moves in opposite directions wait on each other until locks are taken in a fixed order.",
       "note_b": "Moving between two folders under per-folder locks is a worked case."
+    },
+    {
+      "a": "channels",
+      "verb": "combines-with",
+      "b": "thread-confinement",
+      "note_a": "A channel hands the confined value from one owning task to the next, so one task holds it at a time",
+      "note_b": "Confinement keeps a value in one task; a channel moves it to the next owner"
+    },
+    {
+      "a": "channels",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "Can fall into deadlock when two tasks each wait to send to the other on unbuffered channels, or a sender waits on a channel nobody reads",
+      "note_b": "Waiting cycles appear with channels when sends and receives block each other"
+    },
+    {
+      "a": "active-object",
+      "verb": "exposed-to",
+      "b": "head-of-line-blocking",
+      "note_a": "One slow request on the single scheduler thread holds every queued request behind it",
+      "note_b": "An active object's one scheduler thread makes every slow request block the queue behind it"
+    },
+    {
+      "a": "active-object",
+      "verb": "exposed-to",
+      "b": "unbounded-queue",
+      "note_a": "An unbounded request queue turns overload into growing memory and latency",
+      "note_b": "An active object's request queue grows without limit when callers outpace its single thread"
+    },
+    {
+      "a": "barrier",
+      "verb": "alternative-to",
+      "b": "thread-pool",
+      "note_a": "Independent items on a queue keep every thread busy with no meeting point; a barrier holds all threads at each phase end",
+      "note_b": "Use a barrier instead when the same threads must all finish one phase before any starts the next"
+    },
+    {
+      "a": "copy-on-write",
+      "verb": "combines-with",
+      "b": "mutex",
+      "note_a": "A mutex around clone-and-publish keeps two writers from discarding each other's copy; readers never take it",
+      "note_b": "Copy-on-write readers never take the mutex; only writers do, around clone-and-publish"
     }
   ],
   "group_order": {

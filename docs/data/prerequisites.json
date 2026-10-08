@@ -1209,7 +1209,7 @@
       "definition": "Reuses a fixed set of worker threads",
       "route": "/patterns/concurrency/thread-pool.html",
       "requires": [],
-      "related": ["bulkhead", "producer-consumer", "future-promise", "semaphore", "reactor", "fork-join", "proactor", "backpressure", "splitter"]
+      "related": ["bulkhead", "producer-consumer", "future-promise", "semaphore", "reactor", "fork-join", "proactor", "backpressure", "splitter", "barrier"]
     },
     {
       "id": "future-promise",
@@ -1273,7 +1273,7 @@
       "definition": "Remove races by giving each thread sole ownership of its data",
       "route": "/patterns/concurrency/thread-confinement.html",
       "requires": [],
-      "related": ["monitor-object", "reactor", "immutability", "mutex", "active-object", "lock-free"]
+      "related": ["monitor-object", "reactor", "immutability", "mutex", "active-object", "lock-free", "channels"]
     },
     {
       "id": "batching",
@@ -1305,7 +1305,7 @@
       "definition": "Readers never lock — writers publish a new copy",
       "route": "/patterns/concurrency/copy-on-write.html",
       "requires": [],
-      "related": ["lock-free", "rw-lock", "iterator"]
+      "related": ["lock-free", "rw-lock", "iterator", "mutex"]
     },
     {
       "id": "mutex",
@@ -1313,7 +1313,7 @@
       "definition": "One thread at a time holds the lock, so shared data is never seen half-changed",
       "route": "/patterns/concurrency/mutex.html",
       "requires": [],
-      "related": ["active-object", "channels", "semaphore", "lock-free", "thread-confinement", "barrier"]
+      "related": ["active-object", "channels", "semaphore", "lock-free", "thread-confinement", "barrier", "copy-on-write"]
     },
     {
       "id": "proactor",
@@ -1337,7 +1337,7 @@
       "definition": "A typed pipe between goroutines or threads: one side sends, the other receives, and a full or empty pipe makes the sender or receiver wait",
       "route": "/patterns/concurrency/channels.html",
       "requires": [],
-      "related": ["producer-consumer", "backpressure", "mutex", "message-queue", "actor-model"]
+      "related": ["producer-consumer", "backpressure", "mutex", "message-queue", "actor-model", "thread-confinement"]
     },
     {
       "id": "ring-buffer",
@@ -1353,7 +1353,7 @@
       "definition": "Every thread waits at a point until all have arrived, then all continue together",
       "route": "/patterns/concurrency/barrier.html",
       "requires": [],
-      "related": ["fork-join", "mutex", "mapreduce"]
+      "related": ["fork-join", "mutex", "mapreduce", "thread-pool"]
     },
     {
       "id": "fork-join",

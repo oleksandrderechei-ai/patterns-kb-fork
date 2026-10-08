@@ -69,6 +69,23 @@ deleted when it ships or is dropped. A trap, something that bit a session, goes 
     link;
   - a second pass for the 96 plan lines dropped as over the cap of 8, mostly wording and
     one-claim-per-item splits.
+- From the kb-improve run on the nine remaining concurrency patterns (its pull request lists
+  every dropped finding):
+  - `concurrency` theme decide rows that never reach `channels`, `active-object`, `mutex`
+    or `double-checked-locking`, and `reactor` missing from the row that routes to
+    `proactor`;
+  - `production` blocks for `active-object` (queue depth, request wait, scheduler use) and
+    `ring-buffer` (drops, high-water fill, consumer lag);
+  - edges drafted but over the cap: `proactor` combines-with `backpressure`, `object-pool`
+    and `thread-confinement`, `ring-buffer` alternative-to `mutex`, `double-checked-locking`
+    alternative-to `monitor-object`, `fork-join` exposed-to `starvation`; and two notes to fix
+    in place: `proactor` to `synchronous-io` ("with a kernel proactor no thread waits") and
+    the `double-checked-locking` to `singleton` note, which oversells the idiom;
+  - a sourcing pass for the rules of thumb dropped as "needs a source": the fork-join cutoff
+    and pieces-per-core ratio, the barrier chunk count, the proactor in-flight cap, a
+    channel handover cost, a spinlock threshold;
+  - `kb.mjs explain` drops the period after a cost's bold lead when the lead is passed
+    without one; the writer could add it, as the page shape expects.
 - Make the graph page agnostic and useful: `map/graph.html` on the built site, drawn by
   `site/src/components/GraphExplorer/`.
 

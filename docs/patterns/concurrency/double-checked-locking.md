@@ -16,18 +16,18 @@ A lazy-initialization idiom that tests whether the value exists before taking th
 ## What it is
 <!--meta block=description-->
 
-Lazy initialization under a lock makes every read pay for the lock, though only the first call needs it. Double-checked locking skips the lock once the value exists: test, lock, test again, create. The idiom is a classic trap. Without a barrier on the published reference, a thread can see a half-built object, so use a volatile field, an atomic or a once primitive.
+Reads of a lazy value skip the lock after first creation: test, lock, test again, create. Without a barrier on the published reference, a thread can see a half-built object, so use a volatile field, an atomic or a once primitive.
 
 ## Explained
 <!--meta block=explain-->
 
-Lazy initialization under a lock makes every read pay for the lock, though only the first call needs it. Double-checked locking skips the lock once the value exists: read the shared reference without the lock, and if it is empty take the lock, check again, build the object and publish it. Only callers that arrive before the object exists ever lock. The idiom is correct only when publishing the reference carries a memory barrier (a rule that stops the CPU and compiler reordering writes). Without one a reader can see the reference before the constructor writes, and use a half-built object. Choose it only when your language has no once primitive and a lock on each read shows in a profile.
+Lazy initialization under a lock makes every read pay for the lock, though only the first call needs it. Double-checked locking skips the lock once the value exists: read the shared reference without the lock, and if it is empty take the lock, check again, build the object and publish it. Only callers that arrive before the object exists ever lock. The idiom is correct only when publishing the reference carries a memory barrier (an instruction that stops the CPU and compiler reordering memory operations across it). Without one a reader can see the reference before the constructor writes, and use a half-built object. Choose it only when your language has no once primitive and a lock on each read shows in a profile.
 
-- **Silent breakage.** A missing barrier fails rarely and only on some hardware. Use a volatile field, an atomic or a once primitive.
+- **Silent breakage.** A missing barrier fails rarely, depending on compiler and hardware. Use a volatile field, an atomic or a once primitive.
 - **No safe form on old runtimes.** Before the Java 5 memory model no source form was safe. Use a holder class or eager static.
 - **Small gain.** An uncontended lock costs tens of nanoseconds. Measure before you add the idiom.
 
-**Example.** A service reads a lazy config 2 million times a second across 16 threads. Locking each read at about 25 ns adds 50 ms of lock work every second, plus contention. With the idiom, each read after startup is one load. In the broken form, a reader can see a non-null pointer whose fields are still zero, and it crashes once in a million starts. The fix is one word: declare the field volatile in Java, use sync.Once in Go, or an atomic load with acquire ordering in C++.
+**Example.** A service reads a lazy config 2 million times a second across 16 threads. Locking each read at about 25 ns adds 50 ms of lock work every second, 5% of one core, plus contention; the profile decides whether that matters. With the idiom, each read after startup is one load. In the broken form, a reader can see a non-null pointer whose fields are still zero, and the service can crash on rare starts, depending on compiler and hardware. The fix is small: declare the field volatile in Java, use sync.Once in Go, or load with acquire ordering in C++.
 
 ## How it works
 <!--meta block=structure-->
@@ -69,8 +69,8 @@ sequenceDiagram
 - **Volatile field (Java 5 and later)** — Declaring the reference `volatile` forbids the reordering that exposed half-built objects. It is the correct form on a JVM that follows the post-2004 memory model.
 - **Initialization-on-demand holder (Java)** — A nested class holds the instance in a static field, and the class loader initializes it once on first use. It needs no lock of your own and no volatile.
 - **Once primitive** — `sync.Once` in Go or `std::call_once` in C++ runs the creator exactly once and publishes the result safely. It is the shortest correct form.
-- **Atomic with acquire and release** — In C++ or Rust, the fast path loads with acquire and the creator stores with release. It is correct and easy to get subtly wrong.
-- **The broken form** — A plain field with no barrier. The compiler or CPU may publish the reference before the constructor's writes, so a reader gets an object with default fields. Before the Java 5 memory model, even `volatile` did not fix it.
+- **Atomic with acquire and release** — In C++ or Rust, the fast path loads with acquire and the creator stores with release. A relaxed or plain load on the fast path, or a release store before the constructor's writes finish, brings back the half-built read.
+- **The broken form** — A plain field with no barrier. The compiler or CPU may publish the reference before the constructor's writes, so a reader gets an object with default fields.
 
 ## Trade-offs
 <!--meta block=tradeoffs-->
@@ -85,9 +85,9 @@ sequenceDiagram
 ### Cons
 <!--meta polarity=con-->
 
-- **It is easy to get wrong** — without a barrier a reader can see a half-built object, and the bug appears rarely and only on some hardware.
+- **It is easy to get wrong** — without a barrier a reader can see a half-built object, and the bug appears rarely, depending on compiler and hardware; in Go the unlocked read is a data race on any CPU.
 - **Older runtimes cannot fix it** — before Java 5 no source form was safe, so use a holder class or an eager static there.
-- **The gain is small** — an uncontended lock costs tens of nanoseconds, so measure before you add the idiom.
+- **The gain is small** — an uncontended lock costs tens of nanoseconds, so benchmark the accessor with and without the lock at your real thread count and adopt the idiom only if the lock shows in a profile.
 - **A once primitive does the same job** — hand-writing the pattern adds risk for no speed.
 
 ## When to use it
@@ -111,7 +111,7 @@ sequenceDiagram
 ## Code sketch
 <!--meta block=sketch-->
 
-```go summary="Go — the broken check, and the correct form with sync.Once"
+```go summary="Go — the broken check, the correct double check, and sync.Once"
 type Config struct{ url string }
 
 var (
@@ -121,7 +121,7 @@ var (
 )
 
 // BROKEN: the unlocked read of inst races with the write. A reader can see a
-// non-nil pointer before the fields behind it are visible.
+// non-nil pointer before the fields behind it are visible. Run the test with go test -race to catch it.
 func getBroken() *Config {
 	if inst == nil {
 		mu.Lock()
@@ -137,6 +137,23 @@ func getBroken() *Config {
 func getOnce() *Config {
 	once.Do(func() { inst = &Config{url: "db://primary"} })
 	return inst
+}
+
+var ptr atomic.Pointer[Config] // Go 1.19+
+
+// CORRECT, hand-written: atomic load, lock, second load, store.
+func getAtomic() *Config {
+	if p := ptr.Load(); p != nil {
+		return p
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if p := ptr.Load(); p != nil {
+		return p
+	}
+	p := &Config{url: "db://primary"}
+	ptr.Store(p)
+	return p
 }
 ```
 
@@ -166,7 +183,7 @@ func getOnce() *Config {
 
 **Alternative to**
 
-- [Lazy Initialization](../gof/extra/lazy-initialization.md) — Hand-rolls lazy creation with an unlocked fast path
+- [Lazy Initialization](../gof/extra/lazy-initialization.md) — A hand-written fast path that skips the lock; the once primitive that lazy-initialization names is safer where the language has one
 - [Singleton](../gof/creational/singleton.md) — Often the way a lazy singleton avoids a lock on every read
 
 **Exposed to**

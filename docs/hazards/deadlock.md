@@ -95,5 +95,6 @@ The deeper escape is to **not share the locks at all**: confine each piece of st
 - [Inventory Management](../designs/inventory-management.md) — the inventory transfer avoids it with sorted-id lock order and reentrant locks
 - [BookMyShow](../designs/bookmyshow.md) — A seat-booking design where finer-grained per-seat locks bring the risk.
 - [File System](../designs/file-system.md) — Moving between two folders under per-folder locks is a worked case.
+- [Channels](../patterns/concurrency/channels.md) — Waiting cycles appear with channels when sends and receives block each other
 
 <!-- relationships:end -->

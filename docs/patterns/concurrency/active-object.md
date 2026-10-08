@@ -26,7 +26,7 @@ An active object gives an object its own thread of control. A caller invokes a m
 - **Head-of-line blocking.** One slow request delays every request behind it. Run slow I/O on another executor.
 - **Hidden overload.** An unbounded queue grows while latency climbs. Bound it and choose what a full queue does.
 
-**Example.** A logger object writes to disk in 5 ms, so its thread serves at most 200 writes a second. Eight request threads call it 500 times a second in total. Each call costs the caller about 1 microsecond, because it only enqueues. The queue grows by 300 requests a second. With a bound of 1,000 it fills in about 3 seconds, and callers then block or get a rejection. The cost is that you now own an overload policy, which a plain lock would have hidden behind slow callers.
+**Example.** A logger object writes to disk in 5 ms, so its thread serves at most 200 writes a second. Callers call it 500 times a second in total. Each call costs the caller roughly 1 microsecond on a typical machine, because it only enqueues. The queue grows by 300 requests a second. With a bound of 1,000 it fills in about 3 seconds, and callers then block or get a rejection. The cost is that you now own an overload policy, which a plain lock would have hidden behind slow callers.
 
 ## How it works
 <!--meta block=structure-->
@@ -80,7 +80,7 @@ sequenceDiagram
 ### Pros
 <!--meta polarity=pro-->
 
-- **Callers never block on the object** — a call costs an enqueue, so a slow method delays only its own result.
+- **Callers do not wait for the method to run** — a call costs an enqueue until the bounded queue is full, and a slow method delays only its own result.
 - **No lock around the state** — one thread touches it, so the body of every method reads as single-threaded code.
 - **Callers see a plain method API** — the proxy hides the queue and the thread, so callers keep ordinary typed calls and futures.
 - **Order is explicit** — requests run in queue order, which gives a clear place to add priorities or batching.
@@ -92,6 +92,8 @@ sequenceDiagram
 - **An unbounded queue hides overload** — memory grows while latency climbs, so bound the queue and decide what a full queue does.
 - **Each call pays a queue hop and a thread switch** — a call that was 50 ns becomes microseconds, so do not use it for tiny hot methods.
 - **Stack traces stop at the proxy** — the failure surfaces on the future, so log the request origin when you enqueue.
+- **A request that waits on a future from its own object deadlocks** — the scheduler thread waits for itself, so chain with callbacks or return the future instead.
+- **A crashed scheduler strands queued futures** — catch exceptions in the loop and resolve each future with the error, and decide on close whether pending requests drain or are cancelled.
 
 ## When to use it
 <!--meta block=usage-->
@@ -116,6 +118,8 @@ sequenceDiagram
 <!--meta block=sketch-->
 
 ```go summary="Go — a counter object whose goroutine owns the state and returns futures"
+var errFull = errors.New("queue full")
+
 type req struct {
 	delta int
 	reply chan int // the future: resolved once, read once
@@ -135,23 +139,32 @@ func NewCounter() *Counter {
 }
 
 // Add returns at once; the caller reads the future when it needs the value.
-func (c *Counter) Add(d int) <-chan int {
+func (c *Counter) Add(d int) (<-chan int, error) {
 	r := req{delta: d, reply: make(chan int, 1)}
-	c.in <- r
-	return r.reply
+	select {
+	case c.in <- r:
+		return r.reply, nil
+	default:
+		return nil, errFull // bounded: a full queue rejects; a plain send would block
+	}
 }
+
+// Close stops the goroutine after queued requests drain; Add after Close panics.
+func (c *Counter) Close() { close(c.in) }
 
 func main() {
 	c := NewCounter()
-	f1, f2 := c.Add(1), c.Add(10) // both enqueue without waiting
-	fmt.Println(<-f1, <-f2)       // 1 11
+	defer c.Close()
+	f1, _ := c.Add(1) // both enqueue without waiting
+	f2, _ := c.Add(10)
+	fmt.Println(<-f1, <-f2) // 1 11
 }
 ```
 
 ## In the wild
 <!--meta block=wild-->
 
-- **ACE (Adaptive Communication Environment)** — The C++ framework from Douglas Schmidt that provided an Active Object implementation, with an activation queue of method requests, and from which the pattern was documented. {#wild-ace}
+- **ACE (Adaptive Communication Environment)** — The C++ framework from Douglas Schmidt. It ships an activation queue and method request classes that implement the pattern. {#wild-ace}
 
 ## Where it shows up
 <!--meta block=fluency-->
@@ -185,5 +198,7 @@ func main() {
 **Exposed to**
 
 - [Synchronous I/O](../../hazards/synchronous-io.md) — Can fall into synchronous io when a scheduler thread that blocks on one call stalls every queued method request
+- [Head-of-Line Blocking](../../hazards/head-of-line-blocking.md) — One slow request on the single scheduler thread holds every queued request behind it
+- [Unbounded Queue](../../hazards/unbounded-queue.md) — An unbounded request queue turns overload into growing memory and latency
 
 <!-- relationships:end -->
