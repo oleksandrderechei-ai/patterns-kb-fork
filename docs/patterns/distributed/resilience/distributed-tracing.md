@@ -21,13 +21,13 @@ When a request crosses many services and runs slowly, no single log shows which 
 ## Explained
 <!--meta block=explain-->
 
-Distributed tracing records one request's path through many services, so you can see which step took the time or failed. Each piece of work, such as an incoming request, an outgoing call or a query, is saved as a span with a start, a duration and a status. Every span carries the same trace id and names the span that caused it, so the spans join into one tree. Each caller puts the trace id and its own span id into the outgoing request, usually in the traceparent header, and the callee continues from them. Choose it over logs when no one can say which service owns a delay, since logs from different machines cannot be lined up reliably. Check the awkward hops: a message queue, where the id must ride in the message, and a thread pool, where you carry it across by hand.
+Distributed tracing records one request's path through many services, so you can see which step took the time or failed. Each piece of work, such as an incoming request, an outgoing call or a query, is saved as a span with a start, a duration and a status. Every span carries the same trace id and names the span that caused it, so the spans join into one tree. Each caller puts the trace id and its own span id into the outgoing request, usually in the traceparent header, and the callee continues from them. The first service also sets the sampled flag in traceparent and later services follow it, so the whole trace is kept or dropped together. Choose it over logs when no one can say which service owns a delay, since logs from different machines cannot be lined up reliably. Check the awkward hops: a message queue, where the id must ride in the message, and a thread pool, where you carry it across by hand.
 
 - **Volume.** Full tracing costs more to store than the traffic costs to serve, so keep a sample and every error or slow trace.
 - **Silent breaks.** One service that drops the id splits the trace in two, so check every hop.
 - **Samples cannot count.** A sample cannot say how many requests were slow, so use metrics and put the trace id on them.
 
-**Example.** A checkout takes 1.2 s. Its trace shows the order service at 1.18 s, inventory at 40 ms and payment at 1.05 s, and inside payment one bank call at 1.0 s. The slow hop is visible without reading five log files. Each request makes 20 spans of about 500 bytes, so 10 KB, and at 1,000 requests a second that is 10 MB a second, about 864 GB a day. Keeping 1% brings it to 8.6 GB. The cost is that a fault hitting 1 request in 1,000 is then kept in only 1 trace in 100,000, so keep every error and every slow trace on top.
+**Example.** A checkout takes 1.2 s. Its trace shows the order service at 1.18 s, inventory at 40 ms and payment at 1.05 s, and inside payment one bank call at 1.0 s. The slow hop is visible without reading five log files. Each request makes 20 spans of about 500 bytes, so 10 KB, and at 1,000 requests a second that is 10 MB a second, about 864 GB a day. Keeping 1% brings it to 8.6 GB. The cost is that a fault hitting 1 request in 1,000 is then kept for only about 1 request in 100,000, so keep every error and every slow trace on top.
 
 ## How it works
 <!--meta block=structure-->
@@ -72,10 +72,10 @@ sequenceDiagram
 ## Variations
 <!--meta block=variations-->
 
-- **Head-based sampling** — The first service decides whether this trace will be kept, and propagates that decision so every downstream service agrees. It is stateless, costs nothing to run, and bounds spend predictably, which is why it is where almost everyone starts. It also decides before anything has happened, so the rare slow or failed request is discarded at exactly the same rate as the boring ones.
+- **Head-based sampling** — The first service decides whether to keep the trace and propagates that decision so every downstream service agrees. It is stateless, adds no collector state, and bounds spend predictably, so most systems start here. It decides before anything has happened, so a rare slow or failed request is dropped at the same rate as a routine one.
 - **Tail-based sampling** — Spans are buffered until the trace completes, then kept or dropped based on what actually happened — errors and long durations retained, routine successes thrown away. It keeps the traces you would have chosen with hindsight, which is the whole point of having them. The buffer is a stateful component sized for peak trace throughput, and it has to hold every span of a trace in one place, which constrains how the collectors are deployed.
-- **Forced sampling on interest** — A low baseline head rate, plus rules that switch sampling on when a request is already suspicious — an error status, a debug header from a support tool, an upstream that has been slow. Because the decision propagates, one service turning it on captures the full downstream tree. It needs the trigger to be visible early, so it complements tail-based sampling rather than replacing it.
-- **Instrumentation at the [sidecar](../routing/sidecar.md) or [mesh](../routing/service-mesh.md)** — The proxy beside each service creates and propagates spans, so every hop is traced with no change to application code — invaluable across services nobody wants to modify. It sees only what crosses the network, so the trace shows which call was slow and never which function inside it was, and in-process work stays invisible.
+- **Forced sampling on interest** — A low baseline head rate, plus rules that switch sampling on when a request is already suspicious: an error status, a debug header from a support tool, an upstream that has been slow. Because the decision propagates, the service that turns it on keeps the trace from that service down; hops upstream that already decided to drop stay missing, so put the trigger at the entry service. The trigger must be visible early, so use it alongside tail-based sampling.
+- **Instrumentation at the [sidecar](../routing/sidecar.md) or [mesh](../routing/service-mesh.md)** — The proxy beside each service creates the spans for each network hop with no change to its tracing code. The application must still copy the trace headers from each inbound request to its outbound calls, because the proxy cannot tie them together; one service that skips this breaks every trace through it. It sees only what crosses the network, so the trace shows which call was slow and never which function inside it.
 - **Exemplars linking metrics to traces** — A latency metric carries the trace id of a request that landed in each bucket, so a spike on a dashboard is one click from a concrete example of it. It closes the gap between "how many were slow" and "why this one was", which is otherwise a manual search. It requires the metrics pipeline and the tracing pipeline to agree on the identifier, and only helps for the requests that were sampled.
 
 ## Trade-offs
@@ -88,7 +88,7 @@ sequenceDiagram
 - **A failure shows where it started** rather than where it surfaced, which is usually several services apart.
 - **The trace tree documents the real call graph**, including the dependency nobody remembered adding.
 - **A standard propagation format** means services owned by other teams join the same trace without any agreement beyond the header.
-- **Export is out of band**, so a tracing backend that is down costs visibility rather than availability.
+- **Export is out of band**, so a tracing backend that is down costs visibility rather than availability, provided the exporter drops rather than blocks when its queue fills.
 
 ### Cons
 <!--meta polarity=con-->
@@ -122,31 +122,35 @@ sequenceDiagram
 <!--meta block=sketch-->
 
 ```typescript summary="TypeScript — propagate the context, including across the hop that usually loses it"
+import { context, propagation, trace } from "@opentelemetry/api";
+const tracer = trace.getTracer("orders");
+
 // INBOUND: continue the caller's trace if there is one, start a new one if not.
-// Any service that speaks the same header format joins the trace, no other agreement needed.
+// Any service that speaks the same header format joins the trace; the header format is the only agreement needed to join.
 app.use((req, res, next) => {
-  const parent = propagator.extract(req.headers);      // reads `traceparent`
-  tracer.startActiveSpan(`${req.method} ${req.route?.path ?? "unmatched"}`, { parent }, (span) => {
+  const parent = propagation.extract(context.active(), req.headers);      // reads `traceparent`
+  tracer.startActiveSpan(`${req.method} ${req.route?.path ?? "unmatched"}`, {}, parent, (span) => {
     // Route TEMPLATE, never the concrete path: `/orders/:id` is one operation,
     // `/orders/8f2c...` is one per request and kills the backend index.
     res.on("finish", () => { span.setAttribute("http.status_code", res.statusCode); span.end(); });
     next();
   });
 });
-// OUTBOUND over HTTP: propagator.inject(context.active(), headers) writes `traceparent`.
+// OUTBOUND over HTTP: propagation.inject(context.active(), headers) writes `traceparent`.
 // OUTBOUND over a QUEUE: the hop that breaks. No connection carries the context,
 // so write it into the ENVELOPE and read it back out, or the asynchronous half
 // of the work starts a brand-new, unrelated trace.
 async function publishOrderPlaced(event: OrderPlaced) {
   const carrier: Record<string, string> = {};
-  propagator.inject(context.active(), carrier);
+  propagation.inject(context.active(), carrier);
   await queue.publish({ body: event, headers: carrier });
 }
 async function onMessage(msg: Message) {
-  const parent = propagator.extract(msg.headers);
+  const parent = propagation.extract(context.active(), msg.headers);
+  const link = { context: trace.getSpanContext(parent)! };
   // A `link`, not a child span, when the consumer runs much later: a child
   // would distort the producer's span, which ended long ago.
-  tracer.startActiveSpan("OrderPlaced handler", { links: [{ context: parent }] }, async (span) => {
+  tracer.startActiveSpan("OrderPlaced handler", { links: [link] }, async (span) => {
     try { await handle(msg.body); } finally { span.end(); }
   });
 }
@@ -166,11 +170,11 @@ async function onMessage(msg: Message) {
 ### Tuning knobs
 <!--meta polarity=knob-->
 
-- **Sampling rate and strategy** — What fraction of traces is kept and when that is decided. It sets both the storage bill and whether the trace you need during an incident exists at all.
+- **Sampling rate and strategy** — What fraction of traces is kept and when that is decided. It sets both the storage bill and whether the trace you need during an incident exists at all. Work it out from the budget: stored spans per second = requests per second × spans per trace × rate. Pick the rate that fits storage, then add keep-rules for errors and slow traces.
 - **Span naming** — What a span is called — the route template, never the concrete path. A name containing an id creates one operation per request and turns the backend index into the bottleneck.
 - **Attribute allowlist** — Which request data is attached to spans. Treat it exactly like a log destination: attributes travel to a third-party backend and get none of the review a log statement usually receives.
 - **Exporter batching and queue size** — How many spans buffer before export and what happens when the buffer fills. Dropping spans is correct; blocking the request path to export telemetry is not.
-- **Tail-sampling buffer window** — How long a collector holds the spans of an unfinished trace. Shorter than your slowest request and the slow traces are the ones truncated.
+- **Tail-sampling buffer window** — How long a collector holds the spans of an unfinished trace. Shorter than your slowest request and the slow traces are the ones truncated, so set it above the request timeout plus export delay; the OpenTelemetry Collector's tail-sampling processor waits 30 s by default (`decision_wait`). Buffer memory is about traces per second × window × spans per trace × span size, and every span of a trace must reach the same collector, so route by trace id.
 
 ### Signals to watch
 <!--meta polarity=signal-->
