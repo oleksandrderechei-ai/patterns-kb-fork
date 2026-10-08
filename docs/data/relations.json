@@ -14197,6 +14197,20 @@
       "note_b": "Callers depend on whatever you actually do, so a same-name behaviour change breaks them."
     },
     {
+      "a": "bulkhead",
+      "verb": "alternative-to",
+      "b": "redundancy",
+      "note_a": "Redundancy survives a loss; a bulkhead keeps the loss small. Pick by which costs less",
+      "note_b": "Limit what one failure can reach for the cost of a boundary, not a second copy of everything"
+    },
+    {
+      "a": "fault-injection",
+      "verb": "combines-with",
+      "b": "failure-mode-analysis",
+      "note_a": "The analysis supplies the list of faults worth injecting",
+      "note_b": "Injecting each mitigated fault is how a claimed response gets proven"
+    },
+    {
       "a": "retry-backoff",
       "verb": "combines-with",
       "b": "fail-fast",

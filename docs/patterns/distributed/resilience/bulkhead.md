@@ -233,6 +233,7 @@ for (const [type, pool] of Object.entries(pools)) {
 **Alternative to**
 
 - [Compute Resource Consolidation](../routing/compute-resource-consolidation.md) — Isolate into pools when shared fate is unacceptable, whatever it costs in idle capacity
+- [Make Everything Redundant](../../../principles/redundancy.md) — Redundancy survives a loss; a bulkhead keeps the loss small. Pick by which costs less
 
 **Often confused with**
 

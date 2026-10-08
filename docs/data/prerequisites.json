@@ -497,7 +497,7 @@
       "definition": "Isolates resources so one failure can't sink all",
       "route": "/patterns/distributed/resilience/bulkhead.html",
       "requires": [],
-      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline", "multi-tenancy", "semaphore", "priority-queue"]
+      "related": ["compute-resource-consolidation", "rate-limiter", "circuit-breaker", "thread-pool", "microkernel", "load-shedding", "self-healing", "failure-mode-analysis", "partition-around-limits", "deployment-stamp", "fault-injection", "fallback", "timeout-deadline", "multi-tenancy", "semaphore", "priority-queue", "redundancy"]
     },
     {
       "id": "health-endpoint",
@@ -585,7 +585,7 @@
       "definition": "Break it on purpose, on a schedule, to prove it survives",
       "route": "/patterns/distributed/resilience/fault-injection.html",
       "requires": [],
-      "related": ["circuit-breaker", "bulkhead", "retry-backoff", "timeout-deadline", "health-endpoint"]
+      "related": ["circuit-breaker", "bulkhead", "retry-backoff", "timeout-deadline", "health-endpoint", "failure-mode-analysis"]
     },
     {
       "id": "distributed-tracing",
@@ -2561,7 +2561,7 @@
       "definition": "Two of everything, failing independently, with a rule for who decides",
       "route": "/principles/redundancy.html",
       "requires": [],
-      "related": ["replication", "sharding", "load-balancer", "quorum-consensus", "leader-election", "stateless-service", "self-healing", "failure-mode-analysis", "build-for-business", "regions", "defense-in-depth"]
+      "related": ["replication", "sharding", "load-balancer", "quorum-consensus", "leader-election", "stateless-service", "self-healing", "failure-mode-analysis", "build-for-business", "regions", "defense-in-depth", "bulkhead"]
     },
     {
       "id": "failure-mode-analysis",
@@ -2569,7 +2569,7 @@
       "definition": "Enumerate how each part can fail, and decide the response first",
       "route": "/principles/failure-mode-analysis.html",
       "requires": [],
-      "related": ["self-healing", "health-endpoint", "timeout-deadline", "bulkhead", "redundancy", "design-for-operations", "build-for-business", "regions", "fallacies-of-distributed-computing"]
+      "related": ["self-healing", "health-endpoint", "timeout-deadline", "bulkhead", "redundancy", "design-for-operations", "build-for-business", "regions", "fallacies-of-distributed-computing", "fault-injection"]
     },
     {
       "id": "minimize-coordination",
