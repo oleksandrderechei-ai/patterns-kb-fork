@@ -14587,6 +14587,20 @@
       "b": "cache-stampede",
       "note_a": "A hot key's expiry sends every reader to the origin at once; jittered TTLs and a set-if-absent refill lock turn it into one query.",
       "note_b": "A shared cache in front of a database turns each hot-key expiry into a herd of misses."
+    },
+    {
+      "a": "top-k",
+      "verb": "exposed-to",
+      "b": "cache-stampede",
+      "note_a": "When a window's cached ranking expires, every request falls through to the store at once; a precompute job refreshes it ahead of expiry.",
+      "note_b": "A top-K ranking read by millions shows the cold-miss pile-up when its one cached entry expires."
+    },
+    {
+      "a": "top-k",
+      "verb": "exposed-to",
+      "b": "hot-key",
+      "note_a": "A few viral videos take most views, so the writer that owns their counters cannot keep up; batching in the stream job absorbs them.",
+      "note_b": "A skewed view stream concentrates writes on a few video counters."
     }
   ],
   "group_order": {
