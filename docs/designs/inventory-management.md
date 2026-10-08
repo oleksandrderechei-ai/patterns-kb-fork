@@ -80,7 +80,7 @@ class InventoryManager:                                  # the only public surfa
 ## How the system is built
 <!--meta block=architecture-->
 
-The manager is a thin router over the warehouse map. `addStock`, `removeStock`, and `setLowStockAlert` look up one warehouse by id and delegate; a missing id throws for the write path and fails cheaply for the query path. Only two operations are genuinely the manager's own work: `getWarehousesWithAvailability` iterates every warehouse and collects the ids that can fulfil the quantity, and `transfer` coordinates two warehouses at once. All the real state — the quantity map, the alert configs, and a reentrant lock — lives inside each `Warehouse`, which serialises its own mutations and, crucially, decides which alerts to fire while holding the lock but leaves the actual firing to its caller after the lock is released.
+The manager is a thin router over the warehouse map. `addStock`, `removeStock`, and `setLowStockAlert` look up one warehouse by id and delegate; a missing warehouse id throws. Only two operations are genuinely the manager's own work: `getWarehousesWithAvailability` iterates every warehouse and collects the ids that can fulfil the quantity, and `transfer` coordinates two warehouses at once. All the real state — the quantity map, the alert configs, and a reentrant lock — lives inside each `Warehouse`, which serialises its own mutations and decides which alerts to fire while holding the lock but leaves the actual firing to its caller after the lock is released.
 
 ```mermaid caption="The manager routes and coordinates; each warehouse owns its counts, its alert configs, and its lock. Listeners plug in behind an interface the warehouse never has to know the shape of."
 classDiagram
@@ -125,8 +125,8 @@ classDiagram
 
 A transfer is the one operation touching two warehouses, and it is where correctness is easiest to lose. Each version below closes a gap the one above it leaves open:
 
-- **Check, then move.** Ask the source `checkAvailability`, and if it passes, `removeStock` from source and `addStock` to destination. This is a textbook time-of-check-to-time-of-use [race](../hazards/race-condition.md): the source lock is released between the check and the removal, so another thread can drain the stock in that gap. Thread A confirms 50 units are available, Thread B removes them, and Thread A proceeds anyway — either the removal quietly fails and A adds phantom units to the destination, or the count goes negative. Never acceptable in production; it is a correctness bug, not a tuning knob.
-- **Trust the return value.** Skip the separate check and let `removeStock` validate while it holds the source lock, moving on only if it returns true. That closes the check-then-act window. But a gap remains: between the successful removal and the destination's `addStock`, the units belong to neither warehouse, so any thread that sums total inventory in that instant is short — and if the add somehow fails, the stock is simply lost, with no rollback.
+- **Check, then move.** Ask the source `checkAvailability`, and if it passes, `removeStock` from source and `addStock` to destination. This is a textbook time-of-check-to-time-of-use [race](../hazards/race-condition.md): the source lock is released between the check and the removal, so another thread can drain the stock in that gap. Thread A confirms 50 units are available, Thread B removes them, and Thread A proceeds anyway — the removal quietly fails and A adds phantom units to the destination. It is a correctness bug.
+- **Trust the return value.** Skip the separate check and let `removeStock` validate while it holds the source lock, moving on only if it returns true. That closes the check-then-act window. But a gap remains: between the successful removal and the destination's `addStock`, the units belong to neither warehouse, so any thread that sums total inventory in that instant is short — and if the add throws for an unknown destination id, or the process stops before it runs, the stock is simply lost, with no rollback.
 - **Lock both, in order (chosen).** Acquire the locks on both warehouses before touching anything, do the remove-and-add while holding both, then release. No other thread can observe the in-between state. Two details make it safe: the warehouse lock must be reentrant, because `transfer` calls the already-synchronised `removeStock`/`addStock` and the thread re-acquires locks it already holds; and the two locks must always be taken in a consistent order — sort by warehouse id — or a pair of opposite-direction transfers can each hold one lock and wait on the other, a classic [deadlock](../hazards/deadlock.md). This is [pessimistic locking](../patterns/distributed/coordination/pessimistic-locking.md): assume the conflict and take both locks up front.
 
 The cost is real — while both locks are held, no other thread can touch either warehouse even for an unrelated product — so a hot warehouse pair under heavy transfers will serialise. The alternative (the "trust the return value" version) is a legitimate choice when brief intermediate states are acceptable and you want the extra concurrency; it just is not truly atomic.
@@ -137,9 +137,9 @@ The tempting rule — fire whenever the new count is below the threshold — flo
 
 ### 3 · Where the lock goes
 
-Without synchronisation, `addStock` is a read-modify-write race: two threads read 20, one writes 30, the other writes 25, and ten units vanish. The safe default is to make each `Warehouse` guard all of its state behind one lock and run every public method — writes and reads, since an unsynchronised read can see a torn value — under it. That is the [Monitor Object](../patterns/concurrency/monitor-object.md) pattern: the object owns its mutex and admits one thread at a time. A per-product lock would let different products proceed in parallel, but it needs concurrent maps, grows an unbounded lock table, and reintroduces the same lock-ordering problem for transfers; it pays off only under genuinely high cross-product contention, so the coarse per-warehouse lock is the right default and the fine-grained version is a "if you asked about extreme throughput" note.
+Without synchronisation, `addStock` is a read-modify-write race: two threads read 20, one writes 30, the other writes 25, and ten units vanish. The safe default is to make each `Warehouse` guard all of its state behind one lock and run every public method — writes and reads, since an unsynchronised read can see a torn value — under it. That is the [Monitor Object](../patterns/concurrency/monitor-object.md) pattern: the object owns its mutex and admits one thread at a time. A per-product lock would let different products proceed in parallel, but it needs concurrent maps, grows an unbounded lock table, and reintroduces the same lock-ordering problem for transfers; it pays off only under genuinely high cross-product contention, so the coarse per-warehouse lock is the right default and the fine-grained version is for extreme throughput only.
 
-The subtlety is what the lock must not cover. A listener may send an email or POST a webhook — seconds of network I/O — and holding the warehouse lock across that blocks every other operation and can deadlock outright if the listener calls back into the warehouse. So the warehouse splits the work: it computes the list of alerts to fire while holding the lock, then releases and fires them. "Decide under the lock, dispatch outside it" is the shape.
+The subtlety is what the lock must not cover. A listener may send an email or POST a webhook — seconds of network I/O — and holding the warehouse lock across that blocks every other operation and can deadlock if the listener waits on another thread that calls back into the warehouse. So the warehouse splits the work: it computes the list of alerts to fire while holding the lock, then releases and fires them. "Decide under the lock, dispatch outside it" is the shape. A transfer holds both locks while it nests `removeStock` and `addStock`, so it collects the alerts from both calls and fires them only after releasing both locks.
 
 ```python summary="Pseudocode — capture under the lock, notify after it"
 # Warehouse — mutate under the lock, notify only after releasing it
@@ -196,8 +196,8 @@ sequenceDiagram
 ### What it buys
 <!--meta polarity=pro-->
 
-- Locking both warehouses in id order makes a transfer truly atomic — stock is never observably missing from both or counted twice.
-- One coarse lock per warehouse keeps correctness reasoning trivial, with microsecond hold times at ordinary throughput.
+- Locking both warehouses in id order makes a transfer truly atomic: no single-warehouse read sees a half-done transfer. A scan across warehouses is not a snapshot.
+- One coarse lock per warehouse keeps correctness reasoning trivial, and hold times stay short because the critical section is a map update and listeners run outside it.
 - Crossing-based alerts self-reset with no extra state, and deciding under the lock while dispatching outside keeps slow callbacks off the critical section.
 - The listener abstraction swaps email, webhook, or log without the warehouse changing at all.
 
@@ -222,6 +222,11 @@ sequenceDiagram
 <!-- relationships:start -->
 
 <!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Exposed to**
+
+- [Race Condition](../hazards/race-condition.md) — the check-then-move transfer and an unlocked addStock are read-modify-write races; the per-warehouse lock closes them
+- [Deadlock](../hazards/deadlock.md) — two opposite-direction transfers each hold one warehouse lock and wait on the other unless locks are taken in sorted id order
 
 **Demonstrates**
 

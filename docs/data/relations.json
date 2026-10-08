@@ -14531,6 +14531,20 @@
       "b": "change-data-capture",
       "note_a": "the database's write-ahead log is read for each price insert and published as a change event, so no collection service has to remember to publish",
       "note_b": "CamelCamelCamel streams price-row inserts from its Postgres log to a Kafka topic that drives price-drop alerts"
+    },
+    {
+      "a": "inventory-management",
+      "verb": "exposed-to",
+      "b": "race-condition",
+      "note_a": "the check-then-move transfer and an unlocked addStock are read-modify-write races; the per-warehouse lock closes them",
+      "note_b": "the inventory transfer shows the check-then-act race and its lock fix"
+    },
+    {
+      "a": "inventory-management",
+      "verb": "exposed-to",
+      "b": "deadlock",
+      "note_a": "two opposite-direction transfers each hold one warehouse lock and wait on the other unless locks are taken in sorted id order",
+      "note_b": "the inventory transfer avoids it with sorted-id lock order and reentrant locks"
     }
   ],
   "group_order": {
