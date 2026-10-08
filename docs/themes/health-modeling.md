@@ -103,5 +103,6 @@ A model is only as good as what it is allowed to record, and the usual reason fo
 
 - [Global Traffic & Ingress](./global-traffic-and-ingress.md) — Supplies the verdict a router acts on, and the rule for failing open when every region reads failing.
 - [Continuous Validation](./continuous-validation.md) — Injecting a fault shows whether the model would have noticed.
+- [Twelve-Factor](./twelve-factor.md) — Its per-instance readiness signal is the endpoint this page's verdict is read through.
 
 <!-- relationships:end -->

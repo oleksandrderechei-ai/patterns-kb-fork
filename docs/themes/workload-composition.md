@@ -1,6 +1,6 @@
 ---
 title: Workload Composition
-description: "Splitting a workload into parts that scale alone, with a write path that never makes the caller wait"
+description: "Splitting a workload into parts that scale alone, with a write path that does not hold the caller for the store commit"
 area: themes-operating
 owner: Oleksandr Derechei
 tags: [scalability, decoupling, asynchrony, separation-of-concerns]
@@ -14,29 +14,28 @@ How to cut one application into components that scale on their own signals and f
 ## The question
 <!--meta block=description-->
 
-An application that does everything in the request thread has one load pattern and one failure mode, both set by the slowest thing it touches. Composition cuts the workload along the lines where load differs, so each part scales, fails and is replaced alone. Three properties keep the pieces independent: no per-user state, slow writes behind a buffer, and per-component health. The price is a write that becomes a promise, delivered at least once, with one log stream per component.
+A request-thread application has one load pattern and one failure mode, set by its slowest dependency. Composition cuts the workload along the lines where load differs, so each part scales, fails and is replaced alone. Three properties keep the pieces independent: no per-user state, slow writes behind a buffer, and per-component health. The price is a write that becomes a promise, delivered at least once, with one log stream per component, and a broker on the request path.
 
 ## Explained
 <!--meta block=explain-->
 
-Workload composition means cutting an application along the lines where load differs, so each part scales, fails and is replaced on its own, and the slow part of a write never holds the caller. In a single process every request holds a thread until the slowest thing it touches finishes, so a slow database slows everyone. Three properties keep the pieces independent. Components keep no per-user state, so any copy serves any request. Slow writes go through a buffer, a queue that holds work until a worker takes it, so the front end answers in milliseconds. Each component reports its own health, so traffic routes around a failing one. Choose it where load patterns really differ, and skip it where they do not, because it is pure overhead there.
+Workload composition means cutting an application along the lines where load differs, so each part scales, fails and is replaced on its own, and the slow part of a write does not hold the caller for the store commit. In a single process every request holds a thread until the slowest thing it touches finishes, so a slow database slows everyone. Three properties keep the pieces independent. Components keep no per-user state, so any copy serves any request. Slow writes go through a buffer, a queue that holds work until a worker takes it, so the front end answers in milliseconds. Each component reports its own health, so traffic routes around a failing one. Choose it where load patterns really differ, and skip it where they do not, because it is pure overhead there.
 
 - **Receipt, not result.** The caller gets no answer at once. Give it an identifier and a place to check.
-- **Redelivery.** A buffer delivers a message twice sometimes. Make each handler give the same result the second time.
+- **Redelivery.** A buffer delivers at least once, so a message can arrive twice. Make each handler give the same result the second time.
 - **Scattered logs.** One request leaves three log streams. Thread one correlation identifier through all of them.
+- **Poison message.** A handler that always fails retries forever. Cap attempts, then move the message to a dead-letter queue.
 
-**Example.** A comment service has 150 threads and takes 100 posts a second. In a slow patch each database write takes 2 s, so 100 x 2 = 200 threads are needed and the pool of 150 runs dry. With a queue, the front end returns after 10 ms, holding about 1 thread. If workers manage only 50 writes a second, the backlog grows 50 a second, 30,000 after 10 minutes. The cost is that comments appear late, and a redelivered message posts twice unless each carries an idempotency key.
+**Example.** A comment service has 150 threads and takes 100 posts a second. In a slow patch each database write takes 2 s, so 100 x 2 = 200 threads are needed and the pool of 150 runs dry. With a queue, the front end returns after 10 ms, holding about 1 thread. If workers manage only 50 writes a second, the backlog grows 50 a second: 30,000 after 10 minutes, a delay that keeps growing while arrivals exceed throughput. Bound the queue by age and shed past it. A handler that stores each idempotency key with its write skips a redelivered message.
 
 ## The tradespace
 <!--meta block=tradespace-->
 
-The tension is between answering now and answering truthfully. A request that waits for the write to commit can tell the user exactly what happened, and it holds a thread for as long as that takes. A request that hands the write to a buffer returns in milliseconds and can only say the work has been accepted — a smaller promise, and one the system can keep under load that would have collapsed the first design.
+The tension is between answering now and answering truthfully. A request that waits for the write to commit can tell the user exactly what happened, and it holds a thread for as long as that takes. A request that hands the write to a buffer returns in milliseconds and can only say the work has been accepted. That is a smaller promise the system can keep under load that would have collapsed the first design. The user may not see their own write at once, so show it locally or poll the receipt.
 
-Every cut moves cost from the request path to somewhere else rather than removing it. Statelessness moves session data into a shared store, which is a network hop the process no longer avoids. Buffering moves the write into a broker, which is another thing to run, size and watch. Independent scaling means several policies to tune instead of one. The trade is worth making where the load patterns genuinely differ, and is pure overhead where they do not.
+Every cut moves cost from the request path to somewhere else rather than removing it. Statelessness moves session data into a shared store, which is a network hop the process no longer avoids. Buffering moves the write into a broker, which is another thing to run, size and watch, and a backlog is latency owed: bound its length or age, alarm on oldest-message age, and shed past the bound. Independent scaling means several policies to tune instead of one.
 
 Underneath sits a requirement that is easy to skip and expensive to retrofit: once work is buffered, it will be delivered more than once. Repeat-safety has to be designed into each handler at the point where it writes, and bolting it on later means auditing every write path in the system rather than writing one guard clause.
-
-**Answer immediately and promise less, or answer completely and hold the caller.**
 
 ## The tour
 <!--meta block=tour-->
@@ -55,19 +54,19 @@ A worker that dies after writing but before acknowledging will see its message a
 
 ### [Queue-Based Load Leveling](../patterns/distributed/resilience/load-leveling.md) {#tour-load-leveling}
 
-A queue between the front end and the write lets the request return the moment the message is durable, instead of holding a thread until the store commits. The front end then serves at its own pace and the store works at its own, and a burst becomes queue depth rather than a timeout.
+A queue between the front end and the write lets the request return the moment the message is durable, instead of holding a thread until the store commits. The front end then serves at its own pace and the store works at its own, and a burst shorter than the backlog the workers can clear becomes queue depth rather than a timeout. Sustained overload only moves the failure into the queue, so bound its length or age, alarm on oldest-message age, and shed past the bound.
 
 ### [Competing Consumers](../patterns/messaging/competing-consumers.md) {#tour-competing-consumers}
 
-The other half of the buffer: several workers pull from the same channel, each claiming its own message, so backlog turns into throughput by adding instances. It is why the worker's scaling signal is queue depth while the front end's is request rate.
+The other half of the buffer: several workers pull from the same channel, each claiming its own message, so backlog turns into throughput by adding instances. It is why the worker's scaling signal is queue depth while the front end's is request rate. Parallel consumers give up global order, so partition by key where order matters.
 
 ### [Autoscaling](../patterns/distributed/routing/autoscaling.md) {#tour-autoscaling}
 
-Separated components have different load shapes, so they get different policies: the front end tracks request rate and must react quickly because users are waiting, while the worker tracks queue depth and can react slowly because nobody is. One policy for both wastes capacity on one and starves the other.
+Separated components have different load shapes, so they get different policies: the front end tracks request rate and must react quickly because users are waiting, while the worker tracks queue depth and can react slowly because nobody is. One policy for both tends to waste capacity on one and starve the other. Cap workers at what the shared store can absorb, since more workers raise its load.
 
 ### [Health Endpoint Monitoring](../patterns/distributed/resilience/health-endpoint.md) {#tour-health-endpoint}
 
-Each component answers for itself, so an instance that has lost its store leaves rotation before users meet it. Independence is only real if the thing in front can tell which piece is unwell.
+Each component answers for itself, so an instance that has lost its store leaves rotation after a few failed checks, so fewer users meet it. Check only what the instance needs to serve, and keep liveness apart from readiness: a shared store that fails every check would eject every instance, so cap how many may leave at once. Independence is only real if the thing in front can tell which piece is unwell.
 
 ### [Correlation Identifier](../patterns/messaging/correlation-identifier.md) {#tour-correlation-identifier}
 
@@ -95,3 +94,16 @@ Splitting the workload splits the evidence. An id generated at the edge and carr
 - [Long-Running Tasks](./long-running-tasks.md) — The same buffer-and-worker shape, followed through to progress reporting and results the client collects later.
 - [Scalability](./scalability.md) — Independent components are what make horizontal scale a choice per component rather than one decision for the whole application.
 - [Health Modeling](./health-modeling.md) — Once a workload has several components, deciding whether the whole thing is healthy stops being obvious.
+
+## How it relates
+<!--meta block=relationships-->
+
+<!-- relationships:start -->
+
+<!-- GENERATED by gen-relations from docs/data/relations.json. Do not edit this block. -->
+
+**Combines with**
+
+- [Long-Running Tasks](./long-running-tasks.md) — Hands the buffered write on to progress reporting and result retrieval.
+
+<!-- relationships:end -->

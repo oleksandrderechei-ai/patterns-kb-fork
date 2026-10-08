@@ -14769,6 +14769,34 @@
       "b": "operating-a-live-system",
       "note_a": "Routine operations reuse this delivery path.",
       "note_b": "Hand-run changes go through the same automated path as a release."
+    },
+    {
+      "a": "operating-a-live-system",
+      "verb": "combines-with",
+      "b": "securing-availability",
+      "note_a": "The shared long-lived key that fails everything at once is the one this theme's short-lived credentials replace.",
+      "note_b": "Rotation and certificate renewal are the scheduled work that stops the expiry outage this theme warns about."
+    },
+    {
+      "a": "securing-availability",
+      "verb": "combines-with",
+      "b": "spike-handling",
+      "note_a": "A flood is a flood whether hostile or a launch: Gatekeeper and Intercepting Validator reject work at the edge for both.",
+      "note_b": "Edge rejection of hostile floods reuses the screening controls this theme covers."
+    },
+    {
+      "a": "health-modeling",
+      "verb": "combines-with",
+      "b": "twelve-factor",
+      "note_a": "Its per-instance readiness signal is the endpoint this page's verdict is read through.",
+      "note_b": "The health endpoint's over-check and under-check judgement is argued at system scale there."
+    },
+    {
+      "a": "long-running-tasks",
+      "verb": "combines-with",
+      "b": "workload-composition",
+      "note_a": "Supplies the buffer-and-worker split this page follows through to the client.",
+      "note_b": "Hands the buffered write on to progress reporting and result retrieval."
     }
   ],
   "group_order": {

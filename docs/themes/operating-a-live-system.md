@@ -99,5 +99,6 @@ The hardest failures to notice are the ones with no error: a job that was never 
 **Combines with**
 
 - [Continuous Delivery](./continuous-delivery.md) — Hand-run changes go through the same automated path as a release.
+- [Securing Availability](./securing-availability.md) — The shared long-lived key that fails everything at once is the one this theme's short-lived credentials replace.
 
 <!-- relationships:end -->

@@ -1096,7 +1096,7 @@
     "/patterns/distributed/coordination/external-configuration-store.html": {
       "twelve-factor": {
         "role": "Configuration outside the build, not inside it",
-        "tour": "The first factor and the one everything else depends on. If the same artifact cannot be promoted between environments unchanged, nothing further on this list is reachable — and the store you move it into is now a start-up dependency of every process.",
+        "tour": "The first factor and the one everything else depends on. If the same artifact cannot be promoted between environments unchanged, nothing further on this list is reachable. The store you move it into is now a start-up dependency of every process.",
         "fluency": "Configuration outside the build, not inside it"
       }
     },
@@ -1108,7 +1108,7 @@
       },
       "securing-availability": {
         "role": "Stop holding credentials you could lose",
-        "tour": "Trusting an identity provider's assertion rather than storing credentials removes a whole class of secret to leak, expire or rotate. The trade is explicit: fewer secrets in your system, and a hard dependency on the provider's availability during the operations that need a token.",
+        "tour": "Trusting an identity provider's assertion rather than storing credentials reduces the secrets to leak, expire or rotate, though the trust configuration for the provider must still be kept current. The trade is explicit: fewer secrets in your system, and a hard dependency on the provider's availability during the operations that need a token. Decide in advance how long existing sessions keep working while the provider is down, and keep a local break-glass credential.",
         "fluency": "Hold fewer secrets that can expire and take everything down"
       }
     },
@@ -1410,7 +1410,7 @@
     "/patterns/distributed/resilience/distributed-tracing.html": {
       "twelve-factor": {
         "role": "Telemetry emitted, collected elsewhere",
-        "tour": "Once a process is disposable, anything it wrote locally is gone with it. Emit a stream and let something else aggregate it — and once a request crosses several such processes, a correlated trace is the only thing that reassembles it.",
+        "tour": "Once a process is disposable, anything it wrote locally is gone with it. Emit a stream and let something else aggregate it. Once a request crosses several such processes, a correlated trace reassembles it.",
         "fluency": "Telemetry emitted, collected elsewhere"
       },
       "observability": {
@@ -1460,7 +1460,7 @@
       },
       "workload-composition": {
         "role": "Report readiness so the router can act",
-        "tour": "Each component answers for itself, so an instance that has lost its store leaves rotation before users meet it. Independence is only real if the thing in front can tell which piece is unwell.",
+        "tour": "Each component answers for itself, so an instance that has lost its store leaves rotation after a few failed checks, so fewer users meet it. Check only what the instance needs to serve, and keep liveness apart from readiness: a shared store that fails every check would eject every instance, so cap how many may leave at once. Independence is only real if the thing in front can tell which piece is unwell.",
         "fluency": "Every piece answers for itself"
       },
       "global-traffic-and-ingress": {
@@ -1497,7 +1497,7 @@
       },
       "workload-composition": {
         "role": "Take the write off the request path",
-        "tour": "A queue between the front end and the write lets the request return the moment the message is durable, instead of holding a thread until the store commits. The front end then serves at its own pace and the store works at its own, and a burst becomes queue depth rather than a timeout.",
+        "tour": "A queue between the front end and the write lets the request return the moment the message is durable, instead of holding a thread until the store commits. The front end then serves at its own pace and the store works at its own, and a burst shorter than the backlog the workers can clear becomes queue depth rather than a timeout. Sustained overload only moves the failure into the queue, so bound its length or age, alarm on oldest-message age, and shed past the bound.",
         "fluency": "Return to the caller before the write lands"
       }
     },
@@ -1615,7 +1615,7 @@
       },
       "workload-composition": {
         "role": "Let each component follow its own signal",
-        "tour": "Separated components have different load shapes, so they get different policies: the front end tracks request rate and must react quickly because users are waiting, while the worker tracks queue depth and can react slowly because nobody is. One policy for both wastes capacity on one and starves the other.",
+        "tour": "Separated components have different load shapes, so they get different policies: the front end tracks request rate and must react quickly because users are waiting, while the worker tracks queue depth and can react slowly because nobody is. One policy for both tends to waste capacity on one and starve the other. Cap workers at what the shared store can absorb, since more workers raise its load.",
         "fluency": "Each separated component follows its own signal"
       },
       "scale-units-and-stamps": {
@@ -1649,7 +1649,7 @@
     "/patterns/distributed/routing/blue-green-deployment.html": {
       "twelve-factor": {
         "role": "A release you can replace rather than mutate",
-        "tour": "Where the whole list pays off. When config is external, state is elsewhere and readiness is reported, a release becomes an immutable thing you can stand up beside the current one and switch to — and switch back from.",
+        "tour": "Where the whole list pays off. When config is external, state is elsewhere and readiness is reported, a release becomes an immutable thing you can stand up beside the current one and switch to, and switch back from while the shared state stays compatible with both releases.",
         "fluency": "A release you can replace rather than mutate"
       },
       "continuous-delivery": {
@@ -1779,7 +1779,7 @@
       },
       "securing-availability": {
         "role": "Reject bad requests before they cost anything",
-        "tour": "Sitting at that entry point, it does the actual screening — malformed requests, known attack signatures, floods — before they consume a connection, a thread or a query anywhere behind it. Availability is the point: work rejected at the edge is capacity the real users keep.",
+        "tour": "Sitting at that entry point, it does the actual screening — malformed requests, known attack signatures, floods — before they consume a connection, a thread or a query anywhere behind it. Work rejected at the edge is capacity the real users keep. It sits on the critical path, so a false-positive rule rejects real users: tune rules against real traffic.",
         "fluency": "Reject bad traffic before it costs capacity"
       }
     },
@@ -1904,7 +1904,7 @@
     "/patterns/distributed/routing/stateless-service.html": {
       "twelve-factor": {
         "role": "Nothing durable held in the process",
-        "tour": "The property that makes an instance disposable. Once no request depends on which instance served the last one, the platform is free to add, move and kill processes — which is the entire capability you were trying to buy.",
+        "tour": "The property that makes an instance disposable. Once no request depends on which instance served the last one, the platform is free to add, move and kill processes. That is the core of the capability you were trying to buy.",
         "fluency": "Nothing durable held in the process"
       },
       "system-design-interview": {
@@ -1958,7 +1958,7 @@
       },
       "securing-availability": {
         "role": "Issue access that expires on its own",
-        "tour": "A narrow, time-limited token scoped to one resource and one action means a leaked credential exposes little and stops working by itself. It is also the answer to the rotation problem: a credential that was always short-lived never needs a coordinated rotation across every component that held it.",
+        "tour": "A narrow, time-limited token scoped to one resource and one action means a leaked credential exposes little and stops working by itself. It also removes the coordinated rotation across every holder, since a credential that was always short-lived expires on its own; the issuer's own signing key still rotates, so publish old and new keys together for an overlap window.",
         "fluency": "Credentials that expire without a coordinated rotation"
       },
       "operating-a-live-system": {
@@ -2105,7 +2105,7 @@
       },
       "workload-composition": {
         "role": "Drain the backlog by adding workers",
-        "tour": "The other half of the buffer: several workers pull from the same channel, each claiming its own message, so backlog turns into throughput by adding instances. It is why the worker's scaling signal is queue depth while the front end's is request rate.",
+        "tour": "The other half of the buffer: several workers pull from the same channel, each claiming its own message, so backlog turns into throughput by adding instances. It is why the worker's scaling signal is queue depth while the front end's is request rate. Parallel consumers give up global order, so partition by key where order matters.",
         "fluency": "Turn a backlog into throughput by adding workers"
       }
     },
@@ -2457,7 +2457,7 @@
       },
       "securing-availability": {
         "role": "Make screening unbypassable",
-        "tour": "One guarded way in is what turns screening from a habit into a guarantee. The part people skip is the other half: the components behind have to reject anything that did not come through it, or a leaked backend address is an unscreened route straight to the application.",
+        "tour": "One guarded way in turns screening from a habit into a guarantee, but only if the other half holds: the components behind have to reject anything that did not come through it, or a leaked backend address is an unscreened route straight to the application. Test it by calling a backend address directly and expecting a reject.",
         "fluency": "Make screening something nobody can route around"
       }
     },

@@ -13,8 +13,8 @@ source: docs/data/relations.json
 # Prerequisites
 
 A **prerequisite record** is one page with the pages to read before it and the pages to
-read beside it. There are 356 records: 44 of them name something to read first, through 51
-requires edges, and 979 pairs of pages are related both ways.
+read beside it. There are 360 records: 44 of them name something to read first, through 51
+requires edges, and 983 pairs of pages are related both ways.
 
 Everything here is built from [`relations.json`](../data/relations.json), through its
 second form [`prerequisites.json`](../data/prerequisites.json). **Read first** lists a
@@ -344,15 +344,19 @@ record reached.
 | [Service Boundaries](../themes/service-boundaries.md) | Deciding where one service ends and the next begins, and recognising the day you got it wrong | — | [Conway's Law](../principles/conways-law.md) |
 | [CAP Theorem](../themes/cap-theorem.md) | When the network splits, you choose consistency or availability — never both | — | [Data Platform](../themes/data-platform.md) |
 | [Consistency & Replication](../themes/consistency-and-replication.md) | Keeping copies of data in agreement across nodes | — | [Data Platform](../themes/data-platform.md) |
+| [Long-Running Tasks](../themes/long-running-tasks.md) | Moving slow work off the request path onto durable queues and workers | — | [Workload Composition](../themes/workload-composition.md) |
+| [Handling Spikes](../themes/spike-handling.md) | Absorb, shed, or scale when traffic suddenly surges | — | [Securing Availability](../themes/securing-availability.md) |
 | [Cloud Native](../themes/cloud-native.md) | What the platform provides once your workload is packaged the way it expects | — | [Twelve-Factor](../themes/twelve-factor.md), [Data Platform](../themes/data-platform.md) |
-| [Twelve-Factor](../themes/twelve-factor.md) | What a platform requires of an application before it can run it for you | — | [Cloud Native](../themes/cloud-native.md) |
+| [Twelve-Factor](../themes/twelve-factor.md) | What a platform requires of an application before it can run it for you | — | [Cloud Native](../themes/cloud-native.md), [Health Modeling](../themes/health-modeling.md) |
 | [Observability](../themes/observability.md) | Knowing what a running system is actually doing | — | [Metrics & Monitoring](../designs/metrics-monitoring.md) |
 | [Continuous Delivery](../themes/continuous-delivery.md) | Shipping each service on its own schedule, safely and often | — | [Operating a Live System](../themes/operating-a-live-system.md) |
+| [Workload Composition](../themes/workload-composition.md) | Splitting a workload into parts that scale alone, with a write path that does not hold the caller for the store commit | — | [Long-Running Tasks](../themes/long-running-tasks.md) |
 | [Global Traffic & Ingress](../themes/global-traffic-and-ingress.md) | Getting every request to a healthy region, and screening it on the way in | — | [Health Modeling](../themes/health-modeling.md), [API Gateway](../patterns/distributed/routing/api-gateway.md) |
 | [Data Platform](../themes/data-platform.md) | Choosing and configuring the stores that hold state when the compute is disposable | — | [Cloud Native](../themes/cloud-native.md), [Consistency & Replication](../themes/consistency-and-replication.md), [CAP Theorem](../themes/cap-theorem.md) |
-| [Health Modeling](../themes/health-modeling.md) | Turning a wall of metrics into one answer a router and an operator can act on | — | [Global Traffic & Ingress](../themes/global-traffic-and-ingress.md), [Continuous Validation](../themes/continuous-validation.md) |
+| [Health Modeling](../themes/health-modeling.md) | Turning a wall of metrics into one answer a router and an operator can act on | — | [Global Traffic & Ingress](../themes/global-traffic-and-ingress.md), [Continuous Validation](../themes/continuous-validation.md), [Twelve-Factor](../themes/twelve-factor.md) |
 | [Continuous Validation](../themes/continuous-validation.md) | Proving a release is safe before it takes traffic, and while it does | — | [Health Modeling](../themes/health-modeling.md) |
-| [Operating a Live System](../themes/operating-a-live-system.md) | The changes a running system needs, made without a hand on the box | — | [Continuous Delivery](../themes/continuous-delivery.md) |
+| [Securing Availability](../themes/securing-availability.md) | The security controls you adopt because a compromise or an expiry is an outage | — | [Operating a Live System](../themes/operating-a-live-system.md), [Handling Spikes](../themes/spike-handling.md) |
+| [Operating a Live System](../themes/operating-a-live-system.md) | The changes a running system needs, made without a hand on the box | — | [Continuous Delivery](../themes/continuous-delivery.md), [Securing Availability](../themes/securing-availability.md) |
 
 ## Principles
 

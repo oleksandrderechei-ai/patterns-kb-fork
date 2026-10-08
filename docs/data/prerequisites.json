@@ -2412,6 +2412,22 @@
       "related": ["data-platform"]
     },
     {
+      "id": "long-running-tasks",
+      "label": "Long-Running Tasks",
+      "definition": "Moving slow work off the request path onto durable queues and workers",
+      "route": "/themes/long-running-tasks.html",
+      "requires": [],
+      "related": ["workload-composition"]
+    },
+    {
+      "id": "spike-handling",
+      "label": "Handling Spikes",
+      "definition": "Absorb, shed, or scale when traffic suddenly surges",
+      "route": "/themes/spike-handling.html",
+      "requires": [],
+      "related": ["securing-availability"]
+    },
+    {
       "id": "cloud-native",
       "label": "Cloud Native",
       "definition": "What the platform provides once your workload is packaged the way it expects",
@@ -2425,7 +2441,7 @@
       "definition": "What a platform requires of an application before it can run it for you",
       "route": "/themes/twelve-factor.html",
       "requires": [],
-      "related": ["cloud-native"]
+      "related": ["cloud-native", "health-modeling"]
     },
     {
       "id": "observability",
@@ -2442,6 +2458,14 @@
       "route": "/themes/continuous-delivery.html",
       "requires": [],
       "related": ["operating-a-live-system"]
+    },
+    {
+      "id": "workload-composition",
+      "label": "Workload Composition",
+      "definition": "Splitting a workload into parts that scale alone, with a write path that does not hold the caller for the store commit",
+      "route": "/themes/workload-composition.html",
+      "requires": [],
+      "related": ["long-running-tasks"]
     },
     {
       "id": "global-traffic-and-ingress",
@@ -2465,7 +2489,7 @@
       "definition": "Turning a wall of metrics into one answer a router and an operator can act on",
       "route": "/themes/health-modeling.html",
       "requires": [],
-      "related": ["global-traffic-and-ingress", "continuous-validation"]
+      "related": ["global-traffic-and-ingress", "continuous-validation", "twelve-factor"]
     },
     {
       "id": "continuous-validation",
@@ -2476,12 +2500,20 @@
       "related": ["health-modeling"]
     },
     {
+      "id": "securing-availability",
+      "label": "Securing Availability",
+      "definition": "The security controls you adopt because a compromise or an expiry is an outage",
+      "route": "/themes/securing-availability.html",
+      "requires": [],
+      "related": ["operating-a-live-system", "spike-handling"]
+    },
+    {
       "id": "operating-a-live-system",
       "label": "Operating a Live System",
       "definition": "The changes a running system needs, made without a hand on the box",
       "route": "/themes/operating-a-live-system.html",
       "requires": [],
-      "related": ["continuous-delivery"]
+      "related": ["continuous-delivery", "securing-availability"]
     },
     {
       "id": "dry",
